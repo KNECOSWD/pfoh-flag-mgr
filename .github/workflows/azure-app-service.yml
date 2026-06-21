@@ -1,0 +1,70 @@
+name: Build and deploy PFOH Flag Manager
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_WEBAPP_NAME: pfoh-flag-manager-app
+  DOTNET_VERSION: '8.0.x'
+  NODE_VERSION: '20.x'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm install
+          echo "VITE_TENANT_SUBDOMAIN=${{ secrets.ENTRA_TENANT_SUBDOMAIN }}" > .env.production
+          echo "VITE_TENANT_ID=${{ secrets.ENTRA_TENANT_ID }}" >> .env.production
+          echo "VITE_SPA_CLIENT_ID=${{ secrets.ENTRA_SPA_CLIENT_ID }}" >> .env.production
+          echo "VITE_API_CLIENT_ID=${{ secrets.ENTRA_API_CLIENT_ID }}" >> .env.production
+          echo "VITE_API_BASE_URL=" >> .env.production
+          npm run build
+          
+      - name: Copy frontend into API wwwroot
+        run: |
+          mkdir -p backend/PFOH.Api/wwwroot
+          rm -rf backend/PFOH.Api/wwwroot/*
+          cp -r frontend/dist/* backend/PFOH.Api/wwwroot/
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore API
+        run: dotnet restore backend/PFOH.Api/PFOH.Api.csproj
+
+      - name: Publish API
+        run: dotnet publish backend/PFOH.Api/PFOH.Api.csproj -c Release -o publish --no-restore
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: publish
