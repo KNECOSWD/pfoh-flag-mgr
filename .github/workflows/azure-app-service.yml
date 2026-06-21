@@ -31,7 +31,7 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: |
-          npm ci
+          npm install
           echo "VITE_ENTRA_TENANT_SUBDOMAIN=${{ secrets.ENTRA_TENANT_SUBDOMAIN }}" > .env.production
           echo "VITE_ENTRA_TENANT_ID=${{ secrets.ENTRA_TENANT_ID }}" >> .env.production
           echo "VITE_ENTRA_SPA_CLIENT_ID=${{ secrets.ENTRA_SPA_CLIENT_ID }}" >> .env.production
