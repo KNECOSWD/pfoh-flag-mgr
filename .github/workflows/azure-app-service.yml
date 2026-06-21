@@ -32,12 +32,13 @@ jobs:
         working-directory: frontend
         run: |
           npm install
-          echo "VITE_ENTRA_TENANT_SUBDOMAIN=${{ secrets.ENTRA_TENANT_SUBDOMAIN }}" > .env.production
-          echo "VITE_ENTRA_TENANT_ID=${{ secrets.ENTRA_TENANT_ID }}" >> .env.production
-          echo "VITE_ENTRA_SPA_CLIENT_ID=${{ secrets.ENTRA_SPA_CLIENT_ID }}" >> .env.production
-          echo "VITE_ENTRA_API_CLIENT_ID=${{ secrets.ENTRA_API_CLIENT_ID }}" >> .env.production
+          echo "VITE_TENANT_SUBDOMAIN=${{ secrets.ENTRA_TENANT_SUBDOMAIN }}" > .env.production
+          echo "VITE_TENANT_ID=${{ secrets.ENTRA_TENANT_ID }}" >> .env.production
+          echo "VITE_SPA_CLIENT_ID=${{ secrets.ENTRA_SPA_CLIENT_ID }}" >> .env.production
+          echo "VITE_API_CLIENT_ID=${{ secrets.ENTRA_API_CLIENT_ID }}" >> .env.production
+          echo "VITE_API_BASE_URL=" >> .env.production
           npm run build
-
+          
       - name: Copy frontend into API wwwroot
         run: |
           mkdir -p backend/PFOH.Api/wwwroot
