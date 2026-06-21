@@ -1,6 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { PublicClientApplication, EventType, AuthenticationResult } from "@azure/msal-browser";
+import {
+  PublicClientApplication,
+  EventType,
+  AuthenticationResult
+} from "@azure/msal-browser";
 import { MsalProvider } from "@azure/msal-react";
 import { msalConfig } from "./authConfig";
 import App from "./App";
@@ -11,19 +15,29 @@ const msalInstance = new PublicClientApplication(msalConfig);
 msalInstance.addEventCallback((event) => {
   if (event.eventType === EventType.LOGIN_SUCCESS && event.payload) {
     const payload = event.payload as AuthenticationResult;
-    if (payload.account) msalInstance.setActiveAccount(payload.account);
+    if (payload.account) {
+      msalInstance.setActiveAccount(payload.account);
+    }
   }
 });
 
-await msalInstance.initialize();
+async function startApp() {
+  await msalInstance.initialize();
 
-const accounts = msalInstance.getAllAccounts();
-if (accounts.length > 0) msalInstance.setActiveAccount(accounts[0]);
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length > 0) {
+    msalInstance.setActiveAccount(accounts[0]);
+  }
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <MsalProvider instance={msalInstance}>
-      <App />
-    </MsalProvider>
-  </React.StrictMode>
-);
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <MsalProvider instance={msalInstance}>
+        <App />
+      </MsalProvider>
+    </React.StrictMode>
+  );
+}
+
+startApp().catch((error) => {
+  console.error("Failed to start app", error);
+});
