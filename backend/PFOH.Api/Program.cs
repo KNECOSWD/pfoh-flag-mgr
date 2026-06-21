@@ -37,13 +37,13 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+//using (var scope = app.Services.CreateScope())
+//{
+    //var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
     // MVP convenience: creates the Flags table if it does not exist.
     // For production ALM, replace with EF migrations executed by your release pipeline.
-    db.Database.EnsureCreated();
-}
+    //db.Database.EnsureCreated();
+//}
 
 if (app.Environment.IsDevelopment())
 {
