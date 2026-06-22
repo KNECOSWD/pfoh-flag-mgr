@@ -144,6 +144,63 @@ public class HonoreesController(
         return File(pdf, "application/pdf");
     }
 
+    private static string GuessImageContentType(string? photoFileName, string? fallbackUrl)
+    {
+        var source = !string.IsNullOrWhiteSpace(photoFileName)
+            ? photoFileName
+            : fallbackUrl ?? string.Empty;
+
+        return Path.GetExtension(source).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".svg" => "image/svg+xml",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            _ => "image/jpeg"
+        };
+    }
+
+    private async Task<byte[]?> SafeDownloadPdfAsync(int honoreeId, CancellationToken ct)
+    {
+        try
+        {
+            return await fileStorage.DownloadPdfAsync(honoreeId, ct);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<byte[]?> SafeDownloadImageAsync(
+        string? photoFileName,
+        string? fallbackImageUrl,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await fileStorage.DownloadImageAsync(photoFileName, fallbackImageUrl, ct);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task SafeUploadPdfAsync(int honoreeId, byte[] pdf, CancellationToken ct)
+    {
+        try
+        {
+            await fileStorage.UploadPdfAsync(honoreeId, pdf, ct);
+        }
+        catch
+        {
+            // Still return the generated PDF to the user.
+            // Blob settings/container access can be fixed separately.
+        }
+    }
+
     private async Task<bool> ExistingPdfIsAvailableAsync(string pdfUrl, CancellationToken ct)
     {
         if (!TryBuildAbsoluteUri(pdfUrl, out var uri))
