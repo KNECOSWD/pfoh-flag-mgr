@@ -83,3 +83,7 @@ public class SaveHonoreeChangeRequest
     [MaxLength(255), EmailAddress]
     public string? SubmitterEmailAddress { get; set; }
 }
+
+public class NominateHonoreeRequest : SaveHonoreeChangeRequest
+{
+}
