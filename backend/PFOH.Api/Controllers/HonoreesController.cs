@@ -103,7 +103,7 @@ public class HonoreesController(
     [HttpGet("{honoreeId:int}/pdf")]
     public async Task<IActionResult> OpenOrCreatePdf(int honoreeId, CancellationToken ct)
     {
-        var storedPdf = await fileStorage.DownloadPdfAsync(honoreeId, ct);
+        var storedPdf = await SafeDownloadPdfAsync(honoreeId, ct);
         if (storedPdf is not null)
         {
             return File(storedPdf, "application/pdf", fileStorage.GetHonoreePdfFileName(honoreeId));
@@ -131,9 +131,12 @@ public class HonoreesController(
             return Redirect(searchResult.PDFUrl);
         }
 
-        var photoBytes = await fileStorage.DownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
+        var photoBytes = await SafeDownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
         var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes);
-        await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
+
+        // Return the generated PDF even if storage upload fails. This prevents users
+        // from seeing a browser 500 when a blob setting/container is temporarily wrong.
+        await SafeUploadPdfAsync(honoree.Id, pdf, ct);
 
         Response.Headers["Content-Disposition"] = $"inline; filename=\"{fileStorage.GetHonoreePdfFileName(honoree.Id)}\"";
         Response.Headers["X-PFOH-PDF-Source"] = "generated";
