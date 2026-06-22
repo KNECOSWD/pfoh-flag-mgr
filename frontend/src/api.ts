@@ -125,6 +125,14 @@ export type AdminReviewItem = {
   reviewNotes?: string | null;
 };
 
+export type AdminUserRole = {
+  id: string;
+  displayName?: string | null;
+  mail?: string | null;
+  userPrincipalName?: string | null;
+  isAdmin: boolean;
+};
+
 export type AdminPrintQueueItem = {
   changeRequestId: number;
   claimId: number;
@@ -283,6 +291,23 @@ export const lookupApi = {
 };
 
 export const adminApi = {
+  searchUsers: (instance: IPublicClientApplication, account: AccountInfo, query: string) =>
+    request<AdminUserRole[]>(
+      instance,
+      account,
+      `/api/admin/users/search?q=${encodeURIComponent(query)}`
+    ),
+
+  grantAdminRole: (instance: IPublicClientApplication, account: AccountInfo, userObjectId: string) =>
+    request<AdminUserRole>(instance, account, `/api/admin/users/${userObjectId}/admin-role`, {
+      method: "POST"
+    }),
+
+  removeAdminRole: (instance: IPublicClientApplication, account: AccountInfo, userObjectId: string) =>
+    request<AdminUserRole>(instance, account, `/api/admin/users/${userObjectId}/admin-role`, {
+      method: "DELETE"
+    }),
+
   pending: (instance: IPublicClientApplication, account: AccountInfo) =>
     request<AdminReviewItem[]>(instance, account, "/api/admin/review/pending"),
 

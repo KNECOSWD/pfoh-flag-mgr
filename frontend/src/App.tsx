@@ -3,6 +3,7 @@ import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import {
   AdminPrintQueueItem,
   AdminReviewItem,
+  AdminUserRole,
   ApiError,
   FlagClaim,
   HonoreeSearchResult,
@@ -75,6 +76,14 @@ function ownershipStatusLabel(claim: FlagClaim) {
   return "Managed by you";
 }
 
+function userDisplayName(user: AdminUserRole) {
+  return user.displayName || user.mail || user.userPrincipalName || "Unnamed user";
+}
+
+function userEmail(user: AdminUserRole) {
+  return user.mail || user.userPrincipalName || "No email available";
+}
+
 export default function App() {
   const isAuthenticated = useIsAuthenticated();
   const { instance, accounts } = useMsal();
@@ -96,6 +105,9 @@ export default function App() {
   const [printQueue, setPrintQueue] = useState<AdminPrintQueueItem[]>([]);
   const [selectedPrintIds, setSelectedPrintIds] = useState<number[]>([]);
   const [adminBusyId, setAdminBusyId] = useState<number | null>(null);
+  const [adminUserSearchText, setAdminUserSearchText] = useState("");
+  const [adminUserResults, setAdminUserResults] = useState<AdminUserRole[]>([]);
+  const [adminRoleBusyId, setAdminRoleBusyId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -319,6 +331,80 @@ export default function App() {
       setError(err instanceof Error ? err.message : "Unable to submit claim.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function searchAdminUsers(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!account) return;
+
+    if (adminUserSearchText.trim().length < 2) {
+      setError("Enter at least two characters to search users.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const results = await adminApi.searchUsers(instance, account, adminUserSearchText.trim());
+      setAdminUserResults(results);
+
+      if (results.length === 0) {
+        setNotice("No matching users found. The person may need to register or sign in once before they can be promoted.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to search users.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function grantAdminRole(user: AdminUserRole) {
+    if (!account) return;
+
+    const ok = window.confirm(`Grant PFOH administrator access to ${userDisplayName(user)}?`);
+    if (!ok) return;
+
+    setAdminRoleBusyId(user.id);
+    setError("");
+    setNotice("");
+
+    try {
+      const updated = await adminApi.grantAdminRole(instance, account, user.id);
+      setAdminUserResults((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item))
+      );
+      setNotice(`${userDisplayName(updated)} now has PFOH administrator access. They should sign out and sign back in to receive the new role.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to grant admin access.");
+    } finally {
+      setAdminRoleBusyId(null);
+    }
+  }
+
+  async function removeAdminRole(user: AdminUserRole) {
+    if (!account) return;
+
+    const ok = window.confirm(`Remove PFOH administrator access from ${userDisplayName(user)}?`);
+    if (!ok) return;
+
+    setAdminRoleBusyId(user.id);
+    setError("");
+    setNotice("");
+
+    try {
+      const updated = await adminApi.removeAdminRole(instance, account, user.id);
+      setAdminUserResults((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item))
+      );
+      setNotice(`${userDisplayName(updated)} no longer has PFOH administrator access.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to remove admin access.");
+    } finally {
+      setAdminRoleBusyId(null);
     }
   }
 
@@ -595,6 +681,55 @@ export default function App() {
 
           {isAuthenticated ? (
             <>
+          <section className="card ownershipCard">
+            <div className="sectionHeader">
+              <div>
+                <p className="eyebrow">Your account</p>
+                <h2>My claimed flags</h2>
+                <p className="helperText">
+                  These are the flag records you manage. You can submit updates at any time; admins review and approve changes before they are published or reprinted.
+                </p>
+              </div>
+              <button type="button" className="secondary" onClick={loadData} disabled={loading}>
+                {loading ? "Loading..." : "Refresh"}
+              </button>
+            </div>
+
+            {myClaims.length === 0 ? (
+              <p className="emptyState">You have not claimed a flag record yet.</p>
+            ) : (
+              <div className="ownedFlagGrid">
+                {myClaims.map((claim) => {
+                  const status = latestRequestStatus(claim);
+
+                  return (
+                    <article key={claim.id} className="ownedFlagCard">
+                      <div>
+                        <p className="eyebrow">Honoree</p>
+                        <h3>{claim.honoreeName || "Honoree details pending"}</h3>
+                        <p>
+                          Flag grid {claim.flagGridName || `Grid ${claim.flagGridId}`} • Claim #{claim.id}
+                        </p>
+                      </div>
+
+                      <div className="ownedFlagMeta">
+                        <span className={statusClass(status)}>{ownershipStatusLabel(claim)}</span>
+                        <span>Claimed {formatDate(claim.createdUtc)}</span>
+                        {claim.submittedUtc ? <span>Last submitted {formatDate(claim.submittedUtc)}</span> : null}
+                      </div>
+
+                      <div className="ownedFlagActions">
+                        <button type="button" onClick={() => beginEdit(claim)}>
+                          Manage flag
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
           {isAdmin ? (
             <section className="card adminCard">
               <div className="sectionHeader">
@@ -623,6 +758,67 @@ export default function App() {
                   <strong>{selectedPrintIds.length}</strong>
                   <span>Selected</span>
                 </div>
+              </div>
+
+              <div className="adminAccessPanel">
+                <div className="adminSubHeader">
+                  <div>
+                    <p className="eyebrow">Access control</p>
+                    <h3>Grant administrator access</h3>
+                    <p className="helperText">
+                      Search for a registered user, then grant the PFOH.Admin role. New admins must sign out and sign back in before the role appears in their token.
+                    </p>
+                  </div>
+                </div>
+
+                <form className="adminUserSearch" onSubmit={searchAdminUsers}>
+                  <input
+                    type="search"
+                    placeholder="Search by name or email"
+                    value={adminUserSearchText}
+                    onChange={(e) => setAdminUserSearchText(e.target.value)}
+                  />
+                  <button type="submit" className="secondary" disabled={saving}>
+                    Search users
+                  </button>
+                </form>
+
+                {adminUserResults.length > 0 ? (
+                  <div className="adminUserResults">
+                    {adminUserResults.map((user) => (
+                      <article key={user.id} className="adminUserCard">
+                        <div>
+                          <strong>{userDisplayName(user)}</strong>
+                          <span>{userEmail(user)}</span>
+                        </div>
+
+                        <div className="adminUserActions">
+                          {user.isAdmin ? (
+                            <>
+                              <span className="status status-approved">Admin</span>
+                              <button
+                                type="button"
+                                className="secondary"
+                                disabled={adminRoleBusyId === user.id}
+                                onClick={() => removeAdminRole(user)}
+                              >
+                                Remove admin
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={adminRoleBusyId === user.id}
+                              onClick={() => grantAdminRole(user)}
+                            >
+                              Grant admin
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               {pendingReviews.length === 0 ? (
@@ -977,54 +1173,7 @@ export default function App() {
             </section>
           ) : null}
 
-          <section className="card ownershipCard">
-            <div className="sectionHeader">
-              <div>
-                <p className="eyebrow">Your account</p>
-                <h2>My claimed flags</h2>
-                <p className="helperText">
-                  These are the flag records you manage. You can submit updates at any time; admins review and approve changes before they are published or reprinted.
-                </p>
-              </div>
-              <button type="button" className="secondary" onClick={loadData} disabled={loading}>
-                {loading ? "Loading..." : "Refresh"}
-              </button>
-            </div>
 
-            {myClaims.length === 0 ? (
-              <p className="emptyState">You have not claimed a flag record yet.</p>
-            ) : (
-              <div className="ownedFlagGrid">
-                {myClaims.map((claim) => {
-                  const status = latestRequestStatus(claim);
-
-                  return (
-                    <article key={claim.id} className="ownedFlagCard">
-                      <div>
-                        <p className="eyebrow">Honoree</p>
-                        <h3>{claim.honoreeName || "Honoree details pending"}</h3>
-                        <p>
-                          Flag grid {claim.flagGridName || `Grid ${claim.flagGridId}`} • Claim #{claim.id}
-                        </p>
-                      </div>
-
-                      <div className="ownedFlagMeta">
-                        <span className={statusClass(status)}>{ownershipStatusLabel(claim)}</span>
-                        <span>Claimed {formatDate(claim.createdUtc)}</span>
-                        {claim.submittedUtc ? <span>Last submitted {formatDate(claim.submittedUtc)}</span> : null}
-                      </div>
-
-                      <div className="ownedFlagActions">
-                        <button type="button" onClick={() => beginEdit(claim)}>
-                          Manage flag
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </section>
             </>
           ) : null}
     </main>

@@ -76,15 +76,15 @@ main {
   justify-content: space-between;
   align-items: center;
   gap: 1.25rem;
-  min-height: 176px;
+  min-height: 210px;
 
-  /* Full-bleed header while the rest of the app stays in the centered main column. */
+  /* Full-bleed header, with inner content aligned to the same 1180px page column. */
   width: 100vw;
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
   margin-top: -2rem;
 
-  padding-block: 1.65rem;
+  padding-block: 2rem;
   padding-inline: max(2rem, calc((100vw - 1180px) / 2 + 1rem));
 
   border: 0;
@@ -164,15 +164,16 @@ main {
   gap: 0.65rem;
   justify-content: center;
   align-items: flex-end;
+  padding: 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  background: rgba(6, 18, 42, 0.42);
+  backdrop-filter: blur(8px);
 }
 
 .authBox strong {
   text-align: right;
-  padding: 0.3rem 0.7rem;
-  border-radius: 999px;
-  background: rgba(6, 18, 42, 0.62);
   color: #ffffff;
-  backdrop-filter: blur(8px);
 }
 
 .authBox button {
@@ -725,6 +726,69 @@ td span {
 
 
 
+
+/* Admin access control */
+
+.adminAccessPanel {
+  margin: 1.2rem 0 1.4rem;
+  padding: 1rem;
+  border: 1px solid #e4ebf5;
+  border-radius: 18px;
+  background: #fbfcff;
+}
+
+.adminSubHeader {
+  margin-bottom: 0.8rem;
+}
+
+.adminSubHeader h3 {
+  margin: 0.2rem 0 0;
+  font-size: 1.15rem;
+}
+
+.adminUserSearch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+.adminUserResults {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.9rem;
+}
+
+.adminUserCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem;
+  border: 1px solid #e5ebf4;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.adminUserCard strong {
+  display: block;
+}
+
+.adminUserCard span:not(.status) {
+  display: block;
+  color: #60708a;
+  font-size: 0.9rem;
+}
+
+.adminUserActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+
 /* Claimed flag ownership */
 
 .ownershipCard .sectionHeader {
@@ -787,6 +851,19 @@ td span {
     grid-template-columns: 1fr;
   }
 
+  .adminUserSearch {
+    grid-template-columns: 1fr;
+  }
+
+  .adminUserCard {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .adminUserActions {
+    justify-content: flex-start;
+  }
+
   .adminCard .sectionHeader,
   .printHeader {
     align-items: flex-start;
@@ -817,7 +894,7 @@ td span {
   }
 
   .hero {
-    min-height: 0;
+    min-height: 185px;
     margin-top: -2rem;
     padding-block: 1.35rem;
     padding-inline: 1rem;
