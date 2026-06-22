@@ -148,6 +148,7 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
         var clientId = configuration["GraphAdmin:ClientId"] ?? configuration["AzureAd:ClientId"];
         var clientSecret = configuration["GraphAdmin:ClientSecret"] ?? configuration["AzureAd:ClientSecret"];
         var resourceAppClientId = configuration["GraphAdmin:ResourceAppClientId"] ?? configuration["AzureAd:ClientId"];
+        var resourceServicePrincipalObjectId = configuration["GraphAdmin:ResourceServicePrincipalObjectId"];
         var adminAppRoleValue = configuration["GraphAdmin:AdminAppRoleValue"] ?? "PFOH.Admin";
 
         if (string.IsNullOrWhiteSpace(tenantId) ||
@@ -164,6 +165,7 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
             clientId,
             clientSecret,
             resourceAppClientId,
+            resourceServicePrincipalObjectId,
             adminAppRoleValue);
     }
 
@@ -171,12 +173,15 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
     {
         var settings = GetSettings();
 
-        // Some Entra External ID tenants reject filtering servicePrincipals by appId.
-        // Use the Microsoft Graph alternate key lookup instead:
-        // GET /servicePrincipals(appId='{appId}')
+        // Prefer the Enterprise Application object id when configured. This avoids tenants
+        // where Microsoft Graph rejects servicePrincipal lookups by appId.
+        var servicePrincipalPath = !string.IsNullOrWhiteSpace(settings.ResourceServicePrincipalObjectId)
+            ? $"servicePrincipals/{settings.ResourceServicePrincipalObjectId}?$select=id,appId,displayName,appRoles"
+            : $"servicePrincipals(appId='{EscapeODataString(settings.ResourceAppClientId)}')?$select=id,appId,displayName,appRoles";
+
         var servicePrincipal = await GraphSendAsync<GraphServicePrincipal>(
             HttpMethod.Get,
-            $"servicePrincipals(appId='{EscapeODataString(settings.ResourceAppClientId)}')?$select=id,appId,displayName,appRoles",
+            servicePrincipalPath,
             null,
             ct);
 
@@ -334,6 +339,7 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
         string ClientId,
         string ClientSecret,
         string ResourceAppClientId,
+        string? ResourceServicePrincipalObjectId,
         string AdminAppRoleValue);
 
     private sealed record AdminRoleContext(
