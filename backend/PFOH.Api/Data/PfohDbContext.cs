@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Models;
-
 namespace PFOH.Api.Data;
 
 public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(options)
@@ -15,6 +14,7 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
     public DbSet<AvailableFlagGrid> AvailableFlagGrids => Set<AvailableFlagGrid>();
 
     public DbSet<FlagClaim> FlagClaims => Set<FlagClaim>();
+    public DbSet<HonoreeSearchResult> HonoreeSearchResults => Set<HonoreeSearchResult>();
     public DbSet<HonoreeChangeRequest> HonoreeChangeRequests => Set<HonoreeChangeRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -166,6 +166,13 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
                 .WithMany()
                 .HasForeignKey(e => e.HonoreeId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<HonoreeSearchResult>(entity =>
+        {
+            entity.ToView("vwHonorees", "dbo");
+            entity.HasNoKey();
+            entity.Property(e => e.PDFUrl).HasColumnName("PDFUrl");
         });
 
         modelBuilder.Entity<HonoreeChangeRequest>(entity =>
