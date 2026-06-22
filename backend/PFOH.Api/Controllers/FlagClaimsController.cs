@@ -576,6 +576,29 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
         return honoree;
     }
 
+    private async Task RegenerateHonoreePdfAsync(int honoreeId, CancellationToken ct)
+    {
+        var honoree = await db.Honorees
+            .AsNoTracking()
+            .Include(h => h.FlagGrid)
+            .Include(h => h.ServiceBranch)
+            .Include(h => h.Sponsor)
+            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive && h.DeletedDate == null, ct);
+
+        if (honoree is null)
+        {
+            return;
+        }
+
+        var searchResult = await db.HonoreeSearchResults
+            .AsNoTracking()
+            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive, ct);
+
+        var photoBytes = await fileStorage.DownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
+        var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes);
+        await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
+    }
+
     private async Task<FlagGrid?> GetNextAvailableFlagGridAsync(CancellationToken ct)
     {
         return await db.FlagGrids

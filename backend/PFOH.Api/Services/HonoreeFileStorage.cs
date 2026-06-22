@@ -132,8 +132,8 @@ public class HonoreeFileStorage(IConfiguration configuration)
         var container = await GetContainerAsync(PdfContainerName, ct);
         var blob = container.GetBlobClient(fileName);
 
-        // Always replace the PDF. The PDF is a rendered view of the current
-        // honoree record, so any approved record change must refresh it.
+        // The PDF is a rendered copy of the current honoree record.
+        // When the record changes, replace the old stored PDF with the new one.
         await blob.DeleteIfExistsAsync(cancellationToken: ct);
 
         await using var stream = new MemoryStream(pdf);

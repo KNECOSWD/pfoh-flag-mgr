@@ -165,7 +165,7 @@ public static class HonoreeReportPdfGenerator
             Alignment = XParagraphAlignment.Left
         };
 
-        formatter.DrawString(description, Font(fontSize), XBrushes.Black, rect, XStringFormats.TopLeft);
+        formatter.DrawString(description, Font(fontSize), XBrushes.Black, rect);
     }
 
     private static void DrawRotaryLogo(XGraphics gfx, IWebHostEnvironment environment)
