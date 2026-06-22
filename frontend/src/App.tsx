@@ -237,7 +237,7 @@ export default function App() {
           <p className="eyebrow">Plano Flags of Honor</p>
           <h1>Flag Manager</h1>
           <p>
-            Claim an available flag grid and submit honoree information for review by the Plano Flags of Honor team.
+            Claim an available flag grid and submit honoree information for review by the Plano Flags of Honor support team.
           </p>
         </div>
 
