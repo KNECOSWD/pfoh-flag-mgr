@@ -12,7 +12,7 @@ namespace PFOH.Api.Controllers;
 [ApiController]
 [Route("api/admin/review")]
 [Authorize(Policy = "AdminOnly")]
-public class AdminReviewController(PfohDbContext db, IConfiguration configuration) : ControllerBase
+public class AdminReviewController(PfohDbContext db, IConfiguration configuration, IWebHostEnvironment environment) : ControllerBase
 {
     private readonly HonoreeFileStorage fileStorage = new(configuration);
 
@@ -123,6 +123,7 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         }
 
         await db.SaveChangesAsync(ct);
+        await RegenerateHonoreePdfAsync(honoree.Id, ct);
         await transaction.CommitAsync(ct);
 
         return Ok(ToReviewDto(change));

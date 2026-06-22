@@ -12,7 +12,7 @@ namespace PFOH.Api.Controllers;
 [ApiController]
 [Route("api/flag-claims")]
 [Authorize]
-public class FlagClaimsController(PfohDbContext db, IConfiguration configuration) : ControllerBase
+public class FlagClaimsController(PfohDbContext db, IConfiguration configuration, IWebHostEnvironment environment) : ControllerBase
 {
     private readonly HonoreeFileStorage fileStorage = new(configuration);
 
@@ -185,6 +185,7 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
 
         db.FlagClaims.Add(claim);
         await db.SaveChangesAsync(ct);
+        await RegenerateHonoreePdfAsync(honoree.Id, ct);
         await transaction.CommitAsync(ct);
 
         var imageUrl = await db.HonoreeSearchResults
