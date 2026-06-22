@@ -30,7 +30,10 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
             .Include(c => c.FlagGrid)
             .Include(c => c.Honoree)
             .Include(c => c.HonoreeChangeRequests)
-            .Where(c => c.ExternalUserObjectId == userObjectId)
+            .Where(c =>
+                c.ExternalUserObjectId == userObjectId &&
+                c.ClaimStatus != "AdminDirectEdit" &&
+                c.ClaimStatus != "AdminDirectEditCompleted")
             .OrderByDescending(c => c.CreatedUtc)
             .ToListAsync(ct);
 
@@ -190,6 +193,55 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         return Ok(ToDto(claim, imageUrl));
     }
 
+    [Authorize(Policy = "AdminOnly")]
+    [HttpPost("admin/honoree/{honoreeId:int}/edit")]
+    public async Task<ActionResult<FlagClaimDto>> StartAdminDirectHonoreeEdit(int honoreeId, CancellationToken ct)
+    {
+        var adminObjectId = User.GetExternalObjectId();
+        var adminEmail = User.GetEmail();
+        var adminName = User.GetDisplayName();
+
+        var honoree = await db.Honorees
+            .Include(h => h.FlagGrid)
+            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive && h.DeletedDate == null, ct);
+
+        if (honoree is null)
+        {
+            return NotFound("Honoree was not found.");
+        }
+
+        if (honoree.FlagGridId is null)
+        {
+            return BadRequest("This honoree is not assigned to a flag grid.");
+        }
+
+        var claim = new FlagClaim
+        {
+            FlagGridId = honoree.FlagGridId.Value,
+            HonoreeId = honoree.Id,
+            ExternalUserObjectId = adminObjectId,
+            ExternalUserEmail = adminEmail,
+            ExternalUserName = adminName,
+            ClaimStatus = "AdminDirectEdit",
+            CreatedUtc = DateTime.UtcNow,
+            FlagGrid = honoree.FlagGrid,
+            Honoree = honoree
+        };
+
+        claim.HonoreeChangeRequests.Add(BuildDraftFromHonoree(claim, honoree, adminEmail));
+
+        db.FlagClaims.Add(claim);
+        await db.SaveChangesAsync(ct);
+
+        var imageUrl = await db.HonoreeSearchResults
+            .AsNoTracking()
+            .Where(h => h.Id == honoree.Id)
+            .Select(h => h.ImageUrl)
+            .FirstOrDefaultAsync(ct);
+
+        return Ok(ToDto(claim, imageUrl));
+    }
+
     [HttpPut("{claimId:int}/honoree-draft")]
     public async Task<ActionResult<HonoreeChangeRequestDto>> SaveHonoreeDraft(
         int claimId,
@@ -202,10 +254,15 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         }
 
         var userObjectId = User.GetExternalObjectId();
+        var isAdmin = User.IsInRole("PFOH.Admin");
 
         var claim = await db.FlagClaims
             .Include(c => c.HonoreeChangeRequests)
-            .FirstOrDefaultAsync(c => c.Id == claimId && c.ExternalUserObjectId == userObjectId, ct);
+            .FirstOrDefaultAsync(
+                c => c.Id == claimId &&
+                    (c.ExternalUserObjectId == userObjectId ||
+                     (isAdmin && c.ClaimStatus == "AdminDirectEdit")),
+                ct);
 
         if (claim is null)
         {
@@ -238,7 +295,12 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         ApplyRequest(draft, request);
 
         // Returning to Draft/Claimed lets an owner submit another change after a prior approval/rejection.
-        claim.ClaimStatus = "Claimed";
+        // AdminDirectEdit is intentionally not a claim/ownership status.
+        if (claim.ClaimStatus != "AdminDirectEdit")
+        {
+            claim.ClaimStatus = "Claimed";
+        }
+
         await db.SaveChangesAsync(ct);
 
         return Ok(ToDto(draft));
@@ -278,6 +340,137 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         await db.SaveChangesAsync(ct);
 
         return Ok(ToDto(claim, null));
+    }
+
+    [Authorize(Policy = "AdminOnly")]
+    [HttpPost("{claimId:int}/admin-apply-reprint")]
+    public async Task<ActionResult<FlagClaimDto>> AdminApplyAndQueueReprint(int claimId, CancellationToken ct)
+    {
+        var adminName = User.GetEmail();
+        if (string.IsNullOrWhiteSpace(adminName))
+        {
+            adminName = User.GetDisplayName() ?? "PFOH.Admin";
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+        var claim = await db.FlagClaims
+            .Include(c => c.FlagGrid)
+            .Include(c => c.Honoree)
+            .Include(c => c.HonoreeChangeRequests)
+            .FirstOrDefaultAsync(c => c.Id == claimId && c.ClaimStatus == "AdminDirectEdit", ct);
+
+        if (claim is null)
+        {
+            return NotFound("Admin edit session was not found.");
+        }
+
+        var latestDraft = claim.HonoreeChangeRequests
+            .OrderByDescending(r => r.CreatedUtc)
+            .FirstOrDefault(r => r.RequestStatus == "Draft");
+
+        if (latestDraft is null)
+        {
+            return BadRequest("Save a draft before applying the admin edit.");
+        }
+
+        var honoree = await ApplyApprovedChanges(latestDraft, adminName, ct);
+
+        latestDraft.HonoreeId = honoree.Id;
+        latestDraft.RequestStatus = "Approved";
+        latestDraft.SubmittedUtc ??= DateTime.UtcNow;
+        latestDraft.ReviewedUtc = DateTime.UtcNow;
+        latestDraft.ReviewedBy = adminName;
+        latestDraft.ReviewNotes = "Direct administrator edit.";
+        latestDraft.RequiresCardReprint = true;
+
+        claim.HonoreeId = honoree.Id;
+        claim.ClaimStatus = "AdminDirectEditCompleted";
+        claim.SubmittedUtc = DateTime.UtcNow;
+        claim.ApprovedUtc = DateTime.UtcNow;
+        claim.ApprovedBy = adminName;
+        claim.AdminNotes = "Direct administrator edit queued for reprint.";
+
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+
+        var imageUrl = await db.HonoreeSearchResults
+            .AsNoTracking()
+            .Where(h => h.Id == honoree.Id)
+            .Select(h => h.ImageUrl)
+            .FirstOrDefaultAsync(ct);
+
+        return Ok(ToDto(claim, imageUrl));
+    }
+
+    private async Task<Honoree> ApplyApprovedChanges(
+        HonoreeChangeRequest change,
+        string adminName,
+        CancellationToken ct)
+    {
+        Honoree? honoree = null;
+
+        if (change.HonoreeId.HasValue)
+        {
+            honoree = await db.Honorees
+                .FirstOrDefaultAsync(h => h.Id == change.HonoreeId.Value, ct);
+        }
+
+        if (honoree is null)
+        {
+            honoree = new Honoree
+            {
+                CreatedBy = adminName,
+                CreatedDate = DateTime.UtcNow,
+                IsActive = true,
+                Salutation = string.Empty,
+                NameUserEntry = string.Empty,
+                PhotoFileName = string.Empty,
+                PhoneNumber = string.Empty,
+                EmailAddress = string.Empty,
+                Awards = string.Empty,
+                ConflictsServed = string.Empty,
+                DatesUserEntry = string.Empty,
+                Description = string.Empty,
+                Rank = string.Empty
+            };
+
+            db.Honorees.Add(honoree);
+        }
+
+        honoree.FirstName = change.FirstName.Trim();
+        honoree.MiddleName = change.MiddleName?.Trim();
+        honoree.LastName = change.LastName.Trim();
+        honoree.Suffix = change.Suffix?.Trim();
+        honoree.Nickname = change.Nickname?.Trim();
+        honoree.Rank = change.Rank?.Trim() ?? string.Empty;
+        honoree.ServiceBranchId = change.ServiceBranchId;
+        honoree.ServiceBranchCategoryId = change.ServiceBranchCategoryId;
+        honoree.StartYear = change.StartYear;
+        honoree.EndYear = change.EndYear;
+        honoree.DatesUserEntry = change.DatesUserEntry?.Trim() ?? string.Empty;
+        honoree.ConflictsServed = change.ConflictsServed?.Trim() ?? string.Empty;
+        honoree.Awards = change.Awards?.Trim() ?? string.Empty;
+        honoree.Description = change.Description?.Trim() ?? string.Empty;
+        honoree.KIA = change.KIA;
+        honoree.PhoneNumber = change.SubmitterPhoneNumber?.Trim() ?? honoree.PhoneNumber;
+        honoree.EmailAddress = change.SubmitterEmailAddress?.Trim() ?? honoree.EmailAddress;
+        honoree.FlagGridId = change.FlagGridId;
+        honoree.IsActive = true;
+        honoree.ModifiedBy = adminName;
+        honoree.ModifiedDate = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(ct);
+
+        var flagGrid = await db.FlagGrids.FirstOrDefaultAsync(f => f.Id == change.FlagGridId, ct);
+        if (flagGrid is not null)
+        {
+            flagGrid.HonoreeId = honoree.Id;
+            flagGrid.ModifiedBy = adminName;
+            flagGrid.ModifiedDate = DateTime.UtcNow;
+        }
+
+        return honoree;
     }
 
     private static HonoreeChangeRequest BuildDraftFromHonoree(

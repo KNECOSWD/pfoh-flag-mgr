@@ -126,13 +126,6 @@ export type AdminReviewItem = {
   reviewNotes?: string | null;
 };
 
-export type AdminUserRole = {
-  id: string;
-  displayName?: string | null;
-  mail?: string | null;
-  userPrincipalName?: string | null;
-  isAdmin: boolean;
-};
 
 export type AdminPrintQueueItem = {
   changeRequestId: number;
@@ -262,6 +255,20 @@ export const flagClaimApi = {
       method: "POST"
     }),
 
+  startAdminEdit: (instance: IPublicClientApplication, account: AccountInfo, honoreeId: number) =>
+    request<FlagClaim>(instance, account, `/api/flag-claims/admin/honoree/${honoreeId}/edit`, {
+      method: "POST"
+    }),
+
+  applyAdminEditReprint: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    claimId: number
+  ) =>
+    request<FlagClaim>(instance, account, `/api/flag-claims/${claimId}/admin-apply-reprint`, {
+      method: "POST"
+    }),
+
   saveDraft: (
     instance: IPublicClientApplication,
     account: AccountInfo,
@@ -292,23 +299,6 @@ export const lookupApi = {
 };
 
 export const adminApi = {
-  searchUsers: (instance: IPublicClientApplication, account: AccountInfo, query: string) =>
-    request<AdminUserRole[]>(
-      instance,
-      account,
-      `/api/admin/users/search?q=${encodeURIComponent(query)}`
-    ),
-
-  grantAdminRole: (instance: IPublicClientApplication, account: AccountInfo, userObjectId: string) =>
-    request<AdminUserRole>(instance, account, `/api/admin/users/${userObjectId}/admin-role`, {
-      method: "POST"
-    }),
-
-  removeAdminRole: (instance: IPublicClientApplication, account: AccountInfo, userObjectId: string) =>
-    request<AdminUserRole>(instance, account, `/api/admin/users/${userObjectId}/admin-role`, {
-      method: "DELETE"
-    }),
-
   pending: (instance: IPublicClientApplication, account: AccountInfo) =>
     request<AdminReviewItem[]>(instance, account, "/api/admin/review/pending"),
 

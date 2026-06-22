@@ -985,3 +985,9 @@ td span {
     grid-template-columns: 1fr;
   }
 }
+
+
+.cardActions button.secondary {
+  background: #edf2f8;
+  color: #1f3b5f;
+}
