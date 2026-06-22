@@ -89,15 +89,21 @@ public class HonoreesController(
 
         var photoBytes = await SafeDownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
 
-        if (photoBytes is null || photoBytes.Length == 0)
+        if (photoBytes is not null && photoBytes.Length > 0)
         {
-            return NotFound("Honoree photo was not found.");
+            var contentType = GuessImageContentType(honoree.PhotoFileName, searchResult?.ImageUrl);
+            Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+
+            return File(photoBytes, contentType);
         }
 
-        var contentType = GuessImageContentType(honoree.PhotoFileName, searchResult?.ImageUrl);
-        Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+        var publicUrl = BuildPublicImageUrl(honoree.PhotoFileName, searchResult?.ImageUrl);
+        if (!string.IsNullOrWhiteSpace(publicUrl))
+        {
+            return Redirect(publicUrl);
+        }
 
-        return File(photoBytes, contentType);
+        return NotFound("Honoree photo was not found.");
     }
 
     [HttpGet("{honoreeId:int}/pdf")]
@@ -144,6 +150,26 @@ public class HonoreesController(
         return File(pdf, "application/pdf");
     }
 
+    private string? BuildPublicImageUrl(string? photoFileName, string? fallbackImageUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(fallbackImageUrl))
+        {
+            return fallbackImageUrl;
+        }
+
+        if (string.IsNullOrWhiteSpace(photoFileName))
+        {
+            return null;
+        }
+
+        var baseUrl =
+            configuration["BlobStorage:PublicImageBaseUrl"] ??
+            configuration["BlobStorage:ImageBaseUrl"] ??
+            "https://pfohimages.blob.core.windows.net/honoreeimages";
+
+        return $"{baseUrl.TrimEnd('/')}/{Uri.EscapeDataString(photoFileName)}";
+    }
+
     private static string GuessImageContentType(string? photoFileName, string? fallbackUrl)
     {
         var source = !string.IsNullOrWhiteSpace(photoFileName)
@@ -180,7 +206,26 @@ public class HonoreesController(
     {
         try
         {
-            return await fileStorage.DownloadImageAsync(photoFileName, fallbackImageUrl, ct);
+            var imageBytes = await fileStorage.DownloadImageAsync(photoFileName, fallbackImageUrl, ct);
+            if (imageBytes is not null && imageBytes.Length > 0)
+            {
+                return imageBytes;
+            }
+        }
+        catch
+        {
+            // Fall through to public URL fallback below.
+        }
+
+        var publicUrl = BuildPublicImageUrl(photoFileName, fallbackImageUrl);
+        if (string.IsNullOrWhiteSpace(publicUrl))
+        {
+            return null;
+        }
+
+        try
+        {
+            return await Http.GetByteArrayAsync(publicUrl, ct);
         }
         catch
         {
