@@ -8,7 +8,7 @@ namespace PFOH.Api.Controllers;
 
 [ApiController]
 [Route("api/honorees")]
-[Authorize]
+[AllowAnonymous]
 public class HonoreesController(PfohDbContext db) : ControllerBase
 {
     [HttpGet("search")]

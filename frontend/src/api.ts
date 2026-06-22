@@ -77,6 +77,7 @@ export type FlagClaim = {
   flagGridId: number;
   flagGridName: string;
   honoreeId?: number | null;
+  honoreeName: string;
   claimStatus: string;
   externalUserEmail: string;
   externalUserName?: string | null;
@@ -137,6 +138,28 @@ export type AdminPrintQueueItem = {
 };
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
+
+
+async function publicRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${apiBase}${url}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers ?? {})
+    }
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new ApiError(message || `${response.status} ${response.statusText}`, response.status);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return response.json() as Promise<T>;
+}
 
 async function getToken(instance: IPublicClientApplication, account: AccountInfo) {
   try {
@@ -215,15 +238,8 @@ async function downloadFile(
 }
 
 export const honoreeApi = {
-  search: (
-    instance: IPublicClientApplication,
-    account: AccountInfo,
-    query: string,
-    take = 25
-  ) =>
-    request<HonoreeSearchResult[]>(
-      instance,
-      account,
+  search: (query: string, take = 25) =>
+    publicRequest<HonoreeSearchResult[]>(
       `/api/honorees/search?q=${encodeURIComponent(query)}&take=${take}`
     )
 };

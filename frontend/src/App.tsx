@@ -203,14 +203,12 @@ export default function App() {
   async function searchHonorees(event: React.FormEvent) {
     event.preventDefault();
 
-    if (!account) return;
-
     setSearchLoading(true);
     setError("");
     setNotice("");
 
     try {
-      const results = await honoreeApi.search(instance, account, honoreeSearchText, 25);
+      const results = await honoreeApi.search(honoreeSearchText, 25);
       setHonoreeResults(results);
       setHonoreeSearchPerformed(true);
     } catch (err) {
@@ -256,7 +254,10 @@ export default function App() {
   }
 
   async function claimSearchResult(honoree: HonoreeSearchResult) {
-    if (!account) return;
+    if (!account) {
+      await signIn();
+      return;
+    }
 
     const ok = window.confirm(
       `Claim ${honoree.fullName}'s flag record? You will be able to submit corrections or updates for review.`
@@ -458,15 +459,6 @@ export default function App() {
         </div>
       </header>
 
-      {!isAuthenticated ? (
-        <section className="card">
-          <h2>Welcome</h2>
-          <p>
-            Sign in to search existing honorees and submit corrections for review.
-          </p>
-        </section>
-      ) : (
-        <>
           {(error || notice) && (
             <section className="messageStack" aria-live="polite" aria-atomic="true">
               {error ? (
@@ -498,6 +490,7 @@ export default function App() {
               ) : null}
             </section>
           )}
+
 
           <section className="card searchCard">
             <div className="sectionHeader searchHeader">
@@ -579,7 +572,7 @@ export default function App() {
                             onClick={() => claimSearchResult(honoree)}
                             disabled={saving}
                           >
-                            Claim this flag
+                            {isAuthenticated ? "Claim this flag" : "Sign in to claim"}
                           </button>
                         </div>
                       </div>
@@ -590,6 +583,21 @@ export default function App() {
             ) : null}
           </section>
 
+
+          {!isAuthenticated ? (
+            <section className="card guestNotice">
+              <h2>Search is open to everyone</h2>
+              <p>
+                You can search and view honoree flag records without signing in. Sign in or register only when you are ready to claim a flag record and submit updates for review.
+              </p>
+              <button type="button" onClick={signIn}>
+                Register / sign in to claim
+              </button>
+            </section>
+          ) : null}
+
+          {isAuthenticated ? (
+            <>
           {isAdmin ? (
             <section className="card adminCard">
               <div className="sectionHeader">
@@ -996,11 +1004,10 @@ export default function App() {
                   return (
                     <article key={claim.id} className="ownedFlagCard">
                       <div>
-                        <p className="eyebrow">Flag grid</p>
-                        <h3>{claim.flagGridName || `Grid ${claim.flagGridId}`}</h3>
+                        <p className="eyebrow">Honoree</p>
+                        <h3>{claim.honoreeName || "Honoree details pending"}</h3>
                         <p>
-                          Claim #{claim.id}
-                          {claim.honoreeId ? ` • Honoree record #${claim.honoreeId}` : ""}
+                          Flag grid {claim.flagGridName || `Grid ${claim.flagGridId}`} • Claim #{claim.id}
                         </p>
                       </div>
 
@@ -1021,8 +1028,8 @@ export default function App() {
               </div>
             )}
           </section>
-        </>
-      )}
+            </>
+          ) : null}
     </main>
   );
 }

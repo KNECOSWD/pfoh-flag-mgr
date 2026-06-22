@@ -28,6 +28,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         var claims = await db.FlagClaims
             .AsNoTracking()
             .Include(c => c.FlagGrid)
+            .Include(c => c.Honoree)
             .Include(c => c.HonoreeChangeRequests)
             .Where(c => c.ExternalUserObjectId == userObjectId)
             .OrderByDescending(c => c.CreatedUtc)
@@ -63,6 +64,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
 
         var existingOwnershipClaim = await db.FlagClaims
             .Include(c => c.FlagGrid)
+            .Include(c => c.Honoree)
             .Include(c => c.HonoreeChangeRequests)
             .FirstOrDefaultAsync(c => c.FlagGridId == flagGridId && OwnershipClaimStatuses.Contains(c.ClaimStatus), ct);
 
@@ -120,6 +122,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
 
         var existingOwnershipClaim = await db.FlagClaims
             .Include(c => c.FlagGrid)
+            .Include(c => c.Honoree)
             .Include(c => c.HonoreeChangeRequests)
             .FirstOrDefaultAsync(
                 c => c.FlagGridId == honoree.FlagGridId.Value &&
@@ -145,7 +148,8 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
             ExternalUserName = name,
             ClaimStatus = "Claimed",
             CreatedUtc = DateTime.UtcNow,
-            FlagGrid = honoree.FlagGrid
+            FlagGrid = honoree.FlagGrid,
+            Honoree = honoree
         };
 
         claim.HonoreeChangeRequests.Add(BuildDraftFromHonoree(claim, honoree, email));
@@ -218,6 +222,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
 
         var claim = await db.FlagClaims
             .Include(c => c.FlagGrid)
+            .Include(c => c.Honoree)
             .Include(c => c.HonoreeChangeRequests)
             .FirstOrDefaultAsync(c => c.Id == claimId && c.ExternalUserObjectId == userObjectId, ct);
 
@@ -305,17 +310,51 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
             .OrderByDescending(r => r.CreatedUtc)
             .FirstOrDefault();
 
+        var honoreeName = BuildHonoreeName(latest, claim.Honoree);
+
         return new FlagClaimDto(
             claim.Id,
             claim.FlagGridId,
             claim.FlagGrid?.FlagGridName ?? string.Empty,
             claim.HonoreeId,
+            honoreeName,
             claim.ClaimStatus,
             claim.ExternalUserEmail,
             claim.ExternalUserName,
             claim.CreatedUtc,
             claim.SubmittedUtc,
             latest is null ? null : ToDto(latest));
+    }
+
+    private static string BuildHonoreeName(HonoreeChangeRequest? latest, Honoree? honoree)
+    {
+        if (latest is not null)
+        {
+            var fromChangeRequest = string.Join(
+                " ",
+                new[] { latest.FirstName, latest.MiddleName, latest.LastName, latest.Suffix }
+                    .Where(v => !string.IsNullOrWhiteSpace(v)));
+
+            if (!string.IsNullOrWhiteSpace(fromChangeRequest))
+            {
+                return fromChangeRequest;
+            }
+        }
+
+        if (honoree is not null)
+        {
+            var fromHonoree = string.Join(
+                " ",
+                new[] { honoree.FirstName, honoree.MiddleName, honoree.LastName, honoree.Suffix }
+                    .Where(v => !string.IsNullOrWhiteSpace(v)));
+
+            if (!string.IsNullOrWhiteSpace(fromHonoree))
+            {
+                return fromHonoree;
+            }
+        }
+
+        return string.Empty;
     }
 
     private static HonoreeChangeRequestDto ToDto(HonoreeChangeRequest request) => new(
