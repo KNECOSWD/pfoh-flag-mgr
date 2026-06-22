@@ -80,11 +80,7 @@ main {
   padding: 1.65rem 1.9rem;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 26px;
-  background:
-    radial-gradient(circle at 88% 18%, rgba(255, 255, 255, 0.12) 0 2px, transparent 2px 100%),
-    radial-gradient(circle at 82% 35%, rgba(255, 255, 255, 0.10) 0 2px, transparent 2px 100%),
-    radial-gradient(circle at 92% 48%, rgba(255, 255, 255, 0.09) 0 2px, transparent 2px 100%),
-    linear-gradient(120deg, #102f5f 0%, #143c76 54%, #8b1e2c 100%);
+  background: #102f5f;
   color: #fff;
   box-shadow: 0 22px 44px rgba(20, 31, 48, 0.22);
 }
@@ -93,26 +89,27 @@ main {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: -2;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent 34%),
-    radial-gradient(circle at 80% 28%, rgba(255, 255, 255, 0.12), transparent 22rem);
-  opacity: 0.9;
+  z-index: -3;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%201235%20650%27%3E%0A%3Crect%20width%3D%271235%27%20height%3D%27650%27%20fill%3D%27%23b22234%27/%3E%0A%3Cg%20fill%3D%27%23fff%27%3E%0A%3Crect%20y%3D%2750%27%20width%3D%271235%27%20height%3D%2750%27/%3E%0A%3Crect%20y%3D%27150%27%20width%3D%271235%27%20height%3D%2750%27/%3E%0A%3Crect%20y%3D%27250%27%20width%3D%271235%27%20height%3D%2750%27/%3E%0A%3Crect%20y%3D%27350%27%20width%3D%271235%27%20height%3D%2750%27/%3E%0A%3Crect%20y%3D%27450%27%20width%3D%271235%27%20height%3D%2750%27/%3E%0A%3Crect%20y%3D%27550%27%20width%3D%271235%27%20height%3D%2750%27/%3E%0A%3C/g%3E%0A%3Crect%20width%3D%27494%27%20height%3D%27350%27%20fill%3D%27%233c3b6e%27/%3E%0A%3Cg%20fill%3D%27%23fff%27%3E%0A%3Cg%20id%3D%27s%27%3E%0A%3Cpolygon%20points%3D%270%2C-14%203.3%2C-4.5%2013.3%2C-4.5%205.2%2C1.7%208.2%2C11.2%200%2C5.4%20-8.2%2C11.2%20-5.2%2C1.7%20-13.3%2C-4.5%20-3.3%2C-4.5%27/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%27translate%2841%2C29%29%27%3E%0A%3Cuse%20href%3D%27%23s%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%2782%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27164%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27246%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27328%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27410%27/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%27translate%2882%2C64%29%27%3E%0A%3Cuse%20href%3D%27%23s%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%2782%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27164%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27246%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27328%27/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%27translate%2841%2C99%29%27%3E%0A%3Cuse%20href%3D%27%23s%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%2782%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27164%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27246%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27328%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27410%27/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%27translate%2882%2C134%29%27%3E%0A%3Cuse%20href%3D%27%23s%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%2782%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27164%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27246%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27328%27/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%27translate%2841%2C169%29%27%3E%0A%3Cuse%20href%3D%27%23s%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%2782%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27164%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27246%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27328%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27410%27/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%27translate%2882%2C204%29%27%3E%0A%3Cuse%20href%3D%27%23s%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%2782%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27164%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27246%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27328%27/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%27translate%2841%2C239%29%27%3E%0A%3Cuse%20href%3D%27%23s%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%2782%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27164%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27246%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27328%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27410%27/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%27translate%2882%2C274%29%27%3E%0A%3Cuse%20href%3D%27%23s%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%2782%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27164%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27246%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27328%27/%3E%0A%3C/g%3E%0A%3Cg%20transform%3D%27translate%2841%2C309%29%27%3E%0A%3Cuse%20href%3D%27%23s%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%2782%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27164%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27246%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27328%27/%3E%3Cuse%20href%3D%27%23s%27%20x%3D%27410%27/%3E%0A%3C/g%3E%0A%3C/g%3E%0A%3C/svg%3E");
+  background-size: cover;
+  background-position: center;
+  opacity: 0.54;
+  filter: saturate(0.92) contrast(1.04);
 }
 
 .hero::after {
   content: "";
   position: absolute;
-  right: -90px;
-  bottom: -110px;
-  z-index: -1;
-  width: 360px;
-  height: 360px;
-  border-radius: 50%;
-  border: 42px solid rgba(255, 255, 255, 0.055);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-    0 0 0 1px rgba(255, 255, 255, 0.035);
+  inset: 0;
+  z-index: -2;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(6, 18, 42, 0.94) 0%,
+      rgba(8, 28, 63, 0.9) 44%,
+      rgba(8, 28, 63, 0.78) 72%,
+      rgba(80, 12, 24, 0.84) 100%
+    );
 }
 
 .hero > * {
@@ -125,14 +122,16 @@ main {
   font-size: clamp(2rem, 5.8vw, 4rem);
   line-height: 0.95;
   letter-spacing: -0.05em;
-  text-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+  color: #ffffff;
+  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.5);
 }
 
 .hero p {
   max-width: 760px;
   margin: 0;
-  color: rgba(255, 255, 255, 0.9);
+  color: #f3f6fb;
   font-size: 0.98rem;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
 .eyebrow {
@@ -145,8 +144,8 @@ main {
 }
 
 .hero .eyebrow {
-  color: #f6d36b;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+  color: #ffe08a;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 }
 
 .authBox {
@@ -162,14 +161,15 @@ main {
   text-align: right;
   padding: 0.3rem 0.7rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(6, 18, 42, 0.58);
+  color: #ffffff;
   backdrop-filter: blur(8px);
 }
 
 .authBox button {
   background: #ffffff;
   color: #173b73;
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.22);
 }
 
 .authBox button:hover:not(:disabled) {
