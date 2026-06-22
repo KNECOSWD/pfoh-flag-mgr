@@ -78,6 +78,7 @@ export type FlagClaim = {
   flagGridName: string;
   honoreeId?: number | null;
   honoreeName: string;
+  honoreeImageUrl?: string | null;
   claimStatus: string;
   externalUserEmail: string;
   externalUserName?: string | null;

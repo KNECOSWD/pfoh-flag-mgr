@@ -34,7 +34,30 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
             .OrderByDescending(c => c.CreatedUtc)
             .ToListAsync(ct);
 
-        return Ok(claims.Select(ToDto).ToList());
+        var honoreeIds = claims
+            .Where(c => c.HonoreeId.HasValue)
+            .Select(c => c.HonoreeId!.Value)
+            .Distinct()
+            .ToList();
+
+        var imageUrlByHonoreeId = honoreeIds.Count == 0
+            ? new Dictionary<int, string?>()
+            : await db.HonoreeSearchResults
+                .AsNoTracking()
+                .Where(h => honoreeIds.Contains(h.Id))
+                .Select(h => new { h.Id, h.ImageUrl })
+                .ToDictionaryAsync(h => h.Id, h => h.ImageUrl, ct);
+
+        return Ok(claims.Select(claim =>
+        {
+            var imageUrl =
+                claim.HonoreeId is int honoreeId &&
+                imageUrlByHonoreeId.TryGetValue(honoreeId, out var foundImageUrl)
+                    ? foundImageUrl
+                    : null;
+
+            return ToDto(claim, imageUrl);
+        }).ToList());
     }
 
     [HttpPost("{flagGridId:int}/claim")]
@@ -72,7 +95,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         {
             if (existingOwnershipClaim.ExternalUserObjectId == userObjectId)
             {
-                return Ok(ToDto(existingOwnershipClaim));
+                return Ok(ToDto(existingOwnershipClaim, null));
             }
 
             return Conflict("This flag grid is already managed by another claimant.");
@@ -94,7 +117,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
-        return Ok(ToDto(claim));
+        return Ok(ToDto(claim, null));
     }
 
     [HttpPost("honoree/{honoreeId:int}/claim")]
@@ -133,7 +156,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         {
             if (existingOwnershipClaim.ExternalUserObjectId == userObjectId)
             {
-                return Ok(ToDto(existingOwnershipClaim));
+                return Ok(ToDto(existingOwnershipClaim, null));
             }
 
             return Conflict("This honoree's flag is already managed by another claimant.");
@@ -158,7 +181,13 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
-        return Ok(ToDto(claim));
+        var imageUrl = await db.HonoreeSearchResults
+            .AsNoTracking()
+            .Where(h => h.Id == honoree.Id)
+            .Select(h => h.ImageUrl)
+            .FirstOrDefaultAsync(ct);
+
+        return Ok(ToDto(claim, imageUrl));
     }
 
     [HttpPut("{claimId:int}/honoree-draft")]
@@ -248,7 +277,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
 
         await db.SaveChangesAsync(ct);
 
-        return Ok(ToDto(claim));
+        return Ok(ToDto(claim, null));
     }
 
     private static HonoreeChangeRequest BuildDraftFromHonoree(
@@ -304,7 +333,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         draft.SubmitterEmailAddress = request.SubmitterEmailAddress?.Trim();
     }
 
-    private static FlagClaimDto ToDto(FlagClaim claim)
+    private static FlagClaimDto ToDto(FlagClaim claim, string? honoreeImageUrl)
     {
         var latest = claim.HonoreeChangeRequests
             .OrderByDescending(r => r.CreatedUtc)
@@ -318,6 +347,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
             claim.FlagGrid?.FlagGridName ?? string.Empty,
             claim.HonoreeId,
             honoreeName,
+            honoreeImageUrl,
             claim.ClaimStatus,
             claim.ExternalUserEmail,
             claim.ExternalUserName,

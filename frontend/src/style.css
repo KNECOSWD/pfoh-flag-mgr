@@ -74,7 +74,7 @@ main {
   overflow: hidden;
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 1.25rem;
   min-height: 210px;
 
@@ -158,18 +158,21 @@ main {
 }
 
 .authBox {
-  min-width: auto;
+  position: absolute;
+  top: 1.1rem;
+  right: max(1.25rem, calc((100vw - 1180px) / 2 + 1rem));
+  z-index: 2;
+  min-width: 0;
   display: flex;
   flex-direction: row;
   gap: 0.65rem;
   justify-content: flex-end;
   align-items: center;
-  margin-top: 0.35rem;
-  padding: 0.35rem;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  background: rgba(4, 15, 35, 0.34);
-  backdrop-filter: blur(6px);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  backdrop-filter: none;
 }
 
 .authBox strong {
@@ -181,20 +184,21 @@ main {
   line-height: 1;
   white-space: nowrap;
   text-overflow: ellipsis;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
 }
 
 .authBox button {
-  min-height: 2.15rem;
+  min-height: 2rem;
   border-radius: 999px;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.94);
   color: #173b73;
-  padding: 0.45rem 0.85rem;
+  padding: 0.4rem 0.85rem;
   box-shadow: none;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
 }
 
 .authBox button:hover:not(:disabled) {
-  background: #f7f9ff;
+  background: #ffffff;
   box-shadow: none;
 }
 
@@ -814,13 +818,31 @@ td span {
 
 .ownedFlagCard {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.8fr) auto;
+  grid-template-columns: 78px minmax(0, 1.4fr) minmax(220px, 0.8fr) auto;
   align-items: center;
   gap: 1rem;
   border: 1px solid #e4ebf5;
   border-radius: 18px;
   padding: 1rem;
   background: #fbfcff;
+}
+
+.ownedFlagImage {
+  width: 78px;
+  height: 78px;
+  border-radius: 16px;
+  object-fit: cover;
+  background: #e7ecf5;
+}
+
+.ownedFlagImagePlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #53627a;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-align: center;
 }
 
 .ownedFlagCard h3 {
@@ -893,6 +915,11 @@ td span {
     grid-template-columns: 1fr;
   }
 
+  .ownedFlagImage {
+    width: 96px;
+    height: 96px;
+  }
+
   .ownedFlagActions {
     justify-content: flex-start;
   }
@@ -925,10 +952,11 @@ td span {
   }
 
   .authBox {
+    position: static;
     align-self: flex-start;
     justify-content: flex-start;
     flex-wrap: wrap;
-    margin-top: 0.75rem;
+    margin-top: 0.85rem;
   }
 
   .authBox strong {

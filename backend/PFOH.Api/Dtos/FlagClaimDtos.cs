@@ -8,6 +8,7 @@ public record FlagClaimDto(
     string FlagGridName,
     int? HonoreeId,
     string HonoreeName,
+    string? HonoreeImageUrl,
     string ClaimStatus,
     string ExternalUserEmail,
     string? ExternalUserName,

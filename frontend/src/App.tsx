@@ -704,6 +704,16 @@ export default function App() {
 
                   return (
                     <article key={claim.id} className="ownedFlagCard">
+                      {claim.honoreeImageUrl ? (
+                        <img
+                          className="ownedFlagImage"
+                          src={claim.honoreeImageUrl}
+                          alt={`${claim.honoreeName || "Honoree"} photo`}
+                        />
+                      ) : (
+                        <div className="ownedFlagImage ownedFlagImagePlaceholder">No photo</div>
+                      )}
+
                       <div>
                         <p className="eyebrow">Honoree</p>
                         <h3>{claim.honoreeName || "Honoree details pending"}</h3>
