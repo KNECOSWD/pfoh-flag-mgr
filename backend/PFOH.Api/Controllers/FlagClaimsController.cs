@@ -193,6 +193,79 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         return Ok(ToDto(claim, imageUrl));
     }
 
+    [HttpPost("nominate")]
+    public async Task<ActionResult<FlagClaimDto>> NominateHonoree(
+        [FromBody] NominateHonoreeRequest request,
+        CancellationToken ct)
+    {
+        if (!ModelState.IsValid)
+        {
+            return ValidationProblem(ModelState);
+        }
+
+        var userObjectId = User.GetExternalObjectId();
+        var email = User.GetEmail();
+        var name = User.GetDisplayName();
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return BadRequest("Your signed-in account must have an email address before you can nominate a honoree.");
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+        var submitter = await GetOrCreateSubmitterSponsorAsync(email, name, ct);
+        if (submitter is null)
+        {
+            return Conflict("No sponsor category exists for creating the submitter record.");
+        }
+
+        var flagGrid = await GetNextAvailableFlagGridAsync(ct);
+        if (flagGrid is null)
+        {
+            return Conflict("No available flag grid was found for this nomination.");
+        }
+
+        var claim = new FlagClaim
+        {
+            FlagGridId = flagGrid.Id,
+            HonoreeId = null,
+            ExternalUserObjectId = userObjectId,
+            ExternalUserEmail = email,
+            ExternalUserName = name,
+            ClaimStatus = "Submitted",
+            CreatedUtc = DateTime.UtcNow,
+            SubmittedUtc = DateTime.UtcNow,
+            FlagGrid = flagGrid
+        };
+
+        var change = new HonoreeChangeRequest
+        {
+            FlagGridId = flagGrid.Id,
+            HonoreeId = null,
+            RequestStatus = "Submitted",
+            CreatedUtc = DateTime.UtcNow,
+            SubmittedUtc = DateTime.UtcNow,
+            SubmitterPhoneNumber = request.SubmitterPhoneNumber,
+            SubmitterEmailAddress = request.SubmitterEmailAddress ?? email
+        };
+
+        ApplyRequest(change, request);
+
+        if (string.IsNullOrWhiteSpace(change.SubmitterEmailAddress))
+        {
+            change.SubmitterEmailAddress = email;
+        }
+
+        claim.HonoreeChangeRequests.Add(change);
+
+        db.FlagClaims.Add(claim);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+
+        return Ok(ToDto(claim, null));
+    }
+
     [Authorize(Policy = "AdminOnly")]
     [HttpPost("admin/honoree/{honoreeId:int}/edit")]
     public async Task<ActionResult<FlagClaimDto>> StartAdminDirectHonoreeEdit(int honoreeId, CancellationToken ct)

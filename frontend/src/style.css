@@ -1017,3 +1017,8 @@ td span {
     margin-left: 0;
   }
 }
+
+
+.searchHeader > button {
+  white-space: nowrap;
+}

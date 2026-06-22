@@ -255,6 +255,16 @@ export const flagClaimApi = {
       method: "POST"
     }),
 
+  nominate: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    requestBody: SaveHonoreeChangeRequest
+  ) =>
+    request<FlagClaim>(instance, account, "/api/flag-claims/nominate", {
+      method: "POST",
+      body: JSON.stringify(requestBody)
+    }),
+
   startAdminEdit: (instance: IPublicClientApplication, account: AccountInfo, honoreeId: number) =>
     request<FlagClaim>(instance, account, `/api/flag-claims/admin/honoree/${honoreeId}/edit`, {
       method: "POST"

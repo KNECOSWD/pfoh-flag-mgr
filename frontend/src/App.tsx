@@ -85,6 +85,7 @@ export default function App() {
   const [serviceBranches, setServiceBranches] = useState<ServiceBranch[]>([]);
   const [serviceBranchCategories, setServiceBranchCategories] = useState<ServiceBranchCategory[]>([]);
   const [selectedClaim, setSelectedClaim] = useState<FlagClaim | null>(null);
+  const [isNominating, setIsNominating] = useState(false);
   const [form, setForm] = useState<SaveHonoreeChangeRequest>(blankForm);
 
   const [honoreeSearchText, setHonoreeSearchText] = useState("");
@@ -250,8 +251,26 @@ export default function App() {
   }
 
   function beginEdit(claim: FlagClaim) {
+    setIsNominating(false);
     setSelectedClaim(claim);
     setFormFromClaim(claim);
+    setNotice("");
+    setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function beginNomination() {
+    if (!account) {
+      void signIn();
+      return;
+    }
+
+    setSelectedClaim(null);
+    setIsNominating(true);
+    setForm({
+      ...blankForm,
+      submitterEmailAddress: account.username ?? ""
+    });
     setNotice("");
     setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -312,6 +331,28 @@ export default function App() {
       setNotice("Admin edit started. Save changes and queue the reprint when ready.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to start admin edit.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitNomination(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!account) return;
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      await flagClaimApi.nominate(instance, account, form);
+      await loadData();
+      setNotice("Nomination submitted for admin review and claimed under your account.");
+      setIsNominating(false);
+      setForm(blankForm);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to submit nomination.");
     } finally {
       setSaving(false);
     }
@@ -544,6 +585,12 @@ export default function App() {
                 <p className="eyebrow">Find an existing honoree</p>
                 <h2>Honoree search</h2>
               </div>
+
+              {isAuthenticated ? (
+                <button type="button" className="secondary" onClick={beginNomination}>
+                  Nominate honoree
+                </button>
+              ) : null}
             </div>
 
             <form className="searchBar" onSubmit={searchHonorees}>
@@ -564,7 +611,7 @@ export default function App() {
             {honoreeSearchPerformed ? (
               honoreeResults.length === 0 ? (
                 <p className="emptyState">
-                  No honorees found. Contact the Plano Flags of Honor team if this honoree needs to be added.
+                  No honorees found. A signed-in user can nominate a veteran or first responder for admin review.
                 </p>
               ) : (
                 <div className="honoreeResults">
@@ -644,10 +691,10 @@ export default function App() {
             <section className="card guestNotice">
               <h2>Search is open to everyone</h2>
               <p>
-                You can search and view honoree flag records without signing in. Sign in or register only when you are ready to claim a flag record and submit updates for review.
+                You can search and view honoree flag records without signing in. Sign in or register when you are ready to claim a flag record, submit updates, or nominate a veteran or first responder.
               </p>
               <button type="button" onClick={signIn}>
-                Register / sign in to claim
+                Register / sign in
               </button>
             </section>
           ) : null}
@@ -660,7 +707,7 @@ export default function App() {
                 <p className="eyebrow">Your account</p>
                 <h2>My claimed flags</h2>
                 <p className="helperText">
-                  These are the flag records you manage. You can submit updates at any time; admins review and approve changes before they are published or reprinted.
+                  These are the flag records you manage, including nominations you submitted. You can submit updates at any time; admins review and approve changes before they are published or reprinted.
                 </p>
               </div>
               <button type="button" className="secondary" onClick={loadData} disabled={loading}>
@@ -894,17 +941,23 @@ export default function App() {
             </section>
           ) : null}
 
-          {selectedClaim ? (
+          {selectedClaim || isNominating ? (
             <section className="card formCard">
               <div className="sectionHeader">
                 <div>
                   <p className="eyebrow">
-                    {selectedClaim.claimStatus === "AdminDirectEdit" ? "Administrator edit" : `Claim #${selectedClaim.id}`}
+                    {isNominating
+                      ? "New nomination"
+                      : selectedClaim?.claimStatus === "AdminDirectEdit"
+                        ? "Administrator edit"
+                        : `Claim #${selectedClaim?.id}`}
                   </p>
                   <h2>
-                    {selectedClaim.claimStatus === "AdminDirectEdit"
-                      ? `Directly edit ${selectedClaim.honoreeName || "honoree record"}`
-                      : `Manage flag record for ${selectedClaim.flagGridName || `grid ${selectedClaim.flagGridId}`}`}
+                    {isNominating
+                      ? "Nominate a veteran or first responder"
+                      : selectedClaim?.claimStatus === "AdminDirectEdit"
+                        ? `Directly edit ${selectedClaim?.honoreeName || "honoree record"}`
+                        : `Manage flag record for ${selectedClaim?.flagGridName || `grid ${selectedClaim?.flagGridId}`}`}
                   </h2>
                 </div>
                 <button
@@ -912,6 +965,7 @@ export default function App() {
                   className="secondary"
                   onClick={() => {
                     setSelectedClaim(null);
+                    setIsNominating(false);
                     setForm(blankForm);
                   }}
                 >
@@ -920,12 +974,14 @@ export default function App() {
               </div>
 
               <p className="helperText">
-                {selectedClaim.claimStatus === "AdminDirectEdit"
-                  ? "As an administrator, you can save these changes directly and add the card to the reprint queue without claiming the flag."
-                  : "You can submit updates to this flag record whenever needed. Changes go to the Plano Flags of Honor admin team for approval before publishing and reprinting."}
+                {isNominating
+                  ? "Submit the honoree information for admin review. The nomination will be listed under your claimed flags, and you will be recorded as the submitter."
+                  : selectedClaim?.claimStatus === "AdminDirectEdit"
+                    ? "As an administrator, you can save these changes directly and add the card to the reprint queue without claiming the flag."
+                    : "You can submit updates to this flag record whenever needed. Changes go to the Plano Flags of Honor admin team for approval before publishing and reprinting."}
               </p>
 
-              <form className="gridForm" onSubmit={submitClaim}>
+              <form className="gridForm" onSubmit={isNominating ? submitNomination : submitClaim}>
                 <label>
                   First name
                   <input
@@ -1092,15 +1148,19 @@ export default function App() {
                 </label>
 
                 <div className="actions wide">
-                  <button type="button" className="secondary" disabled={saving} onClick={saveDraft}>
-                    {saving ? "Saving..." : "Save draft"}
-                  </button>
+                  {!isNominating ? (
+                    <button type="button" className="secondary" disabled={saving} onClick={saveDraft}>
+                      {saving ? "Saving..." : "Save draft"}
+                    </button>
+                  ) : null}
                   <button type="submit" disabled={saving}>
                     {saving
                       ? "Submitting..."
-                      : selectedClaim.claimStatus === "AdminDirectEdit"
-                        ? "Save and queue reprint"
-                        : "Submit changes for review"}
+                      : isNominating
+                        ? "Submit nomination"
+                        : selectedClaim?.claimStatus === "AdminDirectEdit"
+                          ? "Save and queue reprint"
+                          : "Submit changes for review"}
                   </button>
                 </div>
               </form>
