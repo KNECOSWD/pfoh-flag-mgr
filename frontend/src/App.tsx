@@ -102,6 +102,15 @@ export default function App() {
     [myClaims]
   );
 
+  const allPrintQueueIds = useMemo(
+    () => printQueue.map((item) => item.changeRequestId),
+    [printQueue]
+  );
+
+  const allPrintItemsSelected =
+    allPrintQueueIds.length > 0 &&
+    allPrintQueueIds.every((id) => selectedPrintIds.includes(id));
+
   async function signIn() {
     await instance.loginRedirect(loginRequest);
   }
@@ -169,6 +178,22 @@ export default function App() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, account?.homeAccountId]);
+
+  useEffect(() => {
+    const timers: number[] = [];
+
+    if (error) {
+      timers.push(window.setTimeout(() => setError(""), 8000));
+    }
+
+    if (notice) {
+      timers.push(window.setTimeout(() => setNotice(""), 5000));
+    }
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [error, notice]);
 
   async function searchHonorees(event: React.FormEvent) {
     event.preventDefault();
@@ -386,6 +411,14 @@ export default function App() {
     );
   }
 
+  function toggleSelectAllPrintItems() {
+    if (allPrintItemsSelected) {
+      setSelectedPrintIds([]);
+    } else {
+      setSelectedPrintIds(allPrintQueueIds);
+    }
+  }
+
   function update<K extends keyof SaveHonoreeChangeRequest>(
     key: K,
     value: SaveHonoreeChangeRequest[K]
@@ -430,9 +463,34 @@ export default function App() {
       ) : (
         <>
           {(error || notice) && (
-            <section className="messageStack">
-              {error ? <p className="message error">{error}</p> : null}
-              {notice ? <p className="message success">{notice}</p> : null}
+            <section className="messageStack" aria-live="polite" aria-atomic="true">
+              {error ? (
+                <div className="message error" role="alert">
+                  <span>{error}</span>
+                  <button
+                    type="button"
+                    className="messageClose"
+                    aria-label="Dismiss error message"
+                    onClick={() => setError("")}
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : null}
+
+              {notice ? (
+                <div className="message success" role="status">
+                  <span>{notice}</span>
+                  <button
+                    type="button"
+                    className="messageClose"
+                    aria-label="Dismiss success message"
+                    onClick={() => setNotice("")}
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : null}
             </section>
           )}
 
@@ -514,11 +572,31 @@ export default function App() {
                   <p className="eyebrow">Card printing</p>
                   <h2>Reprint queue</h2>
                 </div>
-                <div className="actions">
-                  <button type="button" className="secondary" onClick={downloadSelectedPrintPdf} disabled={saving}>
+                <div className="actions printActions">
+                  <label className="selectAllPrint">
+                    <input
+                      type="checkbox"
+                      checked={allPrintItemsSelected}
+                      onChange={toggleSelectAllPrintItems}
+                      disabled={printQueue.length === 0}
+                    />
+                    Select all
+                  </label>
+
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={downloadSelectedPrintPdf}
+                    disabled={saving || selectedPrintIds.length === 0}
+                  >
                     Download merged PDF
                   </button>
-                  <button type="button" onClick={markSelectedPrinted} disabled={saving}>
+
+                  <button
+                    type="button"
+                    onClick={markSelectedPrinted}
+                    disabled={saving || selectedPrintIds.length === 0}
+                  >
                     Mark printed
                   </button>
                 </div>

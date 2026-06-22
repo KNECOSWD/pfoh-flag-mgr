@@ -152,11 +152,23 @@ main {
   margin: 0.2rem 0 0;
 }
 
+.messageStack {
+  display: grid;
+  gap: 0.75rem;
+}
+
 .message {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   border-radius: 16px;
   padding: 0.85rem 1rem;
-  margin: 0 0 0.75rem;
   font-weight: 700;
+}
+
+.message span {
+  flex: 1;
 }
 
 .error {
@@ -167,6 +179,24 @@ main {
 .success {
   background: #e6f8ed;
   color: #116637;
+}
+
+.messageClose {
+  min-height: 1.9rem;
+  width: 1.9rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.72);
+  color: currentColor;
+  box-shadow: none;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.messageClose:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: none;
 }
 
 .emptyState {
@@ -489,15 +519,38 @@ td span {
   border-top: 1px solid #edf1f7;
 }
 
-.printHeader .actions {
+.printHeader .actions,
+.printActions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
   gap: 0.6rem;
 }
 
-.printHeader .actions button {
+.printHeader .actions button,
+.printActions button {
   white-space: nowrap;
+}
+
+.selectAllPrint {
+  min-height: 2.45rem;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 0.7rem;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #f8fafd;
+  color: #173b73;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.selectAllPrint input {
+  width: 18px;
+  height: 18px;
 }
 
 /* Responsive */
