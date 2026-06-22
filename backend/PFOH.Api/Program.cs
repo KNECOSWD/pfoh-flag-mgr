@@ -11,8 +11,43 @@ builder.Services.AddSwaggerGen();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+    .AddMicrosoftIdentityWebApi(
+        jwtOptions =>
+        {
+            builder.Configuration.Bind("AzureAd", jwtOptions);
 
+            var apiClientId = builder.Configuration["AzureAd:ClientId"];
+            var apiAudience = builder.Configuration["AzureAd:Audience"];
+
+            jwtOptions.TokenValidationParameters.ValidAudiences = new[]
+            {
+                apiClientId,
+                apiAudience,
+                $"api://{apiClientId}"
+            }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct()
+            .ToArray();
+
+            jwtOptions.Events = new JwtBearerEvents
+            {
+                OnAuthenticationFailed = context =>
+                {
+                    Console.WriteLine($"JWT authentication failed: {context.Exception.Message}");
+                    return Task.CompletedTask;
+                },
+                OnChallenge = context =>
+                {
+                    Console.WriteLine($"JWT challenge error: {context.Error} - {context.ErrorDescription}");
+                    return Task.CompletedTask;
+                }
+            };
+        },
+        identityOptions =>
+        {
+            builder.Configuration.Bind("AzureAd", identityOptions);
+        });
+        
 builder.Services.AddAuthorization();
 
 builder.Services.AddDbContext<PfohDbContext>(options =>
