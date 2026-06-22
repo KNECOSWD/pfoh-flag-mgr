@@ -13,7 +13,8 @@ namespace PFOH.Api.Controllers;
 [Authorize]
 public class FlagClaimsController(PfohDbContext db) : ControllerBase
 {
-    private static readonly string[] ActiveClaimStatuses = ["Claimed", "Submitted", "Approved"];
+    // Only these statuses block a new change cycle. Approved/Rejected/Cancelled are closed history.
+    private static readonly string[] OpenClaimStatuses = ["Claimed", "Submitted"];
 
     [HttpGet("my")]
     public async Task<ActionResult<IReadOnlyList<FlagClaimDto>>> GetMyClaims(CancellationToken ct)
@@ -56,19 +57,21 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
             return Conflict("This flag grid is already assigned to an active honoree. Search for the honoree and claim the existing honoree record instead.");
         }
 
-        var activeClaim = await db.FlagClaims
+        // Only an open claim should block another edit cycle.
+        // Previously approved/rejected claims are history and should allow a new change request.
+        var openClaim = await db.FlagClaims
             .Include(c => c.FlagGrid)
             .Include(c => c.HonoreeChangeRequests)
-            .FirstOrDefaultAsync(c => c.FlagGridId == flagGridId && ActiveClaimStatuses.Contains(c.ClaimStatus), ct);
+            .FirstOrDefaultAsync(c => c.FlagGridId == flagGridId && OpenClaimStatuses.Contains(c.ClaimStatus), ct);
 
-        if (activeClaim is not null)
+        if (openClaim is not null)
         {
-            if (activeClaim.ExternalUserObjectId == userObjectId)
+            if (openClaim.ExternalUserObjectId == userObjectId)
             {
-                return Ok(ToDto(activeClaim));
+                return Ok(ToDto(openClaim));
             }
 
-            return Conflict("This flag grid has already been claimed.");
+            return Conflict("This flag grid has already been claimed and is waiting for review.");
         }
 
         var claim = new FlagClaim
@@ -113,22 +116,22 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
             return BadRequest("This honoree is not assigned to a flag grid.");
         }
 
-        var activeClaim = await db.FlagClaims
+        var openClaim = await db.FlagClaims
             .Include(c => c.FlagGrid)
             .Include(c => c.HonoreeChangeRequests)
             .FirstOrDefaultAsync(
                 c => c.FlagGridId == honoree.FlagGridId.Value &&
-                     ActiveClaimStatuses.Contains(c.ClaimStatus),
+                     OpenClaimStatuses.Contains(c.ClaimStatus),
                 ct);
 
-        if (activeClaim is not null)
+        if (openClaim is not null)
         {
-            if (activeClaim.ExternalUserObjectId == userObjectId)
+            if (openClaim.ExternalUserObjectId == userObjectId)
             {
-                return Ok(ToDto(activeClaim));
+                return Ok(ToDto(openClaim));
             }
 
-            return Conflict("This honoree's flag is already claimed.");
+            return Conflict("This honoree's flag is already claimed and waiting for review.");
         }
 
         var claim = new FlagClaim
@@ -176,7 +179,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
 
         if (claim.ClaimStatus is "Approved" or "Rejected" or "Cancelled")
         {
-            return Conflict("This claim cannot be edited in its current status.");
+            return Conflict("This claim is closed. Search for the honoree and claim the record again to submit a new change.");
         }
 
         var draft = claim.HonoreeChangeRequests
