@@ -12,6 +12,7 @@
 body {
   margin: 0;
   min-width: 320px;
+  background: #f2f5f9;
 }
 
 button,
@@ -22,18 +23,21 @@ textarea {
 }
 
 button {
+  min-height: 2.45rem;
   border: 0;
-  border-radius: 999px;
+  border-radius: 12px;
   background: #173b73;
   color: #fff;
-  padding: 0.7rem 1.1rem;
+  padding: 0.55rem 0.95rem;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 8px 18px rgba(23, 59, 115, 0.18);
+  box-shadow: 0 8px 18px rgba(23, 59, 115, 0.14);
+  transition: transform 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
 }
 
 button:hover:not(:disabled) {
   transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(23, 59, 115, 0.18);
 }
 
 button:disabled {
@@ -42,9 +46,18 @@ button:disabled {
 }
 
 button.secondary {
-  background: #e7ecf5;
+  background: #eef2f8;
   color: #173b73;
   box-shadow: none;
+}
+
+button.danger {
+  background: #9b1c31;
+  box-shadow: none;
+}
+
+button.danger:hover:not(:disabled) {
+  background: #841629;
 }
 
 main {
@@ -52,6 +65,8 @@ main {
   margin: 0 auto;
   padding: 2rem 0 4rem;
 }
+
+/* Hero */
 
 .hero {
   display: flex;
@@ -106,6 +121,8 @@ main {
   text-align: right;
 }
 
+/* Layout cards and messages */
+
 .card,
 .messageStack {
   margin-top: 1.25rem;
@@ -152,19 +169,21 @@ main {
   color: #116637;
 }
 
-.searchBar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 0.75rem;
-  margin-top: 1rem;
-}
-
 .emptyState {
   margin-top: 1rem;
   padding: 1rem;
   border-radius: 16px;
   background: #f7f9fc;
   color: #53627a;
+}
+
+/* Search */
+
+.searchBar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.75rem;
+  margin-top: 1rem;
 }
 
 .honoreeResults {
@@ -233,10 +252,21 @@ main {
   font-weight: 700;
 }
 
+.cardActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
 .textLink {
   color: #173b73;
   font-weight: 800;
 }
+
+/* Forms */
 
 .gridForm {
   display: grid;
@@ -273,6 +303,12 @@ textarea:focus {
   border-color: #173b73;
 }
 
+input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #173b73;
+}
+
 .wide {
   grid-column: 1 / -1;
 }
@@ -292,16 +328,19 @@ textarea:focus {
   gap: 0.75rem;
 }
 
+/* Tables */
+
 .tableWrap {
   overflow-x: auto;
   border: 1px solid #e5ebf4;
   border-radius: 18px;
+  background: #fff;
 }
 
 table {
   width: 100%;
-  border-collapse: collapse;
   min-width: 740px;
+  border-collapse: collapse;
 }
 
 th,
@@ -333,6 +372,8 @@ td span {
   text-align: right;
 }
 
+/* Status badges */
+
 .status {
   display: inline-block;
   border-radius: 999px;
@@ -359,30 +400,125 @@ td span {
   color: #8b1e2c;
 }
 
-.gridCards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 1rem;
+/* Admin dashboard */
+
+.adminCard {
+  border-top: 4px solid #173b73;
+  padding: 1.5rem;
 }
 
-.miniCard {
-  border: 1px solid #e3e9f2;
-  border-radius: 18px;
-  padding: 1rem;
-  background: #fbfcff;
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
+.adminCard .sectionHeader {
   align-items: center;
+  margin-bottom: 1rem;
 }
 
-.miniCard h3 {
-  margin: 0.2rem 0;
+.adminCard .sectionHeader h2 {
+  font-size: 1.65rem;
 }
 
-.miniCard p {
-  margin: 0;
-  color: #6b778d;
+.adminCard .tableWrap {
+  border: 1px solid #e4ebf5;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: none;
+}
+
+.adminCard table {
+  min-width: 860px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.adminCard th {
+  padding: 0.75rem 1rem;
+  background: #f7f9fc;
+  color: #4e5f7a;
+  font-size: 0.72rem;
+  letter-spacing: 0.13em;
+  white-space: nowrap;
+}
+
+.adminCard td {
+  padding: 1rem;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.adminCard tr:last-child td {
+  border-bottom: 0;
+}
+
+.adminCard td strong {
+  font-size: 1rem;
+}
+
+.adminCard td span {
+  color: #60708a;
+}
+
+.adminCard .rowActions {
+  width: 220px;
+}
+
+.adminCard .stackedActions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.45rem;
+}
+
+.adminCard .stackedActions button {
+  width: 100%;
+  min-height: 2.35rem;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.9rem;
+}
+
+.adminCard > p {
+  margin: 0.75rem 0 0;
+  padding: 0.95rem 1rem;
+  border: 1px dashed #d8e1ee;
+  border-radius: 14px;
+  background: #fafcff;
+  color: #60708a;
+}
+
+.printHeader {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #edf1f7;
+}
+
+.printHeader .actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+.printHeader .actions button {
+  white-space: nowrap;
+}
+
+/* Responsive */
+
+@media (max-width: 900px) {
+  .adminCard {
+    padding: 1.1rem;
+  }
+
+  .adminCard .sectionHeader,
+  .printHeader {
+    align-items: flex-start;
+  }
+
+  .adminCard .rowActions {
+    width: 180px;
+  }
+
+  .adminCard .stackedActions button {
+    font-size: 0.85rem;
+  }
 }
 
 @media (max-width: 760px) {
@@ -415,39 +551,4 @@ td span {
   .detailGrid {
     grid-template-columns: 1fr;
   }
-}
-.cardActions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  margin-top: 0.75rem;
-}
-.adminCard {
-  border-top: 5px solid #173b73;
-}
-
-.printHeader {
-  margin-top: 2rem;
-}
-
-.stackedActions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  align-items: flex-end;
-}
-
-button.danger {
-  background: #8b1e2c;
-}
-
-.cardActions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  margin-top: 0.75rem;
 }
