@@ -76,12 +76,15 @@ main {
   justify-content: space-between;
   align-items: center;
   gap: 1.25rem;
-  min-height: 180px;
-  padding: 1.55rem 1.85rem;
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  min-height: 176px;
+  padding: 1.65rem 1.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 26px;
   background:
-    linear-gradient(115deg, rgba(10, 35, 75, 0.98) 0%, rgba(16, 50, 104, 0.96) 42%, rgba(142, 23, 38, 0.96) 100%);
+    radial-gradient(circle at 88% 18%, rgba(255, 255, 255, 0.12) 0 2px, transparent 2px 100%),
+    radial-gradient(circle at 82% 35%, rgba(255, 255, 255, 0.10) 0 2px, transparent 2px 100%),
+    radial-gradient(circle at 92% 48%, rgba(255, 255, 255, 0.09) 0 2px, transparent 2px 100%),
+    linear-gradient(120deg, #102f5f 0%, #143c76 54%, #8b1e2c 100%);
   color: #fff;
   box-shadow: 0 22px 44px rgba(20, 31, 48, 0.22);
 }
@@ -92,31 +95,24 @@ main {
   inset: 0;
   z-index: -2;
   background:
-    repeating-linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.15) 0,
-      rgba(255, 255, 255, 0.15) 14px,
-      rgba(191, 10, 48, 0.28) 14px,
-      rgba(191, 10, 48, 0.28) 28px
-    );
-  opacity: 0.62;
-  transform: skewY(-3deg) scale(1.08);
-  transform-origin: top left;
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent 34%),
+    radial-gradient(circle at 80% 28%, rgba(255, 255, 255, 0.12), transparent 22rem);
+  opacity: 0.9;
 }
 
 .hero::after {
-  content: "★ ★ ★ ★ ★ ★ ★ ★ ★ ★";
+  content: "";
   position: absolute;
-  top: 1rem;
-  right: 1.3rem;
+  right: -90px;
+  bottom: -110px;
   z-index: -1;
-  max-width: 360px;
-  color: rgba(255, 255, 255, 0.16);
-  font-size: clamp(1.1rem, 1.8vw, 1.8rem);
-  line-height: 1.35;
-  letter-spacing: 0.42rem;
-  text-align: right;
-  text-wrap: balance;
+  width: 360px;
+  height: 360px;
+  border-radius: 50%;
+  border: 42px solid rgba(255, 255, 255, 0.055);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 0 0 1px rgba(255, 255, 255, 0.035);
 }
 
 .hero > * {
@@ -129,7 +125,7 @@ main {
   font-size: clamp(2rem, 5.8vw, 4rem);
   line-height: 0.95;
   letter-spacing: -0.05em;
-  text-shadow: 0 8px 22px rgba(0, 0, 0, 0.26);
+  text-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
 }
 
 .hero p {
@@ -149,7 +145,7 @@ main {
 }
 
 .hero .eyebrow {
-  color: #ffe17a;
+  color: #f6d36b;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
 }
 
@@ -166,14 +162,14 @@ main {
   text-align: right;
   padding: 0.3rem 0.7rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.13);
+  background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(8px);
 }
 
 .authBox button {
   background: #ffffff;
   color: #173b73;
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
 }
 
 .authBox button:hover:not(:disabled) {
@@ -734,6 +730,11 @@ td span {
   .hero {
     min-height: 0;
     padding: 1.35rem;
+  }
+
+  .hero::after {
+    right: -150px;
+    bottom: -150px;
   }
 
   .hero::after {
