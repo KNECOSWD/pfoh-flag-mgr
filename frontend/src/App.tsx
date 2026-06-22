@@ -3,11 +3,13 @@ import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import {
   AvailableFlagGrid,
   FlagClaim,
+  HonoreeSearchResult,
   SaveHonoreeChangeRequest,
   ServiceBranch,
   ServiceBranchCategory,
   flagClaimApi,
   flagGridApi,
+  honoreeApi,
   lookupApi
 } from "./api";
 import { loginRequest } from "./authConfig";
@@ -67,6 +69,12 @@ export default function App() {
   const [serviceBranchCategories, setServiceBranchCategories] = useState<ServiceBranchCategory[]>([]);
   const [selectedClaim, setSelectedClaim] = useState<FlagClaim | null>(null);
   const [form, setForm] = useState<SaveHonoreeChangeRequest>(blankForm);
+
+  const [honoreeSearchText, setHonoreeSearchText] = useState("");
+  const [honoreeResults, setHonoreeResults] = useState<HonoreeSearchResult[]>([]);
+  const [honoreeSearchPerformed, setHonoreeSearchPerformed] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -127,6 +135,32 @@ export default function App() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, account?.homeAccountId]);
+
+  async function searchHonorees(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!account) return;
+
+    setSearchLoading(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const results = await honoreeApi.search(instance, account, honoreeSearchText, 25);
+      setHonoreeResults(results);
+      setHonoreeSearchPerformed(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to search honorees.");
+    } finally {
+      setSearchLoading(false);
+    }
+  }
+
+  function clearHonoreeSearch() {
+    setHonoreeSearchText("");
+    setHonoreeResults([]);
+    setHonoreeSearchPerformed(false);
+  }
 
   function beginEdit(claim: FlagClaim) {
     const draft = claim.latestChangeRequest;
@@ -237,7 +271,7 @@ export default function App() {
           <p className="eyebrow">Plano Flags of Honor</p>
           <h1>Flag Manager</h1>
           <p>
-            Claim an available flag grid and submit honoree information for review by the Plano Flags of Honor support team.
+            Search existing honorees, claim an available flag grid, and submit honoree information for review.
           </p>
         </div>
 
@@ -261,7 +295,7 @@ export default function App() {
         <section className="card">
           <h2>Welcome</h2>
           <p>
-            Sign in to claim an available flag grid and submit the honoree information connected with that flag.
+            Sign in to search existing honorees, claim an available flag grid, and submit the honoree information connected with that flag.
           </p>
         </section>
       ) : (
@@ -272,6 +306,88 @@ export default function App() {
               {notice ? <p className="message success">{notice}</p> : null}
             </section>
           )}
+
+          <section className="card">
+            <div className="sectionHeader">
+              <div>
+                <p className="eyebrow">Find an existing honoree</p>
+                <h2>Honoree search</h2>
+              </div>
+            </div>
+
+            <p>
+              Search first to see whether an honoree is already in the Plano Flags of Honor database.
+            </p>
+
+            <form className="searchBar" onSubmit={searchHonorees}>
+              <input
+                type="search"
+                placeholder="Search by honoree name, nickname, rank, branch, sponsor, or flag grid"
+                value={honoreeSearchText}
+                onChange={(e) => setHonoreeSearchText(e.target.value)}
+              />
+              <button type="submit" disabled={searchLoading}>
+                {searchLoading ? "Searching..." : "Search"}
+              </button>
+              <button type="button" className="secondary" onClick={clearHonoreeSearch}>
+                Clear
+              </button>
+            </form>
+
+            {honoreeSearchPerformed ? (
+              honoreeResults.length === 0 ? (
+                <p className="emptyState">
+                  No honorees found. If this is a new honoree, claim an available flag grid below and submit their information.
+                </p>
+              ) : (
+                <div className="honoreeResults">
+                  {honoreeResults.map((honoree) => (
+                    <article key={honoree.id} className="honoreeCard">
+                      {honoree.imageUrl ? (
+                        <img src={honoree.imageUrl} alt={honoree.fullName} />
+                      ) : (
+                        <div className="honoreePlaceholder">No photo</div>
+                      )}
+
+                      <div>
+                        <div className="honoreeTitleRow">
+                          <h3>{honoree.fullName}</h3>
+                          {honoree.kia ? <span className="status status-submitted">KIA</span> : null}
+                        </div>
+
+                        <p>
+                          {[honoree.rank, honoree.serviceBranchName].filter(Boolean).join(" • ") || "Service details unavailable"}
+                        </p>
+
+                        <dl className="detailGrid">
+                          <div>
+                            <dt>Flag grid</dt>
+                            <dd>{honoree.flagGrid || "—"}</dd>
+                          </div>
+                          <div>
+                            <dt>Sponsor</dt>
+                            <dd>{honoree.sponsorName || "—"}</dd>
+                          </div>
+                          {honoree.nickname ? (
+                            <div>
+                              <dt>Nickname</dt>
+                              <dd>{honoree.nickname}</dd>
+                            </div>
+                          ) : null}
+                        </dl>
+
+                        {honoree.pdfUrl ? (
+                          <a className="textLink" href={honoree.pdfUrl} target="_blank" rel="noreferrer">
+                            Open honoree PDF
+                          </a>
+                        ) : null}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )
+            ) : null}
+          </section>
 
           {selectedClaim ? (
             <section className="card formCard">

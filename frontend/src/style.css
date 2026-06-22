@@ -152,6 +152,92 @@ main {
   color: #116637;
 }
 
+.searchBar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.emptyState {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 16px;
+  background: #f7f9fc;
+  color: #53627a;
+}
+
+.honoreeResults {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.honoreeCard {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+  border: 1px solid #e3e9f2;
+  border-radius: 18px;
+  padding: 1rem;
+  background: #fbfcff;
+}
+
+.honoreeCard img,
+.honoreePlaceholder {
+  width: 96px;
+  height: 96px;
+  border-radius: 16px;
+  object-fit: cover;
+  background: #e7ecf5;
+}
+
+.honoreePlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #53627a;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.honoreeTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.honoreeTitleRow h3 {
+  margin: 0;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.detailGrid dt {
+  font-size: 0.75rem;
+  color: #53627a;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+}
+
+.detailGrid dd {
+  margin: 0.15rem 0 0;
+  font-weight: 700;
+}
+
+.textLink {
+  color: #173b73;
+  font-weight: 800;
+}
+
 .gridForm {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -316,5 +402,17 @@ td span {
   .actions {
     justify-content: flex-start;
     flex-wrap: wrap;
+  }
+
+  .searchBar {
+    grid-template-columns: 1fr;
+  }
+
+  .honoreeCard {
+    grid-template-columns: 1fr;
+  }
+
+  .detailGrid {
+    grid-template-columns: 1fr;
   }
 }

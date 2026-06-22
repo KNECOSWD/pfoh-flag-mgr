@@ -24,6 +24,24 @@ export type ServiceBranchCategory = {
   description: string;
 };
 
+export type HonoreeSearchResult = {
+  id: number;
+  fullName: string;
+  firstName: string;
+  middleName?: string | null;
+  lastName: string;
+  suffix?: string | null;
+  nickname?: string | null;
+  rank: string;
+  kia: boolean;
+  serviceBranchName?: string | null;
+  flagGrid?: string | null;
+  sponsorName?: string | null;
+  imageUrl?: string | null;
+  pdfUrl?: string | null;
+  isActive: boolean;
+};
+
 export type HonoreeChangeRequest = {
   id: number;
   flagClaimId: number;
@@ -127,6 +145,20 @@ async function request<T>(
 
   return response.json() as Promise<T>;
 }
+
+export const honoreeApi = {
+  search: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    query: string,
+    take = 25
+  ) =>
+    request<HonoreeSearchResult[]>(
+      instance,
+      account,
+      `/api/honorees/search?q=${encodeURIComponent(query)}&take=${take}`
+    )
+};
 
 export const flagGridApi = {
   available: (instance: IPublicClientApplication, account: AccountInfo) =>
