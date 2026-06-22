@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import {
-  AvailableFlagGrid,
+  AdminPrintQueueItem,
+  AdminReviewItem,
+  ApiError,
   FlagClaim,
   HonoreeSearchResult,
   SaveHonoreeChangeRequest,
   ServiceBranch,
   ServiceBranchCategory,
+  adminApi,
   flagClaimApi,
-  flagGridApi,
   honoreeApi,
   lookupApi
 } from "./api";
@@ -63,7 +65,6 @@ export default function App() {
   const { instance, accounts } = useMsal();
   const account = instance.getActiveAccount() ?? accounts[0];
 
-  const [availableGrids, setAvailableGrids] = useState<AvailableFlagGrid[]>([]);
   const [myClaims, setMyClaims] = useState<FlagClaim[]>([]);
   const [serviceBranches, setServiceBranches] = useState<ServiceBranch[]>([]);
   const [serviceBranchCategories, setServiceBranchCategories] = useState<ServiceBranchCategory[]>([]);
@@ -74,6 +75,12 @@ export default function App() {
   const [honoreeResults, setHonoreeResults] = useState<HonoreeSearchResult[]>([]);
   const [honoreeSearchPerformed, setHonoreeSearchPerformed] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [pendingReviews, setPendingReviews] = useState<AdminReviewItem[]>([]);
+  const [printQueue, setPrintQueue] = useState<AdminPrintQueueItem[]>([]);
+  const [selectedPrintIds, setSelectedPrintIds] = useState<number[]>([]);
+  const [adminBusyId, setAdminBusyId] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -103,6 +110,33 @@ export default function App() {
     await instance.logoutRedirect();
   }
 
+  async function loadAdminData() {
+    if (!account) return;
+
+    try {
+      const [pending, queue] = await Promise.all([
+        adminApi.pending(instance, account),
+        adminApi.printQueue(instance, account)
+      ]);
+
+      setIsAdmin(true);
+      setPendingReviews(pending);
+      setPrintQueue(queue);
+      setSelectedPrintIds((current) =>
+        current.filter((id) => queue.some((item) => item.changeRequestId === id))
+      );
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        setIsAdmin(false);
+        setPendingReviews([]);
+        setPrintQueue([]);
+        return;
+      }
+
+      throw err;
+    }
+  }
+
   async function loadData() {
     if (!account) return;
 
@@ -110,17 +144,17 @@ export default function App() {
     setError("");
 
     try {
-      const [available, claims, branches, categories] = await Promise.all([
-        flagGridApi.available(instance, account),
+      const [claims, branches, categories] = await Promise.all([
         flagClaimApi.mine(instance, account),
         lookupApi.serviceBranches(instance, account),
         lookupApi.serviceBranchCategories(instance, account)
       ]);
 
-      setAvailableGrids(available);
       setMyClaims(claims);
       setServiceBranches(branches);
       setServiceBranchCategories(categories);
+
+      await loadAdminData();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to load flag data.");
     } finally {
@@ -216,31 +250,6 @@ export default function App() {
     }
   }
 
-  async function claimGrid(grid: AvailableFlagGrid) {
-    if (!account) return;
-
-    const ok = window.confirm(
-      `Claim flag grid ${grid.flagGridName}? You will be able to submit honoree details after claiming it.`
-    );
-
-    if (!ok) return;
-
-    setSaving(true);
-    setError("");
-    setNotice("");
-
-    try {
-      const claim = await flagClaimApi.claim(instance, account, grid.id);
-      await loadData();
-      setNotice(`Flag grid ${grid.flagGridName} has been claimed.`);
-      beginEdit(claim);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to claim this flag grid.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function saveDraft() {
     if (!account || !selectedClaim) return;
 
@@ -282,6 +291,101 @@ export default function App() {
     }
   }
 
+  async function approveReview(item: AdminReviewItem, requiresCardReprint: boolean) {
+    if (!account) return;
+
+    setAdminBusyId(item.changeRequestId);
+    setError("");
+    setNotice("");
+
+    try {
+      await adminApi.approve(instance, account, item.changeRequestId, requiresCardReprint);
+      await loadData();
+      setNotice(`${item.honoreeName} approved${requiresCardReprint ? " and added to the card reprint queue" : ""}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to approve item.");
+    } finally {
+      setAdminBusyId(null);
+    }
+  }
+
+  async function rejectReview(item: AdminReviewItem) {
+    if (!account) return;
+
+    const reviewNotes = window.prompt(`Why are you rejecting ${item.honoreeName}?`);
+    if (!reviewNotes) return;
+
+    setAdminBusyId(item.changeRequestId);
+    setError("");
+    setNotice("");
+
+    try {
+      await adminApi.reject(instance, account, item.changeRequestId, reviewNotes);
+      await loadData();
+      setNotice(`${item.honoreeName} rejected.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to reject item.");
+    } finally {
+      setAdminBusyId(null);
+    }
+  }
+
+  async function downloadSelectedPrintPdf() {
+    if (!account) return;
+
+    if (selectedPrintIds.length === 0) {
+      setError("Select at least one item to print.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      await adminApi.downloadMergedPrintPdf(instance, account, selectedPrintIds);
+      setNotice("Merged PDF downloaded. Send the downloaded PDF to the printer.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to download merged PDF.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function markSelectedPrinted() {
+    if (!account) return;
+
+    if (selectedPrintIds.length === 0) {
+      setError("Select at least one item to mark printed.");
+      return;
+    }
+
+    const ok = window.confirm("Mark the selected card reprints as printed?");
+    if (!ok) return;
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const result = await adminApi.markPrinted(instance, account, selectedPrintIds);
+      await loadData();
+      setNotice(`${result.count} item(s) marked printed.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to mark printed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function togglePrintSelection(changeRequestId: number) {
+    setSelectedPrintIds((current) =>
+      current.includes(changeRequestId)
+        ? current.filter((id) => id !== changeRequestId)
+        : [...current, changeRequestId]
+    );
+  }
+
   function update<K extends keyof SaveHonoreeChangeRequest>(
     key: K,
     value: SaveHonoreeChangeRequest[K]
@@ -296,7 +400,7 @@ export default function App() {
           <p className="eyebrow">Plano Flags of Honor</p>
           <h1>Flag Manager</h1>
           <p>
-            Search existing honorees, claim an available flag grid, and submit honoree information for review.
+            Search existing honorees, claim a flag record, and submit honoree information for review.
           </p>
         </div>
 
@@ -320,7 +424,7 @@ export default function App() {
         <section className="card">
           <h2>Welcome</h2>
           <p>
-            Sign in to search existing honorees, claim an available flag grid, and submit the honoree information connected with that flag.
+            Sign in to search existing honorees and submit corrections for review.
           </p>
         </section>
       ) : (
@@ -331,6 +435,143 @@ export default function App() {
               {notice ? <p className="message success">{notice}</p> : null}
             </section>
           )}
+
+          {isAdmin ? (
+            <section className="card adminCard">
+              <div className="sectionHeader">
+                <div>
+                  <p className="eyebrow">Administrator</p>
+                  <h2>Review submitted changes</h2>
+                </div>
+                <button type="button" className="secondary" onClick={loadData} disabled={loading}>
+                  {loading ? "Loading..." : "Refresh"}
+                </button>
+              </div>
+
+              {pendingReviews.length === 0 ? (
+                <p>No submitted changes are waiting for review.</p>
+              ) : (
+                <div className="tableWrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Honoree</th>
+                        <th>Flag grid</th>
+                        <th>Submitted by</th>
+                        <th>Submitted</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingReviews.map((item) => (
+                        <tr key={item.changeRequestId}>
+                          <td>
+                            <strong>{item.honoreeName}</strong>
+                            <br />
+                            <span>{[item.rank, item.serviceBranchName].filter(Boolean).join(" • ")}</span>
+                          </td>
+                          <td>{item.flagGridName || item.flagGridId}</td>
+                          <td>
+                            {item.claimantName || item.claimantEmail}
+                            <br />
+                            <span>{item.claimantEmail}</span>
+                          </td>
+                          <td>{formatDate(item.submittedUtc)}</td>
+                          <td className="rowActions stackedActions">
+                            <button
+                              type="button"
+                              disabled={adminBusyId === item.changeRequestId}
+                              onClick={() => approveReview(item, true)}
+                            >
+                              Approve + reprint
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary"
+                              disabled={adminBusyId === item.changeRequestId}
+                              onClick={() => approveReview(item, false)}
+                            >
+                              Approve only
+                            </button>
+                            <button
+                              type="button"
+                              className="danger"
+                              disabled={adminBusyId === item.changeRequestId}
+                              onClick={() => rejectReview(item)}
+                            >
+                              Reject
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="sectionHeader printHeader">
+                <div>
+                  <p className="eyebrow">Card printing</p>
+                  <h2>Reprint queue</h2>
+                </div>
+                <div className="actions">
+                  <button type="button" className="secondary" onClick={downloadSelectedPrintPdf} disabled={saving}>
+                    Download merged PDF
+                  </button>
+                  <button type="button" onClick={markSelectedPrinted} disabled={saving}>
+                    Mark printed
+                  </button>
+                </div>
+              </div>
+
+              {printQueue.length === 0 ? (
+                <p>No approved cards are waiting for reprint.</p>
+              ) : (
+                <div className="tableWrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th></th>
+                        <th>Honoree</th>
+                        <th>Flag grid</th>
+                        <th>Approved</th>
+                        <th>PDF</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {printQueue.map((item) => (
+                        <tr key={item.changeRequestId}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selectedPrintIds.includes(item.changeRequestId)}
+                              onChange={() => togglePrintSelection(item.changeRequestId)}
+                            />
+                          </td>
+                          <td>
+                            <strong>{item.honoreeName}</strong>
+                            <br />
+                            <span>{item.serviceBranchName}</span>
+                          </td>
+                          <td>{item.flagGridName}</td>
+                          <td>{formatDate(item.approvedUtc)}</td>
+                          <td>
+                            {item.pdfUrl ? (
+                              <a className="textLink" href={item.pdfUrl} target="_blank" rel="noreferrer">
+                                Open PDF
+                              </a>
+                            ) : (
+                              <span>Missing PDF</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          ) : null}
 
           <section className="card">
             <div className="sectionHeader">
@@ -362,7 +603,7 @@ export default function App() {
             {honoreeSearchPerformed ? (
               honoreeResults.length === 0 ? (
                 <p className="emptyState">
-                  No honorees found. If this is a new honoree, claim an available flag grid below and submit their information.
+                  No honorees found. Contact the Plano Flags of Honor team if this honoree needs to be added.
                 </p>
               ) : (
                 <div className="honoreeResults">
@@ -633,7 +874,7 @@ export default function App() {
             </div>
 
             {myClaims.length === 0 ? (
-              <p>You have not claimed a flag grid yet.</p>
+              <p>You have not claimed a flag record yet.</p>
             ) : (
               <div className="tableWrap">
                 <table>
@@ -678,41 +919,6 @@ export default function App() {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
-          </section>
-
-          <section className="card">
-            <div className="sectionHeader">
-              <div>
-                <p className="eyebrow">Available inventory</p>
-                <h2>Available flag grids</h2>
-              </div>
-              <button type="button" className="secondary" onClick={loadData} disabled={loading}>
-                {loading ? "Loading..." : "Refresh"}
-              </button>
-            </div>
-
-            {availableGrids.length === 0 ? (
-              <p>No flag grids are currently available to claim.</p>
-            ) : (
-              <div className="gridCards">
-                {availableGrids.map((grid) => (
-                  <article key={grid.id} className="miniCard">
-                    <div>
-                      <p className="eyebrow">Grid #{grid.id}</p>
-                      <h3>{grid.flagGridName}</h3>
-                      <p>{grid.reserved ? "Reserved" : "Available"}</p>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={grid.reserved || saving}
-                      onClick={() => claimGrid(grid)}
-                    >
-                      Claim
-                    </button>
-                  </article>
-                ))}
               </div>
             )}
           </section>

@@ -47,8 +47,16 @@ builder.Services
         {
             builder.Configuration.Bind("AzureAd", identityOptions);
         });
-        
+
 builder.Services.AddAuthorization();
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", policy =>
+    {
+        policy.RequireRole("PFOH.Admin", "Admin");
+    });
+});
 
 builder.Services.AddDbContext<PfohDbContext>(options =>
 {
@@ -69,6 +77,8 @@ builder.Services.AddCors(options =>
             .AllowAnyMethod();
     });
 });
+
+builder.Services.AddHttpClient();
 
 var app = builder.Build();
 

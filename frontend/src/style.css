@@ -424,3 +424,30 @@ td span {
   flex-wrap: wrap;
   margin-top: 0.75rem;
 }
+.adminCard {
+  border-top: 5px solid #173b73;
+}
+
+.printHeader {
+  margin-top: 2rem;
+}
+
+.stackedActions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: flex-end;
+}
+
+button.danger {
+  background: #8b1e2c;
+}
+
+.cardActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}

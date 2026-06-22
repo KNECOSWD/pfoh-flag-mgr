@@ -37,6 +37,10 @@ public class HonoreeChangeRequest
     public string? ReviewedBy { get; set; }
     public string? ReviewNotes { get; set; }
 
+    public bool RequiresCardReprint { get; set; }
+    public DateTime? CardPrintedUtc { get; set; }
+    public Guid? CardPrintBatchId { get; set; }
+
     public FlagClaim? FlagClaim { get; set; }
     public FlagGrid? FlagGrid { get; set; }
     public Honoree? Honoree { get; set; }
