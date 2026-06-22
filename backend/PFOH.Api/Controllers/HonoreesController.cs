@@ -150,6 +150,38 @@ public class HonoreesController(
         return File(pdf, "application/pdf");
     }
 
+    [Authorize(Policy = "AdminOnly")]
+    [HttpPost("{honoreeId:int}/pdf/regenerate")]
+    public async Task<ActionResult<object>> RegeneratePdf(int honoreeId, CancellationToken ct)
+    {
+        var honoree = await db.Honorees
+            .AsNoTracking()
+            .Include(h => h.FlagGrid)
+            .Include(h => h.ServiceBranch)
+            .Include(h => h.Sponsor)
+            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive && h.DeletedDate == null, ct);
+
+        if (honoree is null)
+        {
+            return NotFound("Honoree was not found.");
+        }
+
+        var searchResult = await db.HonoreeSearchResults
+            .AsNoTracking()
+            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive, ct);
+
+        var photoBytes = await SafeDownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
+        var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes);
+        var fileName = await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
+
+        return Ok(new
+        {
+            honoreeId = honoree.Id,
+            fileName,
+            generatedUtc = DateTime.UtcNow
+        });
+    }
+
     private string? BuildPublicImageUrl(string? photoFileName, string? fallbackImageUrl)
     {
         if (!string.IsNullOrWhiteSpace(fallbackImageUrl))

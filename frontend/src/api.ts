@@ -129,6 +129,12 @@ export type AdminReviewItem = {
 };
 
 
+export type RegeneratePdfResult = {
+  honoreeId: number;
+  fileName: string;
+  generatedUtc: string;
+};
+
 export type AdminPrintQueueItem = {
   changeRequestId: number;
   claimId: number;
@@ -385,6 +391,20 @@ export const adminApi = {
       {
         method: "POST",
         body: JSON.stringify({ changeRequestIds })
+      }
+    ),
+
+  regenerateHonoreePdf: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    honoreeId: number
+  ) =>
+    request<RegeneratePdfResult>(
+      instance,
+      account,
+      `/api/honorees/${honoreeId}/pdf/regenerate`,
+      {
+        method: "POST"
       }
     ),
 

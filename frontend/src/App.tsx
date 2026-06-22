@@ -104,6 +104,7 @@ export default function App() {
   const [printQueue, setPrintQueue] = useState<AdminPrintQueueItem[]>([]);
   const [selectedPrintIds, setSelectedPrintIds] = useState<number[]>([]);
   const [adminBusyId, setAdminBusyId] = useState<number | null>(null);
+  const [regeneratingPdfHonoreeId, setRegeneratingPdfHonoreeId] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -370,6 +371,37 @@ export default function App() {
       setError(err instanceof Error ? err.message : "Unable to start admin edit.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function regenerateHonoreePdf(honoree: HonoreeSearchResult) {
+    if (!account) {
+      await signIn();
+      return;
+    }
+
+    if (!isAdmin) {
+      setError("Only PFOH administrators can regenerate honoree PDFs.");
+      return;
+    }
+
+    const ok = window.confirm(
+      `Generate a new PDF for ${honoree.fullName} and overwrite the existing stored PDF?`
+    );
+
+    if (!ok) return;
+
+    setRegeneratingPdfHonoreeId(honoree.id);
+    setError("");
+    setNotice("");
+
+    try {
+      const result = await adminApi.regenerateHonoreePdf(instance, account, honoree.id);
+      setNotice(`PDF regenerated for ${honoree.fullName}: ${result.fileName}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to regenerate PDF.");
+    } finally {
+      setRegeneratingPdfHonoreeId(null);
     }
   }
 
@@ -704,14 +736,25 @@ export default function App() {
                             </button>
 
                             {isAdmin ? (
-                              <button
-                                type="button"
-                                className="secondary compactButton"
-                                onClick={() => beginAdminDirectEdit(honoree)}
-                                disabled={saving}
-                              >
-                                Edit + reprint
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  className="secondary compactButton"
+                                  onClick={() => beginAdminDirectEdit(honoree)}
+                                  disabled={saving || regeneratingPdfHonoreeId === honoree.id}
+                                >
+                                  Edit + reprint
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="secondary compactButton"
+                                  onClick={() => regenerateHonoreePdf(honoree)}
+                                  disabled={saving || regeneratingPdfHonoreeId === honoree.id}
+                                >
+                                  {regeneratingPdfHonoreeId === honoree.id ? "Generating..." : "Regenerate PDF"}
+                                </button>
+                              </>
                             ) : null}
                           </div>
                         </div>
