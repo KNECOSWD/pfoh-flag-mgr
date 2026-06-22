@@ -12,7 +12,7 @@ namespace PFOH.Api.Controllers;
 [ApiController]
 [Route("api/admin/users")]
 [Authorize(Policy = "AdminOnly")]
-public class AdminUsersController(IConfiguration configuration) : ControllerBase
+public class AdminUsersController(IConfiguration configuration, ILogger<AdminUsersController> logger) : ControllerBase
 {
     private static readonly HttpClient Http = new();
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -22,35 +22,47 @@ public class AdminUsersController(IConfiguration configuration) : ControllerBase
         [FromQuery] string? q,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2)
+        try
         {
-            return Ok(Array.Empty<AdminUserRoleDto>());
+            if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2)
+            {
+                return Ok(Array.Empty<AdminUserRoleDto>());
+            }
+
+            var context = await GetAdminRoleContextAsync(ct);
+            var adminAssignments = await GetAdminAssignmentsAsync(context, ct);
+            var adminPrincipalIds = adminAssignments
+                .Where(a => a.AppRoleId == context.AdminAppRoleId)
+                .Select(a => a.PrincipalId)
+                .ToHashSet();
+
+            var term = EscapeODataString(q.Trim());
+            var filter = $"startswith(displayName,'{term}') or startswith(mail,'{term}') or startswith(userPrincipalName,'{term}')";
+            var path = $"users?$select=id,displayName,mail,userPrincipalName&$top=15&$filter={Uri.EscapeDataString(filter)}";
+
+            var users = await GraphSendAsync<GraphCollection<GraphUser>>(HttpMethod.Get, path, null, ct);
+
+            var results = users.Value
+                .Select(user => new AdminUserRoleDto(
+                    user.Id,
+                    user.DisplayName,
+                    user.Mail,
+                    user.UserPrincipalName,
+                    Guid.TryParse(user.Id, out var userId) && adminPrincipalIds.Contains(userId)))
+                .OrderBy(u => u.DisplayName ?? u.Mail ?? u.UserPrincipalName)
+                .ToList();
+
+            return Ok(results);
         }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Admin user search failed for query {Query}.", q);
 
-        var context = await GetAdminRoleContextAsync(ct);
-        var adminAssignments = await GetAdminAssignmentsAsync(context, ct);
-        var adminPrincipalIds = adminAssignments
-            .Where(a => a.AppRoleId == context.AdminAppRoleId)
-            .Select(a => a.PrincipalId)
-            .ToHashSet();
-
-        var term = EscapeODataString(q.Trim());
-        var filter = $"startswith(displayName,'{term}') or startswith(mail,'{term}') or startswith(userPrincipalName,'{term}')";
-        var path = $"users?$select=id,displayName,mail,userPrincipalName&$top=15&$filter={Uri.EscapeDataString(filter)}";
-
-        var users = await GraphSendAsync<GraphCollection<GraphUser>>(HttpMethod.Get, path, null, ct);
-
-        var results = users.Value
-            .Select(user => new AdminUserRoleDto(
-                user.Id,
-                user.DisplayName,
-                user.Mail,
-                user.UserPrincipalName,
-                Guid.TryParse(user.Id, out var userId) && adminPrincipalIds.Contains(userId)))
-            .OrderBy(u => u.DisplayName ?? u.Mail ?? u.UserPrincipalName)
-            .ToList();
-
-        return Ok(results);
+            return Problem(
+                title: "Admin user search failed.",
+                detail: ex.Message,
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
     }
 
     [HttpPost("{userObjectId:guid}/admin-role")]
@@ -58,25 +70,37 @@ public class AdminUsersController(IConfiguration configuration) : ControllerBase
         Guid userObjectId,
         CancellationToken ct)
     {
-        var context = await GetAdminRoleContextAsync(ct);
-        var user = await GetUserAsync(userObjectId, ct);
-        var existing = await FindAdminAssignmentAsync(context, userObjectId, ct);
-
-        if (existing is null)
+        try
         {
-            await GraphSendAsync<JsonElement>(
-                HttpMethod.Post,
-                $"servicePrincipals/{context.ResourceServicePrincipalObjectId}/appRoleAssignedTo",
-                new
-                {
-                    principalId = userObjectId,
-                    resourceId = context.ResourceServicePrincipalId,
-                    appRoleId = context.AdminAppRoleId
-                },
-                ct);
-        }
+            var context = await GetAdminRoleContextAsync(ct);
+            var user = await GetUserAsync(userObjectId, ct);
+            var existing = await FindAdminAssignmentAsync(context, userObjectId, ct);
 
-        return Ok(ToDto(user, true));
+            if (existing is null)
+            {
+                await GraphSendAsync<JsonElement>(
+                    HttpMethod.Post,
+                    $"servicePrincipals/{context.ResourceServicePrincipalObjectId}/appRoleAssignedTo",
+                    new
+                    {
+                        principalId = userObjectId,
+                        resourceId = context.ResourceServicePrincipalId,
+                        appRoleId = context.AdminAppRoleId
+                    },
+                    ct);
+            }
+
+            return Ok(ToDto(user, true));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Grant admin role failed for user {UserObjectId}.", userObjectId);
+
+            return Problem(
+                title: "Grant admin role failed.",
+                detail: ex.Message,
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
     }
 
     [HttpDelete("{userObjectId:guid}/admin-role")]
@@ -84,26 +108,38 @@ public class AdminUsersController(IConfiguration configuration) : ControllerBase
         Guid userObjectId,
         CancellationToken ct)
     {
-        var signedInUserObjectId = User.GetExternalObjectId();
-
-        if (Guid.TryParse(signedInUserObjectId, out var signedInUserGuid) && signedInUserGuid == userObjectId)
+        try
         {
-            return BadRequest("You cannot remove your own administrator role from this screen.");
+            var signedInUserObjectId = User.GetExternalObjectId();
+
+            if (Guid.TryParse(signedInUserObjectId, out var signedInUserGuid) && signedInUserGuid == userObjectId)
+            {
+                return BadRequest("You cannot remove your own administrator role from this screen.");
+            }
+
+            var context = await GetAdminRoleContextAsync(ct);
+            var user = await GetUserAsync(userObjectId, ct);
+            var existing = await FindAdminAssignmentAsync(context, userObjectId, ct);
+
+            if (existing is not null)
+            {
+                await GraphSendNoContentAsync(
+                    HttpMethod.Delete,
+                    $"servicePrincipals/{context.ResourceServicePrincipalObjectId}/appRoleAssignedTo/{existing.Id}",
+                    ct);
+            }
+
+            return Ok(ToDto(user, false));
         }
-
-        var context = await GetAdminRoleContextAsync(ct);
-        var user = await GetUserAsync(userObjectId, ct);
-        var existing = await FindAdminAssignmentAsync(context, userObjectId, ct);
-
-        if (existing is not null)
+        catch (Exception ex)
         {
-            await GraphSendNoContentAsync(
-                HttpMethod.Delete,
-                $"servicePrincipals/{context.ResourceServicePrincipalObjectId}/appRoleAssignedTo/{existing.Id}",
-                ct);
-        }
+            logger.LogError(ex, "Remove admin role failed for user {UserObjectId}.", userObjectId);
 
-        return Ok(ToDto(user, false));
+            return Problem(
+                title: "Remove admin role failed.",
+                detail: ex.Message,
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
     }
 
     private AdminGraphSettings GetSettings()
