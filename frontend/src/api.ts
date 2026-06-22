@@ -174,6 +174,11 @@ export const flagClaimApi = {
       method: "POST"
     }),
 
+  claimHonoree: (instance: IPublicClientApplication, account: AccountInfo, honoreeId: number) =>
+    request<FlagClaim>(instance, account, `/api/flag-claims/honoree/${honoreeId}/claim`, {
+      method: "POST"
+    }),
+
   saveDraft: (
     instance: IPublicClientApplication,
     account: AccountInfo,

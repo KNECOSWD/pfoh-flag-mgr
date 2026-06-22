@@ -49,18 +49,25 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         }
 
         var activeHonoreeExists = await db.Honorees
-            .AnyAsync(h => h.IsActive && h.FlagGridId == flagGridId, ct);
+            .AnyAsync(h => h.IsActive && h.FlagGridId == flagGridId && h.DeletedDate == null, ct);
 
         if (activeHonoreeExists)
         {
-            return Conflict("This flag grid is already assigned to an active honoree.");
+            return Conflict("This flag grid is already assigned to an active honoree. Search for the honoree and claim the existing honoree record instead.");
         }
 
-        var activeClaimExists = await db.FlagClaims
-            .AnyAsync(c => c.FlagGridId == flagGridId && ActiveClaimStatuses.Contains(c.ClaimStatus), ct);
+        var activeClaim = await db.FlagClaims
+            .Include(c => c.FlagGrid)
+            .Include(c => c.HonoreeChangeRequests)
+            .FirstOrDefaultAsync(c => c.FlagGridId == flagGridId && ActiveClaimStatuses.Contains(c.ClaimStatus), ct);
 
-        if (activeClaimExists)
+        if (activeClaim is not null)
         {
+            if (activeClaim.ExternalUserObjectId == userObjectId)
+            {
+                return Ok(ToDto(activeClaim));
+            }
+
             return Conflict("This flag grid has already been claimed.");
         }
 
@@ -72,14 +79,76 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
             ExternalUserEmail = email,
             ExternalUserName = name,
             ClaimStatus = "Claimed",
-            CreatedUtc = DateTime.UtcNow
+            CreatedUtc = DateTime.UtcNow,
+            FlagGrid = flagGrid
         };
 
         db.FlagClaims.Add(claim);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
 
-        claim.FlagGrid = flagGrid;
+        return Ok(ToDto(claim));
+    }
+
+    [HttpPost("honoree/{honoreeId:int}/claim")]
+    public async Task<ActionResult<FlagClaimDto>> ClaimExistingHonoree(int honoreeId, CancellationToken ct)
+    {
+        var userObjectId = User.GetExternalObjectId();
+        var email = User.GetEmail();
+        var name = User.GetDisplayName();
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+        var honoree = await db.Honorees
+            .Include(h => h.FlagGrid)
+            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive && h.DeletedDate == null, ct);
+
+        if (honoree is null)
+        {
+            return NotFound("Honoree was not found.");
+        }
+
+        if (honoree.FlagGridId is null)
+        {
+            return BadRequest("This honoree is not assigned to a flag grid.");
+        }
+
+        var activeClaim = await db.FlagClaims
+            .Include(c => c.FlagGrid)
+            .Include(c => c.HonoreeChangeRequests)
+            .FirstOrDefaultAsync(
+                c => c.FlagGridId == honoree.FlagGridId.Value &&
+                     ActiveClaimStatuses.Contains(c.ClaimStatus),
+                ct);
+
+        if (activeClaim is not null)
+        {
+            if (activeClaim.ExternalUserObjectId == userObjectId)
+            {
+                return Ok(ToDto(activeClaim));
+            }
+
+            return Conflict("This honoree's flag is already claimed.");
+        }
+
+        var claim = new FlagClaim
+        {
+            FlagGridId = honoree.FlagGridId.Value,
+            HonoreeId = honoree.Id,
+            ExternalUserObjectId = userObjectId,
+            ExternalUserEmail = email,
+            ExternalUserName = name,
+            ClaimStatus = "Claimed",
+            CreatedUtc = DateTime.UtcNow,
+            FlagGrid = honoree.FlagGrid
+        };
+
+        claim.HonoreeChangeRequests.Add(BuildDraftFromHonoree(claim, honoree, email));
+
+        db.FlagClaims.Add(claim);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+
         return Ok(ToDto(claim));
     }
 
@@ -167,6 +236,38 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         await db.SaveChangesAsync(ct);
 
         return Ok(ToDto(claim));
+    }
+
+    private static HonoreeChangeRequest BuildDraftFromHonoree(
+        FlagClaim claim,
+        Honoree honoree,
+        string submitterEmail)
+    {
+        return new HonoreeChangeRequest
+        {
+            FlagGridId = claim.FlagGridId,
+            HonoreeId = honoree.Id,
+
+            FirstName = honoree.FirstName,
+            MiddleName = honoree.MiddleName,
+            LastName = honoree.LastName,
+            Suffix = honoree.Suffix,
+            Nickname = honoree.Nickname,
+            Rank = honoree.Rank,
+            ServiceBranchId = honoree.ServiceBranchId,
+            ServiceBranchCategoryId = honoree.ServiceBranchCategoryId,
+            StartYear = honoree.StartYear,
+            EndYear = honoree.EndYear,
+            DatesUserEntry = honoree.DatesUserEntry,
+            ConflictsServed = honoree.ConflictsServed,
+            Awards = honoree.Awards,
+            Description = honoree.Description,
+            KIA = honoree.KIA,
+            SubmitterPhoneNumber = null,
+            SubmitterEmailAddress = submitterEmail,
+            RequestStatus = "Draft",
+            CreatedUtc = DateTime.UtcNow
+        };
     }
 
     private static void ApplyRequest(HonoreeChangeRequest draft, SaveHonoreeChangeRequest request)

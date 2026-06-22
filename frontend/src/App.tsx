@@ -191,6 +191,31 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  async function claimSearchResult(honoree: HonoreeSearchResult) {
+    if (!account) return;
+
+    const ok = window.confirm(
+      `Claim ${honoree.fullName}'s flag record? You will be able to submit corrections or updates for review.`
+    );
+
+    if (!ok) return;
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const claim = await flagClaimApi.claimHonoree(instance, account, honoree.id);
+      await loadData();
+      setNotice(`${honoree.fullName}'s flag record has been claimed. Review the prefilled details below and submit any changes.`);
+      beginEdit(claim);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to claim this honoree's flag record.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function claimGrid(grid: AvailableFlagGrid) {
     if (!account) return;
 
@@ -316,7 +341,7 @@ export default function App() {
             </div>
 
             <p>
-              Search first to see whether an honoree is already in the Plano Flags of Honor database.
+              Search first to see whether an honoree is already in the Plano Flags of Honor database. If you find the honoree, claim that existing record instead of creating a duplicate.
             </p>
 
             <form className="searchBar" onSubmit={searchHonorees}>
@@ -376,11 +401,21 @@ export default function App() {
                           ) : null}
                         </dl>
 
-                        {honoree.pdfUrl ? (
-                          <a className="textLink" href={honoree.pdfUrl} target="_blank" rel="noreferrer">
-                            Open honoree PDF
-                          </a>
-                        ) : null}
+                        <div className="cardActions">
+                          {honoree.pdfUrl ? (
+                            <a className="textLink" href={honoree.pdfUrl} target="_blank" rel="noreferrer">
+                              Open honoree PDF
+                            </a>
+                          ) : null}
+
+                          <button
+                            type="button"
+                            onClick={() => claimSearchResult(honoree)}
+                            disabled={saving}
+                          >
+                            Claim this flag
+                          </button>
+                        </div>
                       </div>
                     </article>
                   ))}
