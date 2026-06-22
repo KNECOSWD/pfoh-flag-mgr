@@ -13,8 +13,12 @@ namespace PFOH.Api.Controllers;
 [Authorize]
 public class FlagClaimsController(PfohDbContext db) : ControllerBase
 {
-    // Only these statuses block a new change cycle. Approved/Rejected/Cancelled are closed history.
-    private static readonly string[] OpenClaimStatuses = ["Claimed", "Submitted"];
+    // A flag claim represents semi-ownership by a user.
+    // These statuses keep the flag associated with the claimant.
+    private static readonly string[] OwnershipClaimStatuses = ["Claimed", "Submitted", "Approved", "Rejected"];
+
+    // These statuses mean there is a submitted or in-progress change cycle.
+    private static readonly string[] OpenChangeStatuses = ["Submitted"];
 
     [HttpGet("my")]
     public async Task<ActionResult<IReadOnlyList<FlagClaimDto>>> GetMyClaims(CancellationToken ct)
@@ -57,21 +61,19 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
             return Conflict("This flag grid is already assigned to an active honoree. Search for the honoree and claim the existing honoree record instead.");
         }
 
-        // Only an open claim should block another edit cycle.
-        // Previously approved/rejected claims are history and should allow a new change request.
-        var openClaim = await db.FlagClaims
+        var existingOwnershipClaim = await db.FlagClaims
             .Include(c => c.FlagGrid)
             .Include(c => c.HonoreeChangeRequests)
-            .FirstOrDefaultAsync(c => c.FlagGridId == flagGridId && OpenClaimStatuses.Contains(c.ClaimStatus), ct);
+            .FirstOrDefaultAsync(c => c.FlagGridId == flagGridId && OwnershipClaimStatuses.Contains(c.ClaimStatus), ct);
 
-        if (openClaim is not null)
+        if (existingOwnershipClaim is not null)
         {
-            if (openClaim.ExternalUserObjectId == userObjectId)
+            if (existingOwnershipClaim.ExternalUserObjectId == userObjectId)
             {
-                return Ok(ToDto(openClaim));
+                return Ok(ToDto(existingOwnershipClaim));
             }
 
-            return Conflict("This flag grid has already been claimed and is waiting for review.");
+            return Conflict("This flag grid is already managed by another claimant.");
         }
 
         var claim = new FlagClaim
@@ -116,22 +118,22 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
             return BadRequest("This honoree is not assigned to a flag grid.");
         }
 
-        var openClaim = await db.FlagClaims
+        var existingOwnershipClaim = await db.FlagClaims
             .Include(c => c.FlagGrid)
             .Include(c => c.HonoreeChangeRequests)
             .FirstOrDefaultAsync(
                 c => c.FlagGridId == honoree.FlagGridId.Value &&
-                     OpenClaimStatuses.Contains(c.ClaimStatus),
+                     OwnershipClaimStatuses.Contains(c.ClaimStatus),
                 ct);
 
-        if (openClaim is not null)
+        if (existingOwnershipClaim is not null)
         {
-            if (openClaim.ExternalUserObjectId == userObjectId)
+            if (existingOwnershipClaim.ExternalUserObjectId == userObjectId)
             {
-                return Ok(ToDto(openClaim));
+                return Ok(ToDto(existingOwnershipClaim));
             }
 
-            return Conflict("This honoree's flag is already claimed and waiting for review.");
+            return Conflict("This honoree's flag is already managed by another claimant.");
         }
 
         var claim = new FlagClaim
@@ -177,9 +179,9 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
             return NotFound("Claim was not found.");
         }
 
-        if (claim.ClaimStatus is "Approved" or "Rejected" or "Cancelled")
+        if (claim.ClaimStatus is "Cancelled")
         {
-            return Conflict("This claim is closed. Search for the honoree and claim the record again to submit a new change.");
+            return Conflict("This claim has been cancelled and cannot be edited.");
         }
 
         var draft = claim.HonoreeChangeRequests
@@ -201,6 +203,9 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         }
 
         ApplyRequest(draft, request);
+
+        // Returning to Draft/Claimed lets an owner submit another change after a prior approval/rejection.
+        claim.ClaimStatus = "Claimed";
         await db.SaveChangesAsync(ct);
 
         return Ok(ToDto(draft));
@@ -227,7 +232,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
 
         if (latestDraft is null)
         {
-            return BadRequest("Create a honoree draft before submitting this claim.");
+            return BadRequest("Make at least one change and save a draft before submitting this claim.");
         }
 
         latestDraft.RequestStatus = "Submitted";

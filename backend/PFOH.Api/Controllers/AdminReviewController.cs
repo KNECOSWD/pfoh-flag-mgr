@@ -113,7 +113,7 @@ public class AdminReviewController(PfohDbContext db) : ControllerBase
         if (change.FlagClaim is not null)
         {
             change.FlagClaim.HonoreeId = honoree.Id;
-            change.FlagClaim.ClaimStatus = "Approved";
+            change.FlagClaim.ClaimStatus = "Claimed";
             change.FlagClaim.ApprovedUtc = DateTime.UtcNow;
             change.FlagClaim.ApprovedBy = adminName;
             change.FlagClaim.AdminNotes = request.ReviewNotes;
@@ -166,7 +166,7 @@ public class AdminReviewController(PfohDbContext db) : ControllerBase
 
         if (change.FlagClaim is not null)
         {
-            change.FlagClaim.ClaimStatus = "Rejected";
+            change.FlagClaim.ClaimStatus = "Claimed";
             change.FlagClaim.RejectedUtc = DateTime.UtcNow;
             change.FlagClaim.RejectedBy = adminName;
             change.FlagClaim.AdminNotes = request.ReviewNotes;

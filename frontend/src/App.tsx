@@ -60,6 +60,21 @@ function statusClass(status: string) {
   return `status status-${status.toLowerCase()}`;
 }
 
+function latestRequestStatus(claim: FlagClaim) {
+  return claim.latestChangeRequest?.requestStatus ?? claim.claimStatus;
+}
+
+function ownershipStatusLabel(claim: FlagClaim) {
+  const latest = claim.latestChangeRequest?.requestStatus;
+
+  if (latest === "Submitted") return "Awaiting admin review";
+  if (latest === "Approved") return "Approved";
+  if (latest === "Rejected") return "Needs revision";
+  if (latest === "Draft") return "Draft saved";
+
+  return "Managed by you";
+}
+
 export default function App() {
   const isAuthenticated = useIsAuthenticated();
   const { instance, accounts } = useMsal();
@@ -90,16 +105,6 @@ export default function App() {
   const displayName = useMemo(
     () => account?.name || account?.username || "Supporter",
     [account]
-  );
-
-  const submittedClaimIds = useMemo(
-    () =>
-      new Set(
-        myClaims
-          .filter((claim) => claim.claimStatus === "Submitted" || claim.claimStatus === "Approved")
-          .map((claim) => claim.id)
-      ),
-    [myClaims]
   );
 
   const allPrintQueueIds = useMemo(
@@ -771,7 +776,7 @@ export default function App() {
               <div className="sectionHeader">
                 <div>
                   <p className="eyebrow">Claim #{selectedClaim.id}</p>
-                  <h2>Honoree information for {selectedClaim.flagGridName || `grid ${selectedClaim.flagGridId}`}</h2>
+                  <h2>Manage flag record for {selectedClaim.flagGridName || `grid ${selectedClaim.flagGridId}`}</h2>
                 </div>
                 <button
                   type="button"
@@ -784,6 +789,10 @@ export default function App() {
                   Close
                 </button>
               </div>
+
+              <p className="helperText">
+                You can submit updates to this flag record whenever needed. Changes go to the Plano Flags of Honor admin team for approval before publishing and reprinting.
+              </p>
 
               <form className="gridForm" onSubmit={submitClaim}>
                 <label>
@@ -956,18 +965,21 @@ export default function App() {
                     {saving ? "Saving..." : "Save draft"}
                   </button>
                   <button type="submit" disabled={saving}>
-                    {saving ? "Submitting..." : "Submit for review"}
+                    {saving ? "Submitting..." : "Submit changes for review"}
                   </button>
                 </div>
               </form>
             </section>
           ) : null}
 
-          <section className="card">
+          <section className="card ownershipCard">
             <div className="sectionHeader">
               <div>
                 <p className="eyebrow">Your account</p>
                 <h2>My claimed flags</h2>
+                <p className="helperText">
+                  These are the flag records you manage. You can submit updates at any time; admins review and approve changes before they are published or reprinted.
+                </p>
               </div>
               <button type="button" className="secondary" onClick={loadData} disabled={loading}>
                 {loading ? "Loading..." : "Refresh"}
@@ -975,51 +987,37 @@ export default function App() {
             </div>
 
             {myClaims.length === 0 ? (
-              <p>You have not claimed a flag record yet.</p>
+              <p className="emptyState">You have not claimed a flag record yet.</p>
             ) : (
-              <div className="tableWrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Flag grid</th>
-                      <th>Status</th>
-                      <th>Claimed</th>
-                      <th>Submitted</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {myClaims.map((claim) => (
-                      <tr key={claim.id}>
-                        <td>
-                          <strong>{claim.flagGridName || `Grid ${claim.flagGridId}`}</strong>
-                          <br />
-                          <span>Claim #{claim.id}</span>
-                        </td>
-                        <td>
-                          <span className={statusClass(claim.claimStatus)}>{claim.claimStatus}</span>
-                          {claim.latestChangeRequest ? (
-                            <>
-                              <br />
-                              <span>Draft: {claim.latestChangeRequest.requestStatus}</span>
-                            </>
-                          ) : null}
-                        </td>
-                        <td>{formatDate(claim.createdUtc)}</td>
-                        <td>{formatDate(claim.submittedUtc)}</td>
-                        <td className="rowActions">
-                          <button
-                            type="button"
-                            onClick={() => beginEdit(claim)}
-                            disabled={submittedClaimIds.has(claim.id)}
-                          >
-                            {submittedClaimIds.has(claim.id) ? "Submitted" : "Edit / submit"}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="ownedFlagGrid">
+                {myClaims.map((claim) => {
+                  const status = latestRequestStatus(claim);
+
+                  return (
+                    <article key={claim.id} className="ownedFlagCard">
+                      <div>
+                        <p className="eyebrow">Flag grid</p>
+                        <h3>{claim.flagGridName || `Grid ${claim.flagGridId}`}</h3>
+                        <p>
+                          Claim #{claim.id}
+                          {claim.honoreeId ? ` • Honoree record #${claim.honoreeId}` : ""}
+                        </p>
+                      </div>
+
+                      <div className="ownedFlagMeta">
+                        <span className={statusClass(status)}>{ownershipStatusLabel(claim)}</span>
+                        <span>Claimed {formatDate(claim.createdUtc)}</span>
+                        {claim.submittedUtc ? <span>Last submitted {formatDate(claim.submittedUtc)}</span> : null}
+                      </div>
+
+                      <div className="ownedFlagActions">
+                        <button type="button" onClick={() => beginEdit(claim)}>
+                          Manage flag
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             )}
           </section>
