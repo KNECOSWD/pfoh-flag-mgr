@@ -549,7 +549,7 @@ export default function App() {
             <form className="searchBar" onSubmit={searchHonorees}>
               <input
                 type="search"
-                placeholder="Search by honoree name, nickname, rank, branch, sponsor, or flag grid"
+                placeholder="Search by honoree name, nickname, rank, branch, submitter, or flag grid"
                 value={honoreeSearchText}
                 onChange={(e) => setHonoreeSearchText(e.target.value)}
               />
@@ -592,7 +592,7 @@ export default function App() {
                             <dd>{honoree.flagGrid || "—"}</dd>
                           </div>
                           <div>
-                            <dt>Sponsor</dt>
+                            <dt>Submitter</dt>
                             <dd>{honoree.sponsorName || "—"}</dd>
                           </div>
                           {honoree.nickname ? (
@@ -608,26 +608,28 @@ export default function App() {
                             <a className="textLink" href={honoree.pdfUrl} target="_blank" rel="noreferrer">
                               Open honoree PDF
                             </a>
-                          ) : null}
+                          ) : <span />}
 
-                          <button
-                            type="button"
-                            onClick={() => claimSearchResult(honoree)}
-                            disabled={saving}
-                          >
-                            {isAuthenticated ? "Claim this flag" : "Sign in to claim"}
-                          </button>
-
-                          {isAdmin ? (
+                          <div className="honoreeActionButtons">
                             <button
                               type="button"
-                              className="secondary"
-                              onClick={() => beginAdminDirectEdit(honoree)}
+                              onClick={() => claimSearchResult(honoree)}
                               disabled={saving}
                             >
-                              Admin edit / reprint
+                              {isAuthenticated ? "Claim this flag" : "Sign in to claim"}
                             </button>
-                          ) : null}
+
+                            {isAdmin ? (
+                              <button
+                                type="button"
+                                className="secondary compactButton"
+                                onClick={() => beginAdminDirectEdit(honoree)}
+                                disabled={saving}
+                              >
+                                Edit + reprint
+                              </button>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     </article>
