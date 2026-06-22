@@ -74,7 +74,7 @@ main {
   overflow: hidden;
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 1.25rem;
   min-height: 210px;
 
@@ -158,32 +158,44 @@ main {
 }
 
 .authBox {
-  min-width: 190px;
+  min-width: auto;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 0.65rem;
-  justify-content: center;
-  align-items: flex-end;
-  padding: 0.8rem;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 18px;
-  background: rgba(6, 18, 42, 0.42);
-  backdrop-filter: blur(8px);
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 0.35rem;
+  padding: 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(4, 15, 35, 0.34);
+  backdrop-filter: blur(6px);
 }
 
 .authBox strong {
+  max-width: 220px;
+  overflow: hidden;
   text-align: right;
   color: #ffffff;
+  font-size: 0.92rem;
+  line-height: 1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .authBox button {
+  min-height: 2.15rem;
+  border-radius: 999px;
   background: #ffffff;
   color: #173b73;
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.22);
+  padding: 0.45rem 0.85rem;
+  box-shadow: none;
+  font-size: 0.9rem;
 }
 
 .authBox button:hover:not(:disabled) {
   background: #f7f9ff;
+  box-shadow: none;
 }
 
 /* Layout cards and messages */
@@ -913,7 +925,15 @@ td span {
   }
 
   .authBox {
-    align-items: flex-start;
+    align-self: flex-start;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
+  }
+
+  .authBox strong {
+    max-width: 180px;
+    text-align: left;
   }
 
   .gridForm {
