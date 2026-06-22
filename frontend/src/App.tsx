@@ -494,6 +494,98 @@ export default function App() {
             </section>
           )}
 
+          <section className="card">
+            <div className="sectionHeader">
+              <div>
+                <p className="eyebrow">Find an existing honoree</p>
+                <h2>Honoree search</h2>
+              </div>
+            </div>
+
+            <p>
+              Search first to see whether an honoree is already in the Plano Flags of Honor database. If you find the honoree, claim that existing record instead of creating a duplicate.
+            </p>
+
+            <form className="searchBar" onSubmit={searchHonorees}>
+              <input
+                type="search"
+                placeholder="Search by honoree name, nickname, rank, branch, sponsor, or flag grid"
+                value={honoreeSearchText}
+                onChange={(e) => setHonoreeSearchText(e.target.value)}
+              />
+              <button type="submit" disabled={searchLoading}>
+                {searchLoading ? "Searching..." : "Search"}
+              </button>
+              <button type="button" className="secondary" onClick={clearHonoreeSearch}>
+                Clear
+              </button>
+            </form>
+
+            {honoreeSearchPerformed ? (
+              honoreeResults.length === 0 ? (
+                <p className="emptyState">
+                  No honorees found. Contact the Plano Flags of Honor team if this honoree needs to be added.
+                </p>
+              ) : (
+                <div className="honoreeResults">
+                  {honoreeResults.map((honoree) => (
+                    <article key={honoree.id} className="honoreeCard">
+                      {honoree.imageUrl ? (
+                        <img src={honoree.imageUrl} alt={honoree.fullName} />
+                      ) : (
+                        <div className="honoreePlaceholder">No photo</div>
+                      )}
+
+                      <div>
+                        <div className="honoreeTitleRow">
+                          <h3>{honoree.fullName}</h3>
+                          {honoree.kia ? <span className="status status-submitted">KIA</span> : null}
+                        </div>
+
+                        <p>
+                          {[honoree.rank, honoree.serviceBranchName].filter(Boolean).join(" • ") || "Service details unavailable"}
+                        </p>
+
+                        <dl className="detailGrid">
+                          <div>
+                            <dt>Flag grid</dt>
+                            <dd>{honoree.flagGrid || "—"}</dd>
+                          </div>
+                          <div>
+                            <dt>Sponsor</dt>
+                            <dd>{honoree.sponsorName || "—"}</dd>
+                          </div>
+                          {honoree.nickname ? (
+                            <div>
+                              <dt>Nickname</dt>
+                              <dd>{honoree.nickname}</dd>
+                            </div>
+                          ) : null}
+                        </dl>
+
+                        <div className="cardActions">
+                          {honoree.pdfUrl ? (
+                            <a className="textLink" href={honoree.pdfUrl} target="_blank" rel="noreferrer">
+                              Open honoree PDF
+                            </a>
+                          ) : null}
+
+                          <button
+                            type="button"
+                            onClick={() => claimSearchResult(honoree)}
+                            disabled={saving}
+                          >
+                            Claim this flag
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )
+            ) : null}
+          </section>
+
           {isAdmin ? (
             <section className="card adminCard">
               <div className="sectionHeader">
@@ -650,98 +742,6 @@ export default function App() {
               )}
             </section>
           ) : null}
-
-          <section className="card">
-            <div className="sectionHeader">
-              <div>
-                <p className="eyebrow">Find an existing honoree</p>
-                <h2>Honoree search</h2>
-              </div>
-            </div>
-
-            <p>
-              Search first to see whether an honoree is already in the Plano Flags of Honor database. If you find the honoree, claim that existing record instead of creating a duplicate.
-            </p>
-
-            <form className="searchBar" onSubmit={searchHonorees}>
-              <input
-                type="search"
-                placeholder="Search by honoree name, nickname, rank, branch, sponsor, or flag grid"
-                value={honoreeSearchText}
-                onChange={(e) => setHonoreeSearchText(e.target.value)}
-              />
-              <button type="submit" disabled={searchLoading}>
-                {searchLoading ? "Searching..." : "Search"}
-              </button>
-              <button type="button" className="secondary" onClick={clearHonoreeSearch}>
-                Clear
-              </button>
-            </form>
-
-            {honoreeSearchPerformed ? (
-              honoreeResults.length === 0 ? (
-                <p className="emptyState">
-                  No honorees found. Contact the Plano Flags of Honor team if this honoree needs to be added.
-                </p>
-              ) : (
-                <div className="honoreeResults">
-                  {honoreeResults.map((honoree) => (
-                    <article key={honoree.id} className="honoreeCard">
-                      {honoree.imageUrl ? (
-                        <img src={honoree.imageUrl} alt={honoree.fullName} />
-                      ) : (
-                        <div className="honoreePlaceholder">No photo</div>
-                      )}
-
-                      <div>
-                        <div className="honoreeTitleRow">
-                          <h3>{honoree.fullName}</h3>
-                          {honoree.kia ? <span className="status status-submitted">KIA</span> : null}
-                        </div>
-
-                        <p>
-                          {[honoree.rank, honoree.serviceBranchName].filter(Boolean).join(" • ") || "Service details unavailable"}
-                        </p>
-
-                        <dl className="detailGrid">
-                          <div>
-                            <dt>Flag grid</dt>
-                            <dd>{honoree.flagGrid || "—"}</dd>
-                          </div>
-                          <div>
-                            <dt>Sponsor</dt>
-                            <dd>{honoree.sponsorName || "—"}</dd>
-                          </div>
-                          {honoree.nickname ? (
-                            <div>
-                              <dt>Nickname</dt>
-                              <dd>{honoree.nickname}</dd>
-                            </div>
-                          ) : null}
-                        </dl>
-
-                        <div className="cardActions">
-                          {honoree.pdfUrl ? (
-                            <a className="textLink" href={honoree.pdfUrl} target="_blank" rel="noreferrer">
-                              Open honoree PDF
-                            </a>
-                          ) : null}
-
-                          <button
-                            type="button"
-                            onClick={() => claimSearchResult(honoree)}
-                            disabled={saving}
-                          >
-                            Claim this flag
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )
-            ) : null}
-          </section>
 
           {selectedClaim ? (
             <section className="card formCard">
