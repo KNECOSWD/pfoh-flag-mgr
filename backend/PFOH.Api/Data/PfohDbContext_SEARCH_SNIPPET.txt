@@ -1,0 +1,12 @@
+Add this DbSet near your other DbSet properties in PfohDbContext.cs:
+
+public DbSet<HonoreeSearchResult> HonoreeSearchResults => Set<HonoreeSearchResult>();
+
+Add this mapping inside OnModelCreating(ModelBuilder modelBuilder):
+
+modelBuilder.Entity<HonoreeSearchResult>(entity =>
+{
+    entity.ToView("vwHonorees", "dbo");
+    entity.HasNoKey();
+    entity.Property(e => e.PDFUrl).HasColumnName("PDFUrl");
+});
