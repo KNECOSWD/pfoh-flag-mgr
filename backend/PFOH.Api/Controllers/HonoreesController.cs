@@ -87,7 +87,7 @@ public class HonoreesController(
             .AsNoTracking()
             .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive, ct);
 
-        var photoBytes = await fileStorage.DownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
+        var photoBytes = await SafeDownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
 
         if (photoBytes is null || photoBytes.Length == 0)
         {
