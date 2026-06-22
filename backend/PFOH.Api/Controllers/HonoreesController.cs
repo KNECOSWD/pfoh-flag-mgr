@@ -163,23 +163,60 @@ public class HonoreesController(
 
         if (honoree is null)
         {
-            return NotFound("Honoree was not found.");
+            return NotFound(new
+            {
+                uploaded = false,
+                message = "Honoree was not found."
+            });
         }
 
         var searchResult = await db.HonoreeSearchResults
             .AsNoTracking()
             .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive, ct);
 
-        var photoBytes = await SafeDownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
-        var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes);
-        var fileName = await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
+        byte[] pdf;
 
-        return Ok(new
+        try
         {
-            honoreeId = honoree.Id,
-            fileName,
-            generatedUtc = DateTime.UtcNow
-        });
+            var photoBytes = await SafeDownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
+            pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes);
+        }
+        catch (Exception ex)
+        {
+            return Ok(new
+            {
+                honoreeId = honoree.Id,
+                uploaded = false,
+                fileName = fileStorage.GetHonoreePdfFileName(honoree.Id),
+                generatedUtc = DateTime.UtcNow,
+                message = $"PDF generation failed: {ex.Message}"
+            });
+        }
+
+        try
+        {
+            var fileName = await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
+
+            return Ok(new
+            {
+                honoreeId = honoree.Id,
+                uploaded = true,
+                fileName,
+                generatedUtc = DateTime.UtcNow,
+                message = "PDF regenerated and saved."
+            });
+        }
+        catch (Exception ex)
+        {
+            return Ok(new
+            {
+                honoreeId = honoree.Id,
+                uploaded = false,
+                fileName = fileStorage.GetHonoreePdfFileName(honoree.Id),
+                generatedUtc = DateTime.UtcNow,
+                message = $"PDF was generated but could not be saved to blob storage: {ex.Message}"
+            });
+        }
     }
 
     private string? BuildPublicImageUrl(string? photoFileName, string? fallbackImageUrl)
