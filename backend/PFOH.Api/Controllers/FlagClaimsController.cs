@@ -546,6 +546,95 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         return honoree;
     }
 
+    private async Task<FlagGrid?> GetNextAvailableFlagGridAsync(CancellationToken ct)
+    {
+        return await db.FlagGrids
+            .Where(flagGrid =>
+                !flagGrid.Reserved &&
+                flagGrid.DeletedDate == null &&
+                flagGrid.HonoreeId == null &&
+                !db.Honorees.Any(h =>
+                    h.IsActive &&
+                    h.DeletedDate == null &&
+                    h.FlagGridId == flagGrid.Id) &&
+                !db.FlagClaims.Any(claim =>
+                    claim.FlagGridId == flagGrid.Id &&
+                    claim.ClaimStatus != "Cancelled" &&
+                    claim.ClaimStatus != "AdminDirectEditCompleted"))
+            .OrderBy(flagGrid => flagGrid.FlagGridName)
+            .FirstOrDefaultAsync(ct);
+    }
+
+    private async Task<Sponsor?> GetOrCreateSubmitterSponsorAsync(
+        string email,
+        string? displayName,
+        CancellationToken ct)
+    {
+        var normalizedEmail = email.Trim();
+
+        var existing = await db.Sponsors
+            .FirstOrDefaultAsync(s =>
+                s.DeletedDate == null &&
+                s.EmailAddress == normalizedEmail,
+                ct);
+
+        if (existing is not null)
+        {
+            existing.IsActive = true;
+            existing.ModifiedBy = normalizedEmail;
+            existing.ModifiedDate = DateTime.UtcNow;
+            return existing;
+        }
+
+        var sponsorCategoryId = await db.SponsorCategories
+            .Where(c => c.DeletedDate == null)
+            .OrderBy(c => c.Id)
+            .Select(c => (int?)c.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (sponsorCategoryId is null)
+        {
+            return null;
+        }
+
+        var nameParts = (displayName ?? string.Empty)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var firstName = nameParts.Length > 0
+            ? nameParts[0]
+            : normalizedEmail.Split('@')[0];
+
+        var lastName = nameParts.Length > 1
+            ? nameParts[^1]
+            : "Submitter";
+
+        var sponsor = new Sponsor
+        {
+            SponsorCategoryId = sponsorCategoryId.Value,
+            Description = "Submitted through the Plano Flags of Honor nomination form.",
+            FirstName = firstName,
+            MiddleName = nameParts.Length > 2 ? string.Join(" ", nameParts.Skip(1).Take(nameParts.Length - 2)) : null,
+            LastName = lastName,
+            Suffix = null,
+            Nickname = null,
+            Salutation = string.Empty,
+            PhoneNumber = string.Empty,
+            EmailAddress = normalizedEmail,
+            StreetAddress = string.Empty,
+            City = string.Empty,
+            State = string.Empty,
+            ZipCode = string.Empty,
+            IsActive = true,
+            CreatedBy = normalizedEmail,
+            CreatedDate = DateTime.UtcNow,
+            ModifiedBy = normalizedEmail,
+            ModifiedDate = DateTime.UtcNow
+        };
+
+        db.Sponsors.Add(sponsor);
+        return sponsor;
+    }
+
     private static HonoreeChangeRequest BuildDraftFromHonoree(
         FlagClaim claim,
         Honoree honoree,
