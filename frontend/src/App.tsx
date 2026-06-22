@@ -13,6 +13,7 @@ import {
   flagClaimApi,
   honoreeApi,
   honoreePdfUrl,
+  honoreePhotoUrl,
   lookupApi
 } from "./api";
 import { loginRequest } from "./authConfig";
@@ -89,6 +90,7 @@ export default function App() {
   const [isNominating, setIsNominating] = useState(false);
   const [form, setForm] = useState<SaveHonoreeChangeRequest>(blankForm);
   const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
+  const [selectedPhotoPreviewUrl, setSelectedPhotoPreviewUrl] = useState("");
   const formCardRef = useRef<HTMLElement | null>(null);
   const firstFormInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -224,6 +226,18 @@ export default function App() {
 
     return () => window.clearTimeout(timer);
   }, [selectedClaim, isNominating]);
+
+  useEffect(() => {
+    if (!selectedPhoto) {
+      setSelectedPhotoPreviewUrl("");
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(selectedPhoto);
+    setSelectedPhotoPreviewUrl(previewUrl);
+
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [selectedPhoto]);
 
   async function searchHonorees(event: React.FormEvent) {
     event.preventDefault();
@@ -1163,6 +1177,24 @@ export default function App() {
                 </label>
                 <label className="wide">
                   Honoree photo
+                  {(selectedPhotoPreviewUrl ||
+                    (!isNominating && selectedClaim?.honoreeId
+                      ? honoreePhotoUrl(selectedClaim.honoreeId)
+                      : selectedClaim?.honoreeImageUrl)) ? (
+                    <img
+                      className="honoreePhotoPreview"
+                      src={
+                        selectedPhotoPreviewUrl ||
+                        (!isNominating && selectedClaim?.honoreeId
+                          ? honoreePhotoUrl(selectedClaim.honoreeId)
+                          : selectedClaim?.honoreeImageUrl ?? "")
+                      }
+                      alt={`${selectedClaim?.honoreeName || "Current honoree"} photo`}
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : null}
                   <input
                     type="file"
                     accept="image/*"
@@ -1171,8 +1203,8 @@ export default function App() {
                   <span className="helperText">
                     {selectedPhoto
                       ? `Selected: ${selectedPhoto.name}`
-                      : selectedClaim?.latestChangeRequest?.photoFileName
-                        ? "Current photo will be kept unless a new one is uploaded."
+                      : !isNominating && (selectedClaim?.honoreeId || selectedClaim?.honoreeImageUrl)
+                        ? "Current photo is shown above and will be kept unless a new one is uploaded."
                         : "Optional. JPG or PNG is best for the printed honoree card."}
                   </span>
                 </label>

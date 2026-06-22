@@ -1040,3 +1040,14 @@ td span {
   color: #b31942;
   font-weight: 900;
 }
+
+.honoreePhotoPreview {
+  width: 150px;
+  max-width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 16px;
+  border: 1px solid #dbe5f2;
+  background: #f3f6fb;
+  box-shadow: 0 8px 22px rgba(15, 35, 65, 0.08);
+}

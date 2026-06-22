@@ -71,6 +71,35 @@ public class HonoreesController(
         return Ok(results);
     }
 
+    [HttpGet("{honoreeId:int}/photo")]
+    public async Task<IActionResult> GetPhoto(int honoreeId, CancellationToken ct)
+    {
+        var honoree = await db.Honorees
+            .AsNoTracking()
+            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive && h.DeletedDate == null, ct);
+
+        if (honoree is null)
+        {
+            return NotFound("Honoree was not found.");
+        }
+
+        var searchResult = await db.HonoreeSearchResults
+            .AsNoTracking()
+            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive, ct);
+
+        var photoBytes = await fileStorage.DownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
+
+        if (photoBytes is null || photoBytes.Length == 0)
+        {
+            return NotFound("Honoree photo was not found.");
+        }
+
+        var contentType = GuessImageContentType(honoree.PhotoFileName, searchResult?.ImageUrl);
+        Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+
+        return File(photoBytes, contentType);
+    }
+
     [HttpGet("{honoreeId:int}/pdf")]
     public async Task<IActionResult> OpenOrCreatePdf(int honoreeId, CancellationToken ct)
     {

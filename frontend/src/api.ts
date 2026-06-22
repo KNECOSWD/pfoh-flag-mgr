@@ -147,6 +147,10 @@ export function honoreePdfUrl(honoreeId: number) {
   return `${apiBase}/api/honorees/${honoreeId}/pdf`;
 }
 
+export function honoreePhotoUrl(honoreeId: number) {
+  return `${apiBase}/api/honorees/${honoreeId}/photo`;
+}
+
 
 async function publicRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${apiBase}${url}`, {
