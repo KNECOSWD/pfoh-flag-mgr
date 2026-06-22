@@ -1022,3 +1022,21 @@ td span {
 .searchHeader > button {
   white-space: nowrap;
 }
+
+
+.requiredFieldsNote {
+  margin: 0 0 1rem;
+  color: #53627a;
+  font-size: 0.95rem;
+}
+
+.fieldLabelText {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.requiredMark {
+  color: #b31942;
+  font-weight: 900;
+}

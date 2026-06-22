@@ -1000,9 +1000,15 @@ export default function App() {
                     : "You can submit updates to this flag record whenever needed. Changes go to the Plano Flags of Honor admin team for approval before publishing and reprinting."}
               </p>
 
+              <p className="requiredFieldsNote">
+                Fields marked <span className="requiredMark" aria-hidden="true">*</span> are required.
+              </p>
+
               <form className="gridForm" onSubmit={isNominating ? submitNomination : submitClaim}>
                 <label>
-                  First name
+                  <span className="fieldLabelText">
+                    First name <span className="requiredMark" aria-hidden="true">*</span>
+                  </span>
                   <input
                     ref={firstFormInputRef}
                     required
@@ -1020,7 +1026,9 @@ export default function App() {
                 </label>
 
                 <label>
-                  Last name
+                  <span className="fieldLabelText">
+                    Last name <span className="requiredMark" aria-hidden="true">*</span>
+                  </span>
                   <input
                     required
                     value={form.lastName}
@@ -1054,7 +1062,9 @@ export default function App() {
                 </label>
 
                 <label>
-                  Service branch category
+                  <span className="fieldLabelText">
+                    Service branch category <span className="requiredMark" aria-hidden="true">*</span>
+                  </span>
                   <select
                     required
                     value={form.serviceBranchCategoryId ?? ""}
@@ -1077,7 +1087,9 @@ export default function App() {
                 </label>
 
                 <label>
-                  Service branch
+                  <span className="fieldLabelText">
+                    Service branch <span className="requiredMark" aria-hidden="true">*</span>
+                  </span>
                   <select
                     required
                     disabled={!form.serviceBranchCategoryId}
@@ -1134,7 +1146,9 @@ export default function App() {
                 </label>
 
                 <label className="wide">
-                  Honoree description / tribute
+                  <span className="fieldLabelText">
+                    Honoree description / tribute <span className="requiredMark" aria-hidden="true">*</span>
+                  </span>
                   <textarea
                     required
                     rows={6}
@@ -1144,7 +1158,9 @@ export default function App() {
                 </label>
 
                 <label>
-                  Submitter phone
+                  <span className="fieldLabelText">
+                    Submitter phone <span className="requiredMark" aria-hidden="true">*</span>
+                  </span>
                   <input
                     required
                     value={form.submitterPhoneNumber ?? ""}
@@ -1153,7 +1169,9 @@ export default function App() {
                 </label>
 
                 <label>
-                  Submitter email
+                  <span className="fieldLabelText">
+                    Submitter email <span className="requiredMark" aria-hidden="true">*</span>
+                  </span>
                   <input
                     required
                     type="email"
