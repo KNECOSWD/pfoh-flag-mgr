@@ -5,14 +5,17 @@ using PFOH.Api.Data;
 using PFOH.Api.Dtos;
 using PFOH.Api.Extensions;
 using PFOH.Api.Models;
+using PFOH.Api.Services;
 
 namespace PFOH.Api.Controllers;
 
 [ApiController]
 [Route("api/admin/review")]
 [Authorize(Policy = "AdminOnly")]
-public class AdminReviewController(PfohDbContext db) : ControllerBase
+public class AdminReviewController(PfohDbContext db, IConfiguration configuration) : ControllerBase
 {
+    private readonly HonoreeFileStorage fileStorage = new(configuration);
+
     [HttpGet("pending")]
     public async Task<ActionResult<IReadOnlyList<AdminReviewItemDto>>> GetPending(CancellationToken ct)
     {
@@ -320,6 +323,13 @@ public class AdminReviewController(PfohDbContext db) : ControllerBase
         honoree.ModifiedDate = DateTime.UtcNow;
 
         await db.SaveChangesAsync(ct);
+
+        var finalPhotoFileName = await fileStorage.PromoteImageAsync(change.PhotoFileName, honoree.Id, ct);
+        if (!string.IsNullOrWhiteSpace(finalPhotoFileName))
+        {
+            honoree.PhotoFileName = finalPhotoFileName;
+            change.PhotoFileName = finalPhotoFileName;
+        }
 
         var flagGrid = await db.FlagGrids.FirstOrDefaultAsync(f => f.Id == change.FlagGridId, ct);
         if (flagGrid is not null)

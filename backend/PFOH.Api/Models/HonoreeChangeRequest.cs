@@ -25,6 +25,8 @@ public class HonoreeChangeRequest
     public string? Description { get; set; }
     public bool KIA { get; set; }
 
+    public string? PhotoFileName { get; set; }
+
     public string? SubmitterPhoneNumber { get; set; }
     public string? SubmitterEmailAddress { get; set; }
 

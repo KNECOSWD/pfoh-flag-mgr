@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace PFOH.Api.Dtos;
 
@@ -36,6 +37,7 @@ public record HonoreeChangeRequestDto(
     string? Awards,
     string? Description,
     bool Kia,
+    string? PhotoFileName,
     string? SubmitterPhoneNumber,
     string? SubmitterEmailAddress,
     string RequestStatus,
@@ -86,6 +88,8 @@ public class SaveHonoreeChangeRequest
 
     [Required, MaxLength(255), EmailAddress]
     public string? SubmitterEmailAddress { get; set; }
+
+    public IFormFile? Photo { get; set; }
 }
 
 public class NominateHonoreeRequest : SaveHonoreeChangeRequest

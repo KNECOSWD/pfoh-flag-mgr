@@ -88,6 +88,7 @@ export default function App() {
   const [selectedClaim, setSelectedClaim] = useState<FlagClaim | null>(null);
   const [isNominating, setIsNominating] = useState(false);
   const [form, setForm] = useState<SaveHonoreeChangeRequest>(blankForm);
+  const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
   const formCardRef = useRef<HTMLElement | null>(null);
   const firstFormInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -274,6 +275,7 @@ export default function App() {
 
   function beginEdit(claim: FlagClaim) {
     setIsNominating(false);
+    setSelectedPhoto(null);
     setSelectedClaim(claim);
     setFormFromClaim(claim);
     setNotice("");
@@ -286,6 +288,7 @@ export default function App() {
       return;
     }
 
+    setSelectedPhoto(null);
     setSelectedClaim(null);
     setIsNominating(true);
     setForm({
@@ -366,10 +369,11 @@ export default function App() {
     setNotice("");
 
     try {
-      await flagClaimApi.nominate(instance, account, form);
+      await flagClaimApi.nominate(instance, account, form, selectedPhoto);
       await loadData();
       setNotice("Nomination submitted for admin review and claimed under your account.");
       setIsNominating(false);
+      setSelectedPhoto(null);
       setForm(blankForm);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to submit nomination.");
@@ -386,7 +390,7 @@ export default function App() {
     setNotice("");
 
     try {
-      await flagClaimApi.saveDraft(instance, account, selectedClaim.id, form);
+      await flagClaimApi.saveDraft(instance, account, selectedClaim.id, form, selectedPhoto);
       await loadData();
       setNotice("Draft saved.");
     } catch (err) {
@@ -408,7 +412,7 @@ export default function App() {
     setNotice("");
 
     try {
-      await flagClaimApi.saveDraft(instance, account, selectedClaim.id, form);
+      await flagClaimApi.saveDraft(instance, account, selectedClaim.id, form, selectedPhoto);
 
       if (isAdminDirectEdit) {
         await flagClaimApi.applyAdminEditReprint(instance, account, selectedClaim.id);
@@ -421,6 +425,7 @@ export default function App() {
       }
 
       setSelectedClaim(null);
+      setSelectedPhoto(null);
       setForm(blankForm);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to submit changes.");
@@ -984,6 +989,7 @@ export default function App() {
                   onClick={() => {
                     setSelectedClaim(null);
                     setIsNominating(false);
+                    setSelectedPhoto(null);
                     setForm(blankForm);
                   }}
                 >
@@ -1155,6 +1161,22 @@ export default function App() {
                     onChange={(e) => update("description", e.target.value)}
                   />
                 </label>
+                <label className="wide">
+                  Honoree photo
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setSelectedPhoto(e.target.files?.[0] ?? null)}
+                  />
+                  <span className="helperText">
+                    {selectedPhoto
+                      ? `Selected: ${selectedPhoto.name}`
+                      : selectedClaim?.latestChangeRequest?.photoFileName
+                        ? "Current photo will be kept unless a new one is uploaded."
+                        : "Optional. JPG or PNG is best for the printed honoree card."}
+                  </span>
+                </label>
+
 
                 <label>
                   <span className="fieldLabelText">

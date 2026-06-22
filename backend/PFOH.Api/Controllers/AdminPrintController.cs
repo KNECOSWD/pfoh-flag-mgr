@@ -5,14 +5,20 @@ using PdfSharpCore.Pdf;
 using PdfSharpCore.Pdf.IO;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
+using PFOH.Api.Services;
 
 namespace PFOH.Api.Controllers;
 
 [ApiController]
 [Route("api/admin/print")]
 [Authorize(Policy = "AdminOnly")]
-public class AdminPrintController(PfohDbContext db, IHttpClientFactory httpClientFactory) : ControllerBase
+public class AdminPrintController(
+    PfohDbContext db,
+    IConfiguration configuration,
+    IWebHostEnvironment environment) : ControllerBase
 {
+    private readonly HonoreeFileStorage fileStorage = new(configuration);
+
     [HttpPost("merge")]
     public async Task<IActionResult> MergeApprovedCards(
         [FromBody] BulkPrintRequest request,
@@ -39,41 +45,12 @@ public class AdminPrintController(PfohDbContext db, IHttpClientFactory httpClien
             return BadRequest("No approved card reprint items were found.");
         }
 
-        var honoreeIds = changes
-            .Where(r => r.HonoreeId.HasValue)
-            .Select(r => r.HonoreeId!.Value)
-            .Distinct()
-            .ToList();
-
-        var pdfLookup = await db.HonoreeSearchResults
-            .AsNoTracking()
-            .Where(h => honoreeIds.Contains(h.Id))
-            .ToDictionaryAsync(h => h.Id, h => h.PDFUrl, ct);
-
-        var missingPdf = changes
-            .Where(r => !r.HonoreeId.HasValue ||
-                        !pdfLookup.TryGetValue(r.HonoreeId.Value, out var url) ||
-                        string.IsNullOrWhiteSpace(url))
-            .Select(r => $"{r.FirstName} {r.LastName}".Trim())
-            .ToList();
-
-        if (missingPdf.Count > 0)
-        {
-            return BadRequest($"Missing PDF URL for: {string.Join(", ", missingPdf)}");
-        }
-
         using var outputDocument = new PdfDocument();
-        var httpClient = httpClientFactory.CreateClient();
 
         foreach (var change in changes)
         {
-            var pdfUrl = pdfLookup[change.HonoreeId!.Value]!;
-
-            await using var remoteStream = await httpClient.GetStreamAsync(pdfUrl, ct);
-            using var memory = new MemoryStream();
-            await remoteStream.CopyToAsync(memory, ct);
-            memory.Position = 0;
-
+            var pdfBytes = await GetOrCreatePdfBytesAsync(change.HonoreeId!.Value, ct);
+            using var memory = new MemoryStream(pdfBytes);
             using var inputDocument = PdfReader.Open(memory, PdfDocumentOpenMode.Import);
 
             for (var idx = 0; idx < inputDocument.PageCount; idx++)
@@ -118,5 +95,31 @@ public class AdminPrintController(PfohDbContext db, IHttpClientFactory httpClien
         await db.SaveChangesAsync(ct);
 
         return Ok(new { batchId, count = changes.Count });
+    }
+
+    private async Task<byte[]> GetOrCreatePdfBytesAsync(int honoreeId, CancellationToken ct)
+    {
+        var existing = await fileStorage.DownloadPdfAsync(honoreeId, ct);
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var honoree = await db.Honorees
+            .AsNoTracking()
+            .Include(h => h.FlagGrid)
+            .Include(h => h.ServiceBranch)
+            .Include(h => h.Sponsor)
+            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive && h.DeletedDate == null, ct)
+            ?? throw new InvalidOperationException($"Honoree {honoreeId} was not found.");
+
+        var searchResult = await db.HonoreeSearchResults
+            .AsNoTracking()
+            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive, ct);
+
+        var photoBytes = await fileStorage.DownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
+        var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes);
+        await fileStorage.UploadPdfAsync(honoreeId, pdf, ct);
+        return pdf;
     }
 }

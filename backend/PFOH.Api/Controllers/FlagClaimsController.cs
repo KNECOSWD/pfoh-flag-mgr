@@ -5,14 +5,17 @@ using PFOH.Api.Data;
 using PFOH.Api.Dtos;
 using PFOH.Api.Extensions;
 using PFOH.Api.Models;
+using PFOH.Api.Services;
 
 namespace PFOH.Api.Controllers;
 
 [ApiController]
 [Route("api/flag-claims")]
 [Authorize]
-public class FlagClaimsController(PfohDbContext db) : ControllerBase
+public class FlagClaimsController(PfohDbContext db, IConfiguration configuration) : ControllerBase
 {
+    private readonly HonoreeFileStorage fileStorage = new(configuration);
+
     // A flag claim represents semi-ownership by a user.
     // These statuses keep the flag associated with the claimant.
     private static readonly string[] OwnershipClaimStatuses = ["Claimed", "Submitted", "Approved", "Rejected"];
@@ -195,7 +198,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
 
     [HttpPost("nominate")]
     public async Task<ActionResult<FlagClaimDto>> NominateHonoree(
-        [FromBody] NominateHonoreeRequest request,
+        [FromForm] NominateHonoreeRequest request,
         CancellationToken ct)
     {
         if (!ModelState.IsValid)
@@ -261,6 +264,14 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
 
         db.FlagClaims.Add(claim);
         await db.SaveChangesAsync(ct);
+
+        var pendingPhotoFileName = await fileStorage.UploadPendingImageAsync(request.Photo, change.Id, ct);
+        if (!string.IsNullOrWhiteSpace(pendingPhotoFileName))
+        {
+            change.PhotoFileName = pendingPhotoFileName;
+            await db.SaveChangesAsync(ct);
+        }
+
         await transaction.CommitAsync(ct);
 
         return Ok(ToDto(claim, null));
@@ -318,7 +329,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
     [HttpPut("{claimId:int}/honoree-draft")]
     public async Task<ActionResult<HonoreeChangeRequestDto>> SaveHonoreeDraft(
         int claimId,
-        [FromBody] SaveHonoreeChangeRequest request,
+        [FromForm] SaveHonoreeChangeRequest request,
         CancellationToken ct)
     {
         if (!ModelState.IsValid)
@@ -366,6 +377,17 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         }
 
         ApplyRequest(draft, request);
+
+        if (draft.Id == 0)
+        {
+            await db.SaveChangesAsync(ct);
+        }
+
+        var pendingPhotoFileName = await fileStorage.UploadPendingImageAsync(request.Photo, draft.Id, ct);
+        if (!string.IsNullOrWhiteSpace(pendingPhotoFileName))
+        {
+            draft.PhotoFileName = pendingPhotoFileName;
+        }
 
         // Returning to Draft/Claimed lets an owner submit another change after a prior approval/rejection.
         // AdminDirectEdit is intentionally not a claim/ownership status.
@@ -535,6 +557,13 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
 
         await db.SaveChangesAsync(ct);
 
+        var finalPhotoFileName = await fileStorage.PromoteImageAsync(change.PhotoFileName, honoree.Id, ct);
+        if (!string.IsNullOrWhiteSpace(finalPhotoFileName))
+        {
+            honoree.PhotoFileName = finalPhotoFileName;
+            change.PhotoFileName = finalPhotoFileName;
+        }
+
         var flagGrid = await db.FlagGrids.FirstOrDefaultAsync(f => f.Id == change.FlagGridId, ct);
         if (flagGrid is not null)
         {
@@ -660,6 +689,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
             Awards = honoree.Awards,
             Description = honoree.Description,
             KIA = honoree.KIA,
+            PhotoFileName = honoree.PhotoFileName,
             SubmitterPhoneNumber = null,
             SubmitterEmailAddress = submitterEmail,
             RequestStatus = "Draft",
@@ -762,6 +792,7 @@ public class FlagClaimsController(PfohDbContext db) : ControllerBase
         request.Awards,
         request.Description,
         request.KIA,
+        request.PhotoFileName,
         request.SubmitterPhoneNumber,
         request.SubmitterEmailAddress,
         request.RequestStatus,

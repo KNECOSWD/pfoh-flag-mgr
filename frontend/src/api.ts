@@ -65,6 +65,7 @@ export type HonoreeChangeRequest = {
   awards?: string | null;
   description?: string | null;
   kia: boolean;
+  photoFileName?: string | null;
   submitterPhoneNumber?: string | null;
   submitterEmailAddress?: string | null;
   requestStatus: string;
@@ -103,6 +104,7 @@ export type SaveHonoreeChangeRequest = {
   awards?: string | null;
   description?: string | null;
   kia: boolean;
+  photoFileName?: string | null;
   submitterPhoneNumber?: string | null;
   submitterEmailAddress?: string | null;
 };
@@ -167,6 +169,24 @@ async function publicRequest<T>(url: string, options: RequestInit = {}): Promise
   return response.json() as Promise<T>;
 }
 
+
+function appendFormValue(formData: FormData, key: string, value: unknown) {
+  if (value === undefined || value === null) return;
+  formData.append(key, String(value));
+}
+
+function honoreeChangeFormData(requestBody: SaveHonoreeChangeRequest, photo?: File | null) {
+  const formData = new FormData();
+
+  Object.entries(requestBody).forEach(([key, value]) => appendFormValue(formData, key, value));
+
+  if (photo) {
+    formData.append("photo", photo);
+  }
+
+  return formData;
+}
+
 async function getToken(instance: IPublicClientApplication, account: AccountInfo) {
   try {
     const response = await instance.acquireTokenSilent({ ...loginRequest, account });
@@ -188,10 +208,12 @@ async function request<T>(
 ): Promise<T> {
   const token = await getToken(instance, account);
 
+  const isFormData = options.body instanceof FormData;
+
   const response = await fetch(`${apiBase}${url}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       Authorization: `Bearer ${token}`,
       ...(options.headers ?? {})
     }
@@ -218,10 +240,12 @@ async function downloadFile(
 ) {
   const token = await getToken(instance, account);
 
+  const isFormData = options.body instanceof FormData;
+
   const response = await fetch(`${apiBase}${url}`, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       Authorization: `Bearer ${token}`,
       ...(options.headers ?? {})
     }
@@ -262,11 +286,12 @@ export const flagClaimApi = {
   nominate: (
     instance: IPublicClientApplication,
     account: AccountInfo,
-    requestBody: SaveHonoreeChangeRequest
+    requestBody: SaveHonoreeChangeRequest,
+    photo?: File | null
   ) =>
     request<FlagClaim>(instance, account, "/api/flag-claims/nominate", {
       method: "POST",
-      body: JSON.stringify(requestBody)
+      body: honoreeChangeFormData(requestBody, photo)
     }),
 
   startAdminEdit: (instance: IPublicClientApplication, account: AccountInfo, honoreeId: number) =>
@@ -287,11 +312,12 @@ export const flagClaimApi = {
     instance: IPublicClientApplication,
     account: AccountInfo,
     claimId: number,
-    requestBody: SaveHonoreeChangeRequest
+    requestBody: SaveHonoreeChangeRequest,
+    photo?: File | null
   ) =>
     request<HonoreeChangeRequest>(instance, account, `/api/flag-claims/${claimId}/honoree-draft`, {
       method: "PUT",
-      body: JSON.stringify(requestBody)
+      body: honoreeChangeFormData(requestBody, photo)
     }),
 
   submit: (instance: IPublicClientApplication, account: AccountInfo, claimId: number) =>
