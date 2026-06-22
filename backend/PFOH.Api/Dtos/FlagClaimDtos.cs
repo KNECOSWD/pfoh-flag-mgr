@@ -62,7 +62,10 @@ public class SaveHonoreeChangeRequest
     [MaxLength(200)]
     public string? Rank { get; set; }
 
+    [Required]
     public int? ServiceBranchId { get; set; }
+
+    [Required]
     public int? ServiceBranchCategoryId { get; set; }
 
     public int? StartYear { get; set; }
@@ -73,14 +76,15 @@ public class SaveHonoreeChangeRequest
 
     public string? ConflictsServed { get; set; }
     public string? Awards { get; set; }
+    [Required]
     public string? Description { get; set; }
 
     public bool Kia { get; set; }
 
-    [MaxLength(50)]
+    [Required, MaxLength(50)]
     public string? SubmitterPhoneNumber { get; set; }
 
-    [MaxLength(255), EmailAddress]
+    [Required, MaxLength(255), EmailAddress]
     public string? SubmitterEmailAddress { get; set; }
 }
 

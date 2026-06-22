@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import {
   AdminPrintQueueItem,
@@ -87,6 +87,8 @@ export default function App() {
   const [selectedClaim, setSelectedClaim] = useState<FlagClaim | null>(null);
   const [isNominating, setIsNominating] = useState(false);
   const [form, setForm] = useState<SaveHonoreeChangeRequest>(blankForm);
+  const formCardRef = useRef<HTMLElement | null>(null);
+  const firstFormInputRef = useRef<HTMLInputElement | null>(null);
 
   const [honoreeSearchText, setHonoreeSearchText] = useState("");
   const [honoreeResults, setHonoreeResults] = useState<HonoreeSearchResult[]>([]);
@@ -117,6 +119,14 @@ export default function App() {
   const allPrintItemsSelected =
     allPrintQueueIds.length > 0 &&
     allPrintQueueIds.every((id) => selectedPrintIds.includes(id));
+
+  const filteredServiceBranches = useMemo(() => {
+    if (!form.serviceBranchCategoryId) return [];
+
+    return serviceBranches.filter(
+      (branch) => branch.serviceBranchCategoryId === form.serviceBranchCategoryId
+    );
+  }, [form.serviceBranchCategoryId, serviceBranches]);
 
   async function signIn() {
     await instance.loginRedirect(loginRequest);
@@ -202,6 +212,17 @@ export default function App() {
     };
   }, [error, notice]);
 
+  useEffect(() => {
+    if (!selectedClaim && !isNominating) return;
+
+    const timer = window.setTimeout(() => {
+      formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      firstFormInputRef.current?.focus({ preventScroll: true });
+    }, 75);
+
+    return () => window.clearTimeout(timer);
+  }, [selectedClaim, isNominating]);
+
   async function searchHonorees(event: React.FormEvent) {
     event.preventDefault();
 
@@ -256,7 +277,6 @@ export default function App() {
     setFormFromClaim(claim);
     setNotice("");
     setError("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function beginNomination() {
@@ -273,7 +293,6 @@ export default function App() {
     });
     setNotice("");
     setError("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function claimSearchResult(honoree: HonoreeSearchResult) {
@@ -942,7 +961,7 @@ export default function App() {
           ) : null}
 
           {selectedClaim || isNominating ? (
-            <section className="card formCard">
+            <section ref={formCardRef} className="card formCard">
               <div className="sectionHeader">
                 <div>
                   <p className="eyebrow">
@@ -985,6 +1004,7 @@ export default function App() {
                 <label>
                   First name
                   <input
+                    ref={firstFormInputRef}
                     required
                     value={form.firstName}
                     onChange={(e) => update("firstName", e.target.value)}
@@ -1036,10 +1056,16 @@ export default function App() {
                 <label>
                   Service branch category
                   <select
+                    required
                     value={form.serviceBranchCategoryId ?? ""}
-                    onChange={(e) =>
-                      update("serviceBranchCategoryId", nullableNumber(e.target.value))
-                    }
+                    onChange={(e) => {
+                      const categoryId = nullableNumber(e.target.value);
+                      setForm((current) => ({
+                        ...current,
+                        serviceBranchCategoryId: categoryId,
+                        serviceBranchId: null
+                      }));
+                    }}
                   >
                     <option value="">Select category</option>
                     {serviceBranchCategories.map((category) => (
@@ -1053,11 +1079,15 @@ export default function App() {
                 <label>
                   Service branch
                   <select
+                    required
+                    disabled={!form.serviceBranchCategoryId}
                     value={form.serviceBranchId ?? ""}
                     onChange={(e) => update("serviceBranchId", nullableNumber(e.target.value))}
                   >
-                    <option value="">Select branch</option>
-                    {serviceBranches.map((branch) => (
+                    <option value="">
+                      {form.serviceBranchCategoryId ? "Select branch" : "Select category first"}
+                    </option>
+                    {filteredServiceBranches.map((branch) => (
                       <option key={branch.id} value={branch.id}>
                         {branch.serviceBranchName}
                       </option>
@@ -1086,15 +1116,6 @@ export default function App() {
                 </label>
 
                 <label className="wide">
-                  Dates as written by user
-                  <input
-                    placeholder="Example: 1968–1972, Vietnam Era"
-                    value={form.datesUserEntry ?? ""}
-                    onChange={(e) => update("datesUserEntry", e.target.value)}
-                  />
-                </label>
-
-                <label className="wide">
                   Conflicts served
                   <textarea
                     rows={3}
@@ -1115,6 +1136,7 @@ export default function App() {
                 <label className="wide">
                   Honoree description / tribute
                   <textarea
+                    required
                     rows={6}
                     value={form.description ?? ""}
                     onChange={(e) => update("description", e.target.value)}
@@ -1124,6 +1146,7 @@ export default function App() {
                 <label>
                   Submitter phone
                   <input
+                    required
                     value={form.submitterPhoneNumber ?? ""}
                     onChange={(e) => update("submitterPhoneNumber", e.target.value)}
                   />
@@ -1132,6 +1155,7 @@ export default function App() {
                 <label>
                   Submitter email
                   <input
+                    required
                     type="email"
                     value={form.submitterEmailAddress ?? ""}
                     onChange={(e) => update("submitterEmailAddress", e.target.value)}
