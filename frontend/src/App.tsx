@@ -437,9 +437,9 @@ export default function App() {
       <header className="hero">
         <div>
           <p className="eyebrow">Plano Flags of Honor</p>
-          <h1>Flag Manager</h1>
+          <h1>Find a Flag</h1>
           <p>
-            Search existing honorees, claim a flag record, and submit honoree information for review.
+            Search Plano Flags of Honor honoree records and view flag details.
           </p>
         </div>
 
@@ -497,9 +497,6 @@ export default function App() {
               <div>
                 <p className="eyebrow">Find an existing honoree</p>
                 <h2>Honoree search</h2>
-                <p className="helperText">
-                  Search before claiming so updates stay tied to the existing honoree record.
-                </p>
               </div>
             </div>
 
