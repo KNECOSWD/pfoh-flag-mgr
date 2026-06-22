@@ -494,17 +494,16 @@ export default function App() {
             </section>
           )}
 
-          <section className="card">
-            <div className="sectionHeader">
+          <section className="card searchCard">
+            <div className="sectionHeader searchHeader">
               <div>
                 <p className="eyebrow">Find an existing honoree</p>
                 <h2>Honoree search</h2>
+                <p className="helperText">
+                  Search before claiming so updates stay tied to the existing honoree record.
+                </p>
               </div>
             </div>
-
-            <p>
-              Search first to see whether an honoree is already in the Plano Flags of Honor database. If you find the honoree, claim that existing record instead of creating a duplicate.
-            </p>
 
             <form className="searchBar" onSubmit={searchHonorees}>
               <input
@@ -591,11 +590,29 @@ export default function App() {
               <div className="sectionHeader">
                 <div>
                   <p className="eyebrow">Administrator</p>
-                  <h2>Review submitted changes</h2>
+                  <h2>
+                    Review submitted changes
+                    <span className="countBadge">{pendingReviews.length}</span>
+                  </h2>
                 </div>
                 <button type="button" className="secondary" onClick={loadData} disabled={loading}>
                   {loading ? "Loading..." : "Refresh"}
                 </button>
+              </div>
+
+              <div className="adminStats" aria-label="Administrator dashboard summary">
+                <div className="statCard">
+                  <strong>{pendingReviews.length}</strong>
+                  <span>Pending review</span>
+                </div>
+                <div className="statCard">
+                  <strong>{printQueue.length}</strong>
+                  <span>Ready to print</span>
+                </div>
+                <div className="statCard">
+                  <strong>{selectedPrintIds.length}</strong>
+                  <span>Selected</span>
+                </div>
               </div>
 
               {pendingReviews.length === 0 ? (
@@ -662,18 +679,13 @@ export default function App() {
               <div className="sectionHeader printHeader">
                 <div>
                   <p className="eyebrow">Card printing</p>
-                  <h2>Reprint queue</h2>
+                  <h2>
+                    Reprint queue
+                    <span className="countBadge">{printQueue.length}</span>
+                  </h2>
                 </div>
                 <div className="actions printActions">
-                  <label className="selectAllPrint">
-                    <input
-                      type="checkbox"
-                      checked={allPrintItemsSelected}
-                      onChange={toggleSelectAllPrintItems}
-                      disabled={printQueue.length === 0}
-                    />
-                    Select all
-                  </label>
+                  <span className="selectedCount">{selectedPrintIds.length} selected</span>
 
                   <button
                     type="button"
@@ -701,7 +713,18 @@ export default function App() {
                   <table>
                     <thead>
                       <tr>
-                        <th></th>
+                        <th>
+                          <label className="tableSelectAll">
+                            <input
+                              type="checkbox"
+                              checked={allPrintItemsSelected}
+                              onChange={toggleSelectAllPrintItems}
+                              disabled={printQueue.length === 0}
+                              aria-label="Select all cards for printing"
+                            />
+                            <span>Select all</span>
+                          </label>
+                        </th>
                         <th>Honoree</th>
                         <th>Flag grid</th>
                         <th>Approved</th>
