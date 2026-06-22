@@ -141,6 +141,10 @@ export type AdminPrintQueueItem = {
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
 
+export function honoreePdfUrl(honoreeId: number) {
+  return `${apiBase}/api/honorees/${honoreeId}/pdf`;
+}
+
 
 async function publicRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${apiBase}${url}`, {

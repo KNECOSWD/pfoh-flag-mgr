@@ -12,6 +12,7 @@ import {
   adminApi,
   flagClaimApi,
   honoreeApi,
+  honoreePdfUrl,
   lookupApi
 } from "./api";
 import { loginRequest } from "./authConfig";
@@ -670,11 +671,9 @@ export default function App() {
                         </dl>
 
                         <div className="cardActions">
-                          {honoree.pdfUrl ? (
-                            <a className="textLink" href={honoree.pdfUrl} target="_blank" rel="noreferrer">
-                              Open honoree PDF
-                            </a>
-                          ) : <span />}
+                          <a className="textLink" href={honoreePdfUrl(honoree.id)} target="_blank" rel="noreferrer">
+                            Open honoree PDF
+                          </a>
 
                           <div className="honoreeActionButtons">
                             <button
@@ -943,8 +942,8 @@ export default function App() {
                           <td>{item.flagGridName}</td>
                           <td>{formatDate(item.approvedUtc)}</td>
                           <td>
-                            {item.pdfUrl ? (
-                              <a className="textLink" href={item.pdfUrl} target="_blank" rel="noreferrer">
+                            {item.honoreeId ? (
+                              <a className="textLink" href={honoreePdfUrl(item.honoreeId)} target="_blank" rel="noreferrer">
                                 Open PDF
                               </a>
                             ) : (
