@@ -170,12 +170,15 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
     private async Task<AdminRoleContext> GetAdminRoleContextAsync(CancellationToken ct)
     {
         var settings = GetSettings();
-        var filter = $"appId eq '{EscapeODataString(settings.ResourceAppClientId)}'";
-        var path = $"servicePrincipals?$filter={Uri.EscapeDataString(filter)}&$select=id,appId,displayName,appRoles";
-        var servicePrincipals = await GraphSendAsync<GraphCollection<GraphServicePrincipal>>(HttpMethod.Get, path, null, ct);
 
-        var servicePrincipal = servicePrincipals.Value.FirstOrDefault()
-            ?? throw new InvalidOperationException($"Could not find the API service principal for appId {settings.ResourceAppClientId}.");
+        // Some Entra External ID tenants reject filtering servicePrincipals by appId.
+        // Use the Microsoft Graph alternate key lookup instead:
+        // GET /servicePrincipals(appId='{appId}')
+        var servicePrincipal = await GraphSendAsync<GraphServicePrincipal>(
+            HttpMethod.Get,
+            $"servicePrincipals(appId='{EscapeODataString(settings.ResourceAppClientId)}')?$select=id,appId,displayName,appRoles",
+            null,
+            ct);
 
         if (!Guid.TryParse(servicePrincipal.Id, out var resourceServicePrincipalId))
         {
