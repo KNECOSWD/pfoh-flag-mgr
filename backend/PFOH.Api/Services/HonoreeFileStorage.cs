@@ -229,6 +229,58 @@ public class HonoreeFileStorage(IConfiguration configuration)
             ct);
     }
 
+    private async Task<BlobContainerClient?> GetExistingContainerAsync(string containerName, CancellationToken ct)
+    {
+        var connectionString = GetConnectionString();
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return null;
+        }
+
+        var container = new BlobContainerClient(connectionString, containerName);
+
+        if (!await container.ExistsAsync(ct))
+        {
+            return null;
+        }
+
+        return container;
+    }
+
+    private static IEnumerable<string> ServiceLogoCandidates(string? branchName)
+    {
+        var value = branchName?.ToLowerInvariant() ?? string.Empty;
+
+        if (value.Contains("air corps"))
+        {
+            yield return "AirCorps.png";
+            yield return "ArmyAirCorps.png";
+        }
+
+        if (value.Contains("army air"))
+        {
+            yield return "ArmyAirCorps.png";
+            yield return "AirCorps.png";
+        }
+
+        if (value.Contains("national guard")) yield return "NationalGuard.png";
+        if (value.Contains("coast guard")) yield return "CoastGuard.png";
+        if (value.Contains("fire")) yield return "FireAndRescue.png";
+        if (value.Contains("police") || value.Contains("law enforcement")) yield return "LawEnforcement.png";
+        if (value.Contains("first responder")) yield return "FirstResponder.png";
+        if (value.Contains("marine corps")) yield return "MarineCorps.png";
+        if (value.Contains("merchant")) yield return "MerchantMarine.png";
+        if (value.Contains("space")) yield return "SpaceForce.png";
+        if (value.Contains("air force")) yield return "AirForce.png";
+        if (value.Contains("navy")) yield return "Navy.png";
+        if (value.Contains("army")) yield return "Army.png";
+        if (value.Contains("signal")) yield return "SignalCorps.png";
+        if (value.Contains("cavalry")) yield return "Cavalry.png";
+
+        yield return "MilitaryService.png";
+    }
+
     private async Task<BlobContainerClient> GetContainerAsync(string containerName, CancellationToken ct)
     {
         var connectionString = GetConnectionString();
