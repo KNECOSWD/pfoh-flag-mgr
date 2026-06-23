@@ -333,7 +333,10 @@ export default function App() {
     try {
       const claim = await flagClaimApi.claimHonoree(instance, account, honoree.id);
       await loadData();
-      setNotice(`${honoree.fullName}'s flag record has been claimed. Review the prefilled details below and submit any changes.`);
+      const coClaimNotice = claim.claimNotice
+        ? ` ${claim.claimNotice}`
+        : "";
+      setNotice(`${honoree.fullName}'s flag record has been claimed. Review the prefilled details below and submit any changes.${coClaimNotice}`);
       beginEdit(claim);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to claim this honoree's flag record.");
@@ -832,6 +835,10 @@ export default function App() {
                         <span>Claimed {formatDate(claim.createdUtc)}</span>
                         {claim.submittedUtc ? <span>Last submitted {formatDate(claim.submittedUtc)}</span> : null}
                       </div>
+
+                      {claim.claimNotice ? (
+                        <p className="claimNotice">{claim.claimNotice}</p>
+                      ) : null}
 
                       <div className="ownedFlagActions">
                         <button type="button" onClick={() => beginEdit(claim)}>

@@ -15,7 +15,10 @@ public record FlagClaimDto(
     string? ExternalUserName,
     DateTime CreatedUtc,
     DateTime? SubmittedUtc,
-    HonoreeChangeRequestDto? LatestChangeRequest);
+    HonoreeChangeRequestDto? LatestChangeRequest,
+    bool HasOtherClaimants = false,
+    int OtherClaimantCount = 0,
+    string? ClaimNotice = null);
 
 public record HonoreeChangeRequestDto(
     int Id,

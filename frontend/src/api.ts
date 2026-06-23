@@ -86,6 +86,9 @@ export type FlagClaim = {
   createdUtc: string;
   submittedUtc?: string | null;
   latestChangeRequest?: HonoreeChangeRequest | null;
+  hasOtherClaimants?: boolean;
+  otherClaimantCount?: number;
+  claimNotice?: string | null;
 };
 
 export type SaveHonoreeChangeRequest = {

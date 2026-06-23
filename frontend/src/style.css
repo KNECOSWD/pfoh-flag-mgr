@@ -1674,3 +1674,15 @@ img {
     font-size: 1.55rem;
   }
 }
+
+
+.claimNotice {
+  margin: 0.4rem 0 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.9rem;
+  background: rgba(250, 204, 21, 0.16);
+  border: 1px solid rgba(180, 83, 9, 0.24);
+  color: #78350f;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
