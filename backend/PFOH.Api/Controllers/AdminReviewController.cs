@@ -80,69 +80,93 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         [FromBody] ApproveChangeRequest request,
         CancellationToken ct)
     {
-        var adminName = User.GetEmail();
-        if (string.IsNullOrWhiteSpace(adminName))
+
+        try
         {
-            adminName = User.GetDisplayName() ?? "PFOH.Admin";
-        }
-
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
-
-        var change = await db.HonoreeChangeRequests
-            .Include(r => r.FlagClaim)
-            .Include(r => r.FlagGrid)
-            .Include(r => r.ServiceBranch)
-            .FirstOrDefaultAsync(r => r.Id == changeRequestId, ct);
-
-        if (change is null)
-        {
-            return NotFound("Change request was not found.");
-        }
-
-        if (change.RequestStatus != "Submitted")
-        {
-            return Conflict("Only submitted change requests can be approved.");
-        }
-
-        var honoree = await ApplyApprovedChanges(change, adminName, ct);
-
-        change.HonoreeId = honoree.Id;
-        change.RequestStatus = "Approved";
-        change.ReviewedUtc = DateTime.UtcNow;
-        change.ReviewedBy = adminName;
-        change.ReviewNotes = request.ReviewNotes;
-        change.RequiresCardReprint = request.RequiresCardReprint;
-
-        if (change.FlagClaim is not null)
-        {
-            change.FlagClaim.HonoreeId = honoree.Id;
-            change.FlagClaim.ClaimStatus = "Claimed";
-            change.FlagClaim.ApprovedUtc = DateTime.UtcNow;
-            change.FlagClaim.ApprovedBy = adminName;
-            change.FlagClaim.AdminNotes = request.ReviewNotes;
-        }
-
-        await db.SaveChangesAsync(ct);
-
-        if (request.RequiresCardReprint)
-        {
-            try
+            var adminName = User.GetEmail();
+            if (string.IsNullOrWhiteSpace(adminName))
             {
-                await RegenerateHonoreePdfAsync(honoree.Id, ct);
+                adminName = User.GetDisplayName() ?? "PFOH.Admin";
             }
-            catch
+
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+            var change = await db.HonoreeChangeRequests
+                .Include(r => r.FlagClaim)
+                .Include(r => r.FlagGrid)
+                .Include(r => r.ServiceBranch)
+                .FirstOrDefaultAsync(r => r.Id == changeRequestId, ct);
+
+            if (change is null)
             {
-                // Approval should not silently fail or roll back just because the PDF could not be regenerated.
-                // The item remains in the reprint queue so the PDF can be regenerated manually after storage/config is corrected.
-                change.ReviewNotes = string.IsNullOrWhiteSpace(change.ReviewNotes)
-                    ? "Approved, but PDF regeneration failed. Regenerate the PDF manually before printing."
-                    : $"{change.ReviewNotes}\n\nApproved, but PDF regeneration failed. Regenerate the PDF manually before printing.";
+                return NotFound("Change request was not found.");
             }
+
+            if (change.RequestStatus != "Submitted")
+            {
+                return Conflict("Only submitted change requests can be approved.");
+            }
+
+            var honoree = await ApplyApprovedChanges(change, adminName, ct);
+
+            change.HonoreeId = honoree.Id;
+            change.RequestStatus = "Approved";
+            change.ReviewedUtc = DateTime.UtcNow;
+            change.ReviewedBy = adminName;
+            change.ReviewNotes = request.ReviewNotes;
+            change.RequiresCardReprint = request.RequiresCardReprint;
+
+            if (change.FlagClaim is not null)
+            {
+                change.FlagClaim.HonoreeId = honoree.Id;
+                change.FlagClaim.ClaimStatus = "Claimed";
+                change.FlagClaim.ApprovedUtc = DateTime.UtcNow;
+                change.FlagClaim.ApprovedBy = adminName;
+                change.FlagClaim.AdminNotes = request.ReviewNotes;
+            }
+
+            await db.SaveChangesAsync(ct);
+
+            if (request.RequiresCardReprint)
+            {
+                try
+                {
+                    await RegenerateHonoreePdfAsync(honoree.Id, ct);
+                }
+                catch
+                {
+                    // Approval should not silently fail or roll back just because the PDF could not be regenerated.
+                    // The item remains in the reprint queue so the PDF can be regenerated manually after storage/config is corrected.
+                    change.ReviewNotes = string.IsNullOrWhiteSpace(change.ReviewNotes)
+                        ? "Approved, but PDF regeneration failed. Regenerate the PDF manually before printing."
+                        : $"{change.ReviewNotes}\n\nApproved, but PDF regeneration failed. Regenerate the PDF manually before printing.";
+                }
+            }
+
+            await transaction.CommitAsync(ct);
+
+            return Ok(ToReviewDto(change));
         }
-
-        await transaction.CommitAsync(ct);
-
-        return Ok(ToReviewDto(change));
+        catch (DbUpdateException ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = "Approval failed while saving to the database.",
+                    detail = ex.InnerException?.Message ?? ex.Message
+                });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = "Approval failed before it could complete.",
+                    detail = ex.InnerException?.Message ?? ex.Message
+                });
+        }
     }
 
     [HttpPost("{changeRequestId:int}/reject")]
@@ -151,50 +175,74 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         [FromBody] RejectChangeRequest request,
         CancellationToken ct)
     {
-        if (!ModelState.IsValid)
+
+        try
         {
-            return ValidationProblem(ModelState);
-        }
+            if (!ModelState.IsValid)
+            {
+                return ValidationProblem(ModelState);
+            }
 
-        var adminName = User.GetEmail();
-        if (string.IsNullOrWhiteSpace(adminName))
+            var adminName = User.GetEmail();
+            if (string.IsNullOrWhiteSpace(adminName))
+            {
+                adminName = User.GetDisplayName() ?? "PFOH.Admin";
+            }
+
+            var change = await db.HonoreeChangeRequests
+                .Include(r => r.FlagClaim)
+                .Include(r => r.FlagGrid)
+                .Include(r => r.ServiceBranch)
+                .FirstOrDefaultAsync(r => r.Id == changeRequestId, ct);
+
+            if (change is null)
+            {
+                return NotFound("Change request was not found.");
+            }
+
+            if (change.RequestStatus != "Submitted")
+            {
+                return Conflict("Only submitted change requests can be rejected.");
+            }
+
+            change.RequestStatus = "Rejected";
+            change.ReviewedUtc = DateTime.UtcNow;
+            change.ReviewedBy = adminName;
+            change.ReviewNotes = request.ReviewNotes;
+            change.RequiresCardReprint = false;
+
+            if (change.FlagClaim is not null)
+            {
+                change.FlagClaim.ClaimStatus = "Claimed";
+                change.FlagClaim.RejectedUtc = DateTime.UtcNow;
+                change.FlagClaim.RejectedBy = adminName;
+                change.FlagClaim.AdminNotes = request.ReviewNotes;
+            }
+
+            await db.SaveChangesAsync(ct);
+
+            return Ok(ToReviewDto(change));
+        }
+        catch (DbUpdateException ex)
         {
-            adminName = User.GetDisplayName() ?? "PFOH.Admin";
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = "Reject failed while saving to the database.",
+                    detail = ex.InnerException?.Message ?? ex.Message
+                });
         }
-
-        var change = await db.HonoreeChangeRequests
-            .Include(r => r.FlagClaim)
-            .Include(r => r.FlagGrid)
-            .Include(r => r.ServiceBranch)
-            .FirstOrDefaultAsync(r => r.Id == changeRequestId, ct);
-
-        if (change is null)
+        catch (Exception ex)
         {
-            return NotFound("Change request was not found.");
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = "Reject failed before it could complete.",
+                    detail = ex.InnerException?.Message ?? ex.Message
+                });
         }
-
-        if (change.RequestStatus != "Submitted")
-        {
-            return Conflict("Only submitted change requests can be rejected.");
-        }
-
-        change.RequestStatus = "Rejected";
-        change.ReviewedUtc = DateTime.UtcNow;
-        change.ReviewedBy = adminName;
-        change.ReviewNotes = request.ReviewNotes;
-        change.RequiresCardReprint = false;
-
-        if (change.FlagClaim is not null)
-        {
-            change.FlagClaim.ClaimStatus = "Claimed";
-            change.FlagClaim.RejectedUtc = DateTime.UtcNow;
-            change.FlagClaim.RejectedBy = adminName;
-            change.FlagClaim.AdminNotes = request.ReviewNotes;
-        }
-
-        await db.SaveChangesAsync(ct);
-
-        return Ok(ToReviewDto(change));
     }
 
     private async Task<Sponsor?> GetOrCreateSubmitterSponsorAsync(
