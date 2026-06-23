@@ -397,7 +397,12 @@ export default function App() {
 
     try {
       const result = await adminApi.regenerateHonoreePdf(instance, account, honoree.id);
-      setNotice(`PDF regenerated for ${honoree.fullName}: ${result.fileName}`);
+
+      if (result.uploaded) {
+        setNotice(result.message || `PDF regenerated for ${honoree.fullName}: ${result.fileName}`);
+      } else {
+        setError(result.message || "PDF was generated but could not be saved.");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to regenerate PDF.");
     } finally {

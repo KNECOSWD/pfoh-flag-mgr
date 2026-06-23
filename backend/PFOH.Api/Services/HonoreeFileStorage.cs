@@ -13,6 +13,38 @@ public class HonoreeFileStorage(IConfiguration configuration)
 
     public string GetHonoreePdfFileName(int honoreeId) => $"{honoreeId}_HonoreeReport.pdf";
 
+    public string GetPdfContainerName() => PdfContainerName;
+
+    public string GetConfiguredStorageAccountName()
+    {
+        var connectionString = GetConnectionString();
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return "BlobStorage__ConnectionString not configured";
+        }
+
+        foreach (var part in connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pieces = part.Split('=', 2);
+
+            if (pieces.Length == 2 &&
+                pieces[0].Equals("AccountName", StringComparison.OrdinalIgnoreCase))
+            {
+                return pieces[1];
+            }
+
+            if (pieces.Length == 2 &&
+                pieces[0].Equals("BlobEndpoint", StringComparison.OrdinalIgnoreCase) &&
+                Uri.TryCreate(pieces[1], UriKind.Absolute, out var endpoint))
+            {
+                return endpoint.Host.Split('.')[0];
+            }
+        }
+
+        return "configured storage account";
+    }
+
     public async Task<string?> UploadPendingImageAsync(IFormFile? photo, int changeRequestId, CancellationToken ct)
     {
         if (photo is null || photo.Length == 0)
@@ -58,6 +90,8 @@ public class HonoreeFileStorage(IConfiguration configuration)
         var target = container.GetBlobClient(finalFileName);
         var sourceProperties = await source.GetPropertiesAsync(cancellationToken: ct);
 
+        await target.DeleteIfExistsAsync(cancellationToken: ct);
+
         await using (var sourceStream = await source.OpenReadAsync(cancellationToken: ct))
         {
             await target.UploadAsync(
@@ -85,11 +119,15 @@ public class HonoreeFileStorage(IConfiguration configuration)
         HonoreeSearchResult? searchResult,
         CancellationToken ct)
     {
+        // All report graphics should live in the servicelogos container.
+        // DonorCardBlankLrg.png is the production honoree-card background.
         var background =
-            await DownloadServiceLogoAsync("DonorCardBlank.png", ct) ??
-            await DownloadServiceLogoAsync("DonorCardBlankLrg.png", ct);
+            await DownloadServiceLogoAsync("DonorCardBlankLrg.png", ct) ??
+            await DownloadServiceLogoAsync("DonorCardBlank.png", ct);
 
-        var rotary = await DownloadServiceLogoAsync("Rotary.png", ct);
+        var rotary =
+            await DownloadServiceLogoAsync("Rotary.png", ct) ??
+            await DownloadServiceLogoAsync("Rotary.jpg", ct);
 
         var serviceLogo = await DownloadServiceLogoAsync(honoree.ServiceBranch?.LogoFileName, ct);
 
@@ -118,30 +156,17 @@ public class HonoreeFileStorage(IConfiguration configuration)
 
         var cleanFileName = fileName.Replace("\r", "").Replace("\n", "").Trim();
 
-        try
+        foreach (var candidate in RasterFileCandidates(cleanFileName))
         {
-            var container = await GetExistingContainerAsync(ServiceLogosContainerName, ct);
-            if (container is null)
+            var bytes = await DownloadFromExistingContainerAsync(ServiceLogosContainerName, candidate, ct);
+
+            if (bytes is not null && bytes.Length > 0)
             {
-                return null;
+                return bytes;
             }
-
-            var blob = container.GetBlobClient(cleanFileName);
-
-            if (!await blob.ExistsAsync(ct))
-            {
-                return null;
-            }
-
-            await using var stream = await blob.OpenReadAsync(cancellationToken: ct);
-            using var memory = new MemoryStream();
-            await stream.CopyToAsync(memory, ct);
-            return memory.ToArray();
         }
-        catch
-        {
-            return null;
-        }
+
+        return null;
     }
 
     public async Task<byte[]?> DownloadImageAsync(string? photoFileName, string? fallbackImageUrl, CancellationToken ct)
@@ -160,7 +185,8 @@ public class HonoreeFileStorage(IConfiguration configuration)
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(fallbackImageUrl) && Uri.TryCreate(fallbackImageUrl, UriKind.Absolute, out var uri))
+        if (!string.IsNullOrWhiteSpace(fallbackImageUrl) &&
+            Uri.TryCreate(fallbackImageUrl, UriKind.Absolute, out var uri))
         {
             try
             {
@@ -198,8 +224,7 @@ public class HonoreeFileStorage(IConfiguration configuration)
         var container = await GetContainerAsync(PdfContainerName, ct);
         var blob = container.GetBlobClient(fileName);
 
-        // The PDF is a rendered copy of the current honoree record.
-        // When the record changes, replace the old stored PDF with the new one.
+        // Always overwrite. The PDF is a rendered snapshot of the current honoree record.
         await blob.DeleteIfExistsAsync(cancellationToken: ct);
 
         await using var stream = new MemoryStream(pdf);
@@ -219,6 +244,8 @@ public class HonoreeFileStorage(IConfiguration configuration)
         var container = await GetContainerAsync(ImageContainerName, ct);
         var blob = container.GetBlobClient(fileName);
 
+        await blob.DeleteIfExistsAsync(cancellationToken: ct);
+
         await using var stream = photo.OpenReadStream();
         await blob.UploadAsync(
             stream,
@@ -227,6 +254,37 @@ public class HonoreeFileStorage(IConfiguration configuration)
                 HttpHeaders = new BlobHttpHeaders { ContentType = GuessContentType(fileName, photo.ContentType) }
             },
             ct);
+    }
+
+    private async Task<byte[]?> DownloadFromExistingContainerAsync(
+        string containerName,
+        string fileName,
+        CancellationToken ct)
+    {
+        try
+        {
+            var container = await GetExistingContainerAsync(containerName, ct);
+            if (container is null)
+            {
+                return null;
+            }
+
+            var blob = container.GetBlobClient(fileName);
+
+            if (!await blob.ExistsAsync(ct))
+            {
+                return null;
+            }
+
+            await using var stream = await blob.OpenReadAsync(cancellationToken: ct);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory, ct);
+            return memory.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private async Task<BlobContainerClient?> GetExistingContainerAsync(string containerName, CancellationToken ct)
@@ -246,6 +304,51 @@ public class HonoreeFileStorage(IConfiguration configuration)
         }
 
         return container;
+    }
+
+    private async Task<BlobContainerClient> GetContainerAsync(string containerName, CancellationToken ct)
+    {
+        var connectionString = GetConnectionString();
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException("Missing BlobStorage__ConnectionString. Set this App Service environment variable to the connection string for the storage account that contains honoreepdfs, honoreeimages, and servicelogos.");
+        }
+
+        var container = new BlobContainerClient(connectionString, containerName);
+        await container.CreateIfNotExistsAsync(cancellationToken: ct);
+        return container;
+    }
+
+    private string? GetConnectionString()
+    {
+        // Use only the dedicated Plano Flags storage connection string.
+        // Do not silently fall back to AzureWebJobsStorage because that can write to the wrong account.
+        return configuration["BlobStorage:ConnectionString"];
+    }
+
+    private static IEnumerable<string> RasterFileCandidates(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            yield break;
+        }
+
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+
+        if (extension is ".png" or ".jpg" or ".jpeg")
+        {
+            yield return fileName;
+            yield break;
+        }
+
+        var withoutExtension = Path.Combine(
+            Path.GetDirectoryName(fileName) ?? string.Empty,
+            Path.GetFileNameWithoutExtension(fileName));
+
+        yield return $"{withoutExtension}.png";
+        yield return $"{withoutExtension}.jpg";
+        yield return $"{withoutExtension}.jpeg";
     }
 
     private static IEnumerable<string> ServiceLogoCandidates(string? branchName)
@@ -280,59 +383,6 @@ public class HonoreeFileStorage(IConfiguration configuration)
 
         yield return "MilitaryService.png";
     }
-
-    private async Task<BlobContainerClient> GetContainerAsync(string containerName, CancellationToken ct)
-    {
-        var connectionString = GetConnectionString();
-
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            throw new InvalidOperationException("Missing BlobStorage__ConnectionString. Set this App Service environment variable to the connection string for the storage account that contains honoreepdfs, honoreeimages, and servicelogos.");
-        }
-
-        var container = new BlobContainerClient(connectionString, containerName);
-        await container.CreateIfNotExistsAsync(cancellationToken: ct);
-        return container;
-    }
-
-    private string? GetConnectionString()
-    {
-        // Use only the dedicated project storage connection string.
-        // Do not fall back to AzureWebJobsStorage, because that can silently
-        // save PDFs to the wrong storage account while the UI reports success.
-        return configuration["BlobStorage:ConnectionString"];
-    }
-
-    public string GetConfiguredStorageAccountName()
-    {
-        var connectionString = GetConnectionString();
-
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            return "BlobStorage__ConnectionString not configured";
-        }
-
-        foreach (var part in connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var pieces = part.Split('=', 2);
-            if (pieces.Length == 2 &&
-                pieces[0].Equals("AccountName", StringComparison.OrdinalIgnoreCase))
-            {
-                return pieces[1];
-            }
-
-            if (pieces.Length == 2 &&
-                pieces[0].Equals("BlobEndpoint", StringComparison.OrdinalIgnoreCase) &&
-                Uri.TryCreate(pieces[1], UriKind.Absolute, out var endpoint))
-            {
-                return endpoint.Host.Split('.')[0];
-            }
-        }
-
-        return "configured storage account";
-    }
-
-    public string GetPdfContainerName() => PdfContainerName;
 
     private static string GetSafeImageExtension(string fileName, string? contentType)
     {

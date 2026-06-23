@@ -1051,3 +1051,80 @@ td span {
   background: #f3f6fb;
   box-shadow: 0 8px 22px rgba(15, 35, 65, 0.08);
 }
+
+
+/* Portrait/mobile hero refinements */
+
+@media (max-width: 760px) {
+  main {
+    width: min(100% - 1rem, 1180px);
+    padding-top: 1rem;
+  }
+
+  .hero {
+    min-height: 230px;
+    display: block;
+    padding: 4.75rem 1rem 1.65rem;
+    margin-top: -1rem;
+  }
+
+  .hero::before {
+    background-size: cover;
+    background-position: center top;
+    opacity: 0.92;
+  }
+
+  .hero::after {
+    background:
+      linear-gradient(
+        180deg,
+        rgba(3, 12, 30, 0.96) 0%,
+        rgba(6, 20, 48, 0.88) 42%,
+        rgba(6, 20, 48, 0.70) 72%,
+        rgba(45, 8, 16, 0.72) 100%
+      );
+  }
+
+  .authBox {
+    top: 0.85rem;
+    left: 1rem;
+    right: 1rem;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .authBox strong {
+    max-width: calc(100vw - 9.5rem);
+    text-align: left;
+  }
+
+  .hero h1 {
+    max-width: 16rem;
+    font-size: clamp(2rem, 11vw, 3.25rem);
+  }
+
+  .hero p {
+    max-width: 34rem;
+  }
+}
+
+@media (max-width: 430px) {
+  .hero {
+    min-height: 245px;
+    padding-top: 4.5rem;
+  }
+
+  .authBox {
+    align-items: flex-start;
+  }
+
+  .authBox strong {
+    max-width: 11.5rem;
+    white-space: normal;
+    line-height: 1.1;
+  }
+
+  .authBox button {
+    flex: 0 0 auto;
+  }
+}

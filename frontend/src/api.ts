@@ -133,6 +133,10 @@ export type RegeneratePdfResult = {
   honoreeId: number;
   fileName: string;
   generatedUtc: string;
+  uploaded: boolean;
+  storageAccount?: string;
+  container?: string;
+  message?: string;
 };
 
 export type AdminPrintQueueItem = {
@@ -168,7 +172,16 @@ async function publicRequest<T>(url: string, options: RequestInit = {}): Promise
   });
 
   if (!response.ok) {
-    const message = await response.text();
+    const rawMessage = await response.text();
+    let message = rawMessage;
+
+    try {
+      const parsed = JSON.parse(rawMessage) as { message?: string; detail?: string; title?: string };
+      message = parsed.message || parsed.detail || parsed.title || rawMessage;
+    } catch {
+      // Use raw response text.
+    }
+
     throw new ApiError(message || `${response.status} ${response.statusText}`, response.status);
   }
 
@@ -230,7 +243,16 @@ async function request<T>(
   });
 
   if (!response.ok) {
-    const message = await response.text();
+    const rawMessage = await response.text();
+    let message = rawMessage;
+
+    try {
+      const parsed = JSON.parse(rawMessage) as { message?: string; detail?: string; title?: string };
+      message = parsed.message || parsed.detail || parsed.title || rawMessage;
+    } catch {
+      // Use raw response text.
+    }
+
     throw new ApiError(message || `${response.status} ${response.statusText}`, response.status);
   }
 
@@ -262,7 +284,16 @@ async function downloadFile(
   });
 
   if (!response.ok) {
-    const message = await response.text();
+    const rawMessage = await response.text();
+    let message = rawMessage;
+
+    try {
+      const parsed = JSON.parse(rawMessage) as { message?: string; detail?: string; title?: string };
+      message = parsed.message || parsed.detail || parsed.title || rawMessage;
+    } catch {
+      // Use raw response text.
+    }
+
     throw new ApiError(message || `${response.status} ${response.statusText}`, response.status);
   }
 
