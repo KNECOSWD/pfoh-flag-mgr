@@ -341,11 +341,30 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
 
         await db.SaveChangesAsync(ct);
 
-        var finalPhotoFileName = await fileStorage.PromoteImageAsync(change.PhotoFileName, honoree.Id, ct);
-        if (!string.IsNullOrWhiteSpace(finalPhotoFileName))
+        if (!string.IsNullOrWhiteSpace(change.PhotoFileName))
         {
-            honoree.PhotoFileName = finalPhotoFileName;
-            change.PhotoFileName = finalPhotoFileName;
+            if (change.PhotoFileName.StartsWith("pending/", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var finalPhotoFileName = await fileStorage.PromoteImageAsync(change.PhotoFileName, honoree.Id, ct);
+                    if (!string.IsNullOrWhiteSpace(finalPhotoFileName))
+                    {
+                        honoree.PhotoFileName = finalPhotoFileName;
+                        change.PhotoFileName = finalPhotoFileName;
+                    }
+                }
+                catch
+                {
+                    // Do not block admin approval because a pending photo could not be promoted.
+                    // The honoree record remains approved and the photo can be corrected/re-uploaded later.
+                }
+            }
+            else
+            {
+                // Existing/non-pending photo names are already final. Avoid hitting Blob Storage during approval.
+                honoree.PhotoFileName = change.PhotoFileName;
+            }
         }
 
         var flagGrid = await db.FlagGrids.FirstOrDefaultAsync(f => f.Id == change.FlagGridId, ct);
