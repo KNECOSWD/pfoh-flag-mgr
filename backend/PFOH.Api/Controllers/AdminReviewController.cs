@@ -80,92 +80,135 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         int honoreeId,
         CancellationToken ct)
     {
-        var adminName = User.GetEmail();
-        if (string.IsNullOrWhiteSpace(adminName))
-        {
-            adminName = User.GetDisplayName() ?? "PFOH.Admin";
-        }
-
-        var honoree = await db.Honorees
-            .Include(h => h.FlagGrid)
-            .Include(h => h.ServiceBranch)
-            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive && h.DeletedDate == null, ct);
-
-        if (honoree is null)
-        {
-            return NotFound(new { message = "Honoree was not found." });
-        }
-
-        if (!honoree.FlagGridId.HasValue)
-        {
-            return BadRequest(new { message = "This honoree is not assigned to a flag grid yet." });
-        }
-
-        var existingQueueItem = await db.HonoreeChangeRequests
-            .AsNoTracking()
-            .Include(r => r.FlagGrid)
-            .Include(r => r.ServiceBranch)
-            .Where(r =>
-                r.HonoreeId == honoree.Id &&
-                r.RequestStatus == "Approved" &&
-                r.RequiresCardReprint &&
-                r.CardPrintedUtc == null)
-            .OrderByDescending(r => r.ReviewedUtc ?? r.SubmittedUtc ?? r.CreatedUtc)
-            .FirstOrDefaultAsync(ct);
-
-        if (existingQueueItem is not null)
-        {
-            return Ok(await ToPrintQueueDto(existingQueueItem, ct));
-        }
-
-        var queueRequest = new HonoreeChangeRequest
-        {
-            FlagClaimId = 0,
-            FlagGridId = honoree.FlagGridId.Value,
-            HonoreeId = honoree.Id,
-            FirstName = honoree.FirstName ?? string.Empty,
-            MiddleName = honoree.MiddleName,
-            LastName = honoree.LastName ?? string.Empty,
-            Suffix = honoree.Suffix,
-            Nickname = honoree.Nickname,
-            Rank = honoree.Rank,
-            ServiceBranchId = honoree.ServiceBranchId,
-            ServiceBranchCategoryId = honoree.ServiceBranchCategoryId,
-            StartYear = honoree.StartYear,
-            EndYear = honoree.EndYear,
-            DatesUserEntry = honoree.DatesUserEntry,
-            ConflictsServed = honoree.ConflictsServed,
-            Awards = honoree.Awards,
-            Description = honoree.Description,
-            KIA = honoree.KIA,
-            PhotoFileName = honoree.PhotoFileName,
-            SubmitterPhoneNumber = honoree.PhoneNumber,
-            SubmitterEmailAddress = honoree.EmailAddress,
-            RequestStatus = "Approved",
-            CreatedUtc = DateTime.UtcNow,
-            SubmittedUtc = DateTime.UtcNow,
-            ReviewedUtc = DateTime.UtcNow,
-            ReviewedBy = adminName,
-            ReviewNotes = "Added to the reprint queue by administrator.",
-            RequiresCardReprint = true,
-            FlagGrid = honoree.FlagGrid,
-            ServiceBranch = honoree.ServiceBranch
-        };
-
-        db.HonoreeChangeRequests.Add(queueRequest);
-        await db.SaveChangesAsync(ct);
-
         try
         {
-            await RegenerateHonoreePdfAsync(honoree.Id, ct);
-        }
-        catch
-        {
-            queueRequest.ReviewNotes = "Added to the reprint queue by administrator. PDF regeneration failed; regenerate the PDF manually before printing.";
-            await db.SaveChangesAsync(ct);
-        }
+            var adminName = User.GetEmail();
+            if (string.IsNullOrWhiteSpace(adminName))
+            {
+                adminName = User.GetDisplayName() ?? "PFOH.Admin";
+            }
 
-        return Ok(await ToPrintQueueDto(queueRequest, ct));
+            var honoree = await db.Honorees
+                .Include(h => h.FlagGrid)
+                .Include(h => h.ServiceBranch)
+                .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive && h.DeletedDate == null, ct);
+
+            if (honoree is null)
+            {
+                return NotFound(new { message = "Honoree was not found." });
+            }
+
+            if (!honoree.FlagGridId.HasValue)
+            {
+                return BadRequest(new { message = "This honoree is not assigned to a flag grid yet." });
+            }
+
+            var existingQueueItem = await db.HonoreeChangeRequests
+                .AsNoTracking()
+                .Include(r => r.FlagGrid)
+                .Include(r => r.ServiceBranch)
+                .Where(r =>
+                    r.HonoreeId == honoree.Id &&
+                    r.RequestStatus == "Approved" &&
+                    r.RequiresCardReprint &&
+                    r.CardPrintedUtc == null)
+                .OrderByDescending(r => r.ReviewedUtc ?? r.SubmittedUtc ?? r.CreatedUtc)
+                .FirstOrDefaultAsync(ct);
+
+            if (existingQueueItem is not null)
+            {
+                return Ok(await ToPrintQueueDto(existingQueueItem, ct));
+            }
+
+            // HonoreeChangeRequest.FlagClaimId is required. Create an internal/admin claim
+            // so the reprint queue item has a valid foreign key without assigning the flag
+            // to a public user's My claimed flags list.
+            var queueClaim = new FlagClaim
+            {
+                FlagGridId = honoree.FlagGridId.Value,
+                HonoreeId = honoree.Id,
+                ExternalUserObjectId = $"admin-reprint:{Guid.NewGuid():N}",
+                ExternalUserEmail = adminName,
+                ExternalUserName = "PFOH Admin reprint queue",
+                ClaimStatus = "AdminReprintQueued",
+                CreatedUtc = DateTime.UtcNow,
+                ApprovedUtc = DateTime.UtcNow,
+                ApprovedBy = adminName,
+                AdminNotes = "Internal claim created to add an existing honoree to the card reprint queue.",
+                FlagGrid = honoree.FlagGrid,
+                Honoree = honoree
+            };
+
+            var queueRequest = new HonoreeChangeRequest
+            {
+                FlagClaim = queueClaim,
+                FlagGridId = honoree.FlagGridId.Value,
+                HonoreeId = honoree.Id,
+                FirstName = honoree.FirstName ?? string.Empty,
+                MiddleName = honoree.MiddleName,
+                LastName = honoree.LastName ?? string.Empty,
+                Suffix = honoree.Suffix,
+                Nickname = honoree.Nickname,
+                Rank = honoree.Rank,
+                ServiceBranchId = honoree.ServiceBranchId,
+                ServiceBranchCategoryId = honoree.ServiceBranchCategoryId,
+                StartYear = honoree.StartYear,
+                EndYear = honoree.EndYear,
+                DatesUserEntry = honoree.DatesUserEntry,
+                ConflictsServed = honoree.ConflictsServed,
+                Awards = honoree.Awards,
+                Description = honoree.Description,
+                KIA = honoree.KIA,
+                PhotoFileName = honoree.PhotoFileName,
+                SubmitterPhoneNumber = honoree.PhoneNumber,
+                SubmitterEmailAddress = honoree.EmailAddress,
+                RequestStatus = "Approved",
+                CreatedUtc = DateTime.UtcNow,
+                SubmittedUtc = DateTime.UtcNow,
+                ReviewedUtc = DateTime.UtcNow,
+                ReviewedBy = adminName,
+                ReviewNotes = "Added to the reprint queue by administrator.",
+                RequiresCardReprint = true,
+                FlagGrid = honoree.FlagGrid,
+                ServiceBranch = honoree.ServiceBranch
+            };
+
+            db.FlagClaims.Add(queueClaim);
+            db.HonoreeChangeRequests.Add(queueRequest);
+            await db.SaveChangesAsync(ct);
+
+            try
+            {
+                await RegenerateHonoreePdfAsync(honoree.Id, ct);
+            }
+            catch
+            {
+                queueRequest.ReviewNotes = "Added to the reprint queue by administrator. PDF regeneration failed; regenerate the PDF manually before printing.";
+                await db.SaveChangesAsync(ct);
+            }
+
+            return Ok(await ToPrintQueueDto(queueRequest, ct));
+        }
+        catch (DbUpdateException ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = "Unable to add this honoree to the reprint queue because the database save failed.",
+                    detail = ex.InnerException?.Message ?? ex.Message
+                });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = "Unable to add this honoree to the reprint queue.",
+                    detail = ex.InnerException?.Message ?? ex.Message
+                });
+        }
     }
 
 
