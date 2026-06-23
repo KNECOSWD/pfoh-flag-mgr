@@ -144,7 +144,86 @@ public class HonoreeFileStorage(IConfiguration configuration)
             }
         }
 
-        return new HonoreeReportAssets(background, rotary, serviceLogo);
+        var silhouette = await LoadSilhouetteAsync(honoree.ServiceBranch?.ServiceBranchName ?? searchResult?.ServiceBranchName, ct);
+
+        return new HonoreeReportAssets(background, rotary, serviceLogo, silhouette);
+    }
+
+    private async Task<byte[]?> LoadSilhouetteAsync(string? branchName, CancellationToken ct)
+    {
+        foreach (var candidate in SilhouetteCandidates(branchName))
+        {
+            var silhouette = await DownloadServiceLogoAsync(candidate, ct);
+
+            if (silhouette is not null && silhouette.Length > 0)
+            {
+                return silhouette;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> SilhouetteCandidates(string? branchName)
+    {
+        var value = branchName?.ToLowerInvariant() ?? string.Empty;
+
+        if (value.Contains("navy"))
+        {
+            yield return "NavySilhouette.png";
+            yield return "SailorSilhouette.png";
+        }
+
+        if (value.Contains("marine"))
+        {
+            yield return "MarineCorpsSilhouette.png";
+            yield return "MarineSilhouette.png";
+        }
+
+        if (value.Contains("air force"))
+        {
+            yield return "AirForceSilhouette.png";
+            yield return "AirmanSilhouette.png";
+        }
+
+        if (value.Contains("space"))
+        {
+            yield return "SpaceForceSilhouette.png";
+        }
+
+        if (value.Contains("coast guard"))
+        {
+            yield return "CoastGuardSilhouette.png";
+        }
+
+        if (value.Contains("fire"))
+        {
+            yield return "FirefighterSilhouette.png";
+            yield return "FireAndRescueSilhouette.png";
+        }
+
+        if (value.Contains("police") || value.Contains("law enforcement"))
+        {
+            yield return "PoliceSilhouette.png";
+            yield return "LawEnforcementSilhouette.png";
+        }
+
+        if (value.Contains("first responder") || value.Contains("ems") || value.Contains("medical"))
+        {
+            yield return "FirstResponderSilhouette.png";
+            yield return "EMSSilhouette.png";
+        }
+
+        if (value.Contains("army") || value.Contains("cavalry") || value.Contains("signal") || value.Contains("national guard"))
+        {
+            yield return "ArmySilhouette.png";
+            yield return "SoldierSilhouette.png";
+        }
+
+        // Generic final fallback for any missing/unknown branch.
+        yield return "GenericSoldierSilhouette.png";
+        yield return "SoldierSilhouette.png";
+        yield return "MilitarySilhouette.png";
     }
 
     public async Task<byte[]?> DownloadServiceLogoAsync(string? fileName, CancellationToken ct)

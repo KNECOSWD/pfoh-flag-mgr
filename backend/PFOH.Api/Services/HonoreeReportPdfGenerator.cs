@@ -8,10 +8,13 @@ namespace PFOH.Api.Services;
 public sealed record HonoreeReportAssets(
     byte[]? BackgroundImage,
     byte[]? RotaryImage,
-    byte[]? ServiceLogoImage);
+    byte[]? ServiceLogoImage,
+    byte[]? SilhouetteImage = null);
 
 public static class HonoreeReportPdfGenerator
 {
+    private const string FontFamily = "DejaVu Sans";
+
     public static byte[] Create(
         IWebHostEnvironment environment,
         Honoree honoree,
@@ -25,7 +28,7 @@ public static class HonoreeReportPdfGenerator
 
         var page = document.AddPage();
 
-        // Match the legacy QuestPDF card dimensions.
+        // Legacy honoree card dimensions.
         page.Width = 294;
         page.Height = 656;
 
@@ -33,7 +36,7 @@ public static class HonoreeReportPdfGenerator
 
         DrawBackground(gfx, page, environment, assets?.BackgroundImage);
         DrawFlagGrid(gfx, honoree);
-        DrawLogoPhotoRow(gfx, environment, honoree, searchResult, photoBytes, assets?.ServiceLogoImage);
+        DrawLogoPhotoRow(gfx, environment, honoree, searchResult, photoBytes, assets?.ServiceLogoImage, assets?.SilhouetteImage);
         DrawCenteredHonoreeContent(gfx, honoree, searchResult);
         DrawRotaryLogo(gfx, environment, assets?.RotaryImage);
 
@@ -53,9 +56,7 @@ public static class HonoreeReportPdfGenerator
             return;
         }
 
-        // Legacy code used DonorCardBlank.png from the servicelogos container.
-        // Prefer that exact filename when present; fall back to the current large asset.
-        var path = FirstExistingAssetPath(environment, "DonorCardBlank.png", "DonorCardBlankLrg.png");
+        var path = FirstExistingAssetPath(environment, "DonorCardBlankLrg.png", "DonorCardBlank.png");
 
         if (!string.IsNullOrWhiteSpace(path))
         {
@@ -72,9 +73,7 @@ public static class HonoreeReportPdfGenerator
         var grid = honoree.FlagGrid?.FlagGridName ?? string.Empty;
         if (string.IsNullOrWhiteSpace(grid)) return;
 
-        // Legacy layout:
-        // column.Item().AlignLeft().PaddingTop(25).PaddingLeft(30).Text(grid).FontSize(8)
-        gfx.DrawString(Clean(grid), Font(8), XBrushes.Black, new XPoint(30, 32));
+        gfx.DrawString(Clean(grid), Font(8, true), XBrushes.Black, new XPoint(30, 32));
     }
 
     private static void DrawLogoPhotoRow(
@@ -83,18 +82,23 @@ public static class HonoreeReportPdfGenerator
         Honoree honoree,
         HonoreeSearchResult? searchResult,
         byte[]? photoBytes,
-        byte[]? serviceLogoBytes)
+        byte[]? serviceLogoBytes,
+        byte[]? silhouetteBytes)
     {
-        // Legacy layout:
-        // column.Item().PaddingTop(10).Row(...)
-        // service image: AlignLeft().PaddingLeft(30).Width(50).Height(50)
-        // honoree image: AlignRight().PaddingRight(30).Height(50 or 100)
         DrawServiceLogo(gfx, environment, honoree, searchResult, serviceLogoBytes, 30, 54, 50, 50);
 
         if (ShouldDrawPhoto(honoree, photoBytes))
         {
             var photoHeight = GetPhotoHeight(photoBytes);
             DrawPhoto(gfx, photoBytes, 166, 54, 98, photoHeight);
+            return;
+        }
+
+        // If no honoree photo exists, show a service-specific silhouette when available.
+        // If no service-specific silhouette exists, draw a generic soldier silhouette.
+        if (!TryDrawImageBytes(gfx, silhouetteBytes, 185, 54, 56, 70, fitArea: true))
+        {
+            DrawGenericSoldierSilhouette(gfx, 185, 54, 56, 70);
         }
     }
 
@@ -135,7 +139,7 @@ public static class HonoreeReportPdfGenerator
         }
         catch
         {
-            // Keep generating the honoree report even if a logo file is missing/corrupt.
+            // Keep generating the report even if a logo file is missing/corrupt.
         }
     }
 
@@ -186,31 +190,56 @@ public static class HonoreeReportPdfGenerator
         }
     }
 
+    private static void DrawGenericSoldierSilhouette(XGraphics gfx, double x, double y, double width, double height)
+    {
+        var black = XBrushes.Black;
+        var centerX = x + (width / 2);
+
+        // Helmet/head.
+        gfx.DrawEllipse(black, centerX - 9, y + 4, 18, 18);
+        gfx.DrawRectangle(black, centerX - 14, y + 13, 28, 5);
+
+        // Body.
+        gfx.DrawPolygon(black, new[]
+        {
+            new XPoint(centerX - 13, y + 24),
+            new XPoint(centerX + 13, y + 24),
+            new XPoint(centerX + 17, y + 54),
+            new XPoint(centerX - 17, y + 54)
+        });
+
+        // Rifle / diagonal shape.
+        using var pen = new XPen(XColors.Black, 5);
+        gfx.DrawLine(pen, x + 8, y + 18, x + 43, y + 58);
+
+        // Legs.
+        gfx.DrawRectangle(black, centerX - 13, y + 52, 10, 18);
+        gfx.DrawRectangle(black, centerX + 3, y + 52, 10, 18);
+    }
+
     private static void DrawCenteredHonoreeContent(
         XGraphics gfx,
         Honoree honoree,
         HonoreeSearchResult? searchResult)
     {
-        // Legacy layout:
-        // AlignCenter().PaddingLeft(40).PaddingRight(40).PaddingTop(20)
-        // First Last, years, branch, then description with PaddingTop(10), all 12pt.
-        var y = 132d;
+        // Matches the legacy QuestPDF card structure, but uses a lighter sans-serif font.
+        var y = 168d;
 
-        DrawCenteredText(gfx, BuildLegacyDisplayName(honoree), y, 12, bold: true);
+        DrawCenteredText(gfx, BuildLegacyDisplayName(honoree), y, 12.2, bold: true);
         y += 15;
 
         var years = BuildServiceYears(honoree);
         if (!string.IsNullOrWhiteSpace(years))
         {
-            DrawCenteredText(gfx, years, y, 12, bold: true);
+            DrawCenteredText(gfx, years, y, 12.2, bold: true);
             y += 15;
         }
 
         var serviceBranchName = Clean(honoree.ServiceBranch?.ServiceBranchName ?? searchResult?.ServiceBranchName);
         if (!string.IsNullOrWhiteSpace(serviceBranchName))
         {
-            DrawCenteredText(gfx, serviceBranchName, y, 12, bold: true);
-            y += 22;
+            DrawCenteredText(gfx, serviceBranchName, y, 12.2, bold: true);
+            y += 23;
         }
         else
         {
@@ -229,9 +258,10 @@ public static class HonoreeReportPdfGenerator
 
         var fontSize = description.Length switch
         {
-            > 1100 => 8.4,
-            > 900 => 9.2,
-            > 700 => 10.0,
+            > 1200 => 8.2,
+            > 1000 => 8.8,
+            > 800 => 9.6,
+            > 650 => 10.4,
             _ => 12.0
         };
 
@@ -241,19 +271,17 @@ public static class HonoreeReportPdfGenerator
             Alignment = XParagraphAlignment.Center
         };
 
-        formatter.DrawString(description, Font(fontSize), XBrushes.Black, rect);
+        formatter.DrawString(description, Font(fontSize, false), XBrushes.Black, rect);
     }
 
     private static void DrawRotaryLogo(XGraphics gfx, IWebHostEnvironment environment, byte[]? rotaryImage)
     {
-        // Legacy layout:
-        // PaddingBottom(10).PaddingRight(10).AlignRight().AlignBottom().Width(50).Height(50)
         if (TryDrawImageBytes(gfx, rotaryImage, 234, 596, 50, 50, fitArea: true))
         {
             return;
         }
 
-        var path = FirstExistingAssetPath(environment, "Rotary.png");
+        var path = FirstExistingAssetPath(environment, "Rotary.png", "Rotary.jpg");
         if (string.IsNullOrWhiteSpace(path)) return;
 
         try
@@ -382,12 +410,14 @@ public static class HonoreeReportPdfGenerator
 
     private static XFont Font(double size, bool bold = false)
     {
-        return new XFont("Helvetica", size, bold ? XFontStyle.Bold : XFontStyle.Regular);
+        // DejaVu Sans is commonly present on Linux App Service and is closer to
+        // the lighter sans-serif look from the legacy QuestPDF output than the
+        // current serif-looking fallback.
+        return new XFont(FontFamily, size, bold ? XFontStyle.Bold : XFontStyle.Regular);
     }
 
     private static string BuildLegacyDisplayName(Honoree honoree)
     {
-        // Legacy code used FirstName + LastName only.
         return string.Join(" ", new[] { honoree.FirstName, honoree.LastName }
             .Where(v => !string.IsNullOrWhiteSpace(v)));
     }
@@ -431,7 +461,7 @@ public static class HonoreeReportPdfGenerator
         if (value.Contains("space")) return "SpaceForce.png";
         if (value.Contains("air force")) return "AirForce.png";
         if (value.Contains("army air")) return "ArmyAirCorps.png";
-        if (value.Contains("national guard")) return "ArmyNationalGuard.png";
+        if (value.Contains("national guard")) return "NationalGuard.png";
         if (value.Contains("signal")) return "SignalCorps.png";
         if (value.Contains("cavalry")) return "Cavalry.png";
         if (value.Contains("navy")) return "Navy.png";
