@@ -85,20 +85,20 @@ public static class HonoreeReportPdfGenerator
         byte[]? serviceLogoBytes,
         byte[]? silhouetteBytes)
     {
-        DrawServiceLogo(gfx, environment, honoree, searchResult, serviceLogoBytes, 30, 54, 50, 50);
+        DrawServiceLogo(gfx, environment, honoree, searchResult, serviceLogoBytes, 27, 52, 72, 72);
 
         if (ShouldDrawPhoto(honoree, photoBytes))
         {
             var photoHeight = GetPhotoHeight(photoBytes);
-            DrawPhoto(gfx, photoBytes, 166, 54, 98, photoHeight);
+            DrawPhoto(gfx, photoBytes, 162, 52, 118, photoHeight);
             return;
         }
 
         // If no honoree photo exists, show a service-specific silhouette when available.
         // If no service-specific silhouette exists, draw a generic soldier silhouette.
-        if (!TryDrawImageBytes(gfx, silhouetteBytes, 185, 54, 56, 70, fitArea: true))
+        if (!TryDrawImageBytes(gfx, silhouetteBytes, 176, 52, 88, 112, fitArea: true))
         {
-            DrawGenericSoldierSilhouette(gfx, 185, 54, 56, 70);
+            DrawGenericSoldierSilhouette(gfx, 176, 52, 88, 112);
         }
     }
 
@@ -164,7 +164,7 @@ public static class HonoreeReportPdfGenerator
         try
         {
             using var image = XImage.FromStream(() => new MemoryStream(photoBytes));
-            return image.PixelWidth > image.PixelHeight ? 100 : 50;
+            return image.PixelWidth > image.PixelHeight ? 132 : 100;
         }
         catch
         {
@@ -227,7 +227,7 @@ public static class HonoreeReportPdfGenerator
         HonoreeSearchResult? searchResult)
     {
         // Matches the legacy QuestPDF card structure, but uses a lighter sans-serif font.
-        var y = 168d;
+        var y = 178d;
 
         DrawCenteredText(gfx, BuildLegacyDisplayName(honoree), y, 12.2, bold: true);
         y += 15;

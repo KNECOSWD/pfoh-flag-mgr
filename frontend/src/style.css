@@ -1260,3 +1260,417 @@ td span {
     padding: 0.45rem 0.85rem;
   }
 }
+
+
+/* Responsive/mobile polish
+   Goal: make the public search page feel intentionally mobile-first instead of a desktop layout squeezed onto a phone. */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  min-width: 0;
+}
+
+img {
+  max-width: 100%;
+}
+
+@media (max-width: 900px) {
+  body {
+    background:
+      radial-gradient(circle at top left, rgba(38, 70, 125, 0.10), transparent 32rem),
+      linear-gradient(180deg, #f7f9fc 0%, #eef3f9 100%);
+  }
+
+  main,
+  .appShell,
+  .pageShell,
+  .contentShell {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  main {
+    padding: 0 0 1.25rem;
+  }
+
+  .hero {
+    width: 100%;
+    margin: 0;
+    border-radius: 0;
+    min-height: 30rem;
+    padding: max(1rem, env(safe-area-inset-top)) 1.5rem 1.35rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 1.05rem;
+    box-shadow: none;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    inset: 0;
+    width: auto;
+    height: auto;
+    background-size: cover;
+    background-position: center center;
+    transform: none;
+    opacity: 1;
+  }
+
+  .hero::after {
+    inset: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    max-width: none !important;
+    opacity: 1;
+    background:
+      linear-gradient(
+        90deg,
+        rgba(5, 15, 35, 0.62) 0%,
+        rgba(7, 22, 50, 0.34) 52%,
+        rgba(7, 22, 50, 0.10) 100%
+      ),
+      linear-gradient(
+        180deg,
+        rgba(2, 8, 20, 0.18) 0%,
+        rgba(2, 8, 20, 0.04) 44%,
+        rgba(2, 8, 20, 0.28) 100%
+      );
+  }
+
+  .hero > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .hero > div:first-child {
+    width: min(100%, 38rem);
+  }
+
+  .hero .eyebrow {
+    font-size: clamp(0.75rem, 2.6vw, 0.95rem);
+    letter-spacing: 0.20em;
+    line-height: 1.2;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  }
+
+  .hero h1 {
+    max-width: 8.5ch;
+    font-size: clamp(4.25rem, 16vw, 6.75rem);
+    line-height: 0.86;
+    letter-spacing: -0.07em;
+    margin: 0.25rem 0 0.65rem;
+    text-wrap: balance;
+    text-shadow: 0 5px 18px rgba(0, 0, 0, 0.45);
+  }
+
+  .hero p {
+    max-width: 36rem;
+    font-size: clamp(1.03rem, 3.8vw, 1.28rem);
+    line-height: 1.45;
+    text-shadow: 0 3px 12px rgba(0, 0, 0, 0.48);
+  }
+
+  .authBox {
+    position: relative;
+    z-index: 2;
+    top: auto;
+    right: auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    width: 100%;
+    margin-top: 0.25rem;
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .authBox strong,
+  .authBox span {
+    color: #ffffff;
+    max-width: 55%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.50);
+  }
+
+  .authBox button {
+    margin-left: auto;
+    min-height: 2.85rem;
+    border-radius: 999px;
+    padding: 0.65rem 1.25rem;
+    color: #123463;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 8px 22px rgba(10, 24, 50, 0.22);
+    white-space: nowrap;
+  }
+
+  main > .card,
+  main > .messageStack,
+  .card,
+  .notice,
+  .error,
+  .ownedFlagCard,
+  .honoreeCard {
+    width: calc(100% - 1.75rem);
+    max-width: 46rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .card {
+    border-radius: 1.45rem;
+    padding: clamp(1.25rem, 5vw, 2rem);
+    box-shadow: 0 14px 34px rgba(17, 34, 64, 0.10);
+  }
+
+  .card + .card,
+  .card + .messageStack,
+  .messageStack + .card {
+    margin-top: 1rem;
+  }
+
+  .card h2 {
+    font-size: clamp(1.65rem, 7vw, 2.35rem);
+    line-height: 1.05;
+  }
+
+  .card h3 {
+    font-size: clamp(1.25rem, 5.8vw, 1.75rem);
+    line-height: 1.15;
+  }
+
+  .eyebrow {
+    font-size: 0.78rem;
+    letter-spacing: 0.18em;
+  }
+
+  .searchBar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+    width: 100%;
+  }
+
+  .searchBar input,
+  .searchBar button,
+  input[type="search"],
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  select,
+  textarea {
+    width: 100%;
+    min-height: 3.4rem;
+    border-radius: 1rem;
+    font-size: 1rem;
+  }
+
+  .searchBar button,
+  button {
+    min-height: 3.25rem;
+    touch-action: manipulation;
+  }
+
+  .sectionHeader,
+  .cardHeader,
+  .adminToolbar,
+  .formActions,
+  .buttonRow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .sectionHeader > *,
+  .cardHeader > *,
+  .adminToolbar > *,
+  .formActions > *,
+  .buttonRow > * {
+    min-width: 0;
+  }
+
+  .sectionHeader button,
+  .cardHeader button,
+  .adminToolbar button,
+  .formActions button,
+  .buttonRow button {
+    flex: 1 1 auto;
+  }
+
+  .honoreeResults,
+  .ownedFlagGrid,
+  .adminGrid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .honoreeCard,
+  .ownedFlagCard {
+    border-radius: 1.25rem;
+    padding: 1rem;
+  }
+
+  .ownedFlagCard {
+    grid-template-columns: 5.75rem 1fr;
+    align-items: start;
+  }
+
+  .ownedFlagImage,
+  .ownedFlagImagePlaceholder {
+    width: 5.75rem;
+    height: 5.75rem;
+    border-radius: 1rem;
+  }
+
+  .ownedFlagMeta,
+  .honoreeMeta,
+  .statusRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .ownedFlagMeta span,
+  .honoreeMeta span,
+  .statusRow span {
+    max-width: 100%;
+  }
+
+  table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 560px) {
+  .hero {
+    min-height: 27.5rem;
+    padding-left: 1.15rem;
+    padding-right: 1.15rem;
+  }
+
+  .hero::before {
+    background-position: 43% center;
+  }
+
+  .hero h1 {
+    font-size: clamp(3.9rem, 18vw, 5.75rem);
+    max-width: 7ch;
+  }
+
+  .hero p {
+    font-size: 1rem;
+    max-width: 22rem;
+  }
+
+  .authBox {
+    justify-content: flex-end;
+  }
+
+  .authBox strong,
+  .authBox span {
+    font-size: 0.9rem;
+    max-width: 48%;
+  }
+
+  .authBox button {
+    min-height: 2.65rem;
+    padding: 0.55rem 1.05rem;
+    font-size: 0.95rem;
+  }
+
+  main > .card,
+  main > .messageStack,
+  .card,
+  .notice,
+  .error,
+  .ownedFlagCard,
+  .honoreeCard {
+    width: calc(100% - 1.25rem);
+  }
+
+  .card {
+    padding: 1.15rem;
+    border-radius: 1.3rem;
+  }
+
+  .searchBar input,
+  .searchBar button,
+  input[type="search"],
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  select,
+  textarea {
+    min-height: 3.25rem;
+    border-radius: 0.9rem;
+  }
+
+  .ownedFlagCard {
+    grid-template-columns: 1fr;
+  }
+
+  .ownedFlagImage,
+  .ownedFlagImagePlaceholder {
+    width: 100%;
+    height: auto;
+    min-height: 10rem;
+    max-height: 16rem;
+    object-fit: cover;
+  }
+
+  .formGrid,
+  .twoColumn,
+  .threeColumn {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .hero {
+    min-height: 25.5rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(3.25rem, 17.5vw, 4.7rem);
+  }
+
+  .hero p {
+    font-size: 0.96rem;
+  }
+
+  .card {
+    padding: 1rem;
+  }
+
+  .card h2 {
+    font-size: 1.55rem;
+  }
+}
