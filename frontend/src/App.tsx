@@ -790,9 +790,10 @@ export default function App() {
                             Open honoree PDF
                           </a>
 
-                          <div className="honoreeActionButtons">
+                          <div className="honoreeActionArea">
                             <button
                               type="button"
+                              className="primaryAction"
                               onClick={() => claimSearchResult(honoree)}
                               disabled={saving}
                             >
@@ -800,38 +801,45 @@ export default function App() {
                             </button>
 
                             {isAdmin ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="secondary compactButton"
-                                  onClick={() => beginAdminDirectEdit(honoree)}
-                                  disabled={saving || regeneratingPdfHonoreeId === honoree.id}
-                                >
-                                  Edit + reprint
-                                </button>
+                              <details className="adminActionsMenu">
+                                <summary>Admin actions</summary>
+                                <div className="adminActionsPanel">
+                                  <button
+                                    type="button"
+                                    className="secondary compactButton"
+                                    onClick={() => beginAdminDirectEdit(honoree)}
+                                    disabled={saving || regeneratingPdfHonoreeId === honoree.id}
+                                  >
+                                    Edit + reprint
+                                  </button>
 
-                                <button
-                                  type="button"
-                                  className="secondary compactButton"
-                                  onClick={() => queueHonoreeReprint(honoree)}
-                                  disabled={
-                                    saving ||
-                                    queueingReprintHonoreeId === honoree.id ||
-                                    regeneratingPdfHonoreeId === honoree.id
-                                  }
-                                >
-                                  {queueingReprintHonoreeId === honoree.id ? "Adding..." : "Add to reprint queue"}
-                                </button>
+                                  <button
+                                    type="button"
+                                    className="secondary compactButton"
+                                    onClick={() => queueHonoreeReprint(honoree)}
+                                    disabled={
+                                      saving ||
+                                      queueingReprintHonoreeId === honoree.id ||
+                                      regeneratingPdfHonoreeId === honoree.id
+                                    }
+                                  >
+                                    {queueingReprintHonoreeId === honoree.id ? "Adding..." : "Add to reprint queue"}
+                                  </button>
 
-                                <button
-                                  type="button"
-                                  className="secondary compactButton"
-                                  onClick={() => regenerateHonoreePdf(honoree)}
-                                  disabled={saving || regeneratingPdfHonoreeId === honoree.id || queueingReprintHonoreeId === honoree.id}
-                                >
-                                  {regeneratingPdfHonoreeId === honoree.id ? "Generating..." : "Regenerate PDF"}
-                                </button>
-                              </>
+                                  <button
+                                    type="button"
+                                    className="secondary compactButton"
+                                    onClick={() => regenerateHonoreePdf(honoree)}
+                                    disabled={
+                                      saving ||
+                                      regeneratingPdfHonoreeId === honoree.id ||
+                                      queueingReprintHonoreeId === honoree.id
+                                    }
+                                  >
+                                    {regeneratingPdfHonoreeId === honoree.id ? "Generating..." : "Regenerate PDF"}
+                                  </button>
+                                </div>
+                              </details>
                             ) : null}
                           </div>
                         </div>
