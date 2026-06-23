@@ -428,6 +428,16 @@ export const adminApi = {
       }
     ),
 
+
+  queueHonoreeReprint: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    honoreeId: number
+  ) =>
+    request<AdminPrintQueueItem>(instance, account, `/api/admin/review/honoree/${honoreeId}/queue-reprint`, {
+      method: "POST"
+    }),
+
   regenerateHonoreePdf: (
     instance: IPublicClientApplication,
     account: AccountInfo,

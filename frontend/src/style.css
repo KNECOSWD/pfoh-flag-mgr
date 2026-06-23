@@ -1803,3 +1803,9 @@ img {
     letter-spacing: 0.16em !important;
   }
 }
+
+
+/* Reprint queue admin action polish */
+.honoreeActionButtons {
+  flex-wrap: wrap;
+}

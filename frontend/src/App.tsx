@@ -105,6 +105,7 @@ export default function App() {
   const [selectedPrintIds, setSelectedPrintIds] = useState<number[]>([]);
   const [adminBusyId, setAdminBusyId] = useState<number | null>(null);
   const [regeneratingPdfHonoreeId, setRegeneratingPdfHonoreeId] = useState<number | null>(null);
+  const [queueingReprintHonoreeId, setQueueingReprintHonoreeId] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -374,6 +375,40 @@ export default function App() {
       setError(err instanceof Error ? err.message : "Unable to start admin edit.");
     } finally {
       setSaving(false);
+    }
+  }
+
+
+  async function queueHonoreeReprint(honoree: HonoreeSearchResult) {
+    if (!account) {
+      await signIn();
+      return;
+    }
+
+    if (!isAdmin) {
+      setError("Only PFOH administrators can add honorees to the reprint queue.");
+      return;
+    }
+
+    const ok = window.confirm(
+      `Add ${honoree.fullName} to the card reprint queue?`
+    );
+
+    if (!ok) return;
+
+    setQueueingReprintHonoreeId(honoree.id);
+    setError("");
+    setNotice(`Adding ${honoree.fullName} to the reprint queue...`);
+
+    try {
+      await adminApi.queueHonoreeReprint(instance, account, honoree.id);
+      await loadData();
+      setNotice(`${honoree.fullName} was added to the reprint queue.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to add honoree to the reprint queue.");
+      setNotice("");
+    } finally {
+      setQueueingReprintHonoreeId(null);
     }
   }
 
@@ -778,8 +813,21 @@ export default function App() {
                                 <button
                                   type="button"
                                   className="secondary compactButton"
+                                  onClick={() => queueHonoreeReprint(honoree)}
+                                  disabled={
+                                    saving ||
+                                    queueingReprintHonoreeId === honoree.id ||
+                                    regeneratingPdfHonoreeId === honoree.id
+                                  }
+                                >
+                                  {queueingReprintHonoreeId === honoree.id ? "Adding..." : "Add to reprint queue"}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="secondary compactButton"
                                   onClick={() => regenerateHonoreePdf(honoree)}
-                                  disabled={saving || regeneratingPdfHonoreeId === honoree.id}
+                                  disabled={saving || regeneratingPdfHonoreeId === honoree.id || queueingReprintHonoreeId === honoree.id}
                                 >
                                   {regeneratingPdfHonoreeId === honoree.id ? "Generating..." : "Regenerate PDF"}
                                 </button>

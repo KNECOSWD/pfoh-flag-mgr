@@ -74,6 +74,101 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         return Ok(dtos);
     }
 
+
+    [HttpPost("honoree/{honoreeId:int}/queue-reprint")]
+    public async Task<ActionResult<AdminPrintQueueItemDto>> QueueHonoreeReprint(
+        int honoreeId,
+        CancellationToken ct)
+    {
+        var adminName = User.GetEmail();
+        if (string.IsNullOrWhiteSpace(adminName))
+        {
+            adminName = User.GetDisplayName() ?? "PFOH.Admin";
+        }
+
+        var honoree = await db.Honorees
+            .Include(h => h.FlagGrid)
+            .Include(h => h.ServiceBranch)
+            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive && h.DeletedDate == null, ct);
+
+        if (honoree is null)
+        {
+            return NotFound(new { message = "Honoree was not found." });
+        }
+
+        if (!honoree.FlagGridId.HasValue)
+        {
+            return BadRequest(new { message = "This honoree is not assigned to a flag grid yet." });
+        }
+
+        var existingQueueItem = await db.HonoreeChangeRequests
+            .AsNoTracking()
+            .Include(r => r.FlagGrid)
+            .Include(r => r.ServiceBranch)
+            .Where(r =>
+                r.HonoreeId == honoree.Id &&
+                r.RequestStatus == "Approved" &&
+                r.RequiresCardReprint &&
+                r.CardPrintedUtc == null)
+            .OrderByDescending(r => r.ReviewedUtc ?? r.SubmittedUtc ?? r.CreatedUtc)
+            .FirstOrDefaultAsync(ct);
+
+        if (existingQueueItem is not null)
+        {
+            return Ok(await ToPrintQueueDto(existingQueueItem, ct));
+        }
+
+        var queueRequest = new HonoreeChangeRequest
+        {
+            FlagClaimId = 0,
+            FlagGridId = honoree.FlagGridId.Value,
+            HonoreeId = honoree.Id,
+            FirstName = honoree.FirstName ?? string.Empty,
+            MiddleName = honoree.MiddleName,
+            LastName = honoree.LastName ?? string.Empty,
+            Suffix = honoree.Suffix,
+            Nickname = honoree.Nickname,
+            Rank = honoree.Rank,
+            ServiceBranchId = honoree.ServiceBranchId,
+            ServiceBranchCategoryId = honoree.ServiceBranchCategoryId,
+            StartYear = honoree.StartYear,
+            EndYear = honoree.EndYear,
+            DatesUserEntry = honoree.DatesUserEntry,
+            ConflictsServed = honoree.ConflictsServed,
+            Awards = honoree.Awards,
+            Description = honoree.Description,
+            KIA = honoree.KIA,
+            PhotoFileName = honoree.PhotoFileName,
+            SubmitterPhoneNumber = honoree.PhoneNumber,
+            SubmitterEmailAddress = honoree.EmailAddress,
+            RequestStatus = "Approved",
+            CreatedUtc = DateTime.UtcNow,
+            SubmittedUtc = DateTime.UtcNow,
+            ReviewedUtc = DateTime.UtcNow,
+            ReviewedBy = adminName,
+            ReviewNotes = "Added to the reprint queue by administrator.",
+            RequiresCardReprint = true,
+            FlagGrid = honoree.FlagGrid,
+            ServiceBranch = honoree.ServiceBranch
+        };
+
+        db.HonoreeChangeRequests.Add(queueRequest);
+        await db.SaveChangesAsync(ct);
+
+        try
+        {
+            await RegenerateHonoreePdfAsync(honoree.Id, ct);
+        }
+        catch
+        {
+            queueRequest.ReviewNotes = "Added to the reprint queue by administrator. PDF regeneration failed; regenerate the PDF manually before printing.";
+            await db.SaveChangesAsync(ct);
+        }
+
+        return Ok(await ToPrintQueueDto(queueRequest, ct));
+    }
+
+
     [HttpPost("{changeRequestId:int}/approve")]
     public async Task<ActionResult<AdminReviewItemDto>> Approve(
         int changeRequestId,
@@ -454,6 +549,32 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         var reportAssets = await fileStorage.LoadReportAssetsAsync(honoree, searchResult, ct);
         var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes, reportAssets);
         await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
+    }
+
+
+    private async Task<AdminPrintQueueItemDto> ToPrintQueueDto(HonoreeChangeRequest r, CancellationToken ct)
+    {
+        string? pdfUrl = null;
+
+        if (r.HonoreeId.HasValue)
+        {
+            pdfUrl = await db.HonoreeSearchResults
+                .AsNoTracking()
+                .Where(h => h.Id == r.HonoreeId.Value)
+                .Select(h => h.PDFUrl)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        return new AdminPrintQueueItemDto(
+            r.Id,
+            r.FlagClaimId,
+            r.HonoreeId,
+            BuildHonoreeName(r),
+            r.FlagGrid?.FlagGridName ?? string.Empty,
+            r.ServiceBranch?.ServiceBranchName,
+            pdfUrl,
+            r.ReviewedUtc,
+            r.CardPrintedUtc);
     }
 
     private static AdminReviewItemDto ToReviewDto(HonoreeChangeRequest r) => new(
