@@ -175,12 +175,16 @@ public class HonoreesController(
             .AsNoTracking()
             .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive, ct);
 
+        var storageAccount = fileStorage.GetConfiguredStorageAccountName();
+        var container = fileStorage.GetPdfContainerName();
+        var fileName = fileStorage.GetHonoreePdfFileName(honoree.Id);
         byte[] pdf;
 
         try
         {
             var photoBytes = await SafeDownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
-            pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes);
+            var reportAssets = await fileStorage.LoadReportAssetsAsync(honoree, searchResult, ct);
+            pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes, reportAssets);
         }
         catch (Exception ex)
         {
@@ -188,23 +192,27 @@ public class HonoreesController(
             {
                 honoreeId = honoree.Id,
                 uploaded = false,
-                fileName = fileStorage.GetHonoreePdfFileName(honoree.Id),
+                fileName,
+                storageAccount,
+                container,
                 generatedUtc = DateTime.UtcNow,
-                message = $"PDF generation failed: {ex.Message}"
+                message = $"PDF generation failed before upload: {ex.Message}"
             });
         }
 
         try
         {
-            var fileName = await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
+            fileName = await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
 
             return Ok(new
             {
                 honoreeId = honoree.Id,
                 uploaded = true,
                 fileName,
+                storageAccount,
+                container,
                 generatedUtc = DateTime.UtcNow,
-                message = "PDF regenerated and saved."
+                message = $"PDF regenerated and saved to {storageAccount}/{container}/{fileName}."
             });
         }
         catch (Exception ex)
@@ -213,9 +221,11 @@ public class HonoreesController(
             {
                 honoreeId = honoree.Id,
                 uploaded = false,
-                fileName = fileStorage.GetHonoreePdfFileName(honoree.Id),
+                fileName,
+                storageAccount,
+                container,
                 generatedUtc = DateTime.UtcNow,
-                message = $"PDF was generated but could not be saved to blob storage: {ex.Message}"
+                message = $"PDF was generated but could not be saved to {storageAccount}/{container}/{fileName}: {ex.Message}"
             });
         }
     }

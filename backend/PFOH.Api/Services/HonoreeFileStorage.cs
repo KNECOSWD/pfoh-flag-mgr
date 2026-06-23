@@ -85,15 +85,11 @@ public class HonoreeFileStorage(IConfiguration configuration)
         HonoreeSearchResult? searchResult,
         CancellationToken ct)
     {
-        // All report graphics are expected to live in the servicelogos container.
-        // DonorCardBlankLrg.png is the production background used by the honoree report.
         var background =
-            await DownloadServiceLogoAsync("DonorCardBlankLrg.png", ct) ??
-            await DownloadServiceLogoAsync("DonorCardBlank.png", ct);
+            await DownloadServiceLogoAsync("DonorCardBlank.png", ct) ??
+            await DownloadServiceLogoAsync("DonorCardBlankLrg.png", ct);
 
-        var rotary =
-            await DownloadServiceLogoAsync("Rotary.png", ct) ??
-            await DownloadServiceLogoAsync("Rotary.jpg", ct);
+        var rotary = await DownloadServiceLogoAsync("Rotary.png", ct);
 
         var serviceLogo = await DownloadServiceLogoAsync(honoree.ServiceBranch?.LogoFileName, ct);
 
@@ -122,33 +118,15 @@ public class HonoreeFileStorage(IConfiguration configuration)
 
         var cleanFileName = fileName.Replace("\r", "").Replace("\n", "").Trim();
 
-        foreach (var candidate in RasterFileCandidates(cleanFileName))
-        {
-            var bytes = await DownloadFromExistingContainerAsync(ServiceLogosContainerName, candidate, ct);
-
-            if (bytes is not null && bytes.Length > 0)
-            {
-                return bytes;
-            }
-        }
-
-        return null;
-    }
-
-    private async Task<byte[]?> DownloadFromExistingContainerAsync(
-        string containerName,
-        string fileName,
-        CancellationToken ct)
-    {
         try
         {
-            var container = await GetExistingContainerAsync(containerName, ct);
+            var container = await GetExistingContainerAsync(ServiceLogosContainerName, ct);
             if (container is null)
             {
                 return null;
             }
 
-            var blob = container.GetBlobClient(fileName);
+            var blob = container.GetBlobClient(cleanFileName);
 
             if (!await blob.ExistsAsync(ct))
             {
@@ -251,81 +229,13 @@ public class HonoreeFileStorage(IConfiguration configuration)
             ct);
     }
 
-    private async Task<BlobContainerClient?> GetExistingContainerAsync(string containerName, CancellationToken ct)
-    {
-        var connectionString = GetConnectionString();
-
-        if (string.IsNullOrWhiteSpace(connectionString))
-        {
-            return null;
-        }
-
-        var container = new BlobContainerClient(connectionString, containerName);
-
-        if (!await container.ExistsAsync(ct))
-        {
-            return null;
-        }
-
-        return container;
-    }
-
-    private static IEnumerable<string> RasterFileCandidates(string fileName)
-    {
-        if (string.IsNullOrWhiteSpace(fileName))
-        {
-            yield break;
-        }
-
-        var extension = Path.GetExtension(fileName).ToLowerInvariant();
-
-        if (extension is ".png" or ".jpg" or ".jpeg")
-        {
-            yield return fileName;
-            yield break;
-        }
-
-        var withoutExtension = Path.Combine(
-            Path.GetDirectoryName(fileName) ?? string.Empty,
-            Path.GetFileNameWithoutExtension(fileName));
-
-        yield return $"{withoutExtension}.png";
-        yield return $"{withoutExtension}.jpg";
-        yield return $"{withoutExtension}.jpeg";
-    }
-
-    private static IEnumerable<string> ServiceLogoCandidates(string? branchName)
-    {
-        var value = branchName?.ToLowerInvariant() ?? string.Empty;
-
-        if (value.Contains("air corps")) yield return "AirCorps.png";
-        if (value.Contains("army air")) yield return "ArmyAirCorps.png";
-        if (value.Contains("national guard")) yield return "NationalGuard.png";
-        if (value.Contains("coast guard")) yield return "CoastGuard.png";
-        if (value.Contains("fire")) yield return "FireAndRescue.png";
-        if (value.Contains("police") || value.Contains("law enforcement")) yield return "LawEnforcement.png";
-        if (value.Contains("first responder")) yield return "FirstResponder.png";
-
-        // These may exist as PNGs in some storage accounts. If not, fall through to MilitaryService.png.
-        if (value.Contains("marine corps")) yield return "MarineCorps.png";
-        if (value.Contains("merchant")) yield return "MerchantMarine.png";
-        if (value.Contains("space")) yield return "SpaceForce.png";
-        if (value.Contains("air force")) yield return "AirForce.png";
-        if (value.Contains("navy")) yield return "Navy.png";
-        if (value.Contains("army")) yield return "Army.png";
-        if (value.Contains("signal")) yield return "SignalCorps.png";
-        if (value.Contains("cavalry")) yield return "Cavalry.png";
-
-        yield return "MilitaryService.png";
-    }
-
     private async Task<BlobContainerClient> GetContainerAsync(string containerName, CancellationToken ct)
     {
         var connectionString = GetConnectionString();
 
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            throw new InvalidOperationException("Missing blob storage connection string. Set BlobStorage__ConnectionString or AzureWebJobsStorage in App Service environment variables.");
+            throw new InvalidOperationException("Missing BlobStorage__ConnectionString. Set this App Service environment variable to the connection string for the storage account that contains honoreepdfs, honoreeimages, and servicelogos.");
         }
 
         var container = new BlobContainerClient(connectionString, containerName);
@@ -335,10 +245,42 @@ public class HonoreeFileStorage(IConfiguration configuration)
 
     private string? GetConnectionString()
     {
-        return configuration["BlobStorage:ConnectionString"]
-            ?? configuration["AzureWebJobsStorage"]
-            ?? configuration["StorageConnectionString"];
+        // Use only the dedicated project storage connection string.
+        // Do not fall back to AzureWebJobsStorage, because that can silently
+        // save PDFs to the wrong storage account while the UI reports success.
+        return configuration["BlobStorage:ConnectionString"];
     }
+
+    public string GetConfiguredStorageAccountName()
+    {
+        var connectionString = GetConnectionString();
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return "BlobStorage__ConnectionString not configured";
+        }
+
+        foreach (var part in connectionString.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pieces = part.Split('=', 2);
+            if (pieces.Length == 2 &&
+                pieces[0].Equals("AccountName", StringComparison.OrdinalIgnoreCase))
+            {
+                return pieces[1];
+            }
+
+            if (pieces.Length == 2 &&
+                pieces[0].Equals("BlobEndpoint", StringComparison.OrdinalIgnoreCase) &&
+                Uri.TryCreate(pieces[1], UriKind.Absolute, out var endpoint))
+            {
+                return endpoint.Host.Split('.')[0];
+            }
+        }
+
+        return "configured storage account";
+    }
+
+    public string GetPdfContainerName() => PdfContainerName;
 
     private static string GetSafeImageExtension(string fileName, string? contentType)
     {
