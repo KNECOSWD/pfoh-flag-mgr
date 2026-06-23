@@ -312,6 +312,12 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         };
 
         db.Sponsors.Add(sponsor);
+
+        // The honoree stores SponsorId as a foreign key. A newly added Sponsor has Id = 0
+        // until it is saved, which causes FK_Honorees_Sponsors_SponsorId to fail when
+        // honoree.SponsorId is assigned during approval.
+        await db.SaveChangesAsync(ct);
+
         return sponsor;
     }
 
