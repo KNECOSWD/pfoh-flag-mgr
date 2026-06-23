@@ -794,6 +794,16 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
             claimNotice);
     }
 
+
+    private static string? BuildOtherClaimantsNotice(int otherClaimantCount)
+    {
+        return otherClaimantCount <= 0
+            ? null
+            : otherClaimantCount == 1
+                ? "This flag is also claimed by another user. You may still submit updates. Contact the Plano Flags of Honor administrator if you have questions."
+                : $"This flag is also claimed by {otherClaimantCount} other users. You may still submit updates. Contact the Plano Flags of Honor administrator if you have questions.";
+    }
+
     private static string BuildHonoreeName(HonoreeChangeRequest? latest, Honoree? honoree)
     {
         if (latest is not null)
