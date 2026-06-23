@@ -123,7 +123,23 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         }
 
         await db.SaveChangesAsync(ct);
-        await RegenerateHonoreePdfAsync(honoree.Id, ct);
+
+        if (request.RequiresCardReprint)
+        {
+            try
+            {
+                await RegenerateHonoreePdfAsync(honoree.Id, ct);
+            }
+            catch
+            {
+                // Approval should not silently fail or roll back just because the PDF could not be regenerated.
+                // The item remains in the reprint queue so the PDF can be regenerated manually after storage/config is corrected.
+                change.ReviewNotes = string.IsNullOrWhiteSpace(change.ReviewNotes)
+                    ? "Approved, but PDF regeneration failed. Regenerate the PDF manually before printing."
+                    : $"{change.ReviewNotes}\n\nApproved, but PDF regeneration failed. Regenerate the PDF manually before printing.";
+            }
+        }
+
         await transaction.CommitAsync(ct);
 
         return Ok(ToReviewDto(change));

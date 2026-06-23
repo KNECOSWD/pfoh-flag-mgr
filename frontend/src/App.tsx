@@ -489,11 +489,19 @@ export default function App() {
   }
 
   async function approveReview(item: AdminReviewItem, requiresCardReprint: boolean) {
-    if (!account) return;
+    if (!account) {
+      setError("You must be signed in as an administrator to approve review items.");
+      return;
+    }
+
+    if (!item.changeRequestId) {
+      setError("This review item is missing its change request ID. Refresh the page and try again.");
+      return;
+    }
 
     setAdminBusyId(item.changeRequestId);
     setError("");
-    setNotice("");
+    setNotice(`${requiresCardReprint ? "Approving and queuing reprint" : "Approving"} ${item.honoreeName}...`);
 
     try {
       await adminApi.approve(instance, account, item.changeRequestId, requiresCardReprint);
@@ -501,27 +509,40 @@ export default function App() {
       setNotice(`${item.honoreeName} approved${requiresCardReprint ? " and added to the card reprint queue" : ""}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to approve item.");
+      setNotice("");
     } finally {
       setAdminBusyId(null);
     }
   }
 
   async function rejectReview(item: AdminReviewItem) {
-    if (!account) return;
+    if (!account) {
+      setError("You must be signed in as an administrator to reject review items.");
+      return;
+    }
 
-    const reviewNotes = window.prompt(`Why are you rejecting ${item.honoreeName}?`);
-    if (!reviewNotes) return;
+    if (!item.changeRequestId) {
+      setError("This review item is missing its change request ID. Refresh the page and try again.");
+      return;
+    }
+
+    const reviewNotes = window.prompt(`Why are you rejecting ${item.honoreeName}?`, "Rejected by administrator.");
+    if (!reviewNotes || !reviewNotes.trim()) {
+      setNotice("Reject canceled. A rejection reason is required.");
+      return;
+    }
 
     setAdminBusyId(item.changeRequestId);
     setError("");
-    setNotice("");
+    setNotice(`Rejecting ${item.honoreeName}...`);
 
     try {
-      await adminApi.reject(instance, account, item.changeRequestId, reviewNotes);
+      await adminApi.reject(instance, account, item.changeRequestId, reviewNotes.trim());
       await loadData();
       setNotice(`${item.honoreeName} rejected.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to reject item.");
+      setNotice("");
     } finally {
       setAdminBusyId(null);
     }
@@ -917,7 +938,7 @@ export default function App() {
                               disabled={adminBusyId === item.changeRequestId}
                               onClick={() => approveReview(item, true)}
                             >
-                              Approve + reprint
+                              {adminBusyId === item.changeRequestId ? "Approving..." : "Approve + reprint"}
                             </button>
                             <button
                               type="button"
@@ -925,7 +946,7 @@ export default function App() {
                               disabled={adminBusyId === item.changeRequestId}
                               onClick={() => approveReview(item, false)}
                             >
-                              Approve only
+                              {adminBusyId === item.changeRequestId ? "Approving..." : "Approve only"}
                             </button>
                             <button
                               type="button"
@@ -933,7 +954,7 @@ export default function App() {
                               disabled={adminBusyId === item.changeRequestId}
                               onClick={() => rejectReview(item)}
                             >
-                              Reject
+                              {adminBusyId === item.changeRequestId ? "Rejecting..." : "Reject"}
                             </button>
                           </td>
                         </tr>
