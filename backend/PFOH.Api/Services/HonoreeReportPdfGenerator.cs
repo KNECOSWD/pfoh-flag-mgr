@@ -200,16 +200,20 @@ public static class HonoreeReportPdfGenerator
         gfx.DrawRectangle(black, centerX - 14, y + 13, 28, 5);
 
         // Body.
-        gfx.DrawPolygon(black, new[]
-        {
-            new XPoint(centerX - 13, y + 24),
-            new XPoint(centerX + 13, y + 24),
-            new XPoint(centerX + 17, y + 54),
-            new XPoint(centerX - 17, y + 54)
-        });
+        gfx.DrawPolygon(
+            XPens.Black,
+            black,
+            new[]
+            {
+                new XPoint(centerX - 13, y + 24),
+                new XPoint(centerX + 13, y + 24),
+                new XPoint(centerX + 17, y + 54),
+                new XPoint(centerX - 17, y + 54)
+            },
+            XFillMode.Winding);
 
         // Rifle / diagonal shape.
-        using var pen = new XPen(XColors.Black, 5);
+        var pen = new XPen(XColors.Black, 5);
         gfx.DrawLine(pen, x + 8, y + 18, x + 43, y + 58);
 
         // Legs.

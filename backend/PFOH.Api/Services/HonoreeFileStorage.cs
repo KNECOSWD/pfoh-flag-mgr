@@ -153,7 +153,9 @@ public class HonoreeFileStorage(IConfiguration configuration)
     {
         foreach (var candidate in SilhouetteCandidates(branchName))
         {
-            var silhouette = await DownloadServiceLogoAsync(candidate, ct);
+            // Silhouettes are treated like photo substitutes, so check honoreeimages first.
+            var silhouette = await DownloadFromExistingContainerAsync(ImageContainerName, candidate, ct)
+                ?? await DownloadServiceLogoAsync(candidate, ct);
 
             if (silhouette is not null && silhouette.Length > 0)
             {
