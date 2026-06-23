@@ -17,6 +17,7 @@ import {
   lookupApi
 } from "./api";
 import { loginRequest } from "./authConfig";
+import knecoLogoBlue from "./assets/kneco-logo-blue.png";
 
 const blankForm: SaveHonoreeChangeRequest = {
   firstName: "",
@@ -1438,6 +1439,13 @@ export default function App() {
 
             </>
           ) : null}
+
+      <footer className="siteCredit" aria-label="Application credit">
+        <span>Built by</span>
+        <a href="https://www.kneco.com" target="_blank" rel="noreferrer" aria-label="KNECO, Inc. website">
+          <img src={knecoLogoBlue} alt="KNECO, Inc." />
+        </a>
+      </footer>
     </main>
   );
 }

@@ -1926,3 +1926,43 @@ img {
     width: 100%;
   }
 }
+
+
+/* KNECO app credit */
+.siteCredit {
+  width: min(100% - 2rem, 72rem);
+  margin: 2rem auto 1.5rem;
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  color: #52627a;
+  font-size: 0.95rem;
+  border-top: 1px solid rgba(15, 55, 107, 0.10);
+}
+
+.siteCredit a {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.siteCredit img {
+  display: block;
+  width: 8.75rem;
+  max-width: 42vw;
+  height: auto;
+}
+
+@media (max-width: 560px) {
+  .siteCredit {
+    margin-top: 1.25rem;
+    padding: 1rem 0.75rem;
+    font-size: 0.86rem;
+  }
+
+  .siteCredit img {
+    width: 7.25rem;
+  }
+}
