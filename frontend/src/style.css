@@ -1906,3 +1906,23 @@ img {
     box-shadow: none;
   }
 }
+
+
+/* Claimed flag unclaim action */
+.ownedFlagActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.ownedFlagActions button.secondary {
+  background: #eef3f9;
+  color: #0f376b;
+}
+
+@media (max-width: 560px) {
+  .ownedFlagActions button {
+    width: 100%;
+  }
+}

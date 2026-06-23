@@ -346,6 +346,39 @@ export default function App() {
     }
   }
 
+
+  async function unclaimFlag(claim: FlagClaim) {
+    if (!account) return;
+
+    const ok = window.confirm(
+      `Unclaim ${claim.honoreeName || "this flag"}? It will be removed from your claimed flags.`
+    );
+
+    if (!ok) return;
+
+    setSaving(true);
+    setError("");
+    setNotice(`Unclaiming ${claim.honoreeName || "flag"}...`);
+
+    try {
+      await flagClaimApi.unclaim(instance, account, claim.id);
+
+      if (selectedClaim?.id === claim.id) {
+        setSelectedClaim(null);
+        setForm(blankForm);
+        setSelectedPhoto(null);
+      }
+
+      await loadData();
+      setNotice(`${claim.honoreeName || "Flag"} was unclaimed.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to unclaim this flag.");
+      setNotice("");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function beginAdminDirectEdit(honoree: HonoreeSearchResult) {
     if (!account) {
       await signIn();
@@ -920,6 +953,14 @@ export default function App() {
                       <div className="ownedFlagActions">
                         <button type="button" onClick={() => beginEdit(claim)}>
                           Manage flag
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => unclaimFlag(claim)}
+                          disabled={saving}
+                        >
+                          Unclaim
                         </button>
                       </div>
                     </article>

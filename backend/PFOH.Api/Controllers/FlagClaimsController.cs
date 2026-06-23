@@ -36,7 +36,9 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
             .Where(c =>
                 c.ExternalUserObjectId == userObjectId &&
                 c.ClaimStatus != "AdminDirectEdit" &&
-                c.ClaimStatus != "AdminDirectEditCompleted")
+                c.ClaimStatus != "AdminDirectEditCompleted" &&
+                c.ClaimStatus != "Unclaimed" &&
+                c.ClaimStatus != "Cancelled")
             .OrderByDescending(c => c.CreatedUtc)
             .ToListAsync(ct);
 
@@ -65,6 +67,63 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
             return ToDto(claim, imageUrl);
         }).ToList());
     }
+
+
+    [HttpPost("{claimId:int}/unclaim")]
+    public async Task<ActionResult> Unclaim(int claimId, CancellationToken ct)
+    {
+        var userObjectId = User.GetExternalObjectId();
+        var isAdmin = User.IsInRole("PFOH.Admin");
+
+        var claim = await db.FlagClaims
+            .Include(c => c.HonoreeChangeRequests)
+            .FirstOrDefaultAsync(c => c.Id == claimId, ct);
+
+        if (claim is null)
+        {
+            return NotFound(new { message = "Flag claim was not found." });
+        }
+
+        if (!isAdmin && claim.ExternalUserObjectId != userObjectId)
+        {
+            return Forbid();
+        }
+
+        if (claim.ClaimStatus == "AdminDirectEdit")
+        {
+            return BadRequest(new { message = "Admin direct-edit claims cannot be unclaimed from My claimed flags." });
+        }
+
+        var submittedRequestExists = claim.HonoreeChangeRequests
+            .Any(r => r.RequestStatus == "Submitted");
+
+        if (submittedRequestExists && !isAdmin)
+        {
+            return Conflict(new
+            {
+                message = "This flag has submitted changes waiting for admin review. Contact the Plano Flags of Honor administrator if you need it unclaimed."
+            });
+        }
+
+        var now = DateTime.UtcNow;
+        claim.ClaimStatus = "Unclaimed";
+        claim.AdminNotes = string.IsNullOrWhiteSpace(claim.AdminNotes)
+            ? $"Unclaimed on {now:u}."
+            : $"{claim.AdminNotes}\nUnclaimed on {now:u}.";
+
+        foreach (var draft in claim.HonoreeChangeRequests.Where(r => r.RequestStatus == "Draft"))
+        {
+            draft.RequestStatus = "Cancelled";
+            draft.ReviewNotes = string.IsNullOrWhiteSpace(draft.ReviewNotes)
+                ? "Cancelled because the flag was unclaimed."
+                : $"{draft.ReviewNotes}\nCancelled because the flag was unclaimed.";
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        return Ok(new { message = "Flag unclaimed." });
+    }
+
 
     [HttpPost("{flagGridId:int}/claim")]
     public async Task<ActionResult<FlagClaimDto>> ClaimFlagGrid(int flagGridId, CancellationToken ct)

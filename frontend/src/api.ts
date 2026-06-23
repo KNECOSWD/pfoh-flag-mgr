@@ -367,6 +367,11 @@ export const flagClaimApi = {
   submit: (instance: IPublicClientApplication, account: AccountInfo, claimId: number) =>
     request<FlagClaim>(instance, account, `/api/flag-claims/${claimId}/submit`, {
       method: "POST"
+    }),
+
+  unclaim: (instance: IPublicClientApplication, account: AccountInfo, claimId: number) =>
+    request<{ message: string }>(instance, account, `/api/flag-claims/${claimId}/unclaim`, {
+      method: "POST"
     })
 };
 
