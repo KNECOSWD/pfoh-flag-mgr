@@ -1,6 +1,7 @@
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Microsoft.AspNetCore.Http;
+using PFOH.Api.Models;
 
 namespace PFOH.Api.Services;
 
@@ -8,6 +9,7 @@ public class HonoreeFileStorage(IConfiguration configuration)
 {
     public const string ImageContainerName = "honoreeimages";
     public const string PdfContainerName = "honoreepdfs";
+    public const string ServiceLogosContainerName = "servicelogos";
 
     public string GetHonoreePdfFileName(int honoreeId) => $"{honoreeId}_HonoreeReport.pdf";
 
@@ -76,6 +78,92 @@ public class HonoreeFileStorage(IConfiguration configuration)
         }
 
         return finalFileName;
+    }
+
+    public async Task<HonoreeReportAssets> LoadReportAssetsAsync(
+        Honoree honoree,
+        HonoreeSearchResult? searchResult,
+        CancellationToken ct)
+    {
+        // All report graphics are expected to live in the servicelogos container.
+        // DonorCardBlankLrg.png is the production background used by the honoree report.
+        var background =
+            await DownloadServiceLogoAsync("DonorCardBlankLrg.png", ct) ??
+            await DownloadServiceLogoAsync("DonorCardBlank.png", ct);
+
+        var rotary =
+            await DownloadServiceLogoAsync("Rotary.png", ct) ??
+            await DownloadServiceLogoAsync("Rotary.jpg", ct);
+
+        var serviceLogo = await DownloadServiceLogoAsync(honoree.ServiceBranch?.LogoFileName, ct);
+
+        if (serviceLogo is null)
+        {
+            foreach (var candidate in ServiceLogoCandidates(honoree.ServiceBranch?.ServiceBranchName ?? searchResult?.ServiceBranchName))
+            {
+                serviceLogo = await DownloadServiceLogoAsync(candidate, ct);
+
+                if (serviceLogo is not null)
+                {
+                    break;
+                }
+            }
+        }
+
+        return new HonoreeReportAssets(background, rotary, serviceLogo);
+    }
+
+    public async Task<byte[]?> DownloadServiceLogoAsync(string? fileName, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return null;
+        }
+
+        var cleanFileName = fileName.Replace("\r", "").Replace("\n", "").Trim();
+
+        foreach (var candidate in RasterFileCandidates(cleanFileName))
+        {
+            var bytes = await DownloadFromExistingContainerAsync(ServiceLogosContainerName, candidate, ct);
+
+            if (bytes is not null && bytes.Length > 0)
+            {
+                return bytes;
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<byte[]?> DownloadFromExistingContainerAsync(
+        string containerName,
+        string fileName,
+        CancellationToken ct)
+    {
+        try
+        {
+            var container = await GetExistingContainerAsync(containerName, ct);
+            if (container is null)
+            {
+                return null;
+            }
+
+            var blob = container.GetBlobClient(fileName);
+
+            if (!await blob.ExistsAsync(ct))
+            {
+                return null;
+            }
+
+            await using var stream = await blob.OpenReadAsync(cancellationToken: ct);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory, ct);
+            return memory.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public async Task<byte[]?> DownloadImageAsync(string? photoFileName, string? fallbackImageUrl, CancellationToken ct)
@@ -163,11 +251,77 @@ public class HonoreeFileStorage(IConfiguration configuration)
             ct);
     }
 
+    private async Task<BlobContainerClient?> GetExistingContainerAsync(string containerName, CancellationToken ct)
+    {
+        var connectionString = GetConnectionString();
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return null;
+        }
+
+        var container = new BlobContainerClient(connectionString, containerName);
+
+        if (!await container.ExistsAsync(ct))
+        {
+            return null;
+        }
+
+        return container;
+    }
+
+    private static IEnumerable<string> RasterFileCandidates(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            yield break;
+        }
+
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+
+        if (extension is ".png" or ".jpg" or ".jpeg")
+        {
+            yield return fileName;
+            yield break;
+        }
+
+        var withoutExtension = Path.Combine(
+            Path.GetDirectoryName(fileName) ?? string.Empty,
+            Path.GetFileNameWithoutExtension(fileName));
+
+        yield return $"{withoutExtension}.png";
+        yield return $"{withoutExtension}.jpg";
+        yield return $"{withoutExtension}.jpeg";
+    }
+
+    private static IEnumerable<string> ServiceLogoCandidates(string? branchName)
+    {
+        var value = branchName?.ToLowerInvariant() ?? string.Empty;
+
+        if (value.Contains("air corps")) yield return "AirCorps.png";
+        if (value.Contains("army air")) yield return "ArmyAirCorps.png";
+        if (value.Contains("national guard")) yield return "NationalGuard.png";
+        if (value.Contains("coast guard")) yield return "CoastGuard.png";
+        if (value.Contains("fire")) yield return "FireAndRescue.png";
+        if (value.Contains("police") || value.Contains("law enforcement")) yield return "LawEnforcement.png";
+        if (value.Contains("first responder")) yield return "FirstResponder.png";
+
+        // These may exist as PNGs in some storage accounts. If not, fall through to MilitaryService.png.
+        if (value.Contains("marine corps")) yield return "MarineCorps.png";
+        if (value.Contains("merchant")) yield return "MerchantMarine.png";
+        if (value.Contains("space")) yield return "SpaceForce.png";
+        if (value.Contains("air force")) yield return "AirForce.png";
+        if (value.Contains("navy")) yield return "Navy.png";
+        if (value.Contains("army")) yield return "Army.png";
+        if (value.Contains("signal")) yield return "SignalCorps.png";
+        if (value.Contains("cavalry")) yield return "Cavalry.png";
+
+        yield return "MilitaryService.png";
+    }
+
     private async Task<BlobContainerClient> GetContainerAsync(string containerName, CancellationToken ct)
     {
-        var connectionString = configuration["BlobStorage:ConnectionString"]
-            ?? configuration["AzureWebJobsStorage"]
-            ?? configuration["StorageConnectionString"];
+        var connectionString = GetConnectionString();
 
         if (string.IsNullOrWhiteSpace(connectionString))
         {
@@ -177,6 +331,13 @@ public class HonoreeFileStorage(IConfiguration configuration)
         var container = new BlobContainerClient(connectionString, containerName);
         await container.CreateIfNotExistsAsync(cancellationToken: ct);
         return container;
+    }
+
+    private string? GetConnectionString()
+    {
+        return configuration["BlobStorage:ConnectionString"]
+            ?? configuration["AzureWebJobsStorage"]
+            ?? configuration["StorageConnectionString"];
     }
 
     private static string GetSafeImageExtension(string fileName, string? contentType)

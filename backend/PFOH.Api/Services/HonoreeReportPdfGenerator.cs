@@ -5,13 +5,19 @@ using PFOH.Api.Models;
 
 namespace PFOH.Api.Services;
 
+public sealed record HonoreeReportAssets(
+    byte[]? BackgroundImage,
+    byte[]? RotaryImage,
+    byte[]? ServiceLogoImage);
+
 public static class HonoreeReportPdfGenerator
 {
     public static byte[] Create(
         IWebHostEnvironment environment,
         Honoree honoree,
         HonoreeSearchResult? searchResult,
-        byte[]? photoBytes)
+        byte[]? photoBytes,
+        HonoreeReportAssets? assets = null)
     {
         using var document = new PdfDocument();
         document.Info.Title = $"{BuildHonoreeName(honoree)} - Plano Flags of Honor";
@@ -25,19 +31,28 @@ public static class HonoreeReportPdfGenerator
 
         using var gfx = XGraphics.FromPdfPage(page);
 
-        DrawBackground(gfx, page, environment);
+        DrawBackground(gfx, page, environment, assets?.BackgroundImage);
         DrawFlagGrid(gfx, honoree);
-        DrawLogoPhotoRow(gfx, environment, honoree, searchResult, photoBytes);
+        DrawLogoPhotoRow(gfx, environment, honoree, searchResult, photoBytes, assets?.ServiceLogoImage);
         DrawCenteredHonoreeContent(gfx, honoree, searchResult);
-        DrawRotaryLogo(gfx, environment);
+        DrawRotaryLogo(gfx, environment, assets?.RotaryImage);
 
         using var output = new MemoryStream();
         document.Save(output, false);
         return output.ToArray();
     }
 
-    private static void DrawBackground(XGraphics gfx, PdfPage page, IWebHostEnvironment environment)
+    private static void DrawBackground(
+        XGraphics gfx,
+        PdfPage page,
+        IWebHostEnvironment environment,
+        byte[]? backgroundImage)
     {
+        if (TryDrawImageBytes(gfx, backgroundImage, 0, 0, page.Width, page.Height))
+        {
+            return;
+        }
+
         // Legacy code used DonorCardBlank.png from the servicelogos container.
         // Prefer that exact filename when present; fall back to the current large asset.
         var path = FirstExistingAssetPath(environment, "DonorCardBlank.png", "DonorCardBlankLrg.png");
@@ -67,13 +82,14 @@ public static class HonoreeReportPdfGenerator
         IWebHostEnvironment environment,
         Honoree honoree,
         HonoreeSearchResult? searchResult,
-        byte[]? photoBytes)
+        byte[]? photoBytes,
+        byte[]? serviceLogoBytes)
     {
         // Legacy layout:
         // column.Item().PaddingTop(10).Row(...)
         // service image: AlignLeft().PaddingLeft(30).Width(50).Height(50)
         // honoree image: AlignRight().PaddingRight(30).Height(50 or 100)
-        DrawServiceLogo(gfx, environment, honoree, searchResult, 30, 54, 50, 50);
+        DrawServiceLogo(gfx, environment, honoree, searchResult, serviceLogoBytes, 30, 54, 50, 50);
 
         if (ShouldDrawPhoto(honoree, photoBytes))
         {
@@ -87,11 +103,17 @@ public static class HonoreeReportPdfGenerator
         IWebHostEnvironment environment,
         Honoree honoree,
         HonoreeSearchResult? searchResult,
+        byte[]? serviceLogoBytes,
         double x,
         double y,
         double width,
         double height)
     {
+        if (TryDrawImageBytes(gfx, serviceLogoBytes, x, y, width, height, fitArea: true))
+        {
+            return;
+        }
+
         var logoFile = Clean(honoree.ServiceBranch?.LogoFileName);
         var branchName = honoree.ServiceBranch?.ServiceBranchName ?? searchResult?.ServiceBranchName;
 
@@ -222,10 +244,15 @@ public static class HonoreeReportPdfGenerator
         formatter.DrawString(description, Font(fontSize), XBrushes.Black, rect);
     }
 
-    private static void DrawRotaryLogo(XGraphics gfx, IWebHostEnvironment environment)
+    private static void DrawRotaryLogo(XGraphics gfx, IWebHostEnvironment environment, byte[]? rotaryImage)
     {
         // Legacy layout:
         // PaddingBottom(10).PaddingRight(10).AlignRight().AlignBottom().Width(50).Height(50)
+        if (TryDrawImageBytes(gfx, rotaryImage, 234, 596, 50, 50, fitArea: true))
+        {
+            return;
+        }
+
         var path = FirstExistingAssetPath(environment, "Rotary.png");
         if (string.IsNullOrWhiteSpace(path)) return;
 
@@ -250,6 +277,41 @@ public static class HonoreeReportPdfGenerator
             XBrushes.Black,
             new XRect(40, y, 214, 18),
             CenterFormat());
+    }
+
+    private static bool TryDrawImageBytes(
+        XGraphics gfx,
+        byte[]? imageBytes,
+        double x,
+        double y,
+        double width,
+        double height,
+        bool fitArea = false)
+    {
+        if (imageBytes is null || imageBytes.Length == 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var image = XImage.FromStream(() => new MemoryStream(imageBytes));
+
+            if (fitArea)
+            {
+                DrawImageFitArea(gfx, image, x, y, width, height);
+            }
+            else
+            {
+                gfx.DrawImage(image, x, y, width, height);
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static void DrawImageFitArea(

@@ -362,7 +362,8 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
             .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive, ct);
 
         var photoBytes = await fileStorage.DownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
-        var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes);
+        var reportAssets = await fileStorage.LoadReportAssetsAsync(honoree, searchResult, ct);
+        var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes, reportAssets);
         await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
     }
 
