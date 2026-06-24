@@ -115,6 +115,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [showHowItWorks, setShowHowItWorks] = useState(false);
 
   const displayName = useMemo(
     () => account?.name || account?.username || "Supporter",
@@ -771,6 +772,22 @@ export default function App() {
         </div>
       </header>
 
+      <nav className="siteNav" aria-label="Main navigation">
+        <a href="#search">Find a flag</a>
+        {isAuthenticated ? <a href="#my-flags">My claimed flags</a> : null}
+        {isAdmin ? <a href="#admin">Admin</a> : null}
+        {isAdmin ? <a href="#reprint-queue">Reprint queue</a> : null}
+        <button type="button" onClick={beginNomination}>
+          Nominate a honoree
+        </button>
+        <button type="button" className="navInfoButton" onClick={() => setShowHowItWorks(true)} aria-label="How this works">
+          ?
+        </button>
+        <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer">
+          PlanoFlagsOfHonor.com
+        </a>
+      </nav>
+
           {(error || notice) && (
             <section className="messageStack" aria-live="polite" aria-atomic="true">
               {error ? (
@@ -803,28 +820,48 @@ export default function App() {
             </section>
           )}
 
+          {showHowItWorks ? (
+            <div className="modalBackdrop" role="presentation" onMouseDown={() => setShowHowItWorks(false)}>
+              <section
+                className="infoModal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="how-it-works-title"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <div className="modalHeader">
+                  <h2 id="how-it-works-title">How Find a Flag works</h2>
+                  <button type="button" className="modalClose" onClick={() => setShowHowItWorks(false)} aria-label="Close how this works">
+                    ×
+                  </button>
+                </div>
+                <ol className="modalSteps">
+                  <li><strong>Search</strong><span>Find an existing honoree by name, branch, rank, submitter, or flag grid.</span></li>
+                  <li><strong>Review</strong><span>Open the honoree PDF or review the record details.</span></li>
+                  <li><strong>Claim or nominate</strong><span>Sign in to claim a record, submit an update, or nominate someone who is missing.</span></li>
+                  <li><strong>Admin review</strong><span>Administrators approve changes and add cards to the reprint queue when needed.</span></li>
+                </ol>
+              </section>
+            </div>
+          ) : null}
 
-          <section className="card searchCard">
+          <section id="search" className="card searchCard">
             <div className="sectionHeader searchHeader">
               <div>
                 <p className="eyebrow">Find an existing honoree</p>
-                <h2>Honoree search</h2>
+                <h2>
+                  Honoree search
+                  <button
+                    type="button"
+                    className="infoIconButton"
+                    onClick={() => setShowHowItWorks(true)}
+                    aria-label="How this works"
+                  >
+                    i
+                  </button>
+                </h2>
                 <p className="helperText">Search by name, branch, rank, submitter, or flag grid.</p>
               </div>
-            </div>
-
-            <div className="howItWorks">
-              <div>
-                <strong>How this works</strong>
-                <ol>
-                  <li>Search for an existing honoree.</li>
-                  <li>Open the PDF, claim the flag, or submit updates.</li>
-                  <li>Do not see the honoree? Nominate them for admin review.</li>
-                </ol>
-              </div>
-              <button type="button" className="nominateCta" onClick={beginNomination}>
-                {isAuthenticated ? "Nominate a honoree" : "Sign in to nominate"}
-              </button>
             </div>
 
             <form className="searchBar" onSubmit={searchHonorees}>
@@ -1021,7 +1058,7 @@ export default function App() {
 
           {isAuthenticated ? (
             <>
-          <section className="card ownershipCard">
+          <section id="my-flags" className="card ownershipCard">
             <div className="sectionHeader">
               <div>
                 <p className="eyebrow">Your account</p>
@@ -1054,7 +1091,7 @@ export default function App() {
                         <div className="ownedFlagImage ownedFlagImagePlaceholder">No photo</div>
                       )}
 
-                      <div>
+                      <div className="ownedFlagMain">
                         <p className="eyebrow">Honoree</p>
                         <h3>{claim.honoreeName || "Honoree details pending"}</h3>
                         <p>
@@ -1066,20 +1103,6 @@ export default function App() {
                         <span className={statusClass(status)}>{ownershipStatusLabel(claim)}</span>
                         <span>Claimed {formatDate(claim.createdUtc)}</span>
                         {claim.submittedUtc ? <span>Last submitted {formatDate(claim.submittedUtc)}</span> : null}
-                      </div>
-
-                      {claim.claimNotice ? (
-                        <p className="claimNotice">{claim.claimNotice}</p>
-                      ) : null}
-
-                      <div className="miniTimeline" aria-label="Claim timeline">
-                        <span>Claimed {formatDate(claim.createdUtc)}</span>
-                        {claim.latestChangeRequest?.submittedUtc ? (
-                          <span>Submitted {formatDate(claim.latestChangeRequest.submittedUtc)}</span>
-                        ) : null}
-                        {claim.latestChangeRequest?.requestStatus ? (
-                          <span>Status: {claim.latestChangeRequest.requestStatus}</span>
-                        ) : null}
                       </div>
 
                       <div className="ownedFlagActions">
@@ -1095,6 +1118,22 @@ export default function App() {
                           Unclaim
                         </button>
                       </div>
+
+
+
+                      {claim.claimNotice ? (
+                        <p className="claimNotice">{claim.claimNotice}</p>
+                      ) : null}
+
+                      <div className="miniTimeline" aria-label="Claim timeline">
+                        <span>Claimed {formatDate(claim.createdUtc)}</span>
+                        {claim.latestChangeRequest?.submittedUtc ? (
+                          <span>Submitted {formatDate(claim.latestChangeRequest.submittedUtc)}</span>
+                        ) : null}
+                        {claim.latestChangeRequest?.requestStatus ? (
+                          <span>Status: {claim.latestChangeRequest.requestStatus}</span>
+                        ) : null}
+                      </div>
                     </article>
                   );
                 })}
@@ -1103,7 +1142,7 @@ export default function App() {
           </section>
 
           {isAdmin ? (
-            <section className="card adminCard">
+            <section id="admin" className="card adminCard">
               <div className="sectionHeader">
                 <div>
                   <p className="eyebrow">Administrator</p>
@@ -1209,7 +1248,7 @@ export default function App() {
                 </div>
               )}
 
-              <div className="sectionHeader printHeader">
+              <div id="reprint-queue" className="sectionHeader printHeader">
                 <div>
                   <p className="eyebrow">Card printing</p>
                   <h2>

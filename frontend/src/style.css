@@ -2119,3 +2119,270 @@ img {
     align-items: stretch;
   }
 }
+
+
+/* Navigation, modal, claimed flag action polish */
+.siteNav {
+  width: min(100%, 1180px);
+  margin: -1.1rem auto 1.25rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(15, 55, 107, 0.12);
+  border-radius: 1.2rem;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 12px 26px rgba(20, 31, 48, 0.10);
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 4;
+}
+
+.siteNav a,
+.siteNav button {
+  min-height: 2.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.55rem 0.85rem;
+  font-weight: 800;
+  font-size: 0.92rem;
+  text-decoration: none;
+  color: #173b73;
+  background: #eef3f9;
+  box-shadow: none;
+  border: 0;
+}
+
+.siteNav button:not(.navInfoButton) {
+  background: #971d2b;
+  color: #ffffff;
+}
+
+.siteNav a:hover,
+.siteNav button:hover {
+  transform: translateY(-1px);
+}
+
+.siteNav .navInfoButton,
+.infoIconButton {
+  width: 2.25rem;
+  min-width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border-radius: 999px;
+  background: #173b73;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.infoIconButton {
+  margin-left: 0.65rem;
+  vertical-align: middle;
+  font-style: italic;
+  font-family: Georgia, serif;
+  box-shadow: none;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  padding: 1rem;
+  background: rgba(8, 18, 38, 0.54);
+  display: grid;
+  place-items: center;
+}
+
+.infoModal {
+  width: min(100%, 34rem);
+  max-height: min(86vh, 44rem);
+  overflow: auto;
+  border-radius: 1.35rem;
+  padding: 1.25rem;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.modalHeader h2 {
+  margin: 0;
+  color: #0a2346;
+}
+
+.modalClose {
+  width: 2.4rem;
+  min-width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  border-radius: 999px;
+  background: #eef3f9;
+  color: #173b73;
+  box-shadow: none;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.modalSteps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.modalSteps li {
+  padding: 0.85rem;
+  border: 1px solid #e3e9f2;
+  border-radius: 1rem;
+  background: #f9fbfe;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.modalSteps strong {
+  color: #971d2b;
+}
+
+.modalSteps span {
+  color: #53627a;
+}
+
+.ownedFlagCard {
+  grid-template-columns: 96px minmax(0, 1fr) minmax(190px, auto) minmax(180px, auto);
+  align-items: start;
+  position: relative;
+}
+
+.ownedFlagMain {
+  min-width: 0;
+}
+
+.ownedFlagMeta {
+  align-self: start;
+}
+
+.ownedFlagActions {
+  align-self: start;
+  justify-self: end;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.ownedFlagActions button {
+  min-width: 6.75rem;
+  white-space: nowrap;
+}
+
+.miniTimeline {
+  grid-column: 2 / -1;
+  margin-top: 0.35rem;
+}
+
+.claimNotice {
+  grid-column: 2 / -1;
+}
+
+.adminStats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.statCard {
+  min-height: 5.1rem;
+}
+
+@media (max-width: 1100px) {
+  .ownedFlagCard {
+    grid-template-columns: 86px minmax(0, 1fr) minmax(170px, auto);
+  }
+
+  .ownedFlagActions {
+    grid-column: 2 / -1;
+    justify-self: start;
+    margin-top: 0.3rem;
+  }
+
+  .miniTimeline,
+  .claimNotice {
+    grid-column: 2 / -1;
+  }
+
+  .adminStats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .siteNav {
+    margin-top: -0.75rem;
+    border-radius: 1rem;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .siteNav a,
+  .siteNav button {
+    flex: 0 0 auto;
+    font-size: 0.86rem;
+  }
+
+  .ownedFlagCard {
+    grid-template-columns: 82px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .ownedFlagMeta,
+  .ownedFlagActions,
+  .miniTimeline,
+  .claimNotice {
+    grid-column: 1 / -1;
+  }
+
+  .ownedFlagActions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    margin-top: 0.75rem;
+  }
+
+  .ownedFlagActions button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .adminStats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(9rem, 1fr));
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .statCard {
+    min-width: 9rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .ownedFlagActions {
+    grid-template-columns: 1fr;
+  }
+
+  .adminStats {
+    grid-template-columns: repeat(4, minmax(8.5rem, 1fr));
+  }
+}
