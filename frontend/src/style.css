@@ -3387,3 +3387,164 @@ img {
     font-size: 0.54rem;
   }
 }
+
+
+/* Mobile hero reduction and modern search controls */
+@media (max-width: 760px) {
+  .hero {
+    min-height: 0;
+    padding-block: 0.48rem 0.42rem;
+    padding-inline: 0.85rem;
+    row-gap: 0.22rem;
+  }
+
+  .heroContent {
+    gap: 0.08rem;
+    padding-top: 0.05rem;
+  }
+
+  .hero .eyebrow {
+    font-size: 0.48rem;
+    letter-spacing: 0.115em;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.42rem, 8.8vw, 1.95rem);
+    line-height: 0.9;
+    margin: 0.06rem 0 0;
+  }
+
+  .authBox {
+    margin-top: 0;
+    align-items: center;
+  }
+
+  .authBox strong {
+    font-size: 0.78rem;
+  }
+
+  .authBox button {
+    min-height: 1.72rem;
+    padding: 0.26rem 0.62rem;
+    font-size: 0.74rem;
+  }
+
+  .mobileNavToggle {
+    margin-top: 0;
+    min-height: 1.62rem;
+    padding: 0.24rem 0.5rem;
+    border-radius: 0.48rem;
+    font-size: 0.76rem;
+  }
+
+  .mobileNavToggle span {
+    font-size: 0.64rem;
+  }
+
+  .heroNav.isOpen {
+    margin-top: 0.12rem;
+    padding: 0.28rem;
+    border-radius: 0.62rem;
+  }
+
+  .heroNav a {
+    min-height: 1.7rem;
+    padding: 0.26rem 0.35rem;
+    font-size: 0.78rem;
+  }
+
+  .searchCard {
+    padding: 0.78rem;
+  }
+
+  .searchHeader {
+    margin-bottom: 0.48rem;
+  }
+
+  .searchHeader h2 {
+    font-size: 1.18rem;
+  }
+
+  .searchHeader .helperText {
+    font-size: 0.8rem;
+  }
+
+  .searchBar {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.45rem;
+    margin-top: 0.58rem;
+  }
+
+  .searchBar input {
+    min-height: 2.35rem;
+    padding: 0.5rem 0.78rem;
+    border-radius: 999px;
+    background: #ffffff;
+    border: 1px solid #cfd8e8;
+    box-shadow: inset 0 1px 2px rgba(15, 55, 107, 0.04);
+    font-size: 0.86rem;
+  }
+
+  .searchBar input:focus {
+    outline: none;
+    border-color: #1e4b87;
+    box-shadow:
+      0 0 0 3px rgba(30, 75, 135, 0.13),
+      inset 0 1px 2px rgba(15, 55, 107, 0.04);
+  }
+
+  .searchBar button[type="submit"] {
+    width: auto;
+    min-width: 5.75rem;
+    min-height: 2.35rem;
+    padding: 0.48rem 0.85rem;
+    border-radius: 999px;
+    box-shadow: 0 8px 18px rgba(23, 59, 115, 0.16);
+    font-size: 0.88rem;
+  }
+
+  .searchBar button.secondary {
+    grid-column: 1 / -1;
+    min-height: 1.55rem;
+    justify-self: center;
+    margin-top: 0.1rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 999px;
+    background: transparent;
+    color: #173b73;
+    box-shadow: none;
+    font-size: 0.86rem;
+  }
+
+  .searchBar button.secondary:hover:not(:disabled) {
+    background: rgba(23, 59, 115, 0.06);
+    transform: none;
+    box-shadow: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .hero h1 {
+    font-size: clamp(1.35rem, 8.6vw, 1.8rem);
+  }
+
+  .hero .eyebrow {
+    font-size: 0.45rem;
+  }
+
+  .searchBar {
+    gap: 0.38rem;
+  }
+
+  .searchBar input {
+    font-size: 0.8rem;
+    padding-inline: 0.68rem;
+  }
+
+  .searchBar button[type="submit"] {
+    min-width: 5.2rem;
+    padding-inline: 0.7rem;
+    font-size: 0.84rem;
+  }
+}
