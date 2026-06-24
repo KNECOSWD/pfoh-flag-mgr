@@ -2489,3 +2489,69 @@ img {
     flex: 0 0 auto;
   }
 }
+
+
+/* Header nav bottom placement and smaller search info icon */
+.hero {
+  align-items: stretch;
+  flex-wrap: wrap;
+  row-gap: 1rem;
+}
+
+.heroContent {
+  flex: 1 1 min(42rem, 100%);
+  order: 1;
+}
+
+.authBox {
+  order: 2;
+}
+
+.heroNav {
+  order: 3;
+  flex: 1 0 100%;
+  align-self: flex-end;
+  margin-top: 0.45rem;
+  margin-bottom: 0;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.infoIconButton {
+  width: 1.45rem;
+  min-width: 1.45rem;
+  height: 1.45rem;
+  margin-left: 0.4rem;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  line-height: 1;
+  vertical-align: 0.18em;
+  box-shadow: none;
+}
+
+@media (max-width: 760px) {
+  .hero {
+    align-items: flex-start;
+  }
+
+  .heroContent,
+  .authBox,
+  .heroNav {
+    order: initial;
+  }
+
+  .heroNav {
+    width: 100%;
+    flex-basis: 100%;
+    margin-top: 0.5rem;
+    padding-top: 0.75rem;
+  }
+
+  .infoIconButton {
+    width: 1.35rem;
+    min-width: 1.35rem;
+    height: 1.35rem;
+    font-size: 0.72rem;
+  }
+}

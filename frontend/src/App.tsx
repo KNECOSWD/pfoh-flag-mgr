@@ -749,24 +749,6 @@ export default function App() {
     <main>
       <header className="hero">
         <div className="heroContent">
-          <nav className="heroNav" aria-label="Main navigation">
-            <a href="#search">Find a flag</a>
-            {isAuthenticated ? <a href="#my-flags">My flags</a> : null}
-            {isAdmin ? <a href="#admin">Admin</a> : null}
-            {isAdmin ? <a href="#reprint-queue">Reprint queue</a> : null}
-            <a
-              href="#nominate"
-              onClick={(event) => {
-                event.preventDefault();
-                beginNomination();
-              }}
-            >
-              Nominate a honoree
-            </a>
-            <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer">
-              PlanoFlagsOfHonor.com
-            </a>
-          </nav>
 
           <p className="eyebrow">Plano Flags of Honor</p>
           <h1>Find a Flag</h1>
@@ -789,6 +771,25 @@ export default function App() {
             </button>
           )}
         </div>
+
+          <nav className="heroNav" aria-label="Main navigation">
+            <a href="#search">Find a flag</a>
+            {isAuthenticated ? <a href="#my-flags">My flags</a> : null}
+            {isAdmin ? <a href="#admin">Admin</a> : null}
+            {isAdmin ? <a href="#reprint-queue">Reprint queue</a> : null}
+            <a
+              href="#nominate"
+              onClick={(event) => {
+                event.preventDefault();
+                beginNomination();
+              }}
+            >
+              Nominate a honoree
+            </a>
+            <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer">
+              PlanoFlagsOfHonor.com
+            </a>
+          </nav>
       </header>
 
           {(error || notice) && (
