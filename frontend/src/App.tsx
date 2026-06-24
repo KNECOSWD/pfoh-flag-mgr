@@ -116,6 +116,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showHowItWorks, setShowHowItWorks] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const displayName = useMemo(
     () => account?.name || account?.username || "Supporter",
@@ -752,7 +753,7 @@ export default function App() {
 
           <p className="eyebrow">Plano Flags of Honor</p>
           <h1>Find a Flag</h1>
-          <p>
+          <p className="heroSubtitle">
             Search Plano Flags of Honor honoree records and view flag details.
           </p>
         </div>
@@ -772,21 +773,37 @@ export default function App() {
           )}
         </div>
 
-          <nav className="heroNav" aria-label="Main navigation">
-            <a href="#search">Find a flag</a>
-            {isAuthenticated ? <a href="#my-flags">My flags</a> : null}
-            {isAdmin ? <a href="#admin">Admin</a> : null}
-            {isAdmin ? <a href="#reprint-queue">Reprint queue</a> : null}
+          <button
+            type="button"
+            className="mobileNavToggle"
+            onClick={() => setMobileNavOpen((current) => !current)}
+            aria-expanded={mobileNavOpen}
+            aria-controls="hero-navigation"
+          >
+            Menu
+            <span aria-hidden="true">{mobileNavOpen ? "▲" : "▼"}</span>
+          </button>
+
+          <nav
+            id="hero-navigation"
+            className={mobileNavOpen ? "heroNav isOpen" : "heroNav"}
+            aria-label="Main navigation"
+          >
+            <a href="#search" onClick={() => setMobileNavOpen(false)}>Find a flag</a>
+            {isAuthenticated ? <a href="#my-flags" onClick={() => setMobileNavOpen(false)}>My flags</a> : null}
+            {isAdmin ? <a href="#admin" onClick={() => setMobileNavOpen(false)}>Admin</a> : null}
+            {isAdmin ? <a href="#reprint-queue" onClick={() => setMobileNavOpen(false)}>Reprint queue</a> : null}
             <a
               href="#nominate"
               onClick={(event) => {
                 event.preventDefault();
+                setMobileNavOpen(false);
                 beginNomination();
               }}
             >
               Nominate a honoree
             </a>
-            <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer">
+            <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer" onClick={() => setMobileNavOpen(false)}>
               PlanoFlagsOfHonor.com
             </a>
           </nav>
