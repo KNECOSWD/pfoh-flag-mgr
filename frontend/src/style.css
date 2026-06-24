@@ -3548,3 +3548,70 @@ img {
     font-size: 0.84rem;
   }
 }
+
+
+/* Mobile cropped hero header */
+@media (max-width: 760px) {
+  .hero {
+    height: 11.6rem;
+    max-height: 11.6rem;
+    min-height: 0;
+    overflow: hidden;
+    padding-block: 0.5rem 0.45rem;
+    background-position: center 44%;
+  }
+
+  .hero::before {
+    background-size: cover;
+    background-position: center 46%;
+    transform: scale(1.04);
+  }
+
+  .hero::after {
+    background:
+      linear-gradient(
+        90deg,
+        rgba(3, 12, 30, 0.88) 0%,
+        rgba(6, 20, 48, 0.78) 48%,
+        rgba(45, 8, 16, 0.58) 100%
+      );
+  }
+
+  .hero.mobileMenuOpen {
+    height: auto;
+    max-height: none;
+    min-height: 11.6rem;
+    overflow: visible;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.38rem, 8.4vw, 1.85rem);
+  }
+
+  .authBox {
+    margin-top: 0;
+  }
+
+  .mobileNavToggle {
+    margin-top: 0;
+  }
+
+  .searchCard {
+    margin-top: 0.55rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .hero {
+    height: 10.8rem;
+    max-height: 10.8rem;
+  }
+
+  .hero.mobileMenuOpen {
+    min-height: 10.8rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.32rem, 8.2vw, 1.72rem);
+  }
+}

@@ -748,7 +748,7 @@ export default function App() {
 
   return (
     <main>
-      <header className="hero">
+      <header className={mobileNavOpen ? "hero mobileMenuOpen" : "hero"}>
         <div className="heroContent">
 
           <p className="eyebrow">Plano Flags of Honor</p>
@@ -888,7 +888,7 @@ export default function App() {
             <form className="searchBar" onSubmit={searchHonorees}>
               <input
                 type="search"
-                placeholder="Search name, branch, rank, or flag grid"
+                placeholder="Search by honoree name, nickname, rank, branch, submitter, or flag grid"
                 value={honoreeSearchText}
                 onChange={(e) => setHonoreeSearchText(e.target.value)}
               />
