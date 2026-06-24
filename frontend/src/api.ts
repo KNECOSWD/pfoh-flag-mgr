@@ -73,6 +73,17 @@ export type HonoreeChangeRequest = {
   submittedUtc?: string | null;
 };
 
+
+export type AdminClaimantSummary = {
+  claimId: number;
+  claimantName?: string | null;
+  claimantEmail: string;
+  claimStatus: string;
+  createdUtc: string;
+  submittedUtc?: string | null;
+  latestRequestStatus?: string | null;
+};
+
 export type FlagClaim = {
   id: number;
   flagGridId: number;
@@ -372,7 +383,14 @@ export const flagClaimApi = {
   unclaim: (instance: IPublicClientApplication, account: AccountInfo, claimId: number) =>
     request<{ message: string }>(instance, account, `/api/flag-claims/${claimId}/unclaim`, {
       method: "POST"
-    })
+    }),
+
+  claimantsForHonoree: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    honoreeId: number
+  ) =>
+    request<AdminClaimantSummary[]>(instance, account, `/api/flag-claims/admin/honoree/${honoreeId}/claimants`)
 };
 
 export const lookupApi = {

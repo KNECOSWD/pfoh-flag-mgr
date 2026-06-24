@@ -1966,3 +1966,156 @@ img {
     width: 7.25rem;
   }
 }
+
+
+/* Top-priority UI improvements */
+.howItWorks {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  margin: 1rem 0 0.9rem;
+  padding: 1rem;
+  border-radius: 1.1rem;
+  background:
+    linear-gradient(135deg, rgba(12, 52, 100, 0.08), rgba(151, 29, 43, 0.06)),
+    #ffffff;
+  border: 1px solid rgba(15, 55, 107, 0.10);
+}
+
+.howItWorks strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #0a2346;
+}
+
+.howItWorks ol {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #53627a;
+  line-height: 1.45;
+}
+
+.nominateCta {
+  flex: 0 0 auto;
+  min-width: 12.5rem;
+  background: #971d2b;
+  color: #ffffff;
+  box-shadow: 0 12px 28px rgba(151, 29, 43, 0.18);
+}
+
+.claimantPanel {
+  grid-column: 1 / -1;
+  margin-top: 0.85rem;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  background: #f7f9fc;
+  border: 1px solid rgba(15, 55, 107, 0.10);
+}
+
+.claimantPanel strong {
+  display: block;
+  color: #0a2346;
+  margin-bottom: 0.45rem;
+}
+
+.claimantPanel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.claimantPanel li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid rgba(15, 55, 107, 0.08);
+}
+
+.claimantPanel li:first-child {
+  border-top: 0;
+}
+
+.claimantPanel small {
+  color: #53627a;
+}
+
+.printCenterIntro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  margin: 1rem 0 1.25rem;
+  padding: 1rem;
+  border-radius: 1.1rem;
+  background: #f7f9fc;
+  border: 1px solid rgba(15, 55, 107, 0.10);
+}
+
+.printCenterIntro h3 {
+  margin: 0.15rem 0 0.3rem;
+}
+
+.printCenterIntro p {
+  margin: 0;
+  color: #53627a;
+}
+
+.pdfHealth {
+  min-width: 12rem;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  background: #ffffff;
+  border: 1px solid rgba(15, 55, 107, 0.10);
+  display: grid;
+  gap: 0.15rem;
+}
+
+.pdfHealth strong {
+  color: #0a2346;
+}
+
+.pdfHealth span,
+.pdfWarning {
+  color: #7c2d12;
+  font-size: 0.92rem;
+}
+
+.miniTimeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0.6rem 0 0.2rem;
+}
+
+.miniTimeline span {
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  background: #eef3f9;
+  color: #263a59;
+  font-size: 0.82rem;
+}
+
+.adminActionsMenu[open] .adminActionsPanel {
+  display: grid;
+}
+
+@media (max-width: 760px) {
+  .howItWorks,
+  .printCenterIntro {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .nominateCta,
+  .pdfHealth {
+    width: 100%;
+  }
+
+  .howItWorks {
+    align-items: stretch;
+  }
+}

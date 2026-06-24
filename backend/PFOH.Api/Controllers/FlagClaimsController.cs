@@ -69,6 +69,38 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
     }
 
 
+
+    [HttpGet("admin/honoree/{honoreeId:int}/claimants")]
+    [Authorize(Policy = "AdminOnly")]
+    public async Task<ActionResult<IReadOnlyList<object>>> GetHonoreeClaimants(int honoreeId, CancellationToken ct)
+    {
+        var claims = await db.FlagClaims
+            .AsNoTracking()
+            .Include(c => c.HonoreeChangeRequests)
+            .Where(c =>
+                c.HonoreeId == honoreeId &&
+                c.ClaimStatus != "Unclaimed" &&
+                c.ClaimStatus != "Cancelled" &&
+                c.ClaimStatus != "AdminDirectEditCompleted")
+            .OrderByDescending(c => c.CreatedUtc)
+            .Select(c => new
+            {
+                claimId = c.Id,
+                claimantName = c.ExternalUserName,
+                claimantEmail = c.ExternalUserEmail,
+                claimStatus = c.ClaimStatus,
+                createdUtc = c.CreatedUtc,
+                submittedUtc = c.SubmittedUtc,
+                latestRequestStatus = c.HonoreeChangeRequests
+                    .OrderByDescending(r => r.CreatedUtc)
+                    .Select(r => r.RequestStatus)
+                    .FirstOrDefault()
+            })
+            .ToListAsync(ct);
+
+        return Ok(claims);
+    }
+
     [HttpPost("{claimId:int}/unclaim")]
     public async Task<ActionResult> Unclaim(int claimId, CancellationToken ct)
     {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import {
+  AdminClaimantSummary,
   AdminPrintQueueItem,
   AdminReviewItem,
   ApiError,
@@ -107,6 +108,8 @@ export default function App() {
   const [adminBusyId, setAdminBusyId] = useState<number | null>(null);
   const [regeneratingPdfHonoreeId, setRegeneratingPdfHonoreeId] = useState<number | null>(null);
   const [queueingReprintHonoreeId, setQueueingReprintHonoreeId] = useState<number | null>(null);
+  const [claimantsByHonoreeId, setClaimantsByHonoreeId] = useState<Record<number, AdminClaimantSummary[]>>({});
+  const [claimantBusyHonoreeId, setClaimantBusyHonoreeId] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -126,6 +129,22 @@ export default function App() {
   const allPrintItemsSelected =
     allPrintQueueIds.length > 0 &&
     allPrintQueueIds.every((id) => selectedPrintIds.includes(id));
+
+  const printQueueMissingPdfCount = useMemo(
+    () => printQueue.filter((item) => !item.honoreeId && !item.pdfUrl).length,
+    [printQueue]
+  );
+
+  const claimedByMultipleCount = useMemo(
+    () => myClaims.filter((claim) => claim.hasOtherClaimants).length,
+    [myClaims]
+  );
+
+  const selectedPrintQueueItems = useMemo(
+    () => printQueue.filter((item) => selectedPrintIds.includes(item.changeRequestId)),
+    [printQueue, selectedPrintIds]
+  );
+
 
   const filteredServiceBranches = useMemo(() => {
     if (!form.serviceBranchCategoryId) return [];
@@ -412,6 +431,43 @@ export default function App() {
     }
   }
 
+
+
+  async function viewClaimants(honoree: HonoreeSearchResult) {
+    if (!account) {
+      await signIn();
+      return;
+    }
+
+    if (!isAdmin) {
+      setError("Only PFOH administrators can view claimants.");
+      return;
+    }
+
+    if (claimantsByHonoreeId[honoree.id]) {
+      setClaimantsByHonoreeId((current) => {
+        const next = { ...current };
+        delete next[honoree.id];
+        return next;
+      });
+      return;
+    }
+
+    setClaimantBusyHonoreeId(honoree.id);
+    setError("");
+
+    try {
+      const claimants = await flagClaimApi.claimantsForHonoree(instance, account, honoree.id);
+      setClaimantsByHonoreeId((current) => ({
+        ...current,
+        [honoree.id]: claimants
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load claimants for this honoree.");
+    } finally {
+      setClaimantBusyHonoreeId(null);
+    }
+  }
 
   async function queueHonoreeReprint(honoree: HonoreeSearchResult) {
     if (!account) {
@@ -753,13 +809,22 @@ export default function App() {
               <div>
                 <p className="eyebrow">Find an existing honoree</p>
                 <h2>Honoree search</h2>
+                <p className="helperText">Search by name, branch, rank, submitter, or flag grid.</p>
               </div>
+            </div>
 
-              {isAuthenticated ? (
-                <button type="button" className="secondary" onClick={beginNomination}>
-                  Nominate honoree
-                </button>
-              ) : null}
+            <div className="howItWorks">
+              <div>
+                <strong>How this works</strong>
+                <ol>
+                  <li>Search for an existing honoree.</li>
+                  <li>Open the PDF, claim the flag, or submit updates.</li>
+                  <li>Do not see the honoree? Nominate them for admin review.</li>
+                </ol>
+              </div>
+              <button type="button" className="nominateCta" onClick={beginNomination}>
+                {isAuthenticated ? "Nominate a honoree" : "Sign in to nominate"}
+              </button>
             </div>
 
             <form className="searchBar" onSubmit={searchHonorees}>
@@ -835,13 +900,24 @@ export default function App() {
                             </button>
 
                             {isAdmin ? (
-                              <details className="adminActionsMenu">
+                              <details
+                                className="adminActionsMenu"
+                                onBlur={(event) => {
+                                  const nextFocus = event.relatedTarget as Node | null;
+                                  if (!nextFocus || !event.currentTarget.contains(nextFocus)) {
+                                    event.currentTarget.removeAttribute("open");
+                                  }
+                                }}
+                              >
                                 <summary>Admin actions</summary>
                                 <div className="adminActionsPanel">
                                   <button
                                     type="button"
                                     className="secondary compactButton"
-                                    onClick={() => beginAdminDirectEdit(honoree)}
+                                    onClick={(event) => {
+                                      (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
+                                      beginAdminDirectEdit(honoree);
+                                    }}
                                     disabled={saving || regeneratingPdfHonoreeId === honoree.id}
                                   >
                                     Edit + reprint
@@ -850,7 +926,10 @@ export default function App() {
                                   <button
                                     type="button"
                                     className="secondary compactButton"
-                                    onClick={() => queueHonoreeReprint(honoree)}
+                                    onClick={(event) => {
+                                      (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
+                                      queueHonoreeReprint(honoree);
+                                    }}
                                     disabled={
                                       saving ||
                                       queueingReprintHonoreeId === honoree.id ||
@@ -863,7 +942,26 @@ export default function App() {
                                   <button
                                     type="button"
                                     className="secondary compactButton"
-                                    onClick={() => regenerateHonoreePdf(honoree)}
+                                    onClick={(event) => {
+                                      (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
+                                      viewClaimants(honoree);
+                                    }}
+                                    disabled={claimantBusyHonoreeId === honoree.id}
+                                  >
+                                    {claimantBusyHonoreeId === honoree.id
+                                      ? "Loading claimants..."
+                                      : claimantsByHonoreeId[honoree.id]
+                                        ? "Hide claimants"
+                                        : "View claimants"}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="secondary compactButton"
+                                    onClick={(event) => {
+                                      (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
+                                      regenerateHonoreePdf(honoree);
+                                    }}
                                     disabled={
                                       saving ||
                                       regeneratingPdfHonoreeId === honoree.id ||
@@ -877,6 +975,29 @@ export default function App() {
                             ) : null}
                           </div>
                         </div>
+
+                        {claimantsByHonoreeId[honoree.id] ? (
+                          <div className="claimantPanel">
+                            <strong>Claimant visibility</strong>
+                            {claimantsByHonoreeId[honoree.id].length === 0 ? (
+                              <p>No active claimants were found for this honoree.</p>
+                            ) : (
+                              <ul>
+                                {claimantsByHonoreeId[honoree.id].map((claimant) => (
+                                  <li key={claimant.claimId}>
+                                    <span>{claimant.claimantName || claimant.claimantEmail}</span>
+                                    <small>
+                                      {claimant.claimStatus}
+                                      {claimant.latestRequestStatus ? ` • ${claimant.latestRequestStatus}` : ""}
+                                      {" • "}
+                                      Claimed {formatDate(claimant.createdUtc)}
+                                    </small>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        ) : null}
                       </div>
                     </article>
                   ))}
@@ -951,6 +1072,16 @@ export default function App() {
                         <p className="claimNotice">{claim.claimNotice}</p>
                       ) : null}
 
+                      <div className="miniTimeline" aria-label="Claim timeline">
+                        <span>Claimed {formatDate(claim.createdUtc)}</span>
+                        {claim.latestChangeRequest?.submittedUtc ? (
+                          <span>Submitted {formatDate(claim.latestChangeRequest.submittedUtc)}</span>
+                        ) : null}
+                        {claim.latestChangeRequest?.requestStatus ? (
+                          <span>Status: {claim.latestChangeRequest.requestStatus}</span>
+                        ) : null}
+                      </div>
+
                       <div className="ownedFlagActions">
                         <button type="button" onClick={() => beginEdit(claim)}>
                           Manage flag
@@ -998,6 +1129,22 @@ export default function App() {
                 <div className="statCard">
                   <strong>{selectedPrintIds.length}</strong>
                   <span>Selected</span>
+                </div>
+                <div className="statCard">
+                  <strong>{claimedByMultipleCount}</strong>
+                  <span>Multiple-claim alerts</span>
+                </div>
+              </div>
+
+              <div className="printCenterIntro">
+                <div>
+                  <p className="eyebrow">Print Center</p>
+                  <h3>Reprint workflow</h3>
+                  <p>Add records to the queue, verify PDFs, select the cards, download one merged PDF, then mark printed after the physical cards are accepted.</p>
+                </div>
+                <div className="pdfHealth">
+                  <strong>{printQueueMissingPdfCount === 0 ? "PDFs look ready" : `${printQueueMissingPdfCount} PDF warning(s)`}</strong>
+                  <span>{selectedPrintQueueItems.length} selected for the next batch</span>
                 </div>
               </div>
 
@@ -1140,7 +1287,7 @@ export default function App() {
                                 Open PDF
                               </a>
                             ) : (
-                              <span>Missing PDF</span>
+                              <span className="pdfWarning">Missing PDF</span>
                             )}
                           </td>
                         </tr>
