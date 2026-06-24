@@ -1212,7 +1212,7 @@ export default function App() {
                 <p>No submitted changes are waiting for review.</p>
               ) : (
                 <div className="tableWrap">
-                  <table>
+                  <table className="responsiveTable reviewTable">
                     <thead>
                       <tr>
                         <th>Honoree</th>
@@ -1225,19 +1225,19 @@ export default function App() {
                     <tbody>
                       {pendingReviews.map((item) => (
                         <tr key={item.changeRequestId}>
-                          <td>
+                          <td data-label="Honoree">
                             <strong>{item.honoreeName}</strong>
                             <br />
                             <span>{[item.rank, item.serviceBranchName].filter(Boolean).join(" • ")}</span>
                           </td>
-                          <td>{item.flagGridName || item.flagGridId}</td>
-                          <td>
+                          <td data-label="Flag grid">{item.flagGridName || item.flagGridId}</td>
+                          <td data-label="Submitted by">
                             {item.claimantName || item.claimantEmail}
                             <br />
                             <span>{item.claimantEmail}</span>
                           </td>
-                          <td>{formatDate(item.submittedUtc)}</td>
-                          <td className="rowActions stackedActions">
+                          <td data-label="Submitted">{formatDate(item.submittedUtc)}</td>
+                          <td data-label="Actions" className="rowActions stackedActions">
                             <button
                               type="button"
                               disabled={adminBusyId === item.changeRequestId}
@@ -1303,7 +1303,7 @@ export default function App() {
                 <p>No approved cards are waiting for reprint.</p>
               ) : (
                 <div className="tableWrap">
-                  <table>
+                  <table className="responsiveTable printQueueTable">
                     <thead>
                       <tr>
                         <th>
@@ -1327,21 +1327,21 @@ export default function App() {
                     <tbody>
                       {printQueue.map((item) => (
                         <tr key={item.changeRequestId}>
-                          <td>
+                          <td data-label="Select">
                             <input
                               type="checkbox"
                               checked={selectedPrintIds.includes(item.changeRequestId)}
                               onChange={() => togglePrintSelection(item.changeRequestId)}
                             />
                           </td>
-                          <td>
+                          <td data-label="Honoree">
                             <strong>{item.honoreeName}</strong>
                             <br />
                             <span>{item.serviceBranchName}</span>
                           </td>
-                          <td>{item.flagGridName}</td>
-                          <td>{formatDate(item.approvedUtc)}</td>
-                          <td>
+                          <td data-label="Flag grid">{item.flagGridName}</td>
+                          <td data-label="Approved">{formatDate(item.approvedUtc)}</td>
+                          <td data-label="PDF">
                             {item.honoreeId ? (
                               <a className="textLink" href={honoreePdfUrl(item.honoreeId)} target="_blank" rel="noreferrer">
                                 Open PDF

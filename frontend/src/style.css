@@ -2756,3 +2756,391 @@ img {
     flex: initial;
   }
 }
+
+
+/* Mobile experience pass: compact header, search, cards, admin mobile cards, sticky print actions */
+@media (max-width: 760px) {
+  main {
+    width: min(100% - 1rem, 1180px);
+    padding-top: 0;
+  }
+
+  .hero {
+    min-height: 118px;
+    padding-block: 0.85rem 0.55rem;
+    padding-inline: 0.9rem;
+    row-gap: 0.5rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.75rem, 11vw, 2.55rem);
+    margin: 0.05rem 0 0;
+  }
+
+  .hero .eyebrow {
+    font-size: 0.66rem;
+    letter-spacing: 0.13em;
+  }
+
+  .heroSubtitle {
+    display: none;
+  }
+
+  .authBox {
+    top: 0.75rem;
+    right: 0.75rem;
+    gap: 0.45rem;
+  }
+
+  .authBox strong {
+    max-width: 120px;
+    font-size: 0.78rem;
+  }
+
+  .authBox button {
+    min-height: 1.85rem;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.78rem;
+  }
+
+  .mobileNavToggle {
+    min-height: 2rem;
+    margin-top: 0.2rem;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.8rem;
+  }
+
+  .heroNav.isOpen {
+    padding: 0.35rem;
+  }
+
+  .heroNav a {
+    min-height: 1.85rem;
+    padding: 0.32rem 0.4rem;
+    font-size: 0.82rem;
+  }
+
+  .card,
+  .messageStack {
+    margin-top: 0.8rem;
+  }
+
+  .card {
+    border-radius: 16px;
+    padding: 0.95rem;
+  }
+
+  .sectionHeader {
+    gap: 0.65rem;
+  }
+
+  .sectionHeader h2 {
+    font-size: 1.38rem;
+  }
+
+  .helperText {
+    font-size: 0.9rem;
+  }
+
+  .searchCard {
+    padding: 0.95rem;
+  }
+
+  .searchHeader {
+    margin-bottom: 0.6rem;
+  }
+
+  .searchBar {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+    margin-top: 0.75rem;
+  }
+
+  .searchBar input {
+    min-height: 2.8rem;
+    font-size: 1rem;
+  }
+
+  .searchBar button[type="submit"] {
+    width: 100%;
+  }
+
+  .searchBar button.secondary {
+    min-height: 2rem;
+    width: auto;
+    justify-self: center;
+    padding-inline: 0.4rem;
+    background: transparent;
+    color: #173b73;
+  }
+
+  .honoreeCard {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 0.75rem;
+    border-radius: 15px;
+    padding: 0.75rem;
+  }
+
+  .honoreeCard img,
+  .honoreePlaceholder {
+    width: 72px;
+    height: 72px;
+    border-radius: 12px;
+  }
+
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .cardActions,
+  .honoreeActionArea {
+    align-items: stretch;
+  }
+
+  .honoreeActionArea,
+  .honoreeActionArea button,
+  .cardActions .textLink {
+    width: 100%;
+  }
+
+  .ownedFlagGrid {
+    gap: 0.75rem;
+  }
+
+  .ownedFlagCard {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 0.65rem 0.75rem;
+    padding: 0.75rem;
+    border-radius: 15px;
+  }
+
+  .ownedFlagImage {
+    width: 72px;
+    height: 72px;
+    border-radius: 12px;
+  }
+
+  .ownedFlagCard h3 {
+    font-size: 1.08rem;
+  }
+
+  .ownedFlagMeta {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.2rem;
+  }
+
+  .ownedFlagMeta span:not(.status) {
+    font-size: 0.82rem;
+  }
+
+  .ownedFlagActions {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.45rem;
+    width: 100%;
+    margin-top: 0.3rem;
+  }
+
+  .ownedFlagActions button {
+    min-height: 2.15rem;
+    min-width: 0;
+    width: 100%;
+    padding: 0.45rem 0.65rem;
+  }
+
+  .miniTimeline {
+    grid-column: 1 / -1;
+    gap: 0.3rem;
+    margin-top: 0.35rem;
+  }
+
+  .miniTimeline span {
+    font-size: 0.74rem;
+    padding: 0.28rem 0.45rem;
+  }
+
+  .adminCard {
+    padding: 0.95rem;
+  }
+
+  .adminStats {
+    display: flex;
+    gap: 0.45rem;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+    margin: 0.6rem 0 0.9rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .statCard {
+    flex: 0 0 auto;
+    min-width: 7.6rem;
+    min-height: 3.35rem;
+    padding: 0.58rem 0.65rem;
+    border-radius: 12px;
+  }
+
+  .statCard strong {
+    font-size: 1.1rem;
+  }
+
+  .statCard span {
+    font-size: 0.74rem;
+  }
+
+  .printCenterIntro {
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+    margin: 0.75rem 0 0.95rem;
+    padding: 0.75rem;
+    border-radius: 14px;
+  }
+
+  .pdfHealth {
+    width: 100%;
+    min-width: 0;
+    padding: 0.65rem 0.75rem;
+    border-radius: 12px;
+  }
+
+  .adminCard .tableWrap {
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+    background: transparent;
+  }
+
+  .adminCard .responsiveTable {
+    min-width: 0;
+    width: 100%;
+    display: block;
+    border-collapse: separate;
+  }
+
+  .adminCard .responsiveTable thead {
+    display: none;
+  }
+
+  .adminCard .responsiveTable tbody {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .adminCard .responsiveTable tr {
+    display: grid;
+    gap: 0.55rem;
+    padding: 0.85rem;
+    border: 1px solid #e4ebf5;
+    border-radius: 15px;
+    background: #fbfcff;
+    box-shadow: 0 8px 18px rgba(20, 31, 48, 0.06);
+  }
+
+  .adminCard .responsiveTable td {
+    display: grid;
+    grid-template-columns: 7rem minmax(0, 1fr);
+    gap: 0.65rem;
+    align-items: start;
+    padding: 0;
+    border: 0;
+    font-size: 0.92rem;
+  }
+
+  .adminCard .responsiveTable td::before {
+    content: attr(data-label);
+    color: #60708a;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .adminCard .responsiveTable td.rowActions,
+  .adminCard .responsiveTable td.stackedActions {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .adminCard .responsiveTable td.rowActions::before,
+  .adminCard .responsiveTable td.stackedActions::before {
+    display: none;
+  }
+
+  .adminCard .stackedActions {
+    gap: 0.4rem;
+  }
+
+  .adminCard .stackedActions button {
+    min-height: 2.15rem;
+    font-size: 0.84rem;
+  }
+
+  .printHeader {
+    position: relative;
+    margin-top: 1rem;
+    padding-top: 0.95rem;
+  }
+
+  .printHeader .actions,
+  .printActions {
+    width: 100%;
+  }
+
+  .printActions {
+    position: sticky;
+    bottom: 0.65rem;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.45rem;
+    padding: 0.6rem;
+    border: 1px solid rgba(15, 55, 107, 0.12);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 12px 28px rgba(20, 31, 48, 0.18);
+    backdrop-filter: blur(6px);
+  }
+
+  .printActions .selectedCount {
+    grid-column: 1 / -1;
+    min-height: 1.85rem;
+    justify-content: center;
+    font-size: 0.85rem;
+  }
+
+  .printActions button {
+    min-height: 2.2rem;
+    padding-inline: 0.5rem;
+    font-size: 0.82rem;
+  }
+
+  .printQueueTable td[data-label="Select"] {
+    grid-template-columns: 1fr;
+  }
+
+  .printQueueTable td[data-label="Select"]::before {
+    display: none;
+  }
+
+  .printQueueTable input[type="checkbox"] {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .adminCard .responsiveTable td {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+
+  .ownedFlagActions,
+  .printActions {
+    grid-template-columns: 1fr;
+  }
+}
