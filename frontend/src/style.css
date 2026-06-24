@@ -3299,3 +3299,91 @@ img {
     font-size: 0.84rem;
   }
 }
+
+
+/* Mobile fix: true circular info icon and shorter header */
+@media (max-width: 760px) {
+  .hero {
+    min-height: 0;
+    padding-block: 0.55rem 0.45rem;
+    row-gap: 0.35rem;
+  }
+
+  .heroContent {
+    gap: 0.15rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.55rem, 9vw, 2.15rem);
+    line-height: 0.92;
+    margin: 0.08rem 0 0;
+  }
+
+  .hero .eyebrow {
+    font-size: 0.5rem;
+    letter-spacing: 0.12em;
+  }
+
+  .authBox {
+    margin-top: 0.05rem;
+  }
+
+  .mobileNavToggle {
+    margin-top: 0.05rem;
+    min-height: 1.75rem;
+    padding-block: 0.26rem;
+  }
+
+  .searchHeader h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .searchHeader .infoIconButton {
+    flex: 0 0 1.15rem;
+    width: 1.15rem !important;
+    min-width: 1.15rem !important;
+    max-width: 1.15rem !important;
+    height: 1.15rem !important;
+    min-height: 1.15rem !important;
+    max-height: 1.15rem !important;
+    aspect-ratio: 1 / 1;
+    display: inline-grid !important;
+    place-items: center;
+    margin: 0;
+    padding: 0 !important;
+    border-radius: 999px !important;
+    font-size: 0.58rem;
+    line-height: 1;
+    overflow: hidden;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .searchHeader .infoIconButton:hover:not(:disabled) {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .searchCard {
+    margin-top: 0.55rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .hero h1 {
+    font-size: clamp(1.45rem, 9vw, 2rem);
+  }
+
+  .searchHeader .infoIconButton {
+    flex-basis: 1.05rem;
+    width: 1.05rem !important;
+    min-width: 1.05rem !important;
+    max-width: 1.05rem !important;
+    height: 1.05rem !important;
+    min-height: 1.05rem !important;
+    max-height: 1.05rem !important;
+    font-size: 0.54rem;
+  }
+}
