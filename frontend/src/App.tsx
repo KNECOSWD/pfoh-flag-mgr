@@ -888,7 +888,7 @@ export default function App() {
             <form className="searchBar" onSubmit={searchHonorees}>
               <input
                 type="search"
-                placeholder="Search by honoree name, nickname, rank, branch, submitter, or flag grid"
+                placeholder="Search name, branch, rank, or flag grid"
                 value={honoreeSearchText}
                 onChange={(e) => setHonoreeSearchText(e.target.value)}
               />
