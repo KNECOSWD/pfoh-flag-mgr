@@ -2555,3 +2555,96 @@ img {
     font-size: 0.72rem;
   }
 }
+
+
+/* Header refinement: lower nav, lighter links, smaller circular info icon */
+.hero {
+  min-height: 178px;
+  padding-block: 1.35rem 0.72rem;
+}
+
+.heroContent {
+  gap: 0.55rem;
+}
+
+.hero h1 {
+  margin-bottom: 0.25rem;
+}
+
+.hero p {
+  font-size: 0.95rem;
+}
+
+.heroNav {
+  margin-top: 0.65rem;
+  padding-top: 0.58rem;
+  padding-bottom: 0;
+  align-self: flex-end;
+}
+
+.heroNav a {
+  font-size: 0.9rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.34);
+  opacity: 0.86;
+  border-bottom-color: transparent;
+}
+
+.heroNav a[href="#nominate"] {
+  color: #ffe9ee;
+  border-bottom-color: transparent;
+}
+
+.heroNav a:hover,
+.heroNav a:focus-visible,
+.heroNav a[href="#nominate"]:hover,
+.heroNav a[href="#nominate"]:focus-visible {
+  opacity: 1;
+  border-bottom-color: rgba(255, 255, 255, 0.78);
+}
+
+.infoIconButton {
+  width: 1.15rem;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  min-height: 1.15rem !important;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0.35rem;
+  padding: 0 !important;
+  border-radius: 50%;
+  font-size: 0.63rem;
+  line-height: 1;
+  vertical-align: 0.22em;
+  background: #1b4a86;
+  color: #ffffff;
+  overflow: visible;
+}
+
+@media (max-width: 760px) {
+  .hero {
+    min-height: 168px;
+    padding-block: 1.1rem 0.7rem;
+  }
+
+  .heroNav {
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+  }
+
+  .heroNav a {
+    font-size: 0.82rem;
+    font-weight: 650;
+  }
+
+  .infoIconButton {
+    width: 1.1rem;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    min-height: 1.1rem !important;
+    font-size: 0.6rem;
+  }
+}
