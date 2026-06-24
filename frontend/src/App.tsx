@@ -748,7 +748,26 @@ export default function App() {
   return (
     <main>
       <header className="hero">
-        <div>
+        <div className="heroContent">
+          <nav className="heroNav" aria-label="Main navigation">
+            <a href="#search">Find a flag</a>
+            {isAuthenticated ? <a href="#my-flags">My flags</a> : null}
+            {isAdmin ? <a href="#admin">Admin</a> : null}
+            {isAdmin ? <a href="#reprint-queue">Reprint queue</a> : null}
+            <a
+              href="#nominate"
+              onClick={(event) => {
+                event.preventDefault();
+                beginNomination();
+              }}
+            >
+              Nominate a honoree
+            </a>
+            <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer">
+              PlanoFlagsOfHonor.com
+            </a>
+          </nav>
+
           <p className="eyebrow">Plano Flags of Honor</p>
           <h1>Find a Flag</h1>
           <p>
@@ -771,22 +790,6 @@ export default function App() {
           )}
         </div>
       </header>
-
-      <nav className="siteNav" aria-label="Main navigation">
-        <a href="#search">Find a flag</a>
-        {isAuthenticated ? <a href="#my-flags">My claimed flags</a> : null}
-        {isAdmin ? <a href="#admin">Admin</a> : null}
-        {isAdmin ? <a href="#reprint-queue">Reprint queue</a> : null}
-        <button type="button" onClick={beginNomination}>
-          Nominate a honoree
-        </button>
-        <button type="button" className="navInfoButton" onClick={() => setShowHowItWorks(true)} aria-label="How this works">
-          ?
-        </button>
-        <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer">
-          PlanoFlagsOfHonor.com
-        </a>
-      </nav>
 
           {(error || notice) && (
             <section className="messageStack" aria-live="polite" aria-atomic="true">
@@ -1339,7 +1342,7 @@ export default function App() {
           ) : null}
 
           {selectedClaim || isNominating ? (
-            <section ref={formCardRef} className="card formCard">
+            <section id={isNominating ? "nominate" : undefined} ref={formCardRef} className="card formCard">
               <div className="sectionHeader">
                 <div>
                   <p className="eyebrow">
