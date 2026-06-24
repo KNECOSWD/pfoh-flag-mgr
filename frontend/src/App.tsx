@@ -885,36 +885,29 @@ export default function App() {
               </div>
             </div>
 
-            <form className="searchBar searchBarIcon" onSubmit={searchHonorees}>
+            <form className="searchBar nativeSearchBar" onSubmit={searchHonorees}>
+              <label className="visuallyHidden" htmlFor="honoree-search">
+                Search honorees
+              </label>
               <input
+                id="honoree-search"
                 type="search"
                 placeholder="Search name, branch, rank, or flag grid"
                 value={honoreeSearchText}
-                onChange={(e) => setHonoreeSearchText(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setHonoreeSearchText(value);
+
+                  if (value.trim() === "") {
+                    setHonoreeResults([]);
+                    setHonoreeSearchPerformed(false);
+                  }
+                }}
                 aria-label="Search honorees"
               />
-              <div className="searchIconActions" aria-label="Search actions">
-                {honoreeSearchText ? (
-                  <button
-                    type="button"
-                    className="iconButton clearIconButton"
-                    onClick={clearHonoreeSearch}
-                    aria-label="Clear search"
-                    title="Clear search"
-                  >
-                    ×
-                  </button>
-                ) : null}
-                <button
-                  type="submit"
-                  className="iconButton searchIconButton"
-                  disabled={searchLoading}
-                  aria-label={searchLoading ? "Searching" : "Search"}
-                  title={searchLoading ? "Searching" : "Search"}
-                >
-                  {searchLoading ? "…" : "⌕"}
-                </button>
-              </div>
+              <button type="submit" className="visuallyHidden">
+                Search
+              </button>
             </form>
 
             {honoreeSearchPerformed ? (
