@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import {
   AdminClaimantSummary,
+  AdminFlagPosition,
   AdminPrintQueueItem,
   AdminReviewItem,
   ApiError,
@@ -184,6 +185,11 @@ export default function App() {
   const [queueingReprintHonoreeId, setQueueingReprintHonoreeId] = useState<number | null>(null);
   const [claimantsByHonoreeId, setClaimantsByHonoreeId] = useState<Record<number, AdminClaimantSummary[]>>({});
   const [claimantBusyHonoreeId, setClaimantBusyHonoreeId] = useState<number | null>(null);
+  const [flagPositions, setFlagPositions] = useState<AdminFlagPosition[]>([]);
+  const [flagPositionHonoree, setFlagPositionHonoree] = useState<HonoreeSearchResult | null>(null);
+  const [flagPositionBusyId, setFlagPositionBusyId] = useState<number | null>(null);
+  const [flagPositionsLoading, setFlagPositionsLoading] = useState(false);
+  const [showFlagPositionManager, setShowFlagPositionManager] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -226,6 +232,36 @@ export default function App() {
     [printQueue, selectedPrintIds]
   );
 
+  const flagPositionRows = useMemo(() => {
+    const groups = flagPositions.reduce<Record<string, AdminFlagPosition[]>>((current, position) => {
+      const row = position.rowLabel || "Other";
+      current[row] = current[row] ?? [];
+      current[row].push(position);
+      return current;
+    }, {});
+
+    return Object.entries(groups)
+      .sort(([left], [right]) => left.localeCompare(right, undefined, { numeric: true }))
+      .map(([rowLabel, positions]) => ({
+        rowLabel,
+        positions: [...positions].sort((left, right) => {
+          const leftColumn = left.columnNumber ?? Number.MAX_SAFE_INTEGER;
+          const rightColumn = right.columnNumber ?? Number.MAX_SAFE_INTEGER;
+
+          if (leftColumn !== rightColumn) {
+            return leftColumn - rightColumn;
+          }
+
+          return left.flagGridName.localeCompare(right.flagGridName, undefined, { numeric: true });
+        })
+      }));
+  }, [flagPositions]);
+
+  const openFlagPositionCount = useMemo(
+    () => flagPositions.filter((position) => position.isOpen).length,
+    [flagPositions]
+  );
+
 
   const filteredServiceBranches = useMemo(() => {
     if (!form.serviceBranchCategoryId) return [];
@@ -247,14 +283,16 @@ export default function App() {
     if (!account) return;
 
     try {
-      const [pending, queue] = await Promise.all([
+      const [pending, queue, positions] = await Promise.all([
         adminApi.pending(instance, account),
-        adminApi.printQueue(instance, account)
+        adminApi.printQueue(instance, account),
+        adminApi.flagPositions(instance, account)
       ]);
 
       setIsAdmin(true);
       setPendingReviews(pending);
       setPrintQueue(queue);
+      setFlagPositions(positions);
       setSelectedPrintIds((current) =>
         current.filter((id) => queue.some((item) => item.changeRequestId === id))
       );
@@ -263,6 +301,7 @@ export default function App() {
         setIsAdmin(false);
         setPendingReviews([]);
         setPrintQueue([]);
+        setFlagPositions([]);
         return;
       }
 
@@ -906,6 +945,108 @@ export default function App() {
     }
   }
 
+  async function refreshFlagPositions() {
+    if (!account || !isAdmin) return;
+
+    setFlagPositionsLoading(true);
+    setError("");
+
+    try {
+      const positions = await adminApi.flagPositions(instance, account);
+      setFlagPositions(positions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load flag positions.");
+    } finally {
+      setFlagPositionsLoading(false);
+    }
+  }
+
+  function beginFlagPositionAssignment(honoree: HonoreeSearchResult) {
+    setFlagPositionHonoree(honoree);
+    setShowFlagPositionManager(true);
+    setNotice(`Select an open flag position for ${displayNameWithNickname(honoree.fullName, honoree.nickname)}.`);
+
+    window.setTimeout(() => {
+      document.getElementById("flag-position-manager")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }, 75);
+  }
+
+  async function assignSelectedHonoreeToPosition(position: AdminFlagPosition) {
+    if (!account || !flagPositionHonoree || !position.isOpen) return;
+
+    const honoreeName = displayNameWithNickname(flagPositionHonoree.fullName, flagPositionHonoree.nickname);
+    const ok = window.confirm(`Assign ${honoreeName} to flag position ${position.flagGridName}?`);
+
+    if (!ok) return;
+
+    setFlagPositionBusyId(position.flagGridId);
+    setError("");
+    setNotice(`Assigning ${honoreeName} to ${position.flagGridName}...`);
+
+    try {
+      await adminApi.assignFlagPosition(instance, account, position.flagGridId, flagPositionHonoree.id);
+      const [positions, results] = await Promise.all([
+        adminApi.flagPositions(instance, account),
+        honoreeSearchPerformed ? honoreeApi.search(honoreeSearchText, 25) : Promise.resolve(honoreeResults)
+      ]);
+
+      setFlagPositions(positions);
+
+      if (honoreeSearchPerformed) {
+        setHonoreeResults(results);
+        setClaimantsByHonoreeId({});
+        await loadClaimantsForSearchResults(results);
+      }
+
+      setFlagPositionHonoree(null);
+      setNotice(`${honoreeName} was assigned to ${position.flagGridName}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to assign flag position.");
+      setNotice("");
+    } finally {
+      setFlagPositionBusyId(null);
+    }
+  }
+
+  async function clearFlagPosition(position: AdminFlagPosition) {
+    if (!account || position.isOpen) return;
+
+    const honoreeName = position.honoreeName || "this honoree";
+    const ok = window.confirm(`Remove ${honoreeName} from flag position ${position.flagGridName}?`);
+
+    if (!ok) return;
+
+    setFlagPositionBusyId(position.flagGridId);
+    setError("");
+    setNotice(`Removing ${honoreeName} from ${position.flagGridName}...`);
+
+    try {
+      await adminApi.clearFlagPosition(instance, account, position.flagGridId);
+      const [positions, results] = await Promise.all([
+        adminApi.flagPositions(instance, account),
+        honoreeSearchPerformed ? honoreeApi.search(honoreeSearchText, 25) : Promise.resolve(honoreeResults)
+      ]);
+
+      setFlagPositions(positions);
+
+      if (honoreeSearchPerformed) {
+        setHonoreeResults(results);
+        setClaimantsByHonoreeId({});
+        await loadClaimantsForSearchResults(results);
+      }
+
+      setNotice(`${honoreeName} was removed from ${position.flagGridName}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to remove the honoree from this flag position.");
+      setNotice("");
+    } finally {
+      setFlagPositionBusyId(null);
+    }
+  }
+
   async function exportHonoreesExcel() {
     if (!account) {
       await signIn();
@@ -1106,6 +1247,7 @@ export default function App() {
             {isAuthenticated ? <a href="#my-flags" onClick={() => setMobileNavOpen(false)}>My flags</a> : null}
             {isAdmin ? <a href="#admin" onClick={() => setMobileNavOpen(false)}>Admin</a> : null}
             {isAdmin ? <a href="#reprint-queue" onClick={() => setMobileNavOpen(false)}>Reprint queue</a> : null}
+            {isAdmin ? <a href="#flag-position-manager" onClick={() => setMobileNavOpen(false)}>Flag positions</a> : null}
             <a
               href="#nominate"
               onClick={(event) => {
@@ -1349,6 +1491,18 @@ export default function App() {
                                     className="secondary compactButton"
                                     onClick={(event) => {
                                       (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
+                                      beginFlagPositionAssignment(honoree);
+                                    }}
+                                    disabled={saving}
+                                  >
+                                    Assign flag position
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="secondary compactButton"
+                                    onClick={(event) => {
+                                      (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
                                       regenerateHonoreePdf(honoree);
                                     }}
                                     disabled={
@@ -1530,7 +1684,143 @@ export default function App() {
                   <strong>{claimedByMultipleCount}</strong>
                   <span>Multiple-claim alerts</span>
                 </div>
+                <div className="statCard">
+                  <strong>{openFlagPositionCount}</strong>
+                  <span>Open flag positions</span>
+                </div>
               </div>
+
+              {showFlagPositionManager ? (
+                <section id="flag-position-manager" className="flagPositionManager" aria-label="Flag position manager">
+                  <div className="sectionHeader">
+                    <div>
+                      <p className="eyebrow">Flag positions</p>
+                      <h3>Flag position manager</h3>
+                      <p className="helperText">
+                        Select a honoree from search results, then choose an open flag position. Occupied positions can be cleared by an administrator.
+                      </p>
+                    </div>
+                    <div className="flagPositionActions">
+                      <button
+                        type="button"
+                        className="secondary subtleRefreshButton"
+                        onClick={() => void refreshFlagPositions()}
+                        disabled={flagPositionsLoading}
+                      >
+                        {flagPositionsLoading ? "Loading..." : "Refresh map"}
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary subtleRefreshButton"
+                        onClick={() => {
+                          setShowFlagPositionManager(false);
+                          setFlagPositionHonoree(null);
+                        }}
+                      >
+                        Hide
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flagPositionSummary">
+                    <span><strong>{flagPositions.length}</strong> total positions</span>
+                    <span><strong>{openFlagPositionCount}</strong> open</span>
+                    {flagPositionHonoree ? (
+                      <span>
+                        Assigning <strong>{displayNameWithNickname(flagPositionHonoree.fullName, flagPositionHonoree.nickname)}</strong>
+                      </span>
+                    ) : (
+                      <span>Choose “Assign flag position” from an honoree search result to add someone to an open position.</span>
+                    )}
+                  </div>
+
+                  <div className="flagSeatLegend" aria-label="Flag position legend">
+                    <span><i className="legendOpen" /> Open</span>
+                    <span><i className="legendOccupied" /> Occupied</span>
+                    <span><i className="legendSelected" /> Ready to assign</span>
+                  </div>
+
+                  <div className="flagSeatMap" role="grid" aria-label="Flag position seat map">
+                    {flagPositionRows.length === 0 ? (
+                      <p className="emptyState">No flag positions were found.</p>
+                    ) : (
+                      flagPositionRows.map((row) => (
+                        <div className="flagSeatRow" role="row" key={row.rowLabel}>
+                          <div className="flagSeatRowLabel">{row.rowLabel}</div>
+                          <div className="flagSeatCells">
+                            {row.positions.map((position) => {
+                              const canAssign = position.isOpen && !!flagPositionHonoree;
+                              const isBusy = flagPositionBusyId === position.flagGridId;
+
+                              return (
+                                <div
+                                  key={position.flagGridId}
+                                  className={[
+                                    "flagSeat",
+                                    position.isOpen ? "isOpen" : "isOccupied",
+                                    canAssign ? "canAssign" : ""
+                                  ].filter(Boolean).join(" ")}
+                                  role="gridcell"
+                                  aria-label={`${position.flagGridName} ${position.isOpen ? "open" : `occupied by ${position.honoreeName || "honoree"}`}`}
+                                >
+                                  <strong>{position.flagGridName}</strong>
+                                  {position.isOpen ? (
+                                    <>
+                                      <span>Open</span>
+                                      <button
+                                        type="button"
+                                        className="seatAction"
+                                        disabled={!canAssign || isBusy}
+                                        onClick={() => void assignSelectedHonoreeToPosition(position)}
+                                      >
+                                        {isBusy ? "Assigning..." : "Assign"}
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span>{position.honoreeName || "Assigned"}</span>
+                                      <small>
+                                        {[position.rank, position.serviceBranchName].filter(Boolean).join(" • ") || "Occupied"}
+                                      </small>
+                                      <button
+                                        type="button"
+                                        className="seatAction clearSeatAction"
+                                        disabled={isBusy}
+                                        onClick={() => void clearFlagPosition(position)}
+                                      >
+                                        {isBusy ? "Removing..." : "Remove"}
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </section>
+              ) : (
+                <section id="flag-position-manager" className="flagPositionManager collapsedFlagPositionManager" aria-label="Flag position manager">
+                  <div className="sectionHeader">
+                    <div>
+                      <p className="eyebrow">Flag positions</p>
+                      <h3>Flag position manager</h3>
+                      <p className="helperText">
+                        Add honorees only to open positions and remove honorees from occupied positions.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="secondary exportExcelButton"
+                      onClick={() => setShowFlagPositionManager(true)}
+                    >
+                      Open position map
+                    </button>
+                  </div>
+                </section>
+              )}
 
               <details className="printCenterIntro compactPrintCenter">
                 <summary>

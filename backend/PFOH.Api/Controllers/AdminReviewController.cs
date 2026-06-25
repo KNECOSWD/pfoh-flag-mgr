@@ -14,6 +14,19 @@ namespace PFOH.Api.Controllers;
 [ApiController]
 [Route("api/admin/review")]
 [Authorize(Policy = "AdminOnly")]
+public record AdminFlagPositionDto(
+    int FlagGridId,
+    string FlagGridName,
+    string RowLabel,
+    int? ColumnNumber,
+    bool IsOpen,
+    int? HonoreeId,
+    string? HonoreeName,
+    string? Rank,
+    string? ServiceBranchName);
+
+public record AssignFlagPositionRequest(int HonoreeId);
+
 public class AdminReviewController(PfohDbContext db, IConfiguration configuration, IWebHostEnvironment environment) : ControllerBase
 {
     private readonly HonoreeFileStorage fileStorage = new(configuration);
@@ -181,6 +194,140 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         var bytes = Encoding.UTF8.GetBytes(rows.ToString());
         var fileName = $"pfoh-honorees-{DateTime.UtcNow:yyyyMMdd}.xls";
         return File(bytes, "application/vnd.ms-excel; charset=utf-8", fileName);
+    }
+
+    [HttpGet("flag-positions")]
+    public async Task<ActionResult<IReadOnlyList<AdminFlagPositionDto>>> GetFlagPositions(CancellationToken ct)
+    {
+        var positions = await BuildFlagPositionsAsync(ct);
+        return Ok(positions);
+    }
+
+    [HttpPost("flag-positions/{flagGridId:int}/assign")]
+    public async Task<ActionResult<AdminFlagPositionDto>> AssignFlagPosition(
+        int flagGridId,
+        [FromBody] AssignFlagPositionRequest request,
+        CancellationToken ct)
+    {
+        var adminName = User.GetEmail();
+        if (string.IsNullOrWhiteSpace(adminName))
+        {
+            adminName = User.GetDisplayName() ?? "PFOH.Admin";
+        }
+
+        var flagGrid = await db.FlagGrids
+            .FirstOrDefaultAsync(g => g.Id == flagGridId && g.DeletedDate == null, ct);
+
+        if (flagGrid is null)
+        {
+            return NotFound(new { message = "Flag position was not found." });
+        }
+
+        var occupiedHonoree = await db.Honorees
+            .AsNoTracking()
+            .FirstOrDefaultAsync(h =>
+                h.FlagGridId == flagGridId &&
+                h.IsActive &&
+                h.DeletedDate == null,
+                ct);
+
+        if (flagGrid.HonoreeId.HasValue || occupiedHonoree is not null)
+        {
+            return Conflict(new { message = "This flag position is already occupied. Remove the current honoree before assigning another honoree." });
+        }
+
+        var honoree = await db.Honorees
+            .FirstOrDefaultAsync(h =>
+                h.Id == request.HonoreeId &&
+                h.IsActive &&
+                h.DeletedDate == null,
+                ct);
+
+        if (honoree is null)
+        {
+            return NotFound(new { message = "Honoree was not found." });
+        }
+
+        if (honoree.FlagGridId.HasValue)
+        {
+            return Conflict(new { message = "This honoree is already assigned to a flag position. Remove the honoree from the current position first." });
+        }
+
+        honoree.FlagGridId = flagGrid.Id;
+        honoree.ModifiedBy = adminName;
+        honoree.ModifiedDate = DateTime.UtcNow;
+
+        flagGrid.HonoreeId = honoree.Id;
+        flagGrid.ModifiedBy = adminName;
+        flagGrid.ModifiedDate = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(ct);
+        await RegenerateHonoreePdfAsync(honoree.Id, ct);
+
+        var position = await BuildFlagPositionAsync(flagGrid.Id, ct);
+        return position is null
+            ? NotFound(new { message = "Flag position was not found after assignment." })
+            : Ok(position);
+    }
+
+    [HttpPost("flag-positions/{flagGridId:int}/clear")]
+    public async Task<ActionResult<AdminFlagPositionDto>> ClearFlagPosition(
+        int flagGridId,
+        CancellationToken ct)
+    {
+        var adminName = User.GetEmail();
+        if (string.IsNullOrWhiteSpace(adminName))
+        {
+            adminName = User.GetDisplayName() ?? "PFOH.Admin";
+        }
+
+        var flagGrid = await db.FlagGrids
+            .FirstOrDefaultAsync(g => g.Id == flagGridId && g.DeletedDate == null, ct);
+
+        if (flagGrid is null)
+        {
+            return NotFound(new { message = "Flag position was not found." });
+        }
+
+        var honoree = await db.Honorees
+            .FirstOrDefaultAsync(h =>
+                h.FlagGridId == flagGridId &&
+                h.IsActive &&
+                h.DeletedDate == null,
+                ct);
+
+        if (honoree is null && flagGrid.HonoreeId.HasValue)
+        {
+            honoree = await db.Honorees
+                .FirstOrDefaultAsync(h =>
+                    h.Id == flagGrid.HonoreeId.Value &&
+                    h.IsActive &&
+                    h.DeletedDate == null,
+                    ct);
+        }
+
+        if (honoree is not null)
+        {
+            honoree.FlagGridId = null;
+            honoree.ModifiedBy = adminName;
+            honoree.ModifiedDate = DateTime.UtcNow;
+        }
+
+        flagGrid.HonoreeId = null;
+        flagGrid.ModifiedBy = adminName;
+        flagGrid.ModifiedDate = DateTime.UtcNow;
+
+        await db.SaveChangesAsync(ct);
+
+        if (honoree is not null)
+        {
+            await RegenerateHonoreePdfAsync(honoree.Id, ct);
+        }
+
+        var position = await BuildFlagPositionAsync(flagGrid.Id, ct);
+        return position is null
+            ? NotFound(new { message = "Flag position was not found after removal." })
+            : Ok(position);
     }
 
     [HttpPost("honoree/{honoreeId:int}/queue-reprint")]
@@ -745,6 +892,111 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         r.RequiresCardReprint,
         r.CardPrintedUtc,
         r.ReviewNotes);
+
+    private async Task<IReadOnlyList<AdminFlagPositionDto>> BuildFlagPositionsAsync(CancellationToken ct)
+    {
+        var flagGrids = await db.FlagGrids
+            .AsNoTracking()
+            .Where(g => g.DeletedDate == null)
+            .OrderBy(g => g.FlagGridName)
+            .ToListAsync(ct);
+
+        var gridIds = flagGrids.Select(g => g.Id).ToList();
+
+        var honorees = gridIds.Count == 0
+            ? new List<Honoree>()
+            : await db.Honorees
+                .AsNoTracking()
+                .Include(h => h.ServiceBranch)
+                .Where(h =>
+                    h.FlagGridId.HasValue &&
+                    gridIds.Contains(h.FlagGridId.Value) &&
+                    h.IsActive &&
+                    h.DeletedDate == null)
+                .ToListAsync(ct);
+
+        var honoreeByGridId = honorees
+            .Where(h => h.FlagGridId.HasValue)
+            .GroupBy(h => h.FlagGridId!.Value)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(h => h.LastName)
+                    .ThenBy(h => h.FirstName)
+                    .First());
+
+        return flagGrids
+            .Select(flagGrid =>
+            {
+                honoreeByGridId.TryGetValue(flagGrid.Id, out var honoree);
+                return ToFlagPositionDto(flagGrid, honoree);
+            })
+            .OrderBy(position => position.RowLabel)
+            .ThenBy(position => position.ColumnNumber ?? int.MaxValue)
+            .ThenBy(position => position.FlagGridName)
+            .ToList();
+    }
+
+    private async Task<AdminFlagPositionDto?> BuildFlagPositionAsync(int flagGridId, CancellationToken ct)
+    {
+        var flagGrid = await db.FlagGrids
+            .AsNoTracking()
+            .FirstOrDefaultAsync(g => g.Id == flagGridId && g.DeletedDate == null, ct);
+
+        if (flagGrid is null)
+        {
+            return null;
+        }
+
+        var honoree = await db.Honorees
+            .AsNoTracking()
+            .Include(h => h.ServiceBranch)
+            .Where(h =>
+                h.FlagGridId == flagGrid.Id &&
+                h.IsActive &&
+                h.DeletedDate == null)
+            .OrderBy(h => h.LastName)
+            .ThenBy(h => h.FirstName)
+            .FirstOrDefaultAsync(ct);
+
+        return ToFlagPositionDto(flagGrid, honoree);
+    }
+
+    private static AdminFlagPositionDto ToFlagPositionDto(FlagGrid flagGrid, Honoree? honoree)
+    {
+        return new AdminFlagPositionDto(
+            flagGrid.Id,
+            flagGrid.FlagGridName,
+            BuildFlagPositionRowLabel(flagGrid.FlagGridName),
+            BuildFlagPositionColumnNumber(flagGrid.FlagGridName),
+            honoree is null && !flagGrid.HonoreeId.HasValue,
+            honoree?.Id ?? flagGrid.HonoreeId,
+            honoree is null ? null : BuildHonoreeName(honoree),
+            honoree?.Rank,
+            honoree?.ServiceBranch?.ServiceBranchName);
+    }
+
+    private static string BuildFlagPositionRowLabel(string? flagGridName)
+    {
+        var value = Clean(flagGridName) ?? string.Empty;
+        var prefix = new string(value.TakeWhile(character => !char.IsDigit(character)).ToArray())
+            .Trim('-', '_', ' ')
+            .ToUpperInvariant();
+
+        return string.IsNullOrWhiteSpace(prefix) ? "Other" : prefix;
+    }
+
+    private static int? BuildFlagPositionColumnNumber(string? flagGridName)
+    {
+        var value = Clean(flagGridName) ?? string.Empty;
+        var digits = new string(
+            value
+                .SkipWhile(character => !char.IsDigit(character))
+                .TakeWhile(char.IsDigit)
+                .ToArray());
+
+        return int.TryParse(digits, out var parsed) ? parsed : null;
+    }
 
     private static string BuildHonoreeName(HonoreeChangeRequest r)
     {
