@@ -197,8 +197,9 @@ export default function App() {
   const [showFlagPositionManager, setShowFlagPositionManager] = useState(false);
   const [flagPositionSearchText, setFlagPositionSearchText] = useState("");
   const [flagPositionSectionFilter, setFlagPositionSectionFilter] = useState("");
-  const [flagPositionOccupancyFilter, setFlagPositionOccupancyFilter] = useState<"all" | "open" | "occupied" | "reserved">("all");
+  const [flagPositionOccupancyFilter, setFlagPositionOccupancyFilter] = useState<"all" | "open" | "occupied" | "reserved">("open");
   const [flagPositionModalPosition, setFlagPositionModalPosition] = useState<AdminFlagPosition | null>(null);
+  const [flagPositionDetailPosition, setFlagPositionDetailPosition] = useState<AdminFlagPosition | null>(null);
   const [unassignedHonorees, setUnassignedHonorees] = useState<AdminUnassignedHonoree[]>([]);
   const [selectedUnassignedHonoreeId, setSelectedUnassignedHonoreeId] = useState("");
   const [unassignedHonoreesLoading, setUnassignedHonoreesLoading] = useState(false);
@@ -1069,6 +1070,19 @@ export default function App() {
     }
   }
 
+  function openFlagPositionDetail(position: AdminFlagPosition) {
+    setFlagPositionDetailPosition(position);
+  }
+
+  function closeFlagPositionDetail() {
+    setFlagPositionDetailPosition(null);
+  }
+
+  function assignFromFlagPositionDetail(position: AdminFlagPosition) {
+    closeFlagPositionDetail();
+    void openAssignFlagPositionModal(position);
+  }
+
   async function openAssignFlagPositionModal(position: AdminFlagPosition) {
     if (!account || !position.isOpen) return;
 
@@ -1128,6 +1142,7 @@ export default function App() {
 
       setFlagPositions(positions);
       setUnassignedHonorees(unassigned);
+      closeFlagPositionDetail();
 
       if (honoreeSearchPerformed) {
         setHonoreeResults(results);
@@ -1137,6 +1152,7 @@ export default function App() {
 
       setFlagPositionHonoree(null);
       closeAssignFlagPositionModal();
+      closeFlagPositionDetail();
       setNotice(`${honoreeName} was assigned to ${position.flagGridName}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to assign flag position.");
@@ -1168,6 +1184,7 @@ export default function App() {
 
       setFlagPositions(positions);
       setUnassignedHonorees(unassigned);
+      closeFlagPositionDetail();
 
       if (honoreeSearchPerformed) {
         setHonoreeResults(results);
@@ -1443,6 +1460,88 @@ export default function App() {
               ) : null}
             </section>
           )}
+
+          {flagPositionDetailPosition ? (
+            <div
+              className="modalOverlay flagPositionDetailOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="flag-position-detail-title"
+              onClick={closeFlagPositionDetail}
+            >
+              <div className="modalCard flagPositionDetailModal" onClick={(event) => event.stopPropagation()}>
+                <div className="sectionHeader">
+                  <div>
+                    <p className="eyebrow">Flag grid details</p>
+                    <h2 id="flag-position-detail-title">{flagPositionDetailPosition.flagGridName}</h2>
+                    <p className="helperText">
+                      {flagPositionDetailPosition.isReserved
+                        ? "This flag grid is reserved and cannot be assigned."
+                        : flagPositionDetailPosition.isOpen
+                          ? "This flag grid is open and available for assignment."
+                          : "This flag grid is currently occupied."}
+                    </p>
+                  </div>
+                  <button type="button" className="secondary subtleRefreshButton" onClick={closeFlagPositionDetail}>
+                    Close
+                  </button>
+                </div>
+
+                <dl className="flagPositionDetailList">
+                  <div>
+                    <dt>Status</dt>
+                    <dd>
+                      {flagPositionDetailPosition.isReserved
+                        ? "Reserved"
+                        : flagPositionDetailPosition.isOpen
+                          ? "Open"
+                          : "Occupied"}
+                    </dd>
+                  </div>
+                  {flagPositionDetailPosition.honoreeName ? (
+                    <div>
+                      <dt>Honoree</dt>
+                      <dd>{flagPositionDetailPosition.honoreeName}</dd>
+                    </div>
+                  ) : null}
+                  {flagPositionDetailPosition.rank || flagPositionDetailPosition.serviceBranchName ? (
+                    <div>
+                      <dt>Service</dt>
+                      <dd>{[flagPositionDetailPosition.rank, flagPositionDetailPosition.serviceBranchName].filter(Boolean).join(" • ")}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+
+                <div className="modalActions">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={closeFlagPositionDetail}
+                  >
+                    Cancel
+                  </button>
+                  {flagPositionDetailPosition.isOpen && !flagPositionDetailPosition.isReserved ? (
+                    <button
+                      type="button"
+                      onClick={() => assignFromFlagPositionDetail(flagPositionDetailPosition)}
+                    >
+                      Assign honoree
+                    </button>
+                  ) : null}
+                  {!flagPositionDetailPosition.isOpen && !flagPositionDetailPosition.isReserved ? (
+                    <button
+                      type="button"
+                      className="dangerButton"
+                      disabled={flagPositionBusyId === flagPositionDetailPosition.flagGridId}
+                      onClick={() => void clearFlagPosition(flagPositionDetailPosition)}
+                    >
+                      {flagPositionBusyId === flagPositionDetailPosition.flagGridId ? "Removing..." : "Remove from position"}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {flagPositionModalPosition ? (
             <div
@@ -1950,9 +2049,10 @@ export default function App() {
                   </div>
 
                   <p className="helperText flagAssignmentHelp">
-                    Click Assign on an open flag position to choose from honorees who do not currently have a flag grid.
+                    Click a flag grid tile to view details. Open tiles can be assigned; occupied tiles can be cleared from the detail modal.
                   </p>
 
+                  <div className="flagMapToolbar">
                   <div className="flagSeatLegend" aria-label="Flag position legend and quick filters">
                     <button
                       type="button"
@@ -1986,7 +2086,7 @@ export default function App() {
 
                   <div className="flagPositionFilters" aria-label="Flag position filters">
                     <label>
-                      <span className="fieldLabelText">Search positions</span>
+                      <span className="fieldLabelText">Search flag grids</span>
                       <input
                         type="search"
                         placeholder="Search grid, honoree, rank, or branch"
@@ -2014,11 +2114,12 @@ export default function App() {
                       onClick={() => {
                         setFlagPositionSearchText("");
                         setFlagPositionSectionFilter("");
-                        setFlagPositionOccupancyFilter("all");
+                        setFlagPositionOccupancyFilter("open");
                       }}
                     >
                       Clear filters
                     </button>
+                  </div>
                   </div>
 
                   <div className="flagPositionSummary filteredFlagPositionSummary">
@@ -2039,50 +2140,27 @@ export default function App() {
                               const isBusy = flagPositionBusyId === position.flagGridId;
 
                               return (
-                                <div
+                                <button
+                                  type="button"
                                   key={position.flagGridId}
                                   className={[
                                     "flagSeat",
-                                    position.isReserved ? "isReserved" : position.isOpen ? "isOpen" : "isOccupied"
+                                    position.isReserved ? "isReserved" : position.isOpen ? "isOpen" : "isOccupied",
+                                    isBusy ? "isBusy" : ""
                                   ].filter(Boolean).join(" ")}
                                   role="gridcell"
                                   aria-label={`${position.flagGridName} ${position.isReserved ? "reserved" : position.isOpen ? "open" : `occupied by ${position.honoreeName || "honoree"}`}`}
+                                  onClick={() => openFlagPositionDetail(position)}
                                 >
                                   <strong>{position.flagGridName}</strong>
                                   {position.isReserved ? (
-                                    <>
-                                      <span>Reserved</span>
-                                      <small>No assignment available</small>
-                                    </>
+                                    <span>Reserved</span>
                                   ) : position.isOpen ? (
-                                    <>
-                                      <span>Open</span>
-                                      <button
-                                        type="button"
-                                        className="seatAction"
-                                        disabled={!position.isOpen || isBusy}
-                                        onClick={() => void openAssignFlagPositionModal(position)}
-                                      >
-                                        {isBusy ? "Assigning..." : "Assign"}
-                                      </button>
-                                    </>
+                                    <span>Open</span>
                                   ) : (
-                                    <>
-                                      <span>{position.honoreeName || "Assigned"}</span>
-                                      <small>
-                                        {[position.rank, position.serviceBranchName].filter(Boolean).join(" • ") || "Occupied"}
-                                      </small>
-                                      <button
-                                        type="button"
-                                        className="seatAction clearSeatAction"
-                                        disabled={isBusy}
-                                        onClick={() => void clearFlagPosition(position)}
-                                      >
-                                        {isBusy ? "Removing..." : "Remove"}
-                                      </button>
-                                    </>
+                                    <span>{position.honoreeName || "Assigned"}</span>
                                   )}
-                                </div>
+                                </button>
                               );
                             })}
                           </div>
