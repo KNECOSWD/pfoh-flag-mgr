@@ -396,67 +396,102 @@ public static class HonoreeReportPdfGenerator
         switch (orientation)
         {
             case 2:
-                using (gfx.Save())
+                var state = gfx.Save();
+                try
                 {
                     gfx.TranslateTransform(x + width, y);
                     gfx.ScaleTransform(-1, 1);
                     gfx.DrawImage(image, 0, 0, width, height);
                 }
+                finally
+                {
+                    gfx.Restore(state);
+                }
                 return;
 
             case 3:
-                using (gfx.Save())
+                var state = gfx.Save();
+                try
                 {
                     gfx.TranslateTransform(x + (width / 2), y + (height / 2));
                     gfx.RotateTransform(180);
                     gfx.DrawImage(image, -width / 2, -height / 2, width, height);
                 }
+                finally
+                {
+                    gfx.Restore(state);
+                }
                 return;
 
             case 4:
-                using (gfx.Save())
+                var state = gfx.Save();
+                try
                 {
                     gfx.TranslateTransform(x, y + height);
                     gfx.ScaleTransform(1, -1);
                     gfx.DrawImage(image, 0, 0, width, height);
                 }
+                finally
+                {
+                    gfx.Restore(state);
+                }
                 return;
 
             case 5:
-                using (gfx.Save())
+                var state = gfx.Save();
+                try
                 {
                     gfx.TranslateTransform(x + (width / 2), y + (height / 2));
                     gfx.RotateTransform(90);
                     gfx.ScaleTransform(-1, 1);
                     gfx.DrawImage(image, -height / 2, -width / 2, height, width);
+                }
+                finally
+                {
+                    gfx.Restore(state);
                 }
                 return;
 
             case 6:
-                using (gfx.Save())
+                var state = gfx.Save();
+                try
                 {
                     gfx.TranslateTransform(x + (width / 2), y + (height / 2));
                     gfx.RotateTransform(90);
                     gfx.DrawImage(image, -height / 2, -width / 2, height, width);
                 }
+                finally
+                {
+                    gfx.Restore(state);
+                }
                 return;
 
             case 7:
-                using (gfx.Save())
+                var state = gfx.Save();
+                try
                 {
                     gfx.TranslateTransform(x + (width / 2), y + (height / 2));
                     gfx.RotateTransform(-90);
                     gfx.ScaleTransform(-1, 1);
                     gfx.DrawImage(image, -height / 2, -width / 2, height, width);
                 }
+                finally
+                {
+                    gfx.Restore(state);
+                }
                 return;
 
             case 8:
-                using (gfx.Save())
+                var state = gfx.Save();
+                try
                 {
                     gfx.TranslateTransform(x + (width / 2), y + (height / 2));
                     gfx.RotateTransform(-90);
                     gfx.DrawImage(image, -height / 2, -width / 2, height, width);
+                }
+                finally
+                {
+                    gfx.Restore(state);
                 }
                 return;
 
