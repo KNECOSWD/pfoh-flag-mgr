@@ -905,6 +905,17 @@ export default function App() {
                 }}
                 aria-label="Search honorees"
               />
+              {honoreeSearchText ? (
+                <button
+                  type="button"
+                  className="nativeSearchClear"
+                  onClick={clearHonoreeSearch}
+                  aria-label="Clear search"
+                  title="Clear search"
+                >
+                  ×
+                </button>
+              ) : null}
               <button type="submit" className="visuallyHidden">
                 Search
               </button>

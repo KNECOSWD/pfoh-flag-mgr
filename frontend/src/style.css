@@ -3911,3 +3911,191 @@ img {
     font-size: 0.82rem;
   }
 }
+
+
+/* Mobile clear button and shorter header correction */
+.nativeSearchBar {
+  position: relative;
+}
+
+.nativeSearchBar input[type="search"] {
+  padding-right: 2.75rem;
+}
+
+.nativeSearchClear {
+  position: absolute;
+  top: 50%;
+  right: 0.55rem;
+  transform: translateY(-50%);
+  width: 1.7rem;
+  min-width: 1.7rem;
+  height: 1.7rem;
+  min-height: 1.7rem;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 999px;
+  background: #eef3f9;
+  color: #173b73;
+  box-shadow: none;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.nativeSearchClear:hover:not(:disabled) {
+  transform: translateY(-50%);
+  background: #dfe7f2;
+  box-shadow: none;
+}
+
+@media (max-width: 760px) {
+  .hero {
+    height: 6.6rem;
+    max-height: 6.6rem;
+    min-height: 0;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-content: start;
+    align-items: start;
+    gap: 0.22rem 0.55rem;
+    padding: 0.48rem 0.7rem 0.42rem;
+  }
+
+  .hero.mobileMenuOpen {
+    height: auto;
+    max-height: none;
+    min-height: 6.6rem;
+    overflow: visible;
+  }
+
+  .heroContent {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    padding: 0;
+    gap: 0;
+  }
+
+  .hero .eyebrow {
+    display: none;
+  }
+
+  .hero h1 {
+    display: block;
+    font-size: clamp(1.65rem, 8.2vw, 2rem);
+    line-height: 0.92;
+    margin: 0;
+    letter-spacing: -0.055em;
+  }
+
+  .heroSubtitle {
+    display: none !important;
+  }
+
+  .authBox {
+    position: static !important;
+    grid-column: 2;
+    grid-row: 1;
+    width: auto;
+    margin: 0;
+    align-self: start;
+    justify-content: flex-end;
+    gap: 0.35rem;
+  }
+
+  .authBox strong {
+    max-width: 6rem;
+    font-size: 0.68rem;
+  }
+
+  .authBox button {
+    min-height: 1.55rem;
+    padding: 0.22rem 0.54rem;
+    font-size: 0.7rem;
+  }
+
+  .mobileNavToggle {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    min-height: 1.55rem;
+    margin: 0.12rem 0 0;
+    padding: 0.22rem 0.48rem;
+    border-radius: 0.46rem;
+    font-size: 0.74rem;
+  }
+
+  .mobileNavToggle span {
+    font-size: 0.62rem;
+  }
+
+  .heroNav,
+  .heroNav.isOpen {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    width: 100%;
+    flex-basis: auto;
+  }
+
+  .heroNav.isOpen {
+    margin-top: 0.1rem;
+    padding: 0.25rem;
+    border-radius: 0.58rem;
+  }
+
+  .heroNav a {
+    min-height: 1.55rem;
+    padding: 0.22rem 0.34rem;
+    font-size: 0.76rem;
+  }
+
+  .searchCard {
+    margin-top: 0.48rem;
+  }
+
+  .nativeSearchBar input[type="search"] {
+    min-height: 2.35rem;
+    padding-right: 2.5rem;
+  }
+
+  .nativeSearchClear {
+    right: 0.45rem;
+    width: 1.55rem;
+    min-width: 1.55rem;
+    height: 1.55rem;
+    min-height: 1.55rem;
+    font-size: 1.05rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .hero {
+    height: 6.15rem;
+    max-height: 6.15rem;
+    padding-top: 0.42rem;
+  }
+
+  .hero.mobileMenuOpen {
+    min-height: 6.15rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.5rem, 8vw, 1.82rem);
+  }
+
+  .authBox strong {
+    max-width: 5.4rem;
+  }
+
+  .authBox button {
+    min-height: 1.48rem;
+    padding-inline: 0.48rem;
+    font-size: 0.68rem;
+  }
+
+  .mobileNavToggle {
+    min-height: 1.48rem;
+    font-size: 0.72rem;
+  }
+}
