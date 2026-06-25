@@ -4791,3 +4791,86 @@ img.ownedFlagImage {
     justify-content: center;
   }
 }
+
+
+/* Assign flag modal color polish */
+.assignFlagModalOverlay,
+.modalOverlay.assignFlagModalOverlay {
+  background: rgba(7, 18, 38, 0.42);
+  backdrop-filter: blur(2px);
+}
+
+.assignFlagModalOverlay .assignFlagModal,
+.modalCard.assignFlagModal {
+  opacity: 1;
+  background: #ffffff !important;
+  color: #071a3b;
+  border: 1px solid #dce6f3;
+  border-radius: 1.15rem;
+  box-shadow: 0 28px 80px rgba(7, 26, 59, 0.34);
+}
+
+.assignFlagModal .sectionHeader {
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.assignFlagModal .eyebrow {
+  color: #9b1c31;
+}
+
+.assignFlagModal h2,
+.assignFlagModal label,
+.assignFlagModal .fieldLabelText {
+  color: #071a3b;
+}
+
+.assignFlagModal .helperText {
+  color: #526179;
+}
+
+.assignFlagModal .subtleRefreshButton,
+.assignFlagModal .modalActions .secondary {
+  background: #f4f7fb;
+  color: #173b73;
+  border: 1px solid #dce6f3;
+  box-shadow: none;
+}
+
+.assignFlagModal .subtleRefreshButton:hover:not(:disabled),
+.assignFlagModal .modalActions .secondary:hover:not(:disabled) {
+  background: #e8f2ff;
+  transform: none;
+  box-shadow: none;
+}
+
+.assignFlagModalPicker select {
+  background-color: #ffffff;
+  color: #071a3b;
+  border-color: #cfd8e8;
+  box-shadow: inset 0 1px 2px rgba(15, 55, 107, 0.04);
+}
+
+.assignFlagModalPicker select:focus {
+  outline: none;
+  border-color: #1e4b87;
+  box-shadow:
+    0 0 0 3px rgba(30, 75, 135, 0.13),
+    inset 0 1px 2px rgba(15, 55, 107, 0.04);
+}
+
+.assignFlagModal .modalActions button:not(.secondary) {
+  background: #173b73;
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(23, 59, 115, 0.22);
+}
+
+.assignFlagModal .modalActions button:not(.secondary):hover:not(:disabled) {
+  background: #102f5f;
+}
+
+.assignFlagModal .modalActions button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
