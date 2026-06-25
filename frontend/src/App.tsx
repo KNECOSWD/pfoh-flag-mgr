@@ -2029,12 +2029,74 @@ export default function App() {
                 </div>
               </div>
 
+              {pendingReviews.length === 0 ? (
+                <p>No submitted changes are waiting for review.</p>
+              ) : (
+                <div className="tableWrap">
+                  <table className="responsiveTable reviewTable">
+                    <thead>
+                      <tr>
+                        <th>Honoree</th>
+                        <th>Flag grid</th>
+                        <th>Submitted by</th>
+                        <th>Submitted</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingReviews.map((item) => (
+                        <tr key={item.changeRequestId}>
+                          <td data-label="Honoree">
+                            <strong>{item.honoreeName}</strong>
+                            <br />
+                            <span>{[item.rank, item.serviceBranchName].filter(Boolean).join(" • ")}</span>
+                          </td>
+                          <td data-label="Flag grid">{item.flagGridName || item.flagGridId}</td>
+                          <td data-label="Submitted by">
+                            {item.claimantName || item.claimantEmail}
+                            <br />
+                            <span>{item.claimantEmail}</span>
+                          </td>
+                          <td data-label="Submitted">{formatDate(item.submittedUtc)}</td>
+                          <td data-label="Actions" className="rowActions stackedActions">
+                            <button
+                              type="button"
+                              disabled={adminBusyId === item.changeRequestId}
+                              onClick={() => approveReview(item, true)}
+                            >
+                              {adminBusyId === item.changeRequestId ? "Approving..." : "Approve + reprint"}
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary"
+                              disabled={adminBusyId === item.changeRequestId}
+                              onClick={() => approveReview(item, false)}
+                            >
+                              {adminBusyId === item.changeRequestId ? "Approving..." : "Approve only"}
+                            </button>
+                            <button
+                              type="button"
+                              className="danger"
+                              disabled={adminBusyId === item.changeRequestId}
+                              onClick={() => rejectReview(item)}
+                            >
+                              {adminBusyId === item.changeRequestId ? "Rejecting..." : "Reject"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+
               {showFlagPositionManager ? (
-                <section id="flag-position-manager" className="flagPositionManager adminStandalonePanel" aria-label="Flag position manager">
+                <section id="flag-position-manager" className="flagPositionManager adminStandalonePanel" aria-label="Flag Map">
                   <div className="sectionHeader">
                     <div>
                       <p className="eyebrow">Flag positions</p>
-                      <h3>Flag position manager</h3>
+                      <h3>Flag Map</h3>
                       <p className="helperText">
                         Select a honoree from search results, then choose an open flag position. Occupied positions can be cleared by an administrator.
                       </p>
@@ -2192,13 +2254,13 @@ export default function App() {
                   </div>
                 </section>
               ) : (
-                <section id="flag-position-manager" className="flagPositionManager collapsedFlagPositionManager adminStandalonePanel" aria-label="Flag position manager">
+                <section id="flag-position-manager" className="flagPositionManager collapsedFlagPositionManager adminStandalonePanel" aria-label="Flag Map">
                   <div className="sectionHeader">
                     <div>
                       <p className="eyebrow">Flag positions</p>
-                      <h3>Flag position manager</h3>
+                      <h3>Flag Map</h3>
                       <p className="helperText">
-                        Add honorees only to open positions and remove honorees from occupied positions.
+                        Add honorees to open flag grids and review occupied or reserved positions.
                       </p>
                     </div>
                     <button
@@ -2212,7 +2274,9 @@ export default function App() {
                 </section>
               )}
 
-              <details className={`printCenterIntro compactPrintCenter ${printQueue.length === 0 && selectedPrintQueueItems.length === 0 ? "isCollapsedEmpty" : ""}`} open={printQueue.length > 0 || selectedPrintQueueItems.length > 0}>
+
+
+              <details className={`printCenterIntro compactPrintCenter ${printQueue.length === 0 && selectedPrintQueueItems.length === 0 ? "isCollapsedEmpty thinEmptyPanel" : ""}`} open={printQueue.length > 0 || selectedPrintQueueItems.length > 0}>
                 <summary>
                   <div>
                     <p className="eyebrow">Print Center</p>
@@ -2228,69 +2292,8 @@ export default function App() {
                 </p>
               </details>
 
-              {pendingReviews.length === 0 ? (
-                <p>No submitted changes are waiting for review.</p>
-              ) : (
-                <div className="tableWrap">
-                  <table className="responsiveTable reviewTable">
-                    <thead>
-                      <tr>
-                        <th>Honoree</th>
-                        <th>Flag grid</th>
-                        <th>Submitted by</th>
-                        <th>Submitted</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pendingReviews.map((item) => (
-                        <tr key={item.changeRequestId}>
-                          <td data-label="Honoree">
-                            <strong>{item.honoreeName}</strong>
-                            <br />
-                            <span>{[item.rank, item.serviceBranchName].filter(Boolean).join(" • ")}</span>
-                          </td>
-                          <td data-label="Flag grid">{item.flagGridName || item.flagGridId}</td>
-                          <td data-label="Submitted by">
-                            {item.claimantName || item.claimantEmail}
-                            <br />
-                            <span>{item.claimantEmail}</span>
-                          </td>
-                          <td data-label="Submitted">{formatDate(item.submittedUtc)}</td>
-                          <td data-label="Actions" className="rowActions stackedActions">
-                            <button
-                              type="button"
-                              disabled={adminBusyId === item.changeRequestId}
-                              onClick={() => approveReview(item, true)}
-                            >
-                              {adminBusyId === item.changeRequestId ? "Approving..." : "Approve + reprint"}
-                            </button>
-                            <button
-                              type="button"
-                              className="secondary"
-                              disabled={adminBusyId === item.changeRequestId}
-                              onClick={() => approveReview(item, false)}
-                            >
-                              {adminBusyId === item.changeRequestId ? "Approving..." : "Approve only"}
-                            </button>
-                            <button
-                              type="button"
-                              className="danger"
-                              disabled={adminBusyId === item.changeRequestId}
-                              onClick={() => rejectReview(item)}
-                            >
-                              {adminBusyId === item.changeRequestId ? "Rejecting..." : "Reject"}
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
               {printQueue.length === 0 ? (
-                <details id="reprint-queue" className="reprintQueuePanel collapsedEmptyPanel">
+                <details id="reprint-queue" className="reprintQueuePanel collapsedEmptyPanel thinEmptyPanel">
                   <summary className="sectionHeader printHeader">
                     <div>
                       <p className="eyebrow">Card printing</p>
