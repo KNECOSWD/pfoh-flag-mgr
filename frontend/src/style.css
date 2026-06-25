@@ -5756,3 +5756,23 @@ img.ownedFlagImage {
     min-height: 2.3rem;
   }
 }
+
+
+/* Neutral occupied legend color */
+.legendOccupied {
+  background: #f7f9fc;
+  border: 1px solid #cbd8e7;
+}
+
+.flagSeatLegend .legendButton.isActive .legendOccupied,
+.flagSeatLegend .legendButton.isActive:hover .legendOccupied,
+.flagSeatLegend .legendButton.isActive:focus-visible .legendOccupied {
+  background: #f7f9fc;
+  border-color: #cbd8e7;
+}
+
+.flagSeatLegend .legendButton:hover .legendOccupied,
+.flagSeatLegend .legendButton:focus-visible .legendOccupied {
+  background: #eef4fb;
+  border-color: #8ca9cd;
+}

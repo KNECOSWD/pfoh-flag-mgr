@@ -1061,7 +1061,7 @@ export default function App() {
       const positions = await adminApi.flagPositions(instance, account);
       setFlagPositions(positions);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load flag positions.");
+      setError(err instanceof Error ? err.message : "Unable to load flag grids.");
     } finally {
       setFlagPositionsLoading(false);
     }
@@ -1070,7 +1070,7 @@ export default function App() {
   function beginFlagPositionAssignment(honoree: HonoreeSearchResult) {
     setFlagPositionHonoree(honoree);
     setShowFlagPositionManager(true);
-    setNotice(`Select an open flag position for ${displayNameWithNickname(honoree.fullName, honoree.nickname)}.`);
+    setNotice(`Select an open flag grid for ${displayNameWithNickname(honoree.fullName, honoree.nickname)}.`);
 
     window.setTimeout(() => {
       document.getElementById("flag-position-manager")?.scrollIntoView({
@@ -1091,7 +1091,7 @@ export default function App() {
     const selected = honoreeResults.find((honoree) => honoree.id === honoreeId);
     if (selected) {
       setFlagPositionHonoree(selected);
-      setNotice(`Select an open flag position for ${displayNameWithNickname(selected.fullName, selected.nickname)}.`);
+      setNotice(`Select an open flag grid for ${displayNameWithNickname(selected.fullName, selected.nickname)}.`);
     }
   }
 
@@ -1144,12 +1144,12 @@ export default function App() {
     const selectedHonoree = unassignedHonorees.find((honoree) => honoree.id === honoreeId);
 
     if (!honoreeId || !selectedHonoree) {
-      setError("Choose an unassigned honoree before assigning this flag position.");
+      setError("Choose an unassigned honoree before assigning this flag grid.");
       return;
     }
 
     const honoreeName = displayUnassignedHonoreeName(selectedHonoree);
-    const ok = window.confirm(`Assign ${honoreeName} to flag position ${position.flagGridName}?`);
+    const ok = window.confirm(`Assign ${honoreeName} to flag grid ${position.flagGridName}?`);
 
     if (!ok) return;
 
@@ -1180,7 +1180,7 @@ export default function App() {
       closeFlagPositionDetail();
       setNotice(`${honoreeName} was assigned to ${position.flagGridName}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to assign flag position.");
+      setError(err instanceof Error ? err.message : "Unable to assign flag grid.");
       setNotice("");
     } finally {
       setFlagPositionBusyId(null);
@@ -1191,7 +1191,7 @@ export default function App() {
     if (!account || position.isOpen) return;
 
     const honoreeName = position.honoreeName || "this honoree";
-    const ok = window.confirm(`Remove ${honoreeName} from flag position ${position.flagGridName}?`);
+    const ok = window.confirm(`Remove ${honoreeName} from flag grid ${position.flagGridName}?`);
 
     if (!ok) return;
 
@@ -1230,7 +1230,7 @@ export default function App() {
 
       setNotice(`${honoreeName} was removed from ${position.flagGridName}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to remove the honoree from this flag position.");
+      setError(err instanceof Error ? err.message : "Unable to remove the honoree from this flag grid.");
       setNotice("");
     } finally {
       setFlagPositionBusyId(null);
@@ -1437,7 +1437,7 @@ export default function App() {
             {isAuthenticated ? <a href="#my-flags" onClick={() => setMobileNavOpen(false)}>My flags</a> : null}
             {isAdmin ? <a href="#admin" onClick={() => setMobileNavOpen(false)}>Admin</a> : null}
             {isAdmin ? <a href="#reprint-queue" onClick={() => setMobileNavOpen(false)}>Reprint queue</a> : null}
-            {isAdmin ? <a href="#flag-position-manager" onClick={() => setMobileNavOpen(false)}>Flag positions</a> : null}
+            {isAdmin ? <a href="#flag-position-manager" onClick={() => setMobileNavOpen(false)}>Flag grids</a> : null}
             <a
               href="#nominate"
               onClick={(event) => {
@@ -1560,7 +1560,7 @@ export default function App() {
                       disabled={flagPositionBusyId === flagPositionDetailPosition.flagGridId}
                       onClick={() => void clearFlagPosition(flagPositionDetailPosition)}
                     >
-                      {flagPositionBusyId === flagPositionDetailPosition.flagGridId ? "Removing..." : "Remove from position"}
+                      {flagPositionBusyId === flagPositionDetailPosition.flagGridId ? "Removing..." : "Remove from flag grid"}
                     </button>
                   ) : null}
                 </div>
@@ -1579,7 +1579,7 @@ export default function App() {
               <div className="modalCard assignFlagModal" onClick={(event) => event.stopPropagation()}>
                 <div className="sectionHeader">
                   <div>
-                    <p className="eyebrow">Assign flag position</p>
+                    <p className="eyebrow">Assign flag grid</p>
                     <h2 id="assign-flag-position-title">{flagPositionModalPosition.flagGridName}</h2>
                     <p className="helperText">
                       Select an unassigned honoree. Only honorees without a flag grid are listed.
@@ -1628,7 +1628,7 @@ export default function App() {
                     disabled={!selectedUnassignedHonoreeId || unassignedHonoreesLoading || flagPositionBusyId === flagPositionModalPosition.flagGridId}
                     onClick={() => void assignSelectedHonoreeToPosition(flagPositionModalPosition)}
                   >
-                    {flagPositionBusyId === flagPositionModalPosition.flagGridId ? "Assigning..." : "Assign to position"}
+                    {flagPositionBusyId === flagPositionModalPosition.flagGridId ? "Assigning..." : "Assign to flag grid"}
                   </button>
                 </div>
               </div>
@@ -1834,7 +1834,7 @@ export default function App() {
                                     }}
                                     disabled={saving}
                                   >
-                                    Assign flag position
+                                    Assign flag grid
                                   </button>
 
                                   <button
@@ -2025,7 +2025,7 @@ export default function App() {
                 </div>
                 <div className="statCard">
                   <strong>{openFlagPositionCount}</strong>
-                  <span>Open flag positions</span>
+                  <span>Open flag grids</span>
                 </div>
               </div>
 
@@ -2095,10 +2095,10 @@ export default function App() {
                 <section id="flag-position-manager" className="flagPositionManager adminStandalonePanel" aria-label="Flag Map">
                   <div className="sectionHeader">
                     <div>
-                      <p className="eyebrow">Flag positions</p>
+                      <p className="eyebrow">Flag grids</p>
                       <h3>Flag Map</h3>
                       <p className="helperText">
-                        Select a honoree from search results, then choose an open flag position. Occupied positions can be cleared by an administrator.
+                        
                       </p>
                     </div>
                     <div className="flagPositionActions">
@@ -2136,7 +2136,7 @@ export default function App() {
                   </p>
 
                   <div className="flagMapToolbar">
-                  <div className="flagSeatLegend" aria-label="Flag position legend and quick filters">
+                  <div className="flagSeatLegend" aria-label="Flag grid legend and quick filters">
                     <button
                       type="button"
                       className={`legendButton ${flagPositionOccupancyFilter === "all" ? "isActive" : ""}`}
@@ -2167,7 +2167,7 @@ export default function App() {
                     </button>
                   </div>
 
-                  <div className="flagPositionFilters" aria-label="Flag position filters">
+                  <div className="flagPositionFilters" aria-label="Flag grid filters">
                     <label>
                       <span className="fieldLabelText">Search flag grids</span>
                       <input
@@ -2211,9 +2211,9 @@ export default function App() {
                     <span><strong>{visibleReservedFlagPositionCount}</strong> shown reserved</span>
                   </div>
 
-                  <div className="flagSeatMap" role="grid" aria-label="Flag position seat map">
+                  <div className="flagSeatMap" role="grid" aria-label="Flag grid seat map">
                     {flagPositionRows.length === 0 ? (
-                      <p className="emptyState">No flag positions match the current filters.</p>
+                      <p className="emptyState">No flag grids match the current filters.</p>
                     ) : (
                       flagPositionRows.map((row) => (
                         <div className="flagSeatRow" role="row" key={row.rowLabel}>
@@ -2257,7 +2257,7 @@ export default function App() {
                 <section id="flag-position-manager" className="flagPositionManager collapsedFlagPositionManager adminStandalonePanel" aria-label="Flag Map">
                   <div className="sectionHeader">
                     <div>
-                      <p className="eyebrow">Flag positions</p>
+                      <p className="eyebrow">Flag grids</p>
                       <h3>Flag Map</h3>
                       <p className="helperText">
                         Add honorees to open flag grids and review occupied or reserved positions.
