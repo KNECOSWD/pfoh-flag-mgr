@@ -4313,3 +4313,14 @@ img {
     font-size: 0.8rem;
   }
 }
+
+
+/* Honor EXIF orientation for website image display */
+.honoreeCard img,
+.ownedFlagImage,
+.photoPreview img,
+.currentPhotoPreview img,
+img.honoreePhoto,
+img.ownedFlagImage {
+  image-orientation: from-image;
+}
