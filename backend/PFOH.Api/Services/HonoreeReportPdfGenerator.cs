@@ -2,6 +2,9 @@ using PdfSharpCore.Drawing;
 using PdfSharpCore.Drawing.Layout;
 using PdfSharpCore.Pdf;
 using PFOH.Api.Models;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Processing;
 
 namespace PFOH.Api.Services;
 
@@ -34,9 +37,11 @@ public static class HonoreeReportPdfGenerator
 
         using var gfx = XGraphics.FromPdfPage(page);
 
+        var orientedPhotoBytes = NormalizePhotoForPdf(photoBytes);
+
         DrawBackground(gfx, page, environment, assets?.BackgroundImage);
         DrawFlagGrid(gfx, honoree);
-        DrawLogoPhotoRow(gfx, environment, honoree, searchResult, photoBytes, assets?.ServiceLogoImage, assets?.SilhouetteImage);
+        DrawLogoPhotoRow(gfx, environment, honoree, searchResult, orientedPhotoBytes, assets?.ServiceLogoImage, assets?.SilhouetteImage);
         DrawCenteredHonoreeContent(gfx, honoree, searchResult);
         DrawRotaryLogo(gfx, environment, assets?.RotaryImage);
 
@@ -140,6 +145,32 @@ public static class HonoreeReportPdfGenerator
         catch
         {
             // Keep generating the report even if a logo file is missing/corrupt.
+        }
+    }
+
+    private static byte[]? NormalizePhotoForPdf(byte[]? photoBytes)
+    {
+        if (photoBytes is null || photoBytes.Length == 0)
+        {
+            return photoBytes;
+        }
+
+        try
+        {
+            using var image = Image.Load(photoBytes);
+
+            // Phone photos are often stored sideways with EXIF orientation metadata.
+            // PdfSharp does not consistently honor that metadata, so bake the rotation
+            // into the pixels before calculating size and drawing the image.
+            image.Mutate(operation => operation.AutoOrient());
+
+            using var output = new MemoryStream();
+            image.SaveAsJpeg(output, new JpegEncoder { Quality = 92 });
+            return output.ToArray();
+        }
+        catch
+        {
+            return photoBytes;
         }
     }
 

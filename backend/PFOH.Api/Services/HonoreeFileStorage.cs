@@ -2,6 +2,9 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Microsoft.AspNetCore.Http;
 using PFOH.Api.Models;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Processing;
 
 namespace PFOH.Api.Services;
 
@@ -52,10 +55,21 @@ public class HonoreeFileStorage(IConfiguration configuration)
             return null;
         }
 
+        var normalizedPhoto = await TryCreateAutoOrientedJpegAsync(photo, ct);
+
+        if (normalizedPhoto is not null)
+        {
+            var fileName = $"pending/{changeRequestId}.jpg";
+            await UploadImageBlobAsync(fileName, normalizedPhoto, "image/jpeg", ct);
+            return fileName;
+        }
+
+        // Fallback keeps unsupported formats from breaking the upload flow, but formats
+        // ImageSharp cannot read may not be auto-oriented.
         var extension = GetSafeImageExtension(photo.FileName, photo.ContentType);
-        var fileName = $"pending/{changeRequestId}{extension}";
-        await UploadImageBlobAsync(fileName, photo, ct);
-        return fileName;
+        var fallbackFileName = $"pending/{changeRequestId}{extension}";
+        await UploadImageBlobAsync(fallbackFileName, photo, ct);
+        return fallbackFileName;
     }
 
     public async Task<string?> PromoteImageAsync(string? sourceFileName, int honoreeId, CancellationToken ct)
@@ -262,7 +276,9 @@ public class HonoreeFileStorage(IConfiguration configuration)
                 await using var stream = await blob.OpenReadAsync(cancellationToken: ct);
                 using var memory = new MemoryStream();
                 await stream.CopyToAsync(memory, ct);
-                return memory.ToArray();
+
+                var bytes = memory.ToArray();
+                return TryAutoOrientJpeg(bytes) ?? bytes;
             }
         }
 
@@ -272,7 +288,8 @@ public class HonoreeFileStorage(IConfiguration configuration)
             try
             {
                 using var http = new HttpClient();
-                return await http.GetByteArrayAsync(uri, ct);
+                var bytes = await http.GetByteArrayAsync(uri, ct);
+                return TryAutoOrientJpeg(bytes) ?? bytes;
             }
             catch
             {
@@ -335,6 +352,65 @@ public class HonoreeFileStorage(IConfiguration configuration)
                 HttpHeaders = new BlobHttpHeaders { ContentType = GuessContentType(fileName, photo.ContentType) }
             },
             ct);
+    }
+
+    private async Task UploadImageBlobAsync(string fileName, byte[] bytes, string contentType, CancellationToken ct)
+    {
+        var container = await GetContainerAsync(ImageContainerName, ct);
+        var blob = container.GetBlobClient(fileName);
+
+        await blob.DeleteIfExistsAsync(cancellationToken: ct);
+
+        await using var stream = new MemoryStream(bytes);
+        await blob.UploadAsync(
+            stream,
+            new BlobUploadOptions
+            {
+                HttpHeaders = new BlobHttpHeaders { ContentType = contentType }
+            },
+            ct);
+    }
+
+    private static async Task<byte[]?> TryCreateAutoOrientedJpegAsync(IFormFile photo, CancellationToken ct)
+    {
+        try
+        {
+            await using var source = photo.OpenReadStream();
+            using var image = await Image.LoadAsync(source, ct);
+
+            image.Mutate(operation => operation.AutoOrient());
+
+            await using var output = new MemoryStream();
+            await image.SaveAsJpegAsync(output, new JpegEncoder { Quality = 92 }, ct);
+            return output.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static byte[]? TryAutoOrientJpeg(byte[] bytes)
+    {
+        if (bytes.Length == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var image = Image.Load(bytes);
+
+            image.Mutate(operation => operation.AutoOrient());
+
+            using var output = new MemoryStream();
+            image.SaveAsJpeg(output, new JpegEncoder { Quality = 92 });
+            return output.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private async Task<byte[]?> DownloadFromExistingContainerAsync(
