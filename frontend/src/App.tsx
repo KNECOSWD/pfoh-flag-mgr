@@ -2006,7 +2006,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="adminStats" aria-label="Administrator dashboard summary">
+              <div className="adminStats compactAdminStats" aria-label="Administrator dashboard summary">
                 <div className="statCard">
                   <strong>{pendingReviews.length}</strong>
                   <span>Pending review</span>
@@ -2030,7 +2030,7 @@ export default function App() {
               </div>
 
               {showFlagPositionManager ? (
-                <section id="flag-position-manager" className="flagPositionManager" aria-label="Flag position manager">
+                <section id="flag-position-manager" className="flagPositionManager adminStandalonePanel" aria-label="Flag position manager">
                   <div className="sectionHeader">
                     <div>
                       <p className="eyebrow">Flag positions</p>
@@ -2046,7 +2046,7 @@ export default function App() {
                         onClick={() => void refreshFlagPositions()}
                         disabled={flagPositionsLoading}
                       >
-                        {flagPositionsLoading ? "Loading..." : "Refresh map"}
+                        {flagPositionsLoading ? "Loading..." : "Refresh Flag Map"}
                       </button>
                       <button
                         type="button"
@@ -2167,7 +2167,8 @@ export default function App() {
                                   className={[
                                     "flagSeat",
                                     position.isReserved ? "isReserved" : position.isOpen ? "isOpen" : "isOccupied",
-                                    isBusy ? "isBusy" : ""
+                                    isBusy ? "isBusy" : "",
+                                    flagPositionDetailPosition?.flagGridId === position.flagGridId ? "isSelected" : ""
                                   ].filter(Boolean).join(" ")}
                                   role="gridcell"
                                   aria-label={`${position.flagGridName} ${position.isReserved ? "reserved" : position.isOpen ? "open" : `occupied by ${position.honoreeName || "honoree"}`}`}
@@ -2191,7 +2192,7 @@ export default function App() {
                   </div>
                 </section>
               ) : (
-                <section id="flag-position-manager" className="flagPositionManager collapsedFlagPositionManager" aria-label="Flag position manager">
+                <section id="flag-position-manager" className="flagPositionManager collapsedFlagPositionManager adminStandalonePanel" aria-label="Flag position manager">
                   <div className="sectionHeader">
                     <div>
                       <p className="eyebrow">Flag positions</p>
@@ -2205,13 +2206,13 @@ export default function App() {
                       className="secondary exportExcelButton"
                       onClick={() => setShowFlagPositionManager(true)}
                     >
-                      Open position map
+                      Open Flag Map
                     </button>
                   </div>
                 </section>
               )}
 
-              <details className="printCenterIntro compactPrintCenter">
+              <details className={`printCenterIntro compactPrintCenter ${printQueue.length === 0 && selectedPrintQueueItems.length === 0 ? "isCollapsedEmpty" : ""}`} open={printQueue.length > 0 || selectedPrintQueueItems.length > 0}>
                 <summary>
                   <div>
                     <p className="eyebrow">Print Center</p>
@@ -2288,92 +2289,106 @@ export default function App() {
                 </div>
               )}
 
-              <div id="reprint-queue" className="sectionHeader printHeader">
-                <div>
-                  <p className="eyebrow">Card printing</p>
-                  <h2>
-                    Reprint queue
-                    <span className="countBadge">{printQueue.length}</span>
-                  </h2>
-                </div>
-                <div className="actions printActions">
-                  <span className="selectedCount">{selectedPrintIds.length} selected</span>
-
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={downloadSelectedPrintPdf}
-                    disabled={saving || selectedPrintIds.length === 0}
-                  >
-                    Download merged PDF
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={markSelectedPrinted}
-                    disabled={saving || selectedPrintIds.length === 0}
-                  >
-                    Mark printed
-                  </button>
-                </div>
-              </div>
-
               {printQueue.length === 0 ? (
-                <p>No approved cards are waiting for reprint.</p>
+                <details id="reprint-queue" className="reprintQueuePanel collapsedEmptyPanel">
+                  <summary className="sectionHeader printHeader">
+                    <div>
+                      <p className="eyebrow">Card printing</p>
+                      <h2>
+                        Reprint queue
+                        <span className="countBadge">{printQueue.length}</span>
+                      </h2>
+                    </div>
+                    <span className="emptyPanelHint">No approved cards waiting</span>
+                  </summary>
+                  <p className="compactEmptyState">No approved cards are waiting for reprint.</p>
+                </details>
               ) : (
-                <div className="tableWrap">
-                  <table className="responsiveTable printQueueTable">
-                    <thead>
-                      <tr>
-                        <th>
-                          <label className="tableSelectAll">
-                            <input
-                              type="checkbox"
-                              checked={allPrintItemsSelected}
-                              onChange={toggleSelectAllPrintItems}
-                              disabled={printQueue.length === 0}
-                              aria-label="Select all cards for printing"
-                            />
-                            <span>Select all</span>
-                          </label>
-                        </th>
-                        <th>Honoree</th>
-                        <th>Flag grid</th>
-                        <th>Approved</th>
-                        <th>PDF</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {printQueue.map((item) => (
-                        <tr key={item.changeRequestId}>
-                          <td data-label="Select">
-                            <input
-                              type="checkbox"
-                              checked={selectedPrintIds.includes(item.changeRequestId)}
-                              onChange={() => togglePrintSelection(item.changeRequestId)}
-                            />
-                          </td>
-                          <td data-label="Honoree">
-                            <strong>{item.honoreeName}</strong>
-                            <br />
-                            <span>{item.serviceBranchName}</span>
-                          </td>
-                          <td data-label="Flag grid">{item.flagGridName}</td>
-                          <td data-label="Approved">{formatDate(item.approvedUtc)}</td>
-                          <td data-label="PDF">
-                            {item.honoreeId ? (
-                              <a className="textLink" href={honoreePdfUrl(item.honoreeId)} target="_blank" rel="noreferrer">
-                                Open PDF
-                              </a>
-                            ) : (
-                              <span className="pdfWarning">Missing PDF</span>
-                            )}
-                          </td>
+                <section id="reprint-queue" className="reprintQueuePanel">
+                  <div className="sectionHeader printHeader">
+                    <div>
+                      <p className="eyebrow">Card printing</p>
+                      <h2>
+                        Reprint queue
+                        <span className="countBadge">{printQueue.length}</span>
+                      </h2>
+                    </div>
+                    <div className="actions printActions">
+                      <span className="selectedCount">{selectedPrintIds.length} selected</span>
+
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={downloadSelectedPrintPdf}
+                        disabled={saving || selectedPrintIds.length === 0}
+                      >
+                        Download merged PDF
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={markSelectedPrinted}
+                        disabled={saving || selectedPrintIds.length === 0}
+                      >
+                        Mark printed
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="tableWrap">
+                    <table className="responsiveTable printQueueTable">
+                      <thead>
+                        <tr>
+                          <th>
+                            <label className="tableSelectAll">
+                              <input
+                                type="checkbox"
+                                checked={allPrintItemsSelected}
+                                onChange={toggleSelectAllPrintItems}
+                                disabled={printQueue.length === 0}
+                                aria-label="Select all cards for printing"
+                              />
+                              <span>Select all</span>
+                            </label>
+                          </th>
+                          <th>Honoree</th>
+                          <th>Flag grid</th>
+                          <th>Approved</th>
+                          <th>PDF</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {printQueue.map((item) => (
+                          <tr key={item.changeRequestId}>
+                            <td data-label="Select">
+                              <input
+                                type="checkbox"
+                                checked={selectedPrintIds.includes(item.changeRequestId)}
+                                onChange={() => togglePrintSelection(item.changeRequestId)}
+                              />
+                            </td>
+                            <td data-label="Honoree">
+                              <strong>{item.honoreeName}</strong>
+                              <br />
+                              <span>{item.serviceBranchName}</span>
+                            </td>
+                            <td data-label="Flag grid">{item.flagGridName}</td>
+                            <td data-label="Approved">{formatDate(item.approvedUtc)}</td>
+                            <td data-label="PDF">
+                              {item.honoreeId ? (
+                                <a className="textLink" href={honoreePdfUrl(item.honoreeId)} target="_blank" rel="noreferrer">
+                                  Open PDF
+                                </a>
+                              ) : (
+                                <span className="pdfWarning">Missing PDF</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
               )}
             </section>
           ) : null}
