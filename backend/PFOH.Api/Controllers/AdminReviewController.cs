@@ -11,9 +11,6 @@ using PFOH.Api.Services;
 
 namespace PFOH.Api.Controllers;
 
-[ApiController]
-[Route("api/admin/review")]
-[Authorize(Policy = "AdminOnly")]
 public record AdminFlagPositionDto(
     int FlagGridId,
     string FlagGridName,
@@ -27,6 +24,9 @@ public record AdminFlagPositionDto(
 
 public record AssignFlagPositionRequest(int HonoreeId);
 
+[ApiController]
+[Route("api/admin/review")]
+[Authorize(Policy = "AdminOnly")]
 public class AdminReviewController(PfohDbContext db, IConfiguration configuration, IWebHostEnvironment environment) : ControllerBase
 {
     private readonly HonoreeFileStorage fileStorage = new(configuration);
