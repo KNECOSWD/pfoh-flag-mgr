@@ -158,6 +158,21 @@ function displayUnassignedHonoreeName(honoree: AdminUnassignedHonoree) {
   return displayNameWithNickname(honoree.fullName, honoree.nickname);
 }
 
+function compareFlagSections(left: string, right: string) {
+  const normalize = (value: string) => value.trim().toUpperCase();
+  const leftValue = normalize(left);
+  const rightValue = normalize(right);
+
+  if (leftValue === "OTHER") return 1;
+  if (rightValue === "OTHER") return -1;
+
+  if (leftValue.length !== rightValue.length) {
+    return leftValue.length - rightValue.length;
+  }
+
+  return leftValue.localeCompare(rightValue, undefined, { numeric: true });
+}
+
 
 export default function App() {
   const isAuthenticated = useIsAuthenticated();
@@ -197,7 +212,7 @@ export default function App() {
   const [showFlagPositionManager, setShowFlagPositionManager] = useState(false);
   const [flagPositionSearchText, setFlagPositionSearchText] = useState("");
   const [flagPositionSectionFilter, setFlagPositionSectionFilter] = useState("");
-  const [flagPositionOccupancyFilter, setFlagPositionOccupancyFilter] = useState<"all" | "open" | "occupied" | "reserved">("open");
+  const [flagPositionOccupancyFilter, setFlagPositionOccupancyFilter] = useState<"all" | "open" | "occupied" | "reserved">("all");
   const [flagPositionModalPosition, setFlagPositionModalPosition] = useState<AdminFlagPosition | null>(null);
   const [flagPositionDetailPosition, setFlagPositionDetailPosition] = useState<AdminFlagPosition | null>(null);
   const [unassignedHonorees, setUnassignedHonorees] = useState<AdminUnassignedHonoree[]>([]);
@@ -248,7 +263,7 @@ export default function App() {
   const flagPositionSections = useMemo(
     () =>
       [...new Set(flagPositions.map((position) => position.rowLabel || "Other"))]
-        .sort((left, right) => left.localeCompare(right, undefined, { numeric: true })),
+        .sort(compareFlagSections),
     [flagPositions]
   );
 
@@ -297,7 +312,7 @@ export default function App() {
     }, {});
 
     return Object.entries(groups)
-      .sort(([left], [right]) => left.localeCompare(right, undefined, { numeric: true }))
+      .sort(([left], [right]) => compareFlagSections(left, right))
       .map(([rowLabel, positions]) => ({
         rowLabel,
         positions: [...positions].sort((left, right) => {
@@ -325,6 +340,16 @@ export default function App() {
 
   const openFlagPositionCount = useMemo(
     () => flagPositions.filter((position) => position.isOpen).length,
+    [flagPositions]
+  );
+
+  const reservedFlagPositionCount = useMemo(
+    () => flagPositions.filter((position) => position.isReserved).length,
+    [flagPositions]
+  );
+
+  const occupiedFlagPositionCount = useMemo(
+    () => flagPositions.filter((position) => !position.isOpen && !position.isReserved).length,
     [flagPositions]
   );
 
@@ -2036,17 +2061,13 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="flagPositionSummary">
-                    <span><strong>{flagPositions.length}</strong> total positions</span>
-                    <span><strong>{openFlagPositionCount}</strong> open</span>
-                    {flagPositionHonoree ? (
+                  {flagPositionHonoree ? (
+                    <div className="flagPositionSummary">
                       <span>
                         Assigning <strong>{displayNameWithNickname(flagPositionHonoree.fullName, flagPositionHonoree.nickname)}</strong>
                       </span>
-                    ) : (
-                      <span>Choose “Assign flag position” from an honoree search result to add someone to an open position.</span>
-                    )}
-                  </div>
+                    </div>
+                  ) : null}
 
                   <p className="helperText flagAssignmentHelp">
                     Click a flag grid tile to view details. Open tiles can be assigned; occupied tiles can be cleared from the detail modal.
@@ -2059,28 +2080,28 @@ export default function App() {
                       className={`legendButton ${flagPositionOccupancyFilter === "all" ? "isActive" : ""}`}
                       onClick={() => setFlagPositionOccupancyFilter("all")}
                     >
-                      All
+                      All ({flagPositions.length})
                     </button>
                     <button
                       type="button"
                       className={`legendButton ${flagPositionOccupancyFilter === "open" ? "isActive" : ""}`}
                       onClick={() => setFlagPositionOccupancyFilter("open")}
                     >
-                      <i className="legendOpen" /> Open
+                      <i className="legendOpen" /> Open ({openFlagPositionCount})
                     </button>
                     <button
                       type="button"
                       className={`legendButton ${flagPositionOccupancyFilter === "occupied" ? "isActive" : ""}`}
                       onClick={() => setFlagPositionOccupancyFilter("occupied")}
                     >
-                      <i className="legendOccupied" /> Occupied
+                      <i className="legendOccupied" /> Occupied ({occupiedFlagPositionCount})
                     </button>
                     <button
                       type="button"
                       className={`legendButton ${flagPositionOccupancyFilter === "reserved" ? "isActive" : ""}`}
                       onClick={() => setFlagPositionOccupancyFilter("reserved")}
                     >
-                      <i className="legendReserved" /> Reserved
+                      <i className="legendReserved" /> Reserved ({reservedFlagPositionCount})
                     </button>
                   </div>
 
@@ -2114,7 +2135,7 @@ export default function App() {
                       onClick={() => {
                         setFlagPositionSearchText("");
                         setFlagPositionSectionFilter("");
-                        setFlagPositionOccupancyFilter("open");
+                        setFlagPositionOccupancyFilter("all");
                       }}
                     >
                       Clear filters
