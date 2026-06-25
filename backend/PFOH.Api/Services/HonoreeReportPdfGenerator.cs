@@ -602,24 +602,37 @@ public static class HonoreeReportPdfGenerator
         return 1;
     }
 
-    private static ushort ReadUInt16BigEndian(byte[] bytes, int offset) =>
-        (ushort)((bytes[offset] << 8) | bytes[offset + 1]);
+    private static ushort ReadUInt16BigEndian(byte[] bytes, int offset)
+    {
+        return (ushort)((bytes[offset] << 8) | bytes[offset + 1]);
+    }
 
-    private static ushort ReadUInt16(byte[] bytes, int offset, bool littleEndian) =>
-        littleEndian
-            ? (ushort)(bytes[offset] | (bytes[offset + 1] << 8))
-            : (ushort)((bytes[offset] << 8) | bytes[offset + 1]);
+    private static ushort ReadUInt16(byte[] bytes, int offset, bool littleEndian)
+    {
+        if (littleEndian)
+        {
+            return (ushort)(bytes[offset] | (bytes[offset + 1] << 8));
+        }
 
-    private static uint ReadUInt32(byte[] bytes, int offset, bool littleEndian) =>
-        littleEndian
-            ? (uint)(bytes[offset] |
+        return (ushort)((bytes[offset] << 8) | bytes[offset + 1]);
+    }
+
+    private static uint ReadUInt32(byte[] bytes, int offset, bool littleEndian)
+    {
+        if (littleEndian)
+        {
+            return (uint)(
+                bytes[offset] |
                 (bytes[offset + 1] << 8) |
                 (bytes[offset + 2] << 16) |
-                (bytes[offset + 3] << 24))
-            : (uint)((bytes[offset] << 24) |
-                (bytes[offset + 1] << 16) |
-                (bytes[offset + 2] << 8) |
-                bytes[offset + 3]);
+                (bytes[offset + 3] << 24));
+        }
+
+        return (uint)(
+            (bytes[offset] << 24) |
+            (bytes[offset + 1] << 16) |
+            (bytes[offset + 2] << 8) |
+            bytes[offset + 3]);
     }
 
     private static string? FirstExistingAssetPath(IWebHostEnvironment environment, params string?[] fileNames)
