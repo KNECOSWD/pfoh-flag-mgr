@@ -209,7 +209,9 @@ export default function App() {
   const [flagPositionHonoree, setFlagPositionHonoree] = useState<HonoreeSearchResult | null>(null);
   const [flagPositionBusyId, setFlagPositionBusyId] = useState<number | null>(null);
   const [flagPositionsLoading, setFlagPositionsLoading] = useState(false);
-  const [showFlagPositionManager, setShowFlagPositionManager] = useState(false);
+  const [showFlagPositionManager, setShowFlagPositionManager] = useState(true);
+  const [adminActiveTab, setAdminActiveTab] = useState<"review" | "flagMap" | "printing">("flagMap");
+  const [adminTabTouched, setAdminTabTouched] = useState(false);
   const [flagPositionSearchText, setFlagPositionSearchText] = useState("");
   const [flagPositionSectionFilter, setFlagPositionSectionFilter] = useState("");
   const [flagPositionOccupancyFilter, setFlagPositionOccupancyFilter] = useState<"all" | "open" | "occupied" | "reserved">("all");
@@ -447,6 +449,31 @@ export default function App() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, account?.homeAccountId]);
+
+  useEffect(() => {
+    if (!isAdmin || adminTabTouched) return;
+
+    if (pendingReviews.length > 0) {
+      setAdminActiveTab("review");
+      return;
+    }
+
+    if (printQueue.length > 0) {
+      setAdminActiveTab("printing");
+      return;
+    }
+
+    setAdminActiveTab("flagMap");
+  }, [adminTabTouched, isAdmin, pendingReviews.length, printQueue.length]);
+
+  function selectAdminTab(tab: "review" | "flagMap" | "printing") {
+    setAdminActiveTab(tab);
+    setAdminTabTouched(true);
+
+    if (tab === "flagMap") {
+      setShowFlagPositionManager(true);
+    }
+  }
 
   useEffect(() => {
     const timers: number[] = [];
@@ -1997,8 +2024,7 @@ export default function App() {
                 <div>
                   <p className="eyebrow">Administrator</p>
                   <h2>
-                    Review submitted changes
-                    <span className="countBadge">{pendingReviews.length}</span>
+                    Administrator
                   </h2>
                 </div>
                 <div className="adminHeaderActions">
@@ -2011,29 +2037,41 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="adminStats compactAdminStats" aria-label="Administrator dashboard summary">
-                <div className="statCard">
+              <div className="adminTabs" role="tablist" aria-label="Administrator sections">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={adminActiveTab === "review"}
+                  className={adminActiveTab === "review" ? "adminTab isActive" : "adminTab"}
+                  onClick={() => selectAdminTab("review")}
+                >
+                  <span>Review</span>
                   <strong>{pendingReviews.length}</strong>
-                  <span>Pending review</span>
-                </div>
-                <div className="statCard">
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={adminActiveTab === "flagMap"}
+                  className={adminActiveTab === "flagMap" ? "adminTab isActive" : "adminTab"}
+                  onClick={() => selectAdminTab("flagMap")}
+                >
+                  <span>Flag Map</span>
+                  <strong>{openFlagPositionCount} open</strong>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={adminActiveTab === "printing"}
+                  className={adminActiveTab === "printing" ? "adminTab isActive" : "adminTab"}
+                  onClick={() => selectAdminTab("printing")}
+                >
+                  <span>Printing</span>
                   <strong>{printQueue.length}</strong>
-                  <span>Ready to print</span>
-                </div>
-                <div className="statCard">
-                  <strong>{selectedPrintIds.length}</strong>
-                  <span>Selected</span>
-                </div>
-                <div className="statCard">
-                  <strong>{claimedByMultipleCount}</strong>
-                  <span>Multiple-claim alerts</span>
-                </div>
-                <div className="statCard">
-                  <strong>{openFlagPositionCount}</strong>
-                  <span>Open flag grids</span>
-                </div>
+                </button>
               </div>
 
+              {adminActiveTab === "review" ? (
+                <div className="adminTabPanel" role="tabpanel" aria-label="Review submitted changes">
               {pendingReviews.length === 0 ? (
                 <p>No submitted changes are waiting for review.</p>
               ) : (
@@ -2096,6 +2134,11 @@ export default function App() {
               )}
 
 
+                </div>
+              ) : null}
+
+              {adminActiveTab === "flagMap" ? (
+                <div className="adminTabPanel flagMapTabPanel" role="tabpanel" aria-label="Flag Map">
               {showFlagPositionManager ? (
                 <section id="flag-position-manager" className="flagPositionManager adminStandalonePanel" aria-label="Flag Map">
                   <div className="sectionHeader">
@@ -2275,6 +2318,11 @@ export default function App() {
 
 
 
+                </div>
+              ) : null}
+
+              {adminActiveTab === "printing" ? (
+                <div className="adminTabPanel printingTabPanel" role="tabpanel" aria-label="Printing">
               <details className={`printCenterIntro compactPrintCenter ${printQueue.length === 0 && selectedPrintQueueItems.length === 0 ? "isCollapsedEmpty thinEmptyPanel" : ""}`} open={printQueue.length > 0 || selectedPrintQueueItems.length > 0}>
                 <summary>
                   <div>
@@ -2392,6 +2440,9 @@ export default function App() {
                   </div>
                 </section>
               )}
+                </div>
+              ) : null}
+
             </section>
           ) : null}
 
