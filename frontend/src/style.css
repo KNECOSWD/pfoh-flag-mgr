@@ -4547,3 +4547,36 @@ img.ownedFlagImage {
     padding: 0.48rem;
   }
 }
+
+
+/* Flag position honoree picker */
+.flagAssignmentPicker {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  border: 1px solid #dce6f3;
+  border-radius: 0.9rem;
+  background: #ffffff;
+}
+
+.flagAssignmentPicker label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.flagAssignmentPicker select {
+  width: min(100%, 34rem);
+  min-height: 2.35rem;
+  border: 1px solid #cfd8e8;
+  border-radius: 0.65rem;
+  padding: 0.45rem 0.65rem;
+  background: #ffffff;
+  color: #071a3b;
+  font-size: 0.95rem;
+}
+
+.flagAssignmentPicker .helperText {
+  margin: 0;
+  font-size: 0.84rem;
+}

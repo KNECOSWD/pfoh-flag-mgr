@@ -262,6 +262,21 @@ export default function App() {
     [flagPositions]
   );
 
+  const flagPositionAssignmentOptions = useMemo(
+    () =>
+      honoreeResults
+        .map((honoree) => ({
+          honoree,
+          isAssigned: !!honoree.flagGrid
+        }))
+        .sort((left, right) =>
+          displayNameWithNickname(left.honoree.fullName, left.honoree.nickname).localeCompare(
+            displayNameWithNickname(right.honoree.fullName, right.honoree.nickname)
+          )
+        ),
+    [honoreeResults]
+  );
+
 
   const filteredServiceBranches = useMemo(() => {
     if (!form.serviceBranchCategoryId) return [];
@@ -974,8 +989,28 @@ export default function App() {
     }, 75);
   }
 
+  function selectFlagPositionHonoree(honoreeIdValue: string) {
+    const honoreeId = Number(honoreeIdValue);
+
+    if (!honoreeId) {
+      setFlagPositionHonoree(null);
+      return;
+    }
+
+    const selected = honoreeResults.find((honoree) => honoree.id === honoreeId);
+    if (selected) {
+      setFlagPositionHonoree(selected);
+      setNotice(`Select an open flag position for ${displayNameWithNickname(selected.fullName, selected.nickname)}.`);
+    }
+  }
+
   async function assignSelectedHonoreeToPosition(position: AdminFlagPosition) {
-    if (!account || !flagPositionHonoree || !position.isOpen) return;
+    if (!account || !position.isOpen) return;
+
+    if (!flagPositionHonoree) {
+      setNotice("Choose a honoree to assign first, then select an open flag position.");
+      return;
+    }
 
     const honoreeName = displayNameWithNickname(flagPositionHonoree.fullName, flagPositionHonoree.nickname);
     const ok = window.confirm(`Assign ${honoreeName} to flag position ${position.flagGridName}?`);
@@ -1036,6 +1071,17 @@ export default function App() {
         setHonoreeResults(results);
         setClaimantsByHonoreeId({});
         await loadClaimantsForSearchResults(results);
+
+        const removedHonoree = position.honoreeId
+          ? results.find((honoree) => honoree.id === position.honoreeId)
+          : null;
+
+        if (removedHonoree) {
+          setFlagPositionHonoree(removedHonoree);
+          setShowFlagPositionManager(true);
+          setNotice(`${honoreeName} was removed from ${position.flagGridName}. Select an open position to reassign.`);
+          return;
+        }
       }
 
       setNotice(`${honoreeName} was removed from ${position.flagGridName}.`);
@@ -1734,6 +1780,31 @@ export default function App() {
                     )}
                   </div>
 
+                  <div className="flagAssignmentPicker">
+                    <label>
+                      <span className="fieldLabelText">Honoree to assign</span>
+                      <select
+                        value={flagPositionHonoree?.id ?? ""}
+                        onChange={(event) => selectFlagPositionHonoree(event.target.value)}
+                      >
+                        <option value="">
+                          {honoreeResults.length === 0
+                            ? "Search honorees first"
+                            : "Choose honoree from current search results"}
+                        </option>
+                        {flagPositionAssignmentOptions.map(({ honoree, isAssigned }) => (
+                          <option key={honoree.id} value={honoree.id} disabled={isAssigned}>
+                            {displayNameWithNickname(honoree.fullName, honoree.nickname)}
+                            {isAssigned ? ` — assigned to ${honoree.flagGrid}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="helperText">
+                      The map can only assign honorees from the current search results. Search for the honoree first, then choose them here or use Admin actions &gt; Assign flag position.
+                    </p>
+                  </div>
+
                   <div className="flagSeatLegend" aria-label="Flag position legend">
                     <span><i className="legendOpen" /> Open</span>
                     <span><i className="legendOccupied" /> Occupied</span>
@@ -1770,10 +1841,10 @@ export default function App() {
                                       <button
                                         type="button"
                                         className="seatAction"
-                                        disabled={!canAssign || isBusy}
+                                        disabled={!position.isOpen || isBusy}
                                         onClick={() => void assignSelectedHonoreeToPosition(position)}
                                       >
-                                        {isBusy ? "Assigning..." : "Assign"}
+                                        {isBusy ? "Assigning..." : flagPositionHonoree ? "Assign" : "Choose honoree"}
                                       </button>
                                     </>
                                   ) : (
