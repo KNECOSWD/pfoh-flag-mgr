@@ -672,10 +672,70 @@ export default function App() {
     setSelectedPhotoRotation(0);
   }
 
+  function currentPhotoSourceUrl() {
+    if (isNominating) {
+      return "";
+    }
+
+    if (selectedClaim?.honoreeId) {
+      return honoreePhotoUrl(selectedClaim.honoreeId);
+    }
+
+    return selectedClaim?.honoreeImageUrl ?? "";
+  }
+
+  function normalizeRotation(degrees: number) {
+    const next = degrees % 360;
+    return next < 0 ? next + 360 : next;
+  }
+
   function rotateSelectedPhoto(degrees: number) {
-    setSelectedPhotoRotation((current) => {
-      const next = (current + degrees) % 360;
-      return next < 0 ? next + 360 : next;
+    setSelectedPhotoRotation((current) => normalizeRotation(current + degrees));
+  }
+
+  async function rotateDisplayedPhoto(degrees: number) {
+    if (selectedPhoto) {
+      rotateSelectedPhoto(degrees);
+      return;
+    }
+
+    try {
+      const currentPhoto = await fetchCurrentPhotoAsFile();
+
+      if (!currentPhoto) {
+        setError("Select a photo before rotating it.");
+        return;
+      }
+
+      setError("");
+      setSelectedPhoto(currentPhoto);
+      setSelectedPhotoRotation(normalizeRotation(degrees));
+      setNotice("Photo rotation is staged. Save or submit the form to apply it.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load the current photo for rotation.");
+    }
+  }
+
+  async function fetchCurrentPhotoAsFile() {
+    const sourceUrl = currentPhotoSourceUrl();
+
+    if (!sourceUrl) {
+      return null;
+    }
+
+    const response = await fetch(sourceUrl, { cache: "no-store" });
+
+    if (!response.ok) {
+      throw new Error("Unable to load the current photo for rotation.");
+    }
+
+    const blob = await response.blob();
+    const contentType = blob.type || "image/jpeg";
+    const extension = contentType.includes("png") ? "png" : "jpg";
+
+    return new File([blob], `current-honoree-photo.${extension}`, {
+      type: contentType,
+      lastModified: Date.now()
     });
   }
 
@@ -1845,12 +1905,7 @@ export default function App() {
                       : selectedClaim?.honoreeImageUrl)) ? (
                     <img
                       className="honoreePhotoPreview"
-                      src={
-                        selectedPhotoPreviewUrl ||
-                        (!isNominating && selectedClaim?.honoreeId
-                          ? honoreePhotoUrl(selectedClaim.honoreeId)
-                          : selectedClaim?.honoreeImageUrl ?? "")
-                      }
+                      src={selectedPhotoPreviewUrl || currentPhotoSourceUrl()}
                       alt={`${selectedClaim?.honoreeName || "Current honoree"} photo`}
                       style={
                         selectedPhotoPreviewUrl
@@ -1867,19 +1922,19 @@ export default function App() {
                     accept="image/*"
                     onChange={(e) => handlePhotoSelected(e.target.files?.[0] ?? null)}
                   />
-                  {selectedPhoto ? (
+                  {(selectedPhoto || currentPhotoSourceUrl()) ? (
                     <div className="photoRotationControls" aria-label="Photo rotation controls">
                       <button
                         type="button"
                         className="secondary compactButton"
-                        onClick={() => rotateSelectedPhoto(-90)}
+                        onClick={() => void rotateDisplayedPhoto(-90)}
                       >
                         ↺ Rotate left
                       </button>
                       <button
                         type="button"
                         className="secondary compactButton"
-                        onClick={() => rotateSelectedPhoto(90)}
+                        onClick={() => void rotateDisplayedPhoto(90)}
                       >
                         Rotate right ↻
                       </button>
@@ -1889,7 +1944,7 @@ export default function App() {
                     {selectedPhoto
                       ? `Selected: ${selectedPhoto.name}${selectedPhotoRotation ? ` • Rotated ${selectedPhotoRotation}°` : ""}`
                       : !isNominating && (selectedClaim?.honoreeId || selectedClaim?.honoreeImageUrl)
-                        ? "Current photo is shown above and will be kept unless a new one is uploaded."
+                        ? "Current photo is shown above. Use Rotate left/right to correct it, then save or submit to apply the rotation."
                         : "Optional. JPG or PNG is best for the printed honoree card."}
                   </span>
                 </label>

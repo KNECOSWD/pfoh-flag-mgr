@@ -4358,3 +4358,9 @@ img.ownedFlagImage {
     font-size: 0.8rem;
   }
 }
+
+
+/* Existing uploaded photo rotation support */
+.photoRotationControls {
+  align-items: center;
+}
