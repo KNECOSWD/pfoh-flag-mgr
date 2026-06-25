@@ -4955,3 +4955,57 @@ img.ownedFlagImage {
     padding-right: 4.5rem;
   }
 }
+
+
+/* Flag legend button hover/active color fix */
+.flagSeatLegend .legendButton {
+  border-color: #dce6f3;
+  background: #f4f7fb;
+  color: #173b73;
+  box-shadow: none;
+}
+
+.flagSeatLegend .legendButton:hover:not(:disabled),
+.flagSeatLegend .legendButton:focus-visible {
+  border-color: #9eb9dc;
+  background: #e8f2ff;
+  color: #173b73;
+  transform: none;
+  box-shadow: none;
+}
+
+.flagSeatLegend .legendButton.isActive,
+.flagSeatLegend .legendButton.isActive:hover:not(:disabled),
+.flagSeatLegend .legendButton.isActive:focus-visible {
+  border-color: #173b73;
+  background: #173b73;
+  color: #ffffff;
+  transform: none;
+  box-shadow: none;
+}
+
+.flagSeatLegend .legendButton i {
+  flex: 0 0 auto;
+}
+
+.flagSeatLegend .legendButton.isActive .legendOpen {
+  background: #dff7e7;
+  border-color: #b9e3c5;
+}
+
+.flagSeatLegend .legendButton.isActive .legendOccupied {
+  background: #ffe8e8;
+  border-color: #f2b7b7;
+}
+
+.flagSeatLegend .legendButton.isActive:hover .legendOpen,
+.flagSeatLegend .legendButton.isActive:focus-visible .legendOpen {
+  background: #dff7e7;
+  border-color: #b9e3c5;
+}
+
+.flagSeatLegend .legendButton.isActive:hover .legendOccupied,
+.flagSeatLegend .legendButton.isActive:focus-visible .legendOccupied {
+  background: #ffe8e8;
+  border-color: #f2b7b7;
+}
