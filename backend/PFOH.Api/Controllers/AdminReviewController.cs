@@ -1,3 +1,5 @@
+using System.Net;
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -74,6 +76,112 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         return Ok(dtos);
     }
 
+
+    [HttpGet("honorees-export")]
+    public async Task<IActionResult> ExportHonorees(CancellationToken ct)
+    {
+        var honorees = await db.Honorees
+            .AsNoTracking()
+            .Include(h => h.FlagGrid)
+            .Include(h => h.ServiceBranch)
+            .Include(h => h.Sponsor)
+            .Where(h => h.IsActive && h.DeletedDate == null)
+            .OrderBy(h => h.LastName)
+            .ThenBy(h => h.FirstName)
+            .ToListAsync(ct);
+
+        var honoreeIds = honorees.Select(h => h.Id).ToList();
+
+        var activeClaims = honoreeIds.Count == 0
+            ? new List<FlagClaim>()
+            : await db.FlagClaims
+                .AsNoTracking()
+                .Where(c =>
+                    c.HonoreeId.HasValue &&
+                    honoreeIds.Contains(c.HonoreeId.Value) &&
+                    c.ClaimStatus != "Unclaimed" &&
+                    c.ClaimStatus != "Cancelled" &&
+                    c.ClaimStatus != "AdminDirectEditCompleted")
+                .OrderBy(c => c.ExternalUserName ?? c.ExternalUserEmail)
+                .ToListAsync(ct);
+
+        var claimsByHonoreeId = activeClaims
+            .Where(c => c.HonoreeId.HasValue)
+            .GroupBy(c => c.HonoreeId!.Value)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var rows = new StringBuilder();
+        rows.AppendLine("<html><head><meta charset=\"utf-8\" /></head><body>");
+        rows.AppendLine("<table border=\"1\">");
+        rows.AppendLine("<thead><tr>");
+        foreach (var header in new[]
+        {
+            "Honoree ID",
+            "Name",
+            "Nickname",
+            "Flag Grid",
+            "Rank",
+            "Service Branch",
+            "Service Years",
+            "KIA",
+            "Submitter",
+            "Submitter Email",
+            "Submitter Phone",
+            "Claimed",
+            "Claimant Count",
+            "Claimants",
+            "Description"
+        })
+        {
+            rows.Append("<th>").Append(WebUtility.HtmlEncode(header)).AppendLine("</th>");
+        }
+
+        rows.AppendLine("</tr></thead><tbody>");
+
+        foreach (var honoree in honorees)
+        {
+            claimsByHonoreeId.TryGetValue(honoree.Id, out var claims);
+            claims ??= new List<FlagClaim>();
+
+            var claimantSummary = string.Join(
+                "; ",
+                claims.Select(c =>
+                    $"{Clean(c.ExternalUserName) ?? Clean(c.ExternalUserEmail)} <{Clean(c.ExternalUserEmail)}> ({Clean(c.ClaimStatus)})"));
+
+            var values = new[]
+            {
+                honoree.Id.ToString(),
+                BuildHonoreeName(honoree),
+                Clean(honoree.Nickname),
+                Clean(honoree.FlagGrid?.FlagGridName),
+                Clean(honoree.Rank),
+                Clean(honoree.ServiceBranch?.ServiceBranchName),
+                BuildServiceYears(honoree),
+                honoree.KIA ? "Yes" : "No",
+                BuildSponsorName(honoree.Sponsor),
+                Clean(honoree.Sponsor?.EmailAddress),
+                Clean(honoree.Sponsor?.PhoneNumber),
+                claims.Count > 0 ? "Yes" : "No",
+                claims.Count.ToString(),
+                claimantSummary,
+                Clean(honoree.Description)
+            };
+
+            rows.AppendLine("<tr>");
+            foreach (var value in values)
+            {
+                rows.Append("<td>").Append(WebUtility.HtmlEncode(value ?? string.Empty)).AppendLine("</td>");
+            }
+
+            rows.AppendLine("</tr>");
+        }
+
+        rows.AppendLine("</tbody></table></body></html>");
+
+        var bytes = Encoding.UTF8.GetBytes(rows.ToString());
+        var fileName = $"pfoh-honorees-{DateTime.UtcNow:yyyyMMdd}.xls";
+        return File(bytes, "application/vnd.ms-excel; charset=utf-8", fileName);
+    }
 
     [HttpPost("honoree/{honoreeId:int}/queue-reprint")]
     public async Task<ActionResult<AdminPrintQueueItemDto>> QueueHonoreeReprint(
@@ -640,9 +748,74 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
 
     private static string BuildHonoreeName(HonoreeChangeRequest r)
     {
+        return AddNickname(
+            string.Join(
+                " ",
+                new[] { r.FirstName, r.MiddleName, r.LastName, r.Suffix }
+                    .Where(v => !string.IsNullOrWhiteSpace(v))),
+            r.Nickname);
+    }
+
+    private static string BuildHonoreeName(Honoree h)
+    {
+        return AddNickname(
+            string.Join(
+                " ",
+                new[] { h.FirstName, h.MiddleName, h.LastName, h.Suffix }
+                    .Where(v => !string.IsNullOrWhiteSpace(v))),
+            h.Nickname);
+    }
+
+    private static string AddNickname(string name, string? nickname)
+    {
+        var cleanName = Clean(name) ?? string.Empty;
+        var cleanNickname = Clean(nickname);
+
+        if (string.IsNullOrWhiteSpace(cleanNickname))
+        {
+            return cleanName;
+        }
+
+        return cleanName.EndsWith($"({cleanNickname})", StringComparison.OrdinalIgnoreCase)
+            ? cleanName
+            : $"{cleanName} ({cleanNickname})";
+    }
+
+    private static string BuildSponsorName(Sponsor? sponsor)
+    {
+        if (sponsor is null)
+        {
+            return string.Empty;
+        }
+
         return string.Join(
             " ",
-            new[] { r.FirstName, r.MiddleName, r.LastName, r.Suffix }
+            new[] { sponsor.FirstName, sponsor.MiddleName, sponsor.LastName, sponsor.Suffix }
                 .Where(v => !string.IsNullOrWhiteSpace(v)));
     }
+
+    private static string BuildServiceYears(Honoree honoree)
+    {
+        if (!string.IsNullOrWhiteSpace(honoree.DatesUserEntry))
+        {
+            return honoree.DatesUserEntry;
+        }
+
+        if (honoree.StartYear.HasValue && honoree.EndYear.HasValue)
+        {
+            return $"{honoree.StartYear} - {honoree.EndYear}";
+        }
+
+        if (honoree.StartYear.HasValue)
+        {
+            return $"{honoree.StartYear} - Present";
+        }
+
+        return honoree.EndYear.HasValue ? $"- {honoree.EndYear}" : string.Empty;
+    }
+
+    private static string? Clean(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Replace("\r", "").Replace("\n", "").Trim();
 }

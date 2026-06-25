@@ -4265,3 +4265,51 @@ img {
     font-size: 0.8rem;
   }
 }
+
+
+/* Nickname, claimant visibility, and admin export polish */
+.claimedStatus {
+  background: #e8f2ff;
+  color: #173b73;
+}
+
+.adminHeaderActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.exportExcelButton {
+  min-height: 2rem;
+  padding: 0.36rem 0.72rem;
+  border-radius: 999px;
+  background: #e8f2ff;
+  color: #173b73;
+  box-shadow: none;
+  font-size: 0.86rem;
+}
+
+.exportExcelButton:hover:not(:disabled) {
+  background: #d8e8fb;
+  transform: none;
+  box-shadow: none;
+}
+
+.claimantPanel {
+  border-left: 4px solid #173b73;
+}
+
+@media (max-width: 760px) {
+  .adminHeaderActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .exportExcelButton {
+    min-height: 1.9rem;
+    padding: 0.32rem 0.62rem;
+    font-size: 0.8rem;
+  }
+}

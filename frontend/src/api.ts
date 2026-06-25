@@ -483,5 +483,13 @@ export const adminApi = {
     request<{ batchId: string; count: number }>(instance, account, "/api/admin/print/mark-printed", {
       method: "POST",
       body: JSON.stringify({ changeRequestIds })
-    })
+    }),
+
+  exportHonoreesExcel: (instance: IPublicClientApplication, account: AccountInfo) =>
+    downloadFile(
+      instance,
+      account,
+      "/api/admin/review/honorees-export",
+      `pfoh-honorees-${new Date().toISOString().slice(0, 10)}.xls`
+    )
 };

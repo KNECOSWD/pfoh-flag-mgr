@@ -899,10 +899,12 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
     {
         if (latest is not null)
         {
-            var fromChangeRequest = string.Join(
-                " ",
-                new[] { latest.FirstName, latest.MiddleName, latest.LastName, latest.Suffix }
-                    .Where(v => !string.IsNullOrWhiteSpace(v)));
+            var fromChangeRequest = AddNickname(
+                string.Join(
+                    " ",
+                    new[] { latest.FirstName, latest.MiddleName, latest.LastName, latest.Suffix }
+                        .Where(v => !string.IsNullOrWhiteSpace(v))),
+                latest.Nickname);
 
             if (!string.IsNullOrWhiteSpace(fromChangeRequest))
             {
@@ -912,10 +914,12 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
 
         if (honoree is not null)
         {
-            var fromHonoree = string.Join(
-                " ",
-                new[] { honoree.FirstName, honoree.MiddleName, honoree.LastName, honoree.Suffix }
-                    .Where(v => !string.IsNullOrWhiteSpace(v)));
+            var fromHonoree = AddNickname(
+                string.Join(
+                    " ",
+                    new[] { honoree.FirstName, honoree.MiddleName, honoree.LastName, honoree.Suffix }
+                        .Where(v => !string.IsNullOrWhiteSpace(v))),
+                honoree.Nickname);
 
             if (!string.IsNullOrWhiteSpace(fromHonoree))
             {
@@ -924,6 +928,21 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
         }
 
         return string.Empty;
+    }
+
+    private static string AddNickname(string name, string? nickname)
+    {
+        var cleanName = name.Trim();
+        var cleanNickname = nickname?.Trim();
+
+        if (string.IsNullOrWhiteSpace(cleanNickname))
+        {
+            return cleanName;
+        }
+
+        return cleanName.EndsWith($"({cleanNickname})", StringComparison.OrdinalIgnoreCase)
+            ? cleanName
+            : $"{cleanName} ({cleanNickname})";
     }
 
     private static HonoreeChangeRequestDto ToDto(HonoreeChangeRequest request) => new(

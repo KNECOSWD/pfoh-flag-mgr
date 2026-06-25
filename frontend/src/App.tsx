@@ -134,6 +134,24 @@ function getAccountSubmitterContact(
   };
 }
 
+function displayNameWithNickname(name: string, nickname?: string | null) {
+  const cleanName = name.trim();
+  const cleanNickname = nickname?.trim();
+
+  if (!cleanNickname) {
+    return cleanName;
+  }
+
+  const normalizedName = cleanName.toLowerCase();
+  const normalizedNickname = `(${cleanNickname.toLowerCase()})`;
+
+  if (normalizedName.endsWith(normalizedNickname)) {
+    return cleanName;
+  }
+
+  return `${cleanName} (${cleanNickname})`;
+}
+
 
 export default function App() {
   const isAuthenticated = useIsAuthenticated();
@@ -334,6 +352,8 @@ export default function App() {
       const results = await honoreeApi.search(honoreeSearchText, 25);
       setHonoreeResults(results);
       setHonoreeSearchPerformed(true);
+      setClaimantsByHonoreeId({});
+      await loadClaimantsForSearchResults(results);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to search honorees.");
     } finally {
@@ -345,6 +365,38 @@ export default function App() {
     setHonoreeSearchText("");
     setHonoreeResults([]);
     setHonoreeSearchPerformed(false);
+    setClaimantsByHonoreeId({});
+  }
+
+  async function loadClaimantsForSearchResults(results: HonoreeSearchResult[]) {
+    if (!account || !isAdmin || results.length === 0) {
+      return;
+    }
+
+    try {
+      const claimantEntries = await Promise.all(
+        results.map(async (honoree) => {
+          const claimants = await flagClaimApi.claimantsForHonoree(instance, account, honoree.id);
+          return [honoree.id, claimants] as const;
+        })
+      );
+
+      const claimedOnly = claimantEntries.reduce<Record<number, AdminClaimantSummary[]>>(
+        (current, [honoreeId, claimants]) => {
+          if (claimants.length > 0) {
+            current[honoreeId] = claimants;
+          }
+
+          return current;
+        },
+        {}
+      );
+
+      setClaimantsByHonoreeId(claimedOnly);
+    } catch {
+      // Claimant visibility is helpful for admins, but a claimant lookup error
+      // should not block the public honoree search results from displaying.
+    }
   }
 
   function applySubmitterProfileDefaults(
@@ -415,7 +467,7 @@ export default function App() {
     }
 
     const ok = window.confirm(
-      `Claim ${honoree.fullName}'s flag record? You will be able to submit corrections or updates for review.`
+      `Claim ${displayNameWithNickname(honoree.fullName, honoree.nickname)}'s flag record? You will be able to submit corrections or updates for review.`
     );
 
     if (!ok) return;
@@ -430,7 +482,7 @@ export default function App() {
       const coClaimNotice = claim.claimNotice
         ? ` ${claim.claimNotice}`
         : "";
-      setNotice(`${honoree.fullName}'s flag record has been claimed. Review the prefilled details below and submit any changes.${coClaimNotice}`);
+      setNotice(`${displayNameWithNickname(honoree.fullName, honoree.nickname)}'s flag record has been claimed. Review the prefilled details below and submit any changes.${coClaimNotice}`);
       beginEdit(claim);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to claim this honoree's flag record.");
@@ -484,7 +536,7 @@ export default function App() {
     }
 
     const ok = window.confirm(
-      `Edit ${honoree.fullName}'s flag record directly and queue a card reprint after saving?`
+      `Edit ${displayNameWithNickname(honoree.fullName, honoree.nickname)}'s flag record directly and queue a card reprint after saving?`
     );
 
     if (!ok) return;
@@ -554,19 +606,19 @@ export default function App() {
     }
 
     const ok = window.confirm(
-      `Add ${honoree.fullName} to the card reprint queue?`
+      `Add ${displayNameWithNickname(honoree.fullName, honoree.nickname)} to the card reprint queue?`
     );
 
     if (!ok) return;
 
     setQueueingReprintHonoreeId(honoree.id);
     setError("");
-    setNotice(`Adding ${honoree.fullName} to the reprint queue...`);
+    setNotice(`Adding ${displayNameWithNickname(honoree.fullName, honoree.nickname)} to the reprint queue...`);
 
     try {
       await adminApi.queueHonoreeReprint(instance, account, honoree.id);
       await loadData();
-      setNotice(`${honoree.fullName} was added to the reprint queue.`);
+      setNotice(`${displayNameWithNickname(honoree.fullName, honoree.nickname)} was added to the reprint queue.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to add honoree to the reprint queue.");
       setNotice("");
@@ -587,7 +639,7 @@ export default function App() {
     }
 
     const ok = window.confirm(
-      `Generate a new PDF for ${honoree.fullName} and overwrite the existing stored PDF?`
+      `Generate a new PDF for ${displayNameWithNickname(honoree.fullName, honoree.nickname)} and overwrite the existing stored PDF?`
     );
 
     if (!ok) return;
@@ -600,7 +652,7 @@ export default function App() {
       const result = await adminApi.regenerateHonoreePdf(instance, account, honoree.id);
 
       if (result.uploaded) {
-        setNotice(result.message || `PDF regenerated for ${honoree.fullName}: ${result.fileName}`);
+        setNotice(result.message || `PDF regenerated for ${displayNameWithNickname(honoree.fullName, honoree.nickname)}: ${result.fileName}`);
       } else {
         setError(result.message || "PDF was generated but could not be saved.");
       }
@@ -689,6 +741,28 @@ export default function App() {
       setError(err instanceof Error ? err.message : "Unable to submit changes.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function exportHonoreesExcel() {
+    if (!account) {
+      await signIn();
+      return;
+    }
+
+    if (!isAdmin) {
+      setError("Only PFOH administrators can export honoree lists.");
+      return;
+    }
+
+    setError("");
+    setNotice("");
+
+    try {
+      await adminApi.exportHonoreesExcel(instance, account);
+      setNotice("Honoree export downloaded.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to export honorees.");
     }
   }
 
@@ -1008,15 +1082,18 @@ export default function App() {
                   {honoreeResults.map((honoree) => (
                     <article key={honoree.id} className="honoreeCard">
                       {honoree.imageUrl ? (
-                        <img src={honoree.imageUrl} alt={honoree.fullName} />
+                        <img src={honoree.imageUrl} alt={displayNameWithNickname(honoree.fullName, honoree.nickname)} />
                       ) : (
                         <div className="honoreePlaceholder">No photo</div>
                       )}
 
                       <div>
                         <div className="honoreeTitleRow">
-                          <h3>{honoree.fullName}</h3>
+                          <h3>{displayNameWithNickname(honoree.fullName, honoree.nickname)}</h3>
                           {honoree.kia ? <span className="status status-submitted">KIA</span> : null}
+                          {isAdmin && claimantsByHonoreeId[honoree.id]?.length ? (
+                            <span className="status claimedStatus">Claimed</span>
+                          ) : null}
                         </div>
 
                         <p>
@@ -1032,12 +1109,6 @@ export default function App() {
                             <dt>Submitter</dt>
                             <dd>{honoree.sponsorName || "—"}</dd>
                           </div>
-                          {honoree.nickname ? (
-                            <div>
-                              <dt>Nickname</dt>
-                              <dd>{honoree.nickname}</dd>
-                            </div>
-                          ) : null}
                         </dl>
 
                         <div className="cardActions">
@@ -1270,9 +1341,14 @@ export default function App() {
                     <span className="countBadge">{pendingReviews.length}</span>
                   </h2>
                 </div>
-                <button type="button" className="secondary subtleRefreshButton" onClick={loadData} disabled={loading}>
-                  {loading ? "Loading..." : "Refresh"}
-                </button>
+                <div className="adminHeaderActions">
+                  <button type="button" className="secondary subtleRefreshButton" onClick={loadData} disabled={loading}>
+                    {loading ? "Loading..." : "Refresh"}
+                  </button>
+                  <button type="button" className="secondary exportExcelButton" onClick={exportHonoreesExcel}>
+                    Export Excel
+                  </button>
+                </div>
               </div>
 
               <div className="adminStats" aria-label="Administrator dashboard summary">

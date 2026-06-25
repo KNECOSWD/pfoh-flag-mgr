@@ -715,14 +715,33 @@ public static class HonoreeReportPdfGenerator
 
     private static string BuildLegacyDisplayName(Honoree honoree)
     {
-        return string.Join(" ", new[] { honoree.FirstName, honoree.LastName }
-            .Where(v => !string.IsNullOrWhiteSpace(v)));
+        return AddNickname(
+            string.Join(" ", new[] { honoree.FirstName, honoree.LastName }
+                .Where(v => !string.IsNullOrWhiteSpace(v))),
+            honoree.Nickname);
     }
 
     private static string BuildHonoreeName(Honoree honoree)
     {
-        return string.Join(" ", new[] { honoree.FirstName, honoree.MiddleName, honoree.LastName, honoree.Suffix }
-            .Where(v => !string.IsNullOrWhiteSpace(v)));
+        return AddNickname(
+            string.Join(" ", new[] { honoree.FirstName, honoree.MiddleName, honoree.LastName, honoree.Suffix }
+                .Where(v => !string.IsNullOrWhiteSpace(v))),
+            honoree.Nickname);
+    }
+
+    private static string AddNickname(string name, string? nickname)
+    {
+        var cleanName = Clean(name);
+        var cleanNickname = Clean(nickname);
+
+        if (string.IsNullOrWhiteSpace(cleanNickname))
+        {
+            return cleanName;
+        }
+
+        return cleanName.EndsWith($"({cleanNickname})", StringComparison.OrdinalIgnoreCase)
+            ? cleanName
+            : $"{cleanName} ({cleanNickname})";
     }
 
     private static string BuildServiceYears(Honoree honoree)
