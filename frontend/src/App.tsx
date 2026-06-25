@@ -190,6 +190,9 @@ export default function App() {
   const [flagPositionBusyId, setFlagPositionBusyId] = useState<number | null>(null);
   const [flagPositionsLoading, setFlagPositionsLoading] = useState(false);
   const [showFlagPositionManager, setShowFlagPositionManager] = useState(false);
+  const [flagPositionSearchText, setFlagPositionSearchText] = useState("");
+  const [flagPositionSectionFilter, setFlagPositionSectionFilter] = useState("");
+  const [flagPositionOpenOnly, setFlagPositionOpenOnly] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -232,8 +235,43 @@ export default function App() {
     [printQueue, selectedPrintIds]
   );
 
+  const flagPositionSections = useMemo(
+    () =>
+      [...new Set(flagPositions.map((position) => position.rowLabel || "Other"))]
+        .sort((left, right) => left.localeCompare(right, undefined, { numeric: true })),
+    [flagPositions]
+  );
+
+  const filteredFlagPositions = useMemo(() => {
+    const query = flagPositionSearchText.trim().toLowerCase();
+
+    return flagPositions.filter((position) => {
+      if (flagPositionOpenOnly && !position.isOpen) {
+        return false;
+      }
+
+      if (flagPositionSectionFilter && (position.rowLabel || "Other") !== flagPositionSectionFilter) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      return [
+        position.flagGridName,
+        position.rowLabel,
+        position.honoreeName,
+        position.rank,
+        position.serviceBranchName
+      ]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(query));
+    });
+  }, [flagPositionOpenOnly, flagPositionSearchText, flagPositionSectionFilter, flagPositions]);
+
   const flagPositionRows = useMemo(() => {
-    const groups = flagPositions.reduce<Record<string, AdminFlagPosition[]>>((current, position) => {
+    const groups = filteredFlagPositions.reduce<Record<string, AdminFlagPosition[]>>((current, position) => {
       const row = position.rowLabel || "Other";
       current[row] = current[row] ?? [];
       current[row].push(position);
@@ -255,7 +293,12 @@ export default function App() {
           return left.flagGridName.localeCompare(right.flagGridName, undefined, { numeric: true });
         })
       }));
-  }, [flagPositions]);
+  }, [filteredFlagPositions]);
+
+  const visibleOpenFlagPositionCount = useMemo(
+    () => filteredFlagPositions.filter((position) => position.isOpen).length,
+    [filteredFlagPositions]
+  );
 
   const openFlagPositionCount = useMemo(
     () => flagPositions.filter((position) => position.isOpen).length,
@@ -1780,6 +1823,56 @@ export default function App() {
                     )}
                   </div>
 
+                  <div className="flagPositionFilters" aria-label="Flag position filters">
+                    <label>
+                      <span className="fieldLabelText">Search positions</span>
+                      <input
+                        type="search"
+                        placeholder="Search grid, honoree, rank, or branch"
+                        value={flagPositionSearchText}
+                        onChange={(event) => setFlagPositionSearchText(event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span className="fieldLabelText">Section</span>
+                      <select
+                        value={flagPositionSectionFilter}
+                        onChange={(event) => setFlagPositionSectionFilter(event.target.value)}
+                      >
+                        <option value="">All sections</option>
+                        {flagPositionSections.map((section) => (
+                          <option key={section} value={section}>
+                            {section}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flagOpenOnlyToggle">
+                      <input
+                        type="checkbox"
+                        checked={flagPositionOpenOnly}
+                        onChange={(event) => setFlagPositionOpenOnly(event.target.checked)}
+                      />
+                      Open positions only
+                    </label>
+                    <button
+                      type="button"
+                      className="secondary subtleRefreshButton"
+                      onClick={() => {
+                        setFlagPositionSearchText("");
+                        setFlagPositionSectionFilter("");
+                        setFlagPositionOpenOnly(false);
+                      }}
+                    >
+                      Clear filters
+                    </button>
+                  </div>
+
+                  <div className="flagPositionSummary filteredFlagPositionSummary">
+                    <span><strong>{filteredFlagPositions.length}</strong> shown</span>
+                    <span><strong>{visibleOpenFlagPositionCount}</strong> shown open</span>
+                  </div>
+
                   <div className="flagAssignmentPicker">
                     <label>
                       <span className="fieldLabelText">Honoree to assign</span>
@@ -1813,7 +1906,7 @@ export default function App() {
 
                   <div className="flagSeatMap" role="grid" aria-label="Flag position seat map">
                     {flagPositionRows.length === 0 ? (
-                      <p className="emptyState">No flag positions were found.</p>
+                      <p className="emptyState">No flag positions match the current filters.</p>
                     ) : (
                       flagPositionRows.map((row) => (
                         <div className="flagSeatRow" role="row" key={row.rowLabel}>
