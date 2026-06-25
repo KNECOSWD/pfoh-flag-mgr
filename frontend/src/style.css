@@ -5776,3 +5776,103 @@ img.ownedFlagImage {
   background: #eef4fb;
   border-color: #8ca9cd;
 }
+
+
+/* Final Flag Map micro-polish */
+.flagAssignmentHelp {
+  margin: 0.45rem 0 0.5rem;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.flagMapToolbar {
+  align-items: center;
+  padding: 0.25rem 0;
+  gap: 0.45rem;
+}
+
+.flagMapToolbar .flagSeatLegend {
+  align-items: center;
+}
+
+.flagMapToolbar .flagPositionFilters {
+  align-items: center;
+  grid-template-columns: minmax(13rem, 1fr) minmax(8rem, 0.42fr) auto;
+}
+
+.flagMapToolbar .flagPositionFilters label {
+  display: block;
+}
+
+.flagMapToolbar .fieldLabelText {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.flagMapToolbar .flagPositionFilters input[type="search"],
+.flagMapToolbar .flagPositionFilters select,
+.flagMapToolbar .subtleRefreshButton,
+.flagMapToolbar .legendButton {
+  min-height: 1.82rem;
+}
+
+.flagMapToolbar .flagPositionFilters input[type="search"],
+.flagMapToolbar .flagPositionFilters select {
+  color: #061a38;
+  font-weight: 760;
+}
+
+.flagMapToolbar .flagPositionFilters input[type="search"]::placeholder {
+  color: #60708a;
+  opacity: 1;
+  font-weight: 680;
+}
+
+.flagSeat strong {
+  color: #031633;
+  font-weight: 1000;
+}
+
+.flagSeat span {
+  color: #1f304d;
+  font-weight: 820;
+}
+
+.flagSeat.isOccupied span {
+  color: #243752;
+}
+
+.flagSeat.isReserved span,
+.flagSeat.isReserved strong {
+  color: #4d5e74;
+}
+
+.compactPrintCenter.isCollapsedEmpty.thinEmptyPanel,
+.compactPrintCenter.isCollapsedEmpty {
+  margin: 0.42rem 0;
+  padding: 0.42rem 0.6rem;
+  border: 1px dashed #cddbeb;
+  border-radius: 0.75rem;
+  background: #fbfdff;
+}
+
+.compactPrintCenter.isCollapsedEmpty summary {
+  min-height: 2.2rem;
+}
+
+.compactPrintCenter.isCollapsedEmpty .pdfHealth {
+  padding: 0.25rem 0.48rem;
+}
+
+.compactPrintCenter.isCollapsedEmpty .pdfHealth span {
+  font-size: 0.72rem;
+}
+
+.compactPrintCenter.isCollapsedEmpty .printCenterDetails {
+  margin-top: 0.45rem;
+  font-size: 0.84rem;
+}

@@ -2132,7 +2132,7 @@ export default function App() {
                   ) : null}
 
                   <p className="helperText flagAssignmentHelp">
-                    Click a flag grid tile to view details. Open tiles can be assigned; occupied tiles can be cleared from the detail modal.
+                    Click a flag grid to view details, assign open grids, or clear occupied grids.
                   </p>
 
                   <div className="flagMapToolbar">
@@ -2203,12 +2203,6 @@ export default function App() {
                       Clear filters
                     </button>
                   </div>
-                  </div>
-
-                  <div className="flagPositionSummary filteredFlagPositionSummary">
-                    <span><strong>{filteredFlagPositions.length}</strong> shown</span>
-                    <span><strong>{visibleOpenFlagPositionCount}</strong> shown open</span>
-                    <span><strong>{visibleReservedFlagPositionCount}</strong> shown reserved</span>
                   </div>
 
                   <div className="flagSeatMap" role="grid" aria-label="Flag grid seat map">
