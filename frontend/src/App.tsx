@@ -79,6 +79,61 @@ function ownershipStatusLabel(claim: FlagClaim) {
   return "Managed by you";
 }
 
+function profileClaimString(claims: Record<string, unknown> | undefined, keys: string[]) {
+  if (!claims) return "";
+
+  for (const key of keys) {
+    const value = claims[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+
+    if (Array.isArray(value)) {
+      const firstString = value.find((item) => typeof item === "string" && item.trim());
+
+      if (typeof firstString === "string") {
+        return firstString.trim();
+      }
+    }
+  }
+
+  return "";
+}
+
+function getAccountSubmitterContact(
+  account: { username?: string; idTokenClaims?: Record<string, unknown> } | null | undefined
+) {
+  const claims = account?.idTokenClaims;
+
+  return {
+    email:
+      profileClaimString(claims, [
+        "email",
+        "emails",
+        "preferred_username",
+        "upn",
+        "unique_name",
+        "signInNames.emailAddress"
+      ]) ||
+      account?.username ||
+      "",
+    phone: profileClaimString(claims, [
+      "phone_number",
+      "phone",
+      "phoneNumber",
+      "mobile_phone",
+      "mobilePhone",
+      "telephoneNumber",
+      "signInNames.phoneNumber",
+      "extension_phoneNumber",
+      "extension_PhoneNumber",
+      "extension_mobilePhone",
+      "extension_MobilePhone"
+    ])
+  };
+}
+
 
 export default function App() {
   const isAuthenticated = useIsAuthenticated();
@@ -120,6 +175,11 @@ export default function App() {
 
   const displayName = useMemo(
     () => account?.name || account?.username || "Supporter",
+    [account]
+  );
+
+  const submitterContact = useMemo(
+    () => getAccountSubmitterContact(account),
     [account]
   );
 
@@ -287,10 +347,22 @@ export default function App() {
     setHonoreeSearchPerformed(false);
   }
 
+  function applySubmitterProfileDefaults(
+    currentForm: SaveHonoreeChangeRequest
+  ): SaveHonoreeChangeRequest {
+    return {
+      ...currentForm,
+      submitterPhoneNumber:
+        currentForm.submitterPhoneNumber?.trim() || submitterContact.phone,
+      submitterEmailAddress:
+        currentForm.submitterEmailAddress?.trim() || submitterContact.email
+    };
+  }
+
   function setFormFromClaim(claim: FlagClaim) {
     const draft = claim.latestChangeRequest;
 
-    setForm({
+    const nextForm: SaveHonoreeChangeRequest = {
       firstName: draft?.firstName ?? "",
       middleName: draft?.middleName ?? "",
       lastName: draft?.lastName ?? "",
@@ -307,8 +379,10 @@ export default function App() {
       description: draft?.description ?? "",
       kia: draft?.kia ?? false,
       submitterPhoneNumber: draft?.submitterPhoneNumber ?? "",
-      submitterEmailAddress: draft?.submitterEmailAddress ?? account?.username ?? ""
-    });
+      submitterEmailAddress: draft?.submitterEmailAddress ?? ""
+    };
+
+    setForm(applySubmitterProfileDefaults(nextForm));
   }
 
   function beginEdit(claim: FlagClaim) {
@@ -329,10 +403,7 @@ export default function App() {
     setSelectedPhoto(null);
     setSelectedClaim(null);
     setIsNominating(true);
-    setForm({
-      ...blankForm,
-      submitterEmailAddress: account.username ?? ""
-    });
+    setForm(applySubmitterProfileDefaults(blankForm));
     setNotice("");
     setError("");
   }
@@ -550,7 +621,9 @@ export default function App() {
     setNotice("");
 
     try {
-      await flagClaimApi.nominate(instance, account, form, selectedPhoto);
+      const formToSubmit = applySubmitterProfileDefaults(form);
+      setForm(formToSubmit);
+      await flagClaimApi.nominate(instance, account, formToSubmit, selectedPhoto);
       await loadData();
       setNotice("Nomination submitted for admin review and claimed under your account.");
       setIsNominating(false);
@@ -571,7 +644,9 @@ export default function App() {
     setNotice("");
 
     try {
-      await flagClaimApi.saveDraft(instance, account, selectedClaim.id, form, selectedPhoto);
+      const formToSave = applySubmitterProfileDefaults(form);
+      setForm(formToSave);
+      await flagClaimApi.saveDraft(instance, account, selectedClaim.id, formToSave, selectedPhoto);
       await loadData();
       setNotice("Draft saved.");
     } catch (err) {
@@ -593,7 +668,9 @@ export default function App() {
     setNotice("");
 
     try {
-      await flagClaimApi.saveDraft(instance, account, selectedClaim.id, form, selectedPhoto);
+      const formToSubmit = applySubmitterProfileDefaults(form);
+      setForm(formToSubmit);
+      await flagClaimApi.saveDraft(instance, account, selectedClaim.id, formToSubmit, selectedPhoto);
 
       if (isAdminDirectEdit) {
         await flagClaimApi.applyAdminEditReprint(instance, account, selectedClaim.id);
