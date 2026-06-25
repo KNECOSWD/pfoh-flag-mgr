@@ -396,7 +396,7 @@ public static class HonoreeReportPdfGenerator
         switch (orientation)
         {
             case 2:
-                var state = gfx.Save();
+                var state2 = gfx.Save();
                 try
                 {
                     gfx.TranslateTransform(x + width, y);
@@ -405,12 +405,12 @@ public static class HonoreeReportPdfGenerator
                 }
                 finally
                 {
-                    gfx.Restore(state);
+                    gfx.Restore(state2);
                 }
                 return;
 
             case 3:
-                var state = gfx.Save();
+                var state3 = gfx.Save();
                 try
                 {
                     gfx.TranslateTransform(x + (width / 2), y + (height / 2));
@@ -419,12 +419,12 @@ public static class HonoreeReportPdfGenerator
                 }
                 finally
                 {
-                    gfx.Restore(state);
+                    gfx.Restore(state3);
                 }
                 return;
 
             case 4:
-                var state = gfx.Save();
+                var state4 = gfx.Save();
                 try
                 {
                     gfx.TranslateTransform(x, y + height);
@@ -433,12 +433,12 @@ public static class HonoreeReportPdfGenerator
                 }
                 finally
                 {
-                    gfx.Restore(state);
+                    gfx.Restore(state4);
                 }
                 return;
 
             case 5:
-                var state = gfx.Save();
+                var state5 = gfx.Save();
                 try
                 {
                     gfx.TranslateTransform(x + (width / 2), y + (height / 2));
@@ -448,12 +448,12 @@ public static class HonoreeReportPdfGenerator
                 }
                 finally
                 {
-                    gfx.Restore(state);
+                    gfx.Restore(state5);
                 }
                 return;
 
             case 6:
-                var state = gfx.Save();
+                var state6 = gfx.Save();
                 try
                 {
                     gfx.TranslateTransform(x + (width / 2), y + (height / 2));
@@ -462,12 +462,12 @@ public static class HonoreeReportPdfGenerator
                 }
                 finally
                 {
-                    gfx.Restore(state);
+                    gfx.Restore(state6);
                 }
                 return;
 
             case 7:
-                var state = gfx.Save();
+                var state7 = gfx.Save();
                 try
                 {
                     gfx.TranslateTransform(x + (width / 2), y + (height / 2));
@@ -477,12 +477,12 @@ public static class HonoreeReportPdfGenerator
                 }
                 finally
                 {
-                    gfx.Restore(state);
+                    gfx.Restore(state7);
                 }
                 return;
 
             case 8:
-                var state = gfx.Save();
+                var state8 = gfx.Save();
                 try
                 {
                     gfx.TranslateTransform(x + (width / 2), y + (height / 2));
@@ -491,7 +491,7 @@ public static class HonoreeReportPdfGenerator
                 }
                 finally
                 {
-                    gfx.Restore(state);
+                    gfx.Restore(state8);
                 }
                 return;
 
