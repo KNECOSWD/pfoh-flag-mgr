@@ -24,6 +24,13 @@ public record AdminFlagPositionDto(
 
 public record AssignFlagPositionRequest(int HonoreeId);
 
+public record AdminUnassignedHonoreeDto(
+    int Id,
+    string FullName,
+    string? Nickname,
+    string? Rank,
+    string? ServiceBranchName);
+
 [ApiController]
 [Route("api/admin/review")]
 [Authorize(Policy = "AdminOnly")]
@@ -194,6 +201,29 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         var bytes = Encoding.UTF8.GetBytes(rows.ToString());
         var fileName = $"pfoh-honorees-{DateTime.UtcNow:yyyyMMdd}.xls";
         return File(bytes, "application/vnd.ms-excel; charset=utf-8", fileName);
+    }
+
+    [HttpGet("unassigned-honorees")]
+    public async Task<ActionResult<IReadOnlyList<AdminUnassignedHonoreeDto>>> GetUnassignedHonorees(CancellationToken ct)
+    {
+        var honorees = await db.Honorees
+            .AsNoTracking()
+            .Include(h => h.ServiceBranch)
+            .Where(h =>
+                h.IsActive &&
+                h.DeletedDate == null &&
+                !h.FlagGridId.HasValue)
+            .OrderBy(h => h.LastName)
+            .ThenBy(h => h.FirstName)
+            .Select(h => new AdminUnassignedHonoreeDto(
+                h.Id,
+                BuildHonoreeName(h),
+                h.Nickname,
+                h.Rank,
+                h.ServiceBranch == null ? null : h.ServiceBranch.ServiceBranchName))
+            .ToListAsync(ct);
+
+        return Ok(honorees);
     }
 
     [HttpGet("flag-positions")]

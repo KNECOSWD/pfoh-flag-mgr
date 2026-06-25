@@ -4649,3 +4649,49 @@ img.ownedFlagImage {
     justify-content: flex-start;
   }
 }
+
+
+/* Assign flag position modal */
+.assignFlagModal {
+  width: min(100% - 2rem, 34rem);
+}
+
+.assignFlagModalPicker {
+  display: grid;
+  gap: 0.4rem;
+  margin: 1rem 0;
+}
+
+.assignFlagModalPicker select {
+  width: 100%;
+  min-height: 2.55rem;
+  border: 1px solid #cfd8e8;
+  border-radius: 0.7rem;
+  padding: 0.5rem 0.7rem;
+  background: #ffffff;
+  color: #071a3b;
+  font-size: 0.95rem;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+}
+
+.flagAssignmentHelp {
+  margin: 0.65rem 0 0.4rem;
+}
+
+@media (max-width: 560px) {
+  .modalActions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .modalActions button {
+    width: 100%;
+  }
+}

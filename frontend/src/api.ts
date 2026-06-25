@@ -177,6 +177,14 @@ export type AdminFlagPosition = {
   serviceBranchName?: string | null;
 };
 
+export type AdminUnassignedHonoree = {
+  id: number;
+  fullName: string;
+  nickname?: string | null;
+  rank?: string | null;
+  serviceBranchName?: string | null;
+};
+
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export function honoreePdfUrl(honoreeId: number) {
@@ -499,6 +507,9 @@ export const adminApi = {
 
   flagPositions: (instance: IPublicClientApplication, account: AccountInfo) =>
     request<AdminFlagPosition[]>(instance, account, "/api/admin/review/flag-positions"),
+
+  unassignedHonorees: (instance: IPublicClientApplication, account: AccountInfo) =>
+    request<AdminUnassignedHonoree[]>(instance, account, "/api/admin/review/unassigned-honorees"),
 
   assignFlagPosition: (
     instance: IPublicClientApplication,

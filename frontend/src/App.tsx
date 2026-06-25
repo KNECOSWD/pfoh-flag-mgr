@@ -3,6 +3,7 @@ import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import {
   AdminClaimantSummary,
   AdminFlagPosition,
+  AdminUnassignedHonoree,
   AdminPrintQueueItem,
   AdminReviewItem,
   ApiError,
@@ -153,6 +154,10 @@ function displayNameWithNickname(name: string, nickname?: string | null) {
   return `${cleanName} (${cleanNickname})`;
 }
 
+function displayUnassignedHonoreeName(honoree: AdminUnassignedHonoree) {
+  return displayNameWithNickname(honoree.fullName, honoree.nickname);
+}
+
 
 export default function App() {
   const isAuthenticated = useIsAuthenticated();
@@ -193,6 +198,10 @@ export default function App() {
   const [flagPositionSearchText, setFlagPositionSearchText] = useState("");
   const [flagPositionSectionFilter, setFlagPositionSectionFilter] = useState("");
   const [flagPositionOpenOnly, setFlagPositionOpenOnly] = useState(false);
+  const [flagPositionModalPosition, setFlagPositionModalPosition] = useState<AdminFlagPosition | null>(null);
+  const [unassignedHonorees, setUnassignedHonorees] = useState<AdminUnassignedHonoree[]>([]);
+  const [selectedUnassignedHonoreeId, setSelectedUnassignedHonoreeId] = useState("");
+  const [unassignedHonoreesLoading, setUnassignedHonoreesLoading] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1047,15 +1056,47 @@ export default function App() {
     }
   }
 
+  async function openAssignFlagPositionModal(position: AdminFlagPosition) {
+    if (!account || !position.isOpen) return;
+
+    setFlagPositionModalPosition(position);
+    setSelectedUnassignedHonoreeId(flagPositionHonoree?.id ? String(flagPositionHonoree.id) : "");
+    setUnassignedHonoreesLoading(true);
+    setError("");
+
+    try {
+      const honorees = await adminApi.unassignedHonorees(instance, account);
+      setUnassignedHonorees(honorees);
+
+      if (flagPositionHonoree?.id && honorees.some((honoree) => honoree.id === flagPositionHonoree.id)) {
+        setSelectedUnassignedHonoreeId(String(flagPositionHonoree.id));
+      } else {
+        setSelectedUnassignedHonoreeId("");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load unassigned honorees.");
+    } finally {
+      setUnassignedHonoreesLoading(false);
+    }
+  }
+
+  function closeAssignFlagPositionModal() {
+    setFlagPositionModalPosition(null);
+    setSelectedUnassignedHonoreeId("");
+  }
+
   async function assignSelectedHonoreeToPosition(position: AdminFlagPosition) {
     if (!account || !position.isOpen) return;
 
-    if (!flagPositionHonoree) {
-      setNotice("Choose a honoree to assign first, then select an open flag position.");
+    const honoreeId = Number(selectedUnassignedHonoreeId);
+    const selectedHonoree = unassignedHonorees.find((honoree) => honoree.id === honoreeId);
+
+    if (!honoreeId || !selectedHonoree) {
+      setError("Choose an unassigned honoree before assigning this flag position.");
       return;
     }
 
-    const honoreeName = displayNameWithNickname(flagPositionHonoree.fullName, flagPositionHonoree.nickname);
+    const honoreeName = displayUnassignedHonoreeName(selectedHonoree);
     const ok = window.confirm(`Assign ${honoreeName} to flag position ${position.flagGridName}?`);
 
     if (!ok) return;
@@ -1065,13 +1106,15 @@ export default function App() {
     setNotice(`Assigning ${honoreeName} to ${position.flagGridName}...`);
 
     try {
-      await adminApi.assignFlagPosition(instance, account, position.flagGridId, flagPositionHonoree.id);
-      const [positions, results] = await Promise.all([
+      await adminApi.assignFlagPosition(instance, account, position.flagGridId, honoreeId);
+      const [positions, results, unassigned] = await Promise.all([
         adminApi.flagPositions(instance, account),
-        honoreeSearchPerformed ? honoreeApi.search(honoreeSearchText, 25) : Promise.resolve(honoreeResults)
+        honoreeSearchPerformed ? honoreeApi.search(honoreeSearchText, 25) : Promise.resolve(honoreeResults),
+        adminApi.unassignedHonorees(instance, account)
       ]);
 
       setFlagPositions(positions);
+      setUnassignedHonorees(unassigned);
 
       if (honoreeSearchPerformed) {
         setHonoreeResults(results);
@@ -1080,6 +1123,7 @@ export default function App() {
       }
 
       setFlagPositionHonoree(null);
+      closeAssignFlagPositionModal();
       setNotice(`${honoreeName} was assigned to ${position.flagGridName}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to assign flag position.");
@@ -1103,12 +1147,14 @@ export default function App() {
 
     try {
       await adminApi.clearFlagPosition(instance, account, position.flagGridId);
-      const [positions, results] = await Promise.all([
+      const [positions, results, unassigned] = await Promise.all([
         adminApi.flagPositions(instance, account),
-        honoreeSearchPerformed ? honoreeApi.search(honoreeSearchText, 25) : Promise.resolve(honoreeResults)
+        honoreeSearchPerformed ? honoreeApi.search(honoreeSearchText, 25) : Promise.resolve(honoreeResults),
+        adminApi.unassignedHonorees(instance, account)
       ]);
 
       setFlagPositions(positions);
+      setUnassignedHonorees(unassigned);
 
       if (honoreeSearchPerformed) {
         setHonoreeResults(results);
@@ -1384,6 +1430,67 @@ export default function App() {
               ) : null}
             </section>
           )}
+
+          {flagPositionModalPosition ? (
+            <div className="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="assign-flag-position-title">
+              <div className="modalCard assignFlagModal">
+                <div className="sectionHeader">
+                  <div>
+                    <p className="eyebrow">Assign flag position</p>
+                    <h2 id="assign-flag-position-title">{flagPositionModalPosition.flagGridName}</h2>
+                    <p className="helperText">
+                      Select an unassigned honoree. Only honorees without a flag grid are listed.
+                    </p>
+                  </div>
+                  <button type="button" className="secondary subtleRefreshButton" onClick={closeAssignFlagPositionModal}>
+                    Close
+                  </button>
+                </div>
+
+                <label className="assignFlagModalPicker">
+                  <span className="fieldLabelText">Unassigned honoree</span>
+                  <select
+                    value={selectedUnassignedHonoreeId}
+                    onChange={(event) => setSelectedUnassignedHonoreeId(event.target.value)}
+                    disabled={unassignedHonoreesLoading}
+                  >
+                    <option value="">
+                      {unassignedHonoreesLoading
+                        ? "Loading unassigned honorees..."
+                        : unassignedHonorees.length === 0
+                          ? "No unassigned honorees found"
+                          : "Choose an unassigned honoree"}
+                    </option>
+                    {unassignedHonorees.map((honoree) => (
+                      <option key={honoree.id} value={honoree.id}>
+                        {displayUnassignedHonoreeName(honoree)}
+                        {[honoree.rank, honoree.serviceBranchName].filter(Boolean).length
+                          ? ` — ${[honoree.rank, honoree.serviceBranchName].filter(Boolean).join(" • ")}`
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="modalActions">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={closeAssignFlagPositionModal}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!selectedUnassignedHonoreeId || unassignedHonoreesLoading || flagPositionBusyId === flagPositionModalPosition.flagGridId}
+                    onClick={() => void assignSelectedHonoreeToPosition(flagPositionModalPosition)}
+                  >
+                    {flagPositionBusyId === flagPositionModalPosition.flagGridId ? "Assigning..." : "Assign to position"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {showHowItWorks ? (
             <div className="modalBackdrop" role="presentation" onMouseDown={() => setShowHowItWorks(false)}>
@@ -1873,30 +1980,9 @@ export default function App() {
                     <span><strong>{visibleOpenFlagPositionCount}</strong> shown open</span>
                   </div>
 
-                  <div className="flagAssignmentPicker">
-                    <label>
-                      <span className="fieldLabelText">Honoree to assign</span>
-                      <select
-                        value={flagPositionHonoree?.id ?? ""}
-                        onChange={(event) => selectFlagPositionHonoree(event.target.value)}
-                      >
-                        <option value="">
-                          {honoreeResults.length === 0
-                            ? "Search honorees first"
-                            : "Choose honoree from current search results"}
-                        </option>
-                        {flagPositionAssignmentOptions.map(({ honoree, isAssigned }) => (
-                          <option key={honoree.id} value={honoree.id} disabled={isAssigned}>
-                            {displayNameWithNickname(honoree.fullName, honoree.nickname)}
-                            {isAssigned ? ` — assigned to ${honoree.flagGrid}` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <p className="helperText">
-                      The map can only assign honorees from the current search results. Search for the honoree first, then choose them here or use Admin actions &gt; Assign flag position.
-                    </p>
-                  </div>
+                  <p className="helperText flagAssignmentHelp">
+                    Click Assign on an open flag position to choose from honorees who do not currently have a flag grid.
+                  </p>
 
                   <div className="flagSeatLegend" aria-label="Flag position legend">
                     <span><i className="legendOpen" /> Open</span>
@@ -1935,9 +2021,9 @@ export default function App() {
                                         type="button"
                                         className="seatAction"
                                         disabled={!position.isOpen || isBusy}
-                                        onClick={() => void assignSelectedHonoreeToPosition(position)}
+                                        onClick={() => void openAssignFlagPositionModal(position)}
                                       >
-                                        {isBusy ? "Assigning..." : flagPositionHonoree ? "Assign" : "Choose honoree"}
+                                        {isBusy ? "Assigning..." : "Assign"}
                                       </button>
                                     </>
                                   ) : (
