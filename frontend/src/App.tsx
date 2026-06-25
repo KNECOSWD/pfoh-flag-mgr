@@ -197,7 +197,7 @@ export default function App() {
   const [showFlagPositionManager, setShowFlagPositionManager] = useState(false);
   const [flagPositionSearchText, setFlagPositionSearchText] = useState("");
   const [flagPositionSectionFilter, setFlagPositionSectionFilter] = useState("");
-  const [flagPositionOpenOnly, setFlagPositionOpenOnly] = useState(false);
+  const [flagPositionOccupancyFilter, setFlagPositionOccupancyFilter] = useState<"all" | "open" | "occupied">("all");
   const [flagPositionModalPosition, setFlagPositionModalPosition] = useState<AdminFlagPosition | null>(null);
   const [unassignedHonorees, setUnassignedHonorees] = useState<AdminUnassignedHonoree[]>([]);
   const [selectedUnassignedHonoreeId, setSelectedUnassignedHonoreeId] = useState("");
@@ -255,7 +255,11 @@ export default function App() {
     const query = flagPositionSearchText.trim().toLowerCase();
 
     return flagPositions.filter((position) => {
-      if (flagPositionOpenOnly && !position.isOpen) {
+      if (flagPositionOccupancyFilter === "open" && !position.isOpen) {
+        return false;
+      }
+
+      if (flagPositionOccupancyFilter === "occupied" && position.isOpen) {
         return false;
       }
 
@@ -277,7 +281,7 @@ export default function App() {
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(query));
     });
-  }, [flagPositionOpenOnly, flagPositionSearchText, flagPositionSectionFilter, flagPositions]);
+  }, [flagPositionOccupancyFilter, flagPositionSearchText, flagPositionSectionFilter, flagPositions]);
 
   const flagPositionRows = useMemo(() => {
     const groups = filteredFlagPositions.reduce<Record<string, AdminFlagPosition[]>>((current, position) => {
@@ -1432,8 +1436,14 @@ export default function App() {
           )}
 
           {flagPositionModalPosition ? (
-            <div className="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="assign-flag-position-title">
-              <div className="modalCard assignFlagModal">
+            <div
+              className="modalOverlay assignFlagModalOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="assign-flag-position-title"
+              onClick={closeAssignFlagPositionModal}
+            >
+              <div className="modalCard assignFlagModal" onClick={(event) => event.stopPropagation()}>
                 <div className="sectionHeader">
                   <div>
                     <p className="eyebrow">Assign flag position</p>
@@ -1930,6 +1940,34 @@ export default function App() {
                     )}
                   </div>
 
+                  <p className="helperText flagAssignmentHelp">
+                    Click Assign on an open flag position to choose from honorees who do not currently have a flag grid.
+                  </p>
+
+                  <div className="flagSeatLegend" aria-label="Flag position legend and quick filters">
+                    <button
+                      type="button"
+                      className={`legendButton ${flagPositionOccupancyFilter === "all" ? "isActive" : ""}`}
+                      onClick={() => setFlagPositionOccupancyFilter("all")}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      className={`legendButton ${flagPositionOccupancyFilter === "open" ? "isActive" : ""}`}
+                      onClick={() => setFlagPositionOccupancyFilter("open")}
+                    >
+                      <i className="legendOpen" /> Open
+                    </button>
+                    <button
+                      type="button"
+                      className={`legendButton ${flagPositionOccupancyFilter === "occupied" ? "isActive" : ""}`}
+                      onClick={() => setFlagPositionOccupancyFilter("occupied")}
+                    >
+                      <i className="legendOccupied" /> Occupied
+                    </button>
+                  </div>
+
                   <div className="flagPositionFilters" aria-label="Flag position filters">
                     <label>
                       <span className="fieldLabelText">Search positions</span>
@@ -1954,21 +1992,13 @@ export default function App() {
                         ))}
                       </select>
                     </label>
-                    <label className="flagOpenOnlyToggle">
-                      <input
-                        type="checkbox"
-                        checked={flagPositionOpenOnly}
-                        onChange={(event) => setFlagPositionOpenOnly(event.target.checked)}
-                      />
-                      Open positions only
-                    </label>
                     <button
                       type="button"
                       className="secondary subtleRefreshButton"
                       onClick={() => {
                         setFlagPositionSearchText("");
                         setFlagPositionSectionFilter("");
-                        setFlagPositionOpenOnly(false);
+                        setFlagPositionOccupancyFilter("all");
                       }}
                     >
                       Clear filters
@@ -1980,16 +2010,6 @@ export default function App() {
                     <span><strong>{visibleOpenFlagPositionCount}</strong> shown open</span>
                   </div>
 
-                  <p className="helperText flagAssignmentHelp">
-                    Click Assign on an open flag position to choose from honorees who do not currently have a flag grid.
-                  </p>
-
-                  <div className="flagSeatLegend" aria-label="Flag position legend">
-                    <span><i className="legendOpen" /> Open</span>
-                    <span><i className="legendOccupied" /> Occupied</span>
-                    <span><i className="legendSelected" /> Ready to assign</span>
-                  </div>
-
                   <div className="flagSeatMap" role="grid" aria-label="Flag position seat map">
                     {flagPositionRows.length === 0 ? (
                       <p className="emptyState">No flag positions match the current filters.</p>
@@ -1999,7 +2019,6 @@ export default function App() {
                           <div className="flagSeatRowLabel">{row.rowLabel}</div>
                           <div className="flagSeatCells">
                             {row.positions.map((position) => {
-                              const canAssign = position.isOpen && !!flagPositionHonoree;
                               const isBusy = flagPositionBusyId === position.flagGridId;
 
                               return (
@@ -2007,8 +2026,7 @@ export default function App() {
                                   key={position.flagGridId}
                                   className={[
                                     "flagSeat",
-                                    position.isOpen ? "isOpen" : "isOccupied",
-                                    canAssign ? "canAssign" : ""
+                                    position.isOpen ? "isOpen" : "isOccupied"
                                   ].filter(Boolean).join(" ")}
                                   role="gridcell"
                                   aria-label={`${position.flagGridName} ${position.isOpen ? "open" : `occupied by ${position.honoreeName || "honoree"}`}`}
