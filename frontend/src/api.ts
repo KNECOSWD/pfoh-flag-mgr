@@ -171,6 +171,7 @@ export type AdminFlagPosition = {
   rowLabel: string;
   columnNumber?: number | null;
   isOpen: boolean;
+  isReserved: boolean;
   honoreeId?: number | null;
   honoreeName?: string | null;
   rank?: string | null;

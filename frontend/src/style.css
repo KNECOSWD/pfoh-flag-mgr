@@ -5009,3 +5009,38 @@ img.ownedFlagImage {
   background: #ffe8e8;
   border-color: #f2b7b7;
 }
+
+
+/* Reserved flag position state */
+.legendReserved {
+  background: #e5e7eb;
+  border: 1px solid #cbd5e1;
+}
+
+.flagSeatLegend .legendButton.isActive .legendReserved,
+.flagSeatLegend .legendButton.isActive:hover .legendReserved,
+.flagSeatLegend .legendButton.isActive:focus-visible .legendReserved {
+  background: #e5e7eb;
+  border-color: #cbd5e1;
+}
+
+.flagSeat.isReserved {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #64748b;
+  box-shadow: none;
+}
+
+.flagSeat.isReserved strong,
+.flagSeat.isReserved span,
+.flagSeat.isReserved small {
+  color: #64748b;
+}
+
+.flagSeat.isReserved {
+  filter: grayscale(0.25);
+}
+
+.flagSeat.isReserved .seatAction {
+  display: none;
+}

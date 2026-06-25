@@ -197,7 +197,7 @@ export default function App() {
   const [showFlagPositionManager, setShowFlagPositionManager] = useState(false);
   const [flagPositionSearchText, setFlagPositionSearchText] = useState("");
   const [flagPositionSectionFilter, setFlagPositionSectionFilter] = useState("");
-  const [flagPositionOccupancyFilter, setFlagPositionOccupancyFilter] = useState<"all" | "open" | "occupied">("all");
+  const [flagPositionOccupancyFilter, setFlagPositionOccupancyFilter] = useState<"all" | "open" | "occupied" | "reserved">("all");
   const [flagPositionModalPosition, setFlagPositionModalPosition] = useState<AdminFlagPosition | null>(null);
   const [unassignedHonorees, setUnassignedHonorees] = useState<AdminUnassignedHonoree[]>([]);
   const [selectedUnassignedHonoreeId, setSelectedUnassignedHonoreeId] = useState("");
@@ -259,7 +259,11 @@ export default function App() {
         return false;
       }
 
-      if (flagPositionOccupancyFilter === "occupied" && position.isOpen) {
+      if (flagPositionOccupancyFilter === "occupied" && (position.isOpen || position.isReserved)) {
+        return false;
+      }
+
+      if (flagPositionOccupancyFilter === "reserved" && !position.isReserved) {
         return false;
       }
 
@@ -310,6 +314,11 @@ export default function App() {
 
   const visibleOpenFlagPositionCount = useMemo(
     () => filteredFlagPositions.filter((position) => position.isOpen).length,
+    [filteredFlagPositions]
+  );
+
+  const visibleReservedFlagPositionCount = useMemo(
+    () => filteredFlagPositions.filter((position) => position.isReserved).length,
     [filteredFlagPositions]
   );
 
@@ -1966,6 +1975,13 @@ export default function App() {
                     >
                       <i className="legendOccupied" /> Occupied
                     </button>
+                    <button
+                      type="button"
+                      className={`legendButton ${flagPositionOccupancyFilter === "reserved" ? "isActive" : ""}`}
+                      onClick={() => setFlagPositionOccupancyFilter("reserved")}
+                    >
+                      <i className="legendReserved" /> Reserved
+                    </button>
                   </div>
 
                   <div className="flagPositionFilters" aria-label="Flag position filters">
@@ -2008,6 +2024,7 @@ export default function App() {
                   <div className="flagPositionSummary filteredFlagPositionSummary">
                     <span><strong>{filteredFlagPositions.length}</strong> shown</span>
                     <span><strong>{visibleOpenFlagPositionCount}</strong> shown open</span>
+                    <span><strong>{visibleReservedFlagPositionCount}</strong> shown reserved</span>
                   </div>
 
                   <div className="flagSeatMap" role="grid" aria-label="Flag position seat map">
@@ -2026,13 +2043,18 @@ export default function App() {
                                   key={position.flagGridId}
                                   className={[
                                     "flagSeat",
-                                    position.isOpen ? "isOpen" : "isOccupied"
+                                    position.isReserved ? "isReserved" : position.isOpen ? "isOpen" : "isOccupied"
                                   ].filter(Boolean).join(" ")}
                                   role="gridcell"
-                                  aria-label={`${position.flagGridName} ${position.isOpen ? "open" : `occupied by ${position.honoreeName || "honoree"}`}`}
+                                  aria-label={`${position.flagGridName} ${position.isReserved ? "reserved" : position.isOpen ? "open" : `occupied by ${position.honoreeName || "honoree"}`}`}
                                 >
                                   <strong>{position.flagGridName}</strong>
-                                  {position.isOpen ? (
+                                  {position.isReserved ? (
+                                    <>
+                                      <span>Reserved</span>
+                                      <small>No assignment available</small>
+                                    </>
+                                  ) : position.isOpen ? (
                                     <>
                                       <span>Open</span>
                                       <button

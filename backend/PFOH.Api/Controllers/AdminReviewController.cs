@@ -17,6 +17,7 @@ public record AdminFlagPositionDto(
     string RowLabel,
     int? ColumnNumber,
     bool IsOpen,
+    bool IsReserved,
     int? HonoreeId,
     string? HonoreeName,
     string? Rank,
@@ -251,6 +252,11 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         if (flagGrid is null)
         {
             return NotFound(new { message = "Flag position was not found." });
+        }
+
+        if (flagGrid.Reserved)
+        {
+            return Conflict(new { message = "This flag position is reserved and cannot be assigned." });
         }
 
         var occupiedHonoree = await db.Honorees
@@ -999,7 +1005,8 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
             flagGrid.FlagGridName,
             BuildFlagPositionRowLabel(flagGrid.FlagGridName),
             BuildFlagPositionColumnNumber(flagGrid.FlagGridName),
-            honoree is null && !flagGrid.HonoreeId.HasValue,
+            honoree is null && !flagGrid.HonoreeId.HasValue && !flagGrid.Reserved,
+            flagGrid.Reserved,
             honoree?.Id ?? flagGrid.HonoreeId,
             honoree is null ? null : BuildHonoreeName(honoree),
             honoree?.Rank,
