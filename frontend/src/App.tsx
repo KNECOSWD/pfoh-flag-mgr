@@ -165,6 +165,7 @@ export default function App() {
   const [isNominating, setIsNominating] = useState(false);
   const [form, setForm] = useState<SaveHonoreeChangeRequest>(blankForm);
   const [selectedPhoto, setSelectedPhoto] = useState<File | null>(null);
+  const [selectedPhotoRotation, setSelectedPhotoRotation] = useState(0);
   const [selectedPhotoPreviewUrl, setSelectedPhotoPreviewUrl] = useState("");
   const formCardRef = useRef<HTMLElement | null>(null);
   const firstFormInputRef = useRef<HTMLInputElement | null>(null);
@@ -440,6 +441,7 @@ export default function App() {
   function beginEdit(claim: FlagClaim) {
     setIsNominating(false);
     setSelectedPhoto(null);
+    setSelectedPhotoRotation(0);
     setSelectedClaim(claim);
     setFormFromClaim(claim);
     setNotice("");
@@ -453,6 +455,7 @@ export default function App() {
     }
 
     setSelectedPhoto(null);
+    setSelectedPhotoRotation(0);
     setSelectedClaim(null);
     setIsNominating(true);
     setForm(applySubmitterProfileDefaults(blankForm));
@@ -512,6 +515,7 @@ export default function App() {
         setSelectedClaim(null);
         setForm(blankForm);
         setSelectedPhoto(null);
+        setSelectedPhotoRotation(0);
       }
 
       await loadData();
@@ -663,6 +667,99 @@ export default function App() {
     }
   }
 
+  function handlePhotoSelected(file?: File | null) {
+    setSelectedPhoto(file ?? null);
+    setSelectedPhotoRotation(0);
+  }
+
+  function rotateSelectedPhoto(degrees: number) {
+    setSelectedPhotoRotation((current) => {
+      const next = (current + degrees) % 360;
+      return next < 0 ? next + 360 : next;
+    });
+  }
+
+  async function getSelectedPhotoForUpload() {
+    if (!selectedPhoto || selectedPhotoRotation % 360 === 0) {
+      return selectedPhoto;
+    }
+
+    return rotateImageFile(selectedPhoto, selectedPhotoRotation);
+  }
+
+  async function rotateImageFile(file: File, rotationDegrees: number): Promise<File> {
+    const image = await loadImageFromFile(file);
+    const normalizedRotation = ((rotationDegrees % 360) + 360) % 360;
+    const swapDimensions = normalizedRotation === 90 || normalizedRotation === 270;
+    const canvas = document.createElement("canvas");
+
+    canvas.width = swapDimensions ? image.naturalHeight : image.naturalWidth;
+    canvas.height = swapDimensions ? image.naturalWidth : image.naturalHeight;
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return file;
+    }
+
+    switch (normalizedRotation) {
+      case 90:
+        context.translate(canvas.width, 0);
+        context.rotate(Math.PI / 2);
+        break;
+      case 180:
+        context.translate(canvas.width, canvas.height);
+        context.rotate(Math.PI);
+        break;
+      case 270:
+        context.translate(0, canvas.height);
+        context.rotate(-Math.PI / 2);
+        break;
+      default:
+        break;
+    }
+
+    context.drawImage(image, 0, 0);
+
+    const outputType = file.type === "image/png" ? "image/png" : "image/jpeg";
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (createdBlob) => {
+          if (createdBlob) {
+            resolve(createdBlob);
+          } else {
+            reject(new Error("Unable to rotate image."));
+          }
+        },
+        outputType,
+        outputType === "image/jpeg" ? 0.92 : undefined
+      );
+    });
+
+    return new File([blob], file.name, {
+      type: outputType,
+      lastModified: Date.now()
+    });
+  }
+
+  function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      const objectUrl = URL.createObjectURL(file);
+
+      image.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve(image);
+      };
+
+      image.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("Unable to load selected image."));
+      };
+
+      image.src = objectUrl;
+    });
+  }
+
   async function submitNomination(event: React.FormEvent) {
     event.preventDefault();
 
@@ -674,12 +771,14 @@ export default function App() {
 
     try {
       const formToSubmit = applySubmitterProfileDefaults(form);
+      const photoForUpload = await getSelectedPhotoForUpload();
       setForm(formToSubmit);
-      await flagClaimApi.nominate(instance, account, formToSubmit, selectedPhoto);
+      await flagClaimApi.nominate(instance, account, formToSubmit, photoForUpload);
       await loadData();
       setNotice("Nomination submitted for admin review and claimed under your account.");
       setIsNominating(false);
       setSelectedPhoto(null);
+      setSelectedPhotoRotation(0);
       setForm(blankForm);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to submit nomination.");
@@ -697,8 +796,9 @@ export default function App() {
 
     try {
       const formToSave = applySubmitterProfileDefaults(form);
+      const photoForUpload = await getSelectedPhotoForUpload();
       setForm(formToSave);
-      await flagClaimApi.saveDraft(instance, account, selectedClaim.id, formToSave, selectedPhoto);
+      await flagClaimApi.saveDraft(instance, account, selectedClaim.id, formToSave, photoForUpload);
       await loadData();
       setNotice("Draft saved.");
     } catch (err) {
@@ -721,8 +821,9 @@ export default function App() {
 
     try {
       const formToSubmit = applySubmitterProfileDefaults(form);
+      const photoForUpload = await getSelectedPhotoForUpload();
       setForm(formToSubmit);
-      await flagClaimApi.saveDraft(instance, account, selectedClaim.id, formToSubmit, selectedPhoto);
+      await flagClaimApi.saveDraft(instance, account, selectedClaim.id, formToSubmit, photoForUpload);
 
       if (isAdminDirectEdit) {
         await flagClaimApi.applyAdminEditReprint(instance, account, selectedClaim.id);
@@ -736,6 +837,7 @@ export default function App() {
 
       setSelectedClaim(null);
       setSelectedPhoto(null);
+      setSelectedPhotoRotation(0);
       setForm(blankForm);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to submit changes.");
@@ -1563,6 +1665,7 @@ export default function App() {
                     setSelectedClaim(null);
                     setIsNominating(false);
                     setSelectedPhoto(null);
+                    setSelectedPhotoRotation(0);
                     setForm(blankForm);
                   }}
                 >
@@ -1749,6 +1852,11 @@ export default function App() {
                           : selectedClaim?.honoreeImageUrl ?? "")
                       }
                       alt={`${selectedClaim?.honoreeName || "Current honoree"} photo`}
+                      style={
+                        selectedPhotoPreviewUrl
+                          ? { transform: `rotate(${selectedPhotoRotation}deg)` }
+                          : undefined
+                      }
                       onError={(event) => {
                         event.currentTarget.style.display = "none";
                       }}
@@ -1757,11 +1865,29 @@ export default function App() {
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={(e) => setSelectedPhoto(e.target.files?.[0] ?? null)}
+                    onChange={(e) => handlePhotoSelected(e.target.files?.[0] ?? null)}
                   />
+                  {selectedPhoto ? (
+                    <div className="photoRotationControls" aria-label="Photo rotation controls">
+                      <button
+                        type="button"
+                        className="secondary compactButton"
+                        onClick={() => rotateSelectedPhoto(-90)}
+                      >
+                        ↺ Rotate left
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary compactButton"
+                        onClick={() => rotateSelectedPhoto(90)}
+                      >
+                        Rotate right ↻
+                      </button>
+                    </div>
+                  ) : null}
                   <span className="helperText">
                     {selectedPhoto
-                      ? `Selected: ${selectedPhoto.name}`
+                      ? `Selected: ${selectedPhoto.name}${selectedPhotoRotation ? ` • Rotated ${selectedPhotoRotation}°` : ""}`
                       : !isNominating && (selectedClaim?.honoreeId || selectedClaim?.honoreeImageUrl)
                         ? "Current photo is shown above and will be kept unless a new one is uploaded."
                         : "Optional. JPG or PNG is best for the printed honoree card."}

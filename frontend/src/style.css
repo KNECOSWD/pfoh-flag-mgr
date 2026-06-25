@@ -4324,3 +4324,37 @@ img.honoreePhoto,
 img.ownedFlagImage {
   image-orientation: from-image;
 }
+
+
+/* Manual photo rotation controls */
+.honoreePhotoPreview {
+  transform-origin: center center;
+  transition: transform 0.15s ease;
+}
+
+.photoRotationControls {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin-top: 0.55rem;
+}
+
+.photoRotationControls .compactButton {
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.84rem;
+}
+
+@media (max-width: 760px) {
+  .photoRotationControls {
+    gap: 0.4rem;
+  }
+
+  .photoRotationControls .compactButton {
+    min-height: 1.9rem;
+    padding: 0.32rem 0.58rem;
+    font-size: 0.8rem;
+  }
+}
