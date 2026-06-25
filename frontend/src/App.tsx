@@ -210,8 +210,6 @@ export default function App() {
   const [flagPositionBusyId, setFlagPositionBusyId] = useState<number | null>(null);
   const [flagPositionsLoading, setFlagPositionsLoading] = useState(false);
   const [showFlagPositionManager, setShowFlagPositionManager] = useState(true);
-  const [adminActiveTab, setAdminActiveTab] = useState<"review" | "flagMap" | "printing">("flagMap");
-  const [adminTabTouched, setAdminTabTouched] = useState(false);
   const [flagPositionSearchText, setFlagPositionSearchText] = useState("");
   const [flagPositionSectionFilter, setFlagPositionSectionFilter] = useState("");
   const [flagPositionOccupancyFilter, setFlagPositionOccupancyFilter] = useState<"all" | "open" | "occupied" | "reserved">("all");
@@ -449,31 +447,6 @@ export default function App() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, account?.homeAccountId]);
-
-  useEffect(() => {
-    if (!isAdmin || adminTabTouched) return;
-
-    if (pendingReviews.length > 0) {
-      setAdminActiveTab("review");
-      return;
-    }
-
-    if (printQueue.length > 0) {
-      setAdminActiveTab("printing");
-      return;
-    }
-
-    setAdminActiveTab("flagMap");
-  }, [adminTabTouched, isAdmin, pendingReviews.length, printQueue.length]);
-
-  function selectAdminTab(tab: "review" | "flagMap" | "printing") {
-    setAdminActiveTab(tab);
-    setAdminTabTouched(true);
-
-    if (tab === "flagMap") {
-      setShowFlagPositionManager(true);
-    }
-  }
 
   useEffect(() => {
     const timers: number[] = [];
@@ -2019,59 +1992,31 @@ export default function App() {
           </section>
 
           {isAdmin ? (
-            <section id="admin" className="card adminCard">
-              <div className="sectionHeader">
-                <div>
-                  <p className="eyebrow">Administrator</p>
-                  <h2>
-                    Administrator
-                  </h2>
+            <div id="admin" className="adminSectionStack" aria-label="Administrator tools">
+              <section className="card adminCard adminReviewCard">
+                <div className="sectionHeader">
+                  <div>
+                    <p className="eyebrow">Administrator</p>
+                    <h2>
+                      Review submitted changes
+                      <span className="countBadge">{pendingReviews.length}</span>
+                    </h2>
+                  </div>
+                  <div className="adminHeaderActions">
+                    <button type="button" className="secondary subtleRefreshButton" onClick={loadData} disabled={loading}>
+                      {loading ? "Loading..." : "Refresh"}
+                    </button>
+                    <button type="button" className="secondary exportExcelButton" onClick={exportHonoreesExcel}>
+                      Export Excel
+                    </button>
+                  </div>
                 </div>
-                <div className="adminHeaderActions">
-                  <button type="button" className="secondary subtleRefreshButton" onClick={loadData} disabled={loading}>
-                    {loading ? "Loading..." : "Refresh"}
-                  </button>
-                  <button type="button" className="secondary exportExcelButton" onClick={exportHonoreesExcel}>
-                    Export Excel
-                  </button>
+
+                <div className="adminCardSummary">
+                  <span><strong>{pendingReviews.length}</strong> pending review</span>
+                  <span><strong>{claimedByMultipleCount}</strong> multiple-claim alerts</span>
                 </div>
-              </div>
 
-              <div className="adminTabs" role="tablist" aria-label="Administrator sections">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={adminActiveTab === "review"}
-                  className={adminActiveTab === "review" ? "adminTab isActive" : "adminTab"}
-                  onClick={() => selectAdminTab("review")}
-                >
-                  <span>Review</span>
-                  <strong>{pendingReviews.length}</strong>
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={adminActiveTab === "flagMap"}
-                  className={adminActiveTab === "flagMap" ? "adminTab isActive" : "adminTab"}
-                  onClick={() => selectAdminTab("flagMap")}
-                >
-                  <span>Flag Map</span>
-                  <strong>{openFlagPositionCount} open</strong>
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={adminActiveTab === "printing"}
-                  className={adminActiveTab === "printing" ? "adminTab isActive" : "adminTab"}
-                  onClick={() => selectAdminTab("printing")}
-                >
-                  <span>Printing</span>
-                  <strong>{printQueue.length}</strong>
-                </button>
-              </div>
-
-              {adminActiveTab === "review" ? (
-                <div className="adminTabPanel" role="tabpanel" aria-label="Review submitted changes">
               {pendingReviews.length === 0 ? (
                 <p>No submitted changes are waiting for review.</p>
               ) : (
@@ -2134,12 +2079,9 @@ export default function App() {
               )}
 
 
-                </div>
-              ) : null}
 
-              {adminActiveTab === "flagMap" ? (
-                <div className="adminTabPanel flagMapTabPanel" role="tabpanel" aria-label="Flag Map">
-              {showFlagPositionManager ? (
+              </section>
+
                 <section id="flag-position-manager" className="flagPositionManager adminStandalonePanel" aria-label="Flag Map">
                   <div className="sectionHeader">
                     <div>
@@ -2157,16 +2099,6 @@ export default function App() {
                         disabled={flagPositionsLoading}
                       >
                         {flagPositionsLoading ? "Loading..." : "Refresh Flag Map"}
-                      </button>
-                      <button
-                        type="button"
-                        className="secondary subtleRefreshButton"
-                        onClick={() => {
-                          setShowFlagPositionManager(false);
-                          setFlagPositionHonoree(null);
-                        }}
-                      >
-                        Hide
                       </button>
                     </div>
                   </div>
@@ -2295,34 +2227,25 @@ export default function App() {
                     )}
                   </div>
                 </section>
-              ) : (
-                <section id="flag-position-manager" className="flagPositionManager collapsedFlagPositionManager adminStandalonePanel" aria-label="Flag Map">
-                  <div className="sectionHeader">
-                    <div>
-                      <p className="eyebrow">Flag grids</p>
-                      <h3>Flag Map</h3>
-                      <p className="helperText">
-                        Add honorees to open flag grids and review occupied or reserved positions.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="secondary exportExcelButton"
-                      onClick={() => setShowFlagPositionManager(true)}
-                    >
-                      Open Flag Map
-                    </button>
+
+
+              <section className="card adminCard adminPrintingCard" aria-label="Printing">
+                <div className="sectionHeader">
+                  <div>
+                    <p className="eyebrow">Printing</p>
+                    <h2>
+                      Print Center
+                      <span className="countBadge">{printQueue.length}</span>
+                    </h2>
                   </div>
-                </section>
-              )}
-
-
-
                 </div>
-              ) : null}
 
-              {adminActiveTab === "printing" ? (
-                <div className="adminTabPanel printingTabPanel" role="tabpanel" aria-label="Printing">
+                <div className="adminCardSummary">
+                  <span><strong>{printQueue.length}</strong> ready to print</span>
+                  <span><strong>{selectedPrintIds.length}</strong> selected</span>
+                  <span><strong>{printQueueMissingPdfCount}</strong> PDF warnings</span>
+                </div>
+
               <details className={`printCenterIntro compactPrintCenter ${printQueue.length === 0 && selectedPrintQueueItems.length === 0 ? "isCollapsedEmpty thinEmptyPanel" : ""}`} open={printQueue.length > 0 || selectedPrintQueueItems.length > 0}>
                 <summary>
                   <div>
@@ -2440,10 +2363,9 @@ export default function App() {
                   </div>
                 </section>
               )}
-                </div>
-              ) : null}
 
-            </section>
+              </section>
+            </div>
           ) : null}
 
           {selectedClaim || isNominating ? (

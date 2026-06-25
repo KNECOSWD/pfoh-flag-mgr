@@ -5878,90 +5878,72 @@ img.ownedFlagImage {
 }
 
 
-/* Admin tab layout */
-.adminTabs {
-  display: flex;
-  align-items: stretch;
-  gap: 0.45rem;
-  margin: 0.55rem 0 0.75rem;
-  padding: 0.35rem;
-  border: 1px solid #dce6f3;
-  border-radius: 999px;
-  background: #f7faff;
-  overflow-x: auto;
-}
-
-.adminTab {
-  min-height: 2.15rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-  flex: 1 1 0;
-  min-width: 7.5rem;
-  padding: 0.36rem 0.7rem;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  background: transparent;
-  color: #173b73;
-  box-shadow: none;
-  font-size: 0.88rem;
-  font-weight: 850;
-}
-
-.adminTab strong {
-  display: inline-flex;
-  align-items: center;
-  min-height: 1.2rem;
-  padding: 0.12rem 0.42rem;
-  border-radius: 999px;
-  background: #e8eef7;
-  color: #173b73;
-  font-size: 0.76rem;
-  font-weight: 900;
-}
-
-.adminTab:hover:not(:disabled),
-.adminTab:focus-visible {
-  background: #eaf2fc;
-  transform: none;
-  box-shadow: none;
-}
-
-.adminTab.isActive,
-.adminTab.isActive:hover,
-.adminTab.isActive:focus-visible {
-  border-color: #173b73;
-  background: #173b73;
-  color: #ffffff;
-}
-
-.adminTab.isActive strong {
-  background: rgba(255, 255, 255, 0.18);
-  color: #ffffff;
-}
-
-.adminTabPanel {
+/* Admin three-card layout */
+.adminSectionStack {
   display: grid;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
-.adminTabPanel .flagPositionManager {
-  margin-top: 0;
+.adminSectionStack > .card,
+.adminSectionStack > .flagPositionManager {
+  margin: 0;
 }
 
-.printingTabPanel .compactPrintCenter,
-.printingTabPanel .reprintQueuePanel {
-  margin-top: 0;
+.adminCardSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0.45rem 0 0.75rem;
 }
 
-@media (max-width: 640px) {
-  .adminTabs {
-    border-radius: 1rem;
+.adminCardSummary span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 1.55rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: #eef3f9;
+  color: #53627a;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.adminCardSummary strong {
+  color: #173b73;
+  font-size: 0.92rem;
+}
+
+.adminReviewCard,
+.adminPrintingCard {
+  border-top: 3px solid #173b73;
+}
+
+.adminSectionStack .flagPositionManager.adminStandalonePanel {
+  border-top: 3px solid #173b73;
+}
+
+.adminSectionStack .flagPositionManager .sectionHeader {
+  border-bottom: 1px solid #e4ebf5;
+}
+
+.adminPrintingCard .compactPrintCenter,
+.adminPrintingCard .reprintQueuePanel {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.adminPrintingCard > .sectionHeader {
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid #e4ebf5;
+}
+
+@media (max-width: 760px) {
+  .adminCardSummary {
+    gap: 0.35rem;
   }
 
-  .adminTab {
-    flex: 0 0 auto;
-    min-width: 8rem;
+  .adminCardSummary span {
+    font-size: 0.74rem;
   }
 }
