@@ -1159,14 +1159,19 @@ export default function App() {
 
     try {
       await adminApi.assignFlagPosition(instance, account, position.flagGridId, honoreeId);
-      const [positions, results, unassigned] = await Promise.all([
+      const [positions, results, unassigned, queue] = await Promise.all([
         adminApi.flagPositions(instance, account),
         honoreeSearchPerformed ? honoreeApi.search(honoreeSearchText, 25) : Promise.resolve(honoreeResults),
-        adminApi.unassignedHonorees(instance, account)
+        adminApi.unassignedHonorees(instance, account),
+        adminApi.printQueue(instance, account)
       ]);
 
       setFlagPositions(positions);
       setUnassignedHonorees(unassigned);
+      setPrintQueue(queue);
+      setSelectedPrintIds((current) =>
+        current.filter((id) => queue.some((item) => item.changeRequestId === id))
+      );
       closeFlagPositionDetail();
 
       if (honoreeSearchPerformed) {
@@ -1178,7 +1183,7 @@ export default function App() {
       setFlagPositionHonoree(null);
       closeAssignFlagPositionModal();
       closeFlagPositionDetail();
-      setNotice(`${honoreeName} was assigned to ${position.flagGridName}.`);
+      setNotice(`${honoreeName} was assigned to ${position.flagGridName} and added to the reprint queue.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to assign flag grid.");
       setNotice("");

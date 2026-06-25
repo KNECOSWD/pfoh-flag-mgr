@@ -273,6 +273,7 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         }
 
         var honoree = await db.Honorees
+            .Include(h => h.ServiceBranch)
             .FirstOrDefaultAsync(h =>
                 h.Id == request.HonoreeId &&
                 h.IsActive &&
@@ -298,7 +299,23 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         flagGrid.ModifiedDate = DateTime.UtcNow;
 
         await db.SaveChangesAsync(ct);
-        await RegenerateHonoreePdfAsync(honoree.Id, ct);
+
+        try
+        {
+            await RegenerateHonoreePdfAsync(honoree.Id, ct);
+        }
+        catch
+        {
+            // The honoree still needs to enter the reprint workflow even if PDF regeneration fails.
+            // The queue item will surface the record for admin follow-up.
+        }
+
+        await AddHonoreeToReprintQueueAsync(
+            honoree,
+            flagGrid,
+            adminName,
+            "Automatically added to the reprint queue after flag grid assignment.",
+            ct);
 
         var position = await BuildFlagPositionAsync(flagGrid.Id, ct);
         return position is null
@@ -885,6 +902,88 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
     }
 
+
+    private async Task<AdminPrintQueueItemDto> AddHonoreeToReprintQueueAsync(
+        Honoree honoree,
+        FlagGrid flagGrid,
+        string adminName,
+        string reviewNotes,
+        CancellationToken ct)
+    {
+        var existingQueueItem = await db.HonoreeChangeRequests
+            .AsNoTracking()
+            .Include(r => r.FlagGrid)
+            .Include(r => r.ServiceBranch)
+            .Where(r =>
+                r.HonoreeId == honoree.Id &&
+                r.RequestStatus == "Approved" &&
+                r.RequiresCardReprint &&
+                r.CardPrintedUtc == null)
+            .OrderByDescending(r => r.ReviewedUtc ?? r.SubmittedUtc ?? r.CreatedUtc)
+            .FirstOrDefaultAsync(ct);
+
+        if (existingQueueItem is not null)
+        {
+            return await ToPrintQueueDto(existingQueueItem, ct);
+        }
+
+        var now = DateTime.UtcNow;
+        var queueClaim = new FlagClaim
+        {
+            FlagGridId = flagGrid.Id,
+            HonoreeId = honoree.Id,
+            ExternalUserObjectId = $"admin-reprint:{Guid.NewGuid():N}",
+            ExternalUserEmail = adminName,
+            ExternalUserName = "PFOH Admin reprint queue",
+            ClaimStatus = "AdminReprintQueued",
+            CreatedUtc = now,
+            ApprovedUtc = now,
+            ApprovedBy = adminName,
+            AdminNotes = reviewNotes,
+            FlagGrid = flagGrid,
+            Honoree = honoree
+        };
+
+        var queueRequest = new HonoreeChangeRequest
+        {
+            FlagClaim = queueClaim,
+            FlagGridId = flagGrid.Id,
+            HonoreeId = honoree.Id,
+            FirstName = honoree.FirstName ?? string.Empty,
+            MiddleName = honoree.MiddleName,
+            LastName = honoree.LastName ?? string.Empty,
+            Suffix = honoree.Suffix,
+            Nickname = honoree.Nickname,
+            Rank = honoree.Rank,
+            ServiceBranchId = honoree.ServiceBranchId,
+            ServiceBranchCategoryId = honoree.ServiceBranchCategoryId,
+            StartYear = honoree.StartYear,
+            EndYear = honoree.EndYear,
+            DatesUserEntry = honoree.DatesUserEntry,
+            ConflictsServed = honoree.ConflictsServed,
+            Awards = honoree.Awards,
+            Description = honoree.Description,
+            KIA = honoree.KIA,
+            PhotoFileName = honoree.PhotoFileName,
+            SubmitterPhoneNumber = honoree.PhoneNumber,
+            SubmitterEmailAddress = honoree.EmailAddress,
+            RequestStatus = "Approved",
+            CreatedUtc = now,
+            SubmittedUtc = now,
+            ReviewedUtc = now,
+            ReviewedBy = adminName,
+            ReviewNotes = reviewNotes,
+            RequiresCardReprint = true,
+            FlagGrid = flagGrid,
+            ServiceBranch = honoree.ServiceBranch
+        };
+
+        db.FlagClaims.Add(queueClaim);
+        db.HonoreeChangeRequests.Add(queueRequest);
+        await db.SaveChangesAsync(ct);
+
+        return await ToPrintQueueDto(queueRequest, ct);
+    }
 
     private async Task<AdminPrintQueueItemDto> ToPrintQueueDto(HonoreeChangeRequest r, CancellationToken ct)
     {
