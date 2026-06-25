@@ -2,9 +2,6 @@ using PdfSharpCore.Drawing;
 using PdfSharpCore.Drawing.Layout;
 using PdfSharpCore.Pdf;
 using PFOH.Api.Models;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats.Jpeg;
-using SixLabors.ImageSharp.Processing;
 
 namespace PFOH.Api.Services;
 
@@ -37,11 +34,9 @@ public static class HonoreeReportPdfGenerator
 
         using var gfx = XGraphics.FromPdfPage(page);
 
-        var orientedPhotoBytes = NormalizePhotoForPdf(photoBytes);
-
         DrawBackground(gfx, page, environment, assets?.BackgroundImage);
         DrawFlagGrid(gfx, honoree);
-        DrawLogoPhotoRow(gfx, environment, honoree, searchResult, orientedPhotoBytes, assets?.ServiceLogoImage, assets?.SilhouetteImage);
+        DrawLogoPhotoRow(gfx, environment, honoree, searchResult, photoBytes, assets?.ServiceLogoImage, assets?.SilhouetteImage);
         DrawCenteredHonoreeContent(gfx, honoree, searchResult);
         DrawRotaryLogo(gfx, environment, assets?.RotaryImage);
 
@@ -148,32 +143,6 @@ public static class HonoreeReportPdfGenerator
         }
     }
 
-    private static byte[]? NormalizePhotoForPdf(byte[]? photoBytes)
-    {
-        if (photoBytes is null || photoBytes.Length == 0)
-        {
-            return photoBytes;
-        }
-
-        try
-        {
-            using var image = Image.Load(photoBytes);
-
-            // Phone photos are often stored sideways with EXIF orientation metadata.
-            // PdfSharp does not consistently honor that metadata, so bake the rotation
-            // into the pixels before calculating size and drawing the image.
-            image.Mutate(operation => operation.AutoOrient());
-
-            using var output = new MemoryStream();
-            image.SaveAsJpeg(output, new JpegEncoder { Quality = 92 });
-            return output.ToArray();
-        }
-        catch
-        {
-            return photoBytes;
-        }
-    }
-
     private static bool ShouldDrawPhoto(Honoree honoree, byte[]? photoBytes)
     {
         if (photoBytes is null || photoBytes.Length == 0)
@@ -195,7 +164,11 @@ public static class HonoreeReportPdfGenerator
         try
         {
             using var image = XImage.FromStream(() => new MemoryStream(photoBytes));
-            return image.PixelWidth > image.PixelHeight ? 132 : 100;
+            var orientation = GetExifOrientation(photoBytes);
+            var pixelWidth = OrientationSwapsDimensions(orientation) ? image.PixelHeight : image.PixelWidth;
+            var pixelHeight = OrientationSwapsDimensions(orientation) ? image.PixelWidth : image.PixelHeight;
+
+            return pixelWidth > pixelHeight ? 132 : 100;
         }
         catch
         {
@@ -213,7 +186,7 @@ public static class HonoreeReportPdfGenerator
         try
         {
             using var image = XImage.FromStream(() => new MemoryStream(photoBytes));
-            DrawImageFitArea(gfx, image, x, y, width, height);
+            DrawImageFitArea(gfx, image, x, y, width, height, GetExifOrientation(photoBytes));
         }
         catch
         {
@@ -383,9 +356,12 @@ public static class HonoreeReportPdfGenerator
         double x,
         double y,
         double width,
-        double height)
+        double height,
+        int orientation = 1)
     {
-        var imageRatio = image.PixelWidth / (double)Math.Max(image.PixelHeight, 1);
+        var pixelWidth = OrientationSwapsDimensions(orientation) ? image.PixelHeight : image.PixelWidth;
+        var pixelHeight = OrientationSwapsDimensions(orientation) ? image.PixelWidth : image.PixelHeight;
+        var imageRatio = pixelWidth / (double)Math.Max(pixelHeight, 1);
         var boxRatio = width / height;
 
         double drawWidth;
@@ -405,7 +381,245 @@ public static class HonoreeReportPdfGenerator
         var drawX = x + ((width - drawWidth) / 2);
         var drawY = y + ((height - drawHeight) / 2);
 
-        gfx.DrawImage(image, drawX, drawY, drawWidth, drawHeight);
+        DrawImageWithOrientation(gfx, image, drawX, drawY, drawWidth, drawHeight, orientation);
+    }
+
+    private static void DrawImageWithOrientation(
+        XGraphics gfx,
+        XImage image,
+        double x,
+        double y,
+        double width,
+        double height,
+        int orientation)
+    {
+        switch (orientation)
+        {
+            case 2:
+                using (gfx.Save())
+                {
+                    gfx.TranslateTransform(x + width, y);
+                    gfx.ScaleTransform(-1, 1);
+                    gfx.DrawImage(image, 0, 0, width, height);
+                }
+                return;
+
+            case 3:
+                using (gfx.Save())
+                {
+                    gfx.TranslateTransform(x + (width / 2), y + (height / 2));
+                    gfx.RotateTransform(180);
+                    gfx.DrawImage(image, -width / 2, -height / 2, width, height);
+                }
+                return;
+
+            case 4:
+                using (gfx.Save())
+                {
+                    gfx.TranslateTransform(x, y + height);
+                    gfx.ScaleTransform(1, -1);
+                    gfx.DrawImage(image, 0, 0, width, height);
+                }
+                return;
+
+            case 5:
+                using (gfx.Save())
+                {
+                    gfx.TranslateTransform(x + (width / 2), y + (height / 2));
+                    gfx.RotateTransform(90);
+                    gfx.ScaleTransform(-1, 1);
+                    gfx.DrawImage(image, -height / 2, -width / 2, height, width);
+                }
+                return;
+
+            case 6:
+                using (gfx.Save())
+                {
+                    gfx.TranslateTransform(x + (width / 2), y + (height / 2));
+                    gfx.RotateTransform(90);
+                    gfx.DrawImage(image, -height / 2, -width / 2, height, width);
+                }
+                return;
+
+            case 7:
+                using (gfx.Save())
+                {
+                    gfx.TranslateTransform(x + (width / 2), y + (height / 2));
+                    gfx.RotateTransform(-90);
+                    gfx.ScaleTransform(-1, 1);
+                    gfx.DrawImage(image, -height / 2, -width / 2, height, width);
+                }
+                return;
+
+            case 8:
+                using (gfx.Save())
+                {
+                    gfx.TranslateTransform(x + (width / 2), y + (height / 2));
+                    gfx.RotateTransform(-90);
+                    gfx.DrawImage(image, -height / 2, -width / 2, height, width);
+                }
+                return;
+
+            default:
+                gfx.DrawImage(image, x, y, width, height);
+                return;
+        }
+    }
+
+    private static bool OrientationSwapsDimensions(int orientation) =>
+        orientation is 5 or 6 or 7 or 8;
+
+    private static int GetExifOrientation(byte[]? imageBytes)
+    {
+        if (imageBytes is null || imageBytes.Length < 12)
+        {
+            return 1;
+        }
+
+        // EXIF orientation is normally stored in JPEG APP1 metadata. Phones often
+        // save portrait photos sideways in the pixels and use this value to tell
+        // viewers how to rotate the image.
+        if (imageBytes[0] != 0xFF || imageBytes[1] != 0xD8)
+        {
+            return 1;
+        }
+
+        var offset = 2;
+
+        while (offset + 4 < imageBytes.Length)
+        {
+            if (imageBytes[offset] != 0xFF)
+            {
+                offset++;
+                continue;
+            }
+
+            var marker = imageBytes[offset + 1];
+            offset += 2;
+
+            if (marker is 0xDA or 0xD9)
+            {
+                break;
+            }
+
+            if (offset + 2 > imageBytes.Length)
+            {
+                break;
+            }
+
+            var segmentLength = ReadUInt16BigEndian(imageBytes, offset);
+            if (segmentLength < 2)
+            {
+                break;
+            }
+
+            var segmentStart = offset + 2;
+            var segmentDataLength = segmentLength - 2;
+
+            if (segmentStart + segmentDataLength > imageBytes.Length)
+            {
+                break;
+            }
+
+            if (marker == 0xE1 &&
+                segmentDataLength >= 14 &&
+                imageBytes[segmentStart] == (byte)'E' &&
+                imageBytes[segmentStart + 1] == (byte)'x' &&
+                imageBytes[segmentStart + 2] == (byte)'i' &&
+                imageBytes[segmentStart + 3] == (byte)'f' &&
+                imageBytes[segmentStart + 4] == 0 &&
+                imageBytes[segmentStart + 5] == 0)
+            {
+                return ReadTiffOrientation(imageBytes, segmentStart + 6, segmentDataLength - 6);
+            }
+
+            offset += segmentLength;
+        }
+
+        return 1;
+    }
+
+    private static int ReadTiffOrientation(byte[] bytes, int tiffStart, int tiffLength)
+    {
+        if (tiffLength < 8 || tiffStart + tiffLength > bytes.Length)
+        {
+            return 1;
+        }
+
+        var littleEndian = bytes[tiffStart] == (byte)'I' && bytes[tiffStart + 1] == (byte)'I';
+        var bigEndian = bytes[tiffStart] == (byte)'M' && bytes[tiffStart + 1] == (byte)'M';
+
+        if (!littleEndian && !bigEndian)
+        {
+            return 1;
+        }
+
+        var magic = ReadUInt16(bytes, tiffStart + 2, littleEndian);
+        if (magic != 42)
+        {
+            return 1;
+        }
+
+        var ifdOffset = ReadUInt32(bytes, tiffStart + 4, littleEndian);
+        if (ifdOffset > int.MaxValue)
+        {
+            return 1;
+        }
+
+        var ifdStart = tiffStart + (int)ifdOffset;
+        if (ifdStart < tiffStart || ifdStart + 2 > tiffStart + tiffLength)
+        {
+            return 1;
+        }
+
+        var entryCount = ReadUInt16(bytes, ifdStart, littleEndian);
+        var entryStart = ifdStart + 2;
+
+        for (var i = 0; i < entryCount; i++)
+        {
+            var entryOffset = entryStart + (i * 12);
+            if (entryOffset + 12 > tiffStart + tiffLength)
+            {
+                break;
+            }
+
+            var tag = ReadUInt16(bytes, entryOffset, littleEndian);
+            if (tag != 0x0112)
+            {
+                continue;
+            }
+
+            var type = ReadUInt16(bytes, entryOffset + 2, littleEndian);
+            var count = ReadUInt32(bytes, entryOffset + 4, littleEndian);
+
+            if (type == 3 && count >= 1)
+            {
+                var orientation = ReadUInt16(bytes, entryOffset + 8, littleEndian);
+                return orientation is >= 1 and <= 8 ? orientation : 1;
+            }
+        }
+
+        return 1;
+    }
+
+    private static ushort ReadUInt16BigEndian(byte[] bytes, int offset) =>
+        (ushort)((bytes[offset] << 8) | bytes[offset + 1]);
+
+    private static ushort ReadUInt16(byte[] bytes, int offset, bool littleEndian) =>
+        littleEndian
+            ? (ushort)(bytes[offset] | (bytes[offset + 1] << 8))
+            : (ushort)((bytes[offset] << 8) | bytes[offset + 1]);
+
+    private static uint ReadUInt32(byte[] bytes, int offset, bool littleEndian) =>
+        littleEndian
+            ? (uint)(bytes[offset] |
+                (bytes[offset + 1] << 8) |
+                (bytes[offset + 2] << 16) |
+                (bytes[offset + 3] << 24))
+            : (uint)((bytes[offset] << 24) |
+                (bytes[offset + 1] << 16) |
+                (bytes[offset + 2] << 8) |
+                bytes[offset + 3]);
     }
 
     private static string? FirstExistingAssetPath(IWebHostEnvironment environment, params string?[] fileNames)
