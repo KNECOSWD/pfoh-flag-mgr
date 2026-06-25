@@ -4099,3 +4099,169 @@ img {
     font-size: 0.72rem;
   }
 }
+
+
+/* Desktop/tablet visual polish pass */
+.heroSubtitle {
+  display: none;
+}
+
+.subtleRefreshButton {
+  min-height: 2rem;
+  padding: 0.36rem 0.72rem;
+  border-radius: 999px;
+  background: #f4f7fb;
+  color: #173b73;
+  box-shadow: none;
+  font-size: 0.86rem;
+}
+
+.subtleRefreshButton:hover:not(:disabled) {
+  background: #e9eff7;
+  transform: none;
+  box-shadow: none;
+}
+
+.compactPrintCenter {
+  display: block;
+  margin: 0.8rem 0 1rem;
+  padding: 0.72rem 0.85rem;
+  border-radius: 1rem;
+}
+
+.compactPrintCenter summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+}
+
+.compactPrintCenter summary::-webkit-details-marker {
+  display: none;
+}
+
+.compactPrintCenter summary::after {
+  content: "Details";
+  justify-self: end;
+  grid-column: 1 / -1;
+  margin-top: 0.15rem;
+  color: #173b73;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.compactPrintCenter[open] summary::after {
+  content: "Hide details";
+}
+
+.compactPrintCenter h3 {
+  margin: 0.1rem 0 0;
+  font-size: 1rem;
+}
+
+.compactPrintCenter .pdfHealth {
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.8rem;
+}
+
+.printCenterDetails {
+  margin: 0.55rem 0 0;
+  color: #53627a;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.selectedCount {
+  min-height: 0;
+  padding: 0.32rem 0.6rem;
+  border: 0;
+  border-radius: 999px;
+  background: #eef3f9;
+  color: #173b73;
+  box-shadow: none;
+  font-size: 0.84rem;
+}
+
+@media (min-width: 761px) {
+  .hero {
+    min-height: 185px;
+    padding-block: 1.45rem 1rem;
+  }
+
+  .heroContent {
+    gap: 0.35rem;
+  }
+
+  .hero h1 {
+    margin-bottom: 0;
+  }
+
+  .heroNav {
+    width: 100%;
+    align-items: center;
+    gap: 0.35rem 1.05rem;
+    margin-top: 0.75rem;
+    padding: 0.55rem 0.7rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 0.75rem;
+    background: rgba(4, 13, 31, 0.34);
+    backdrop-filter: blur(3px);
+  }
+
+  .heroNav a {
+    color: #ffffff;
+    font-size: 0.98rem;
+    font-weight: 800;
+    opacity: 0.98;
+    text-shadow: 0 2px 7px rgba(0, 0, 0, 0.55);
+  }
+
+  .heroNav a[href="#nominate"] {
+    color: #ffffff;
+    border-bottom-color: transparent;
+  }
+
+  .heroNav a:hover,
+  .heroNav a:focus-visible,
+  .heroNav a[href="#nominate"]:hover,
+  .heroNav a[href="#nominate"]:focus-visible {
+    border-bottom-color: #ffffff;
+  }
+
+  .nativeSearchBar input[type="search"] {
+    min-height: 2.6rem;
+    border-radius: 999px;
+    background-color: #ffffff;
+    box-shadow: inset 0 1px 2px rgba(15, 55, 107, 0.04);
+  }
+}
+
+@media (max-width: 760px) {
+  .compactPrintCenter {
+    padding: 0.68rem 0.75rem;
+  }
+
+  .compactPrintCenter summary {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+  }
+
+  .compactPrintCenter summary::after {
+    justify-self: start;
+    grid-column: auto;
+    margin-top: 0;
+  }
+
+  .compactPrintCenter .pdfHealth {
+    width: 100%;
+  }
+
+  .subtleRefreshButton {
+    min-height: 1.9rem;
+    padding: 0.32rem 0.62rem;
+    font-size: 0.8rem;
+  }
+}

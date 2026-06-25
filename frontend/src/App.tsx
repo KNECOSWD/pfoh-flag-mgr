@@ -1109,7 +1109,7 @@ export default function App() {
                   These are the flag records you manage, including nominations you submitted. You can submit updates at any time; admins review and approve changes before they are published or reprinted.
                 </p>
               </div>
-              <button type="button" className="secondary" onClick={loadData} disabled={loading}>
+              <button type="button" className="secondary subtleRefreshButton" onClick={loadData} disabled={loading}>
                 {loading ? "Loading..." : "Refresh"}
               </button>
             </div>
@@ -1193,7 +1193,7 @@ export default function App() {
                     <span className="countBadge">{pendingReviews.length}</span>
                   </h2>
                 </div>
-                <button type="button" className="secondary" onClick={loadData} disabled={loading}>
+                <button type="button" className="secondary subtleRefreshButton" onClick={loadData} disabled={loading}>
                   {loading ? "Loading..." : "Refresh"}
                 </button>
               </div>
@@ -1217,17 +1217,21 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="printCenterIntro">
-                <div>
-                  <p className="eyebrow">Print Center</p>
-                  <h3>Reprint workflow</h3>
-                  <p>Add records to the queue, verify PDFs, select the cards, download one merged PDF, then mark printed after the physical cards are accepted.</p>
-                </div>
-                <div className="pdfHealth">
-                  <strong>{printQueueMissingPdfCount === 0 ? "PDFs look ready" : `${printQueueMissingPdfCount} PDF warning(s)`}</strong>
-                  <span>{selectedPrintQueueItems.length} selected for the next batch</span>
-                </div>
-              </div>
+              <details className="printCenterIntro compactPrintCenter">
+                <summary>
+                  <div>
+                    <p className="eyebrow">Print Center</p>
+                    <h3>Reprint workflow</h3>
+                  </div>
+                  <div className="pdfHealth">
+                    <strong>{printQueueMissingPdfCount === 0 ? "PDFs look ready" : `${printQueueMissingPdfCount} PDF warning(s)`}</strong>
+                    <span>{selectedPrintQueueItems.length} selected for the next batch</span>
+                  </div>
+                </summary>
+                <p className="printCenterDetails">
+                  Add records to the queue, verify PDFs, select the cards, download one merged PDF, then mark printed after the physical cards are accepted.
+                </p>
+              </details>
 
               {pendingReviews.length === 0 ? (
                 <p>No submitted changes are waiting for review.</p>
