@@ -1507,6 +1507,33 @@ export default function App() {
             <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer" onClick={() => setMobileNavOpen(false)}>
               PlanoFlagsOfHonor.com
             </a>
+
+            <div className="mobileAccountMenu">
+              {isAuthenticated ? (
+                <>
+                  <span>{displayName}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileNavOpen(false);
+                      void signOut();
+                    }}
+                  >
+                    Sign out
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileNavOpen(false);
+                    void signIn();
+                  }}
+                >
+                  Register / sign in
+                </button>
+              )}
+            </div>
           </nav>
       </header>
 
