@@ -8949,3 +8949,250 @@ img.ownedFlagImage {
     box-shadow: none;
   }
 }
+
+
+/* Review actions dropdown visibility fix */
+.reviewActionsMenu {
+  width: 100%;
+  min-width: 10.5rem;
+}
+
+.reviewActionsMenu summary {
+  width: 100%;
+}
+
+.reviewActionsPanel {
+  position: static !important;
+  width: 100% !important;
+  margin-top: 0.45rem;
+  box-shadow: none;
+}
+
+.reviewActionsMenu:not([open]) .reviewActionsPanel {
+  display: none;
+}
+
+.reviewTable,
+.reviewTable tbody,
+.reviewTable tr,
+.reviewTable td,
+.reviewTable .rowActions,
+.tableWrap,
+.adminReviewCard {
+  overflow: visible !important;
+}
+
+.reviewTable .rowActions {
+  min-width: 13rem;
+}
+
+/* Plano Flags of Honor app footer */
+.siteCredit {
+  display: none !important;
+}
+
+.appFooter {
+  width: 100vw;
+  margin: 2.25rem calc(50% - 50vw) 0;
+  padding: 0;
+  border-top: 1px solid rgba(23, 59, 115, 0.10);
+  background:
+    linear-gradient(90deg, rgba(238, 243, 249, 0.96), rgba(231, 237, 244, 0.96)),
+    #e9eef4;
+  color: #0f326c;
+  overflow: hidden;
+}
+
+.appFooterInner {
+  position: relative;
+  width: min(1180px, calc(100% - 2rem));
+  min-height: 24rem;
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) minmax(12rem, 0.9fr) minmax(13rem, 0.8fr);
+  grid-template-rows: auto 1fr auto;
+  gap: 2.25rem 3rem;
+  margin: 0 auto;
+  padding: 4.5rem 0 2rem;
+}
+
+.appFooterInner::after {
+  content: "";
+  position: absolute;
+  right: -18rem;
+  bottom: -8rem;
+  width: 45rem;
+  height: 18rem;
+  opacity: 0.34;
+  pointer-events: none;
+  background:
+    linear-gradient(30deg, transparent 0 18%, rgba(23, 59, 115, 0.14) 18% 19%, transparent 19% 38%, rgba(23, 59, 115, 0.14) 38% 39%, transparent 39% 58%, rgba(23, 59, 115, 0.14) 58% 59%, transparent 59%),
+    linear-gradient(150deg, transparent 0 18%, rgba(23, 59, 115, 0.14) 18% 19%, transparent 19% 38%, rgba(23, 59, 115, 0.14) 38% 39%, transparent 39% 58%, rgba(23, 59, 115, 0.14) 58% 59%, transparent 59%);
+  background-size: 9rem 5.2rem;
+}
+
+.footerColumn {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+}
+
+.footerColumn h2 {
+  margin: 0 0 1rem;
+  color: #0f4fc1;
+  font-size: 1.02rem;
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.footerColumn a,
+.footerContact a {
+  color: #092b65;
+  font-size: 1.08rem;
+  font-weight: 650;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+.footerColumn a:hover,
+.footerColumn a:focus-visible,
+.footerContact a:hover,
+.footerContact a:focus-visible {
+  color: #0f4fc1;
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
+}
+
+.footerLoop {
+  justify-self: center;
+}
+
+.footerSocials {
+  display: flex;
+  gap: 0.65rem;
+}
+
+.footerSocials a {
+  width: 2.35rem;
+  height: 2.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(23, 59, 115, 0.18);
+  border-radius: 999px;
+  color: #1c65ff;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+
+.footerBrand {
+  position: relative;
+  z-index: 1;
+  grid-column: 1 / 2;
+  grid-row: 3;
+  align-self: end;
+}
+
+.footerBrand img {
+  width: min(23rem, 100%);
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.footerContact {
+  position: relative;
+  z-index: 1;
+  grid-column: 3 / 4;
+  grid-row: 3;
+  align-self: center;
+  justify-self: end;
+}
+
+.footerCredit {
+  position: relative;
+  z-index: 1;
+  grid-column: 1 / 3;
+  grid-row: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 1.25rem;
+  color: #75839a;
+  font-size: 0.92rem;
+}
+
+.footerCredit a {
+  display: inline-flex;
+}
+
+.footerCredit img {
+  width: 7.8rem;
+  max-width: 32vw;
+  height: auto;
+  display: block;
+}
+
+@media (max-width: 760px) {
+  .appFooter {
+    margin-top: 1.5rem;
+  }
+
+  .appFooterInner {
+    width: min(100% - 1.44rem, 34rem);
+    min-height: 0;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    gap: 1.6rem;
+    padding: 2.25rem 0 1.8rem;
+  }
+
+  .appFooterInner::after {
+    right: -18rem;
+    bottom: -6rem;
+    opacity: 0.22;
+  }
+
+  .footerLoop {
+    justify-self: start;
+  }
+
+  .footerBrand,
+  .footerContact,
+  .footerCredit {
+    grid-column: auto;
+    grid-row: auto;
+    justify-self: start;
+  }
+
+  .footerColumn a,
+  .footerContact a {
+    font-size: 1rem;
+  }
+
+  .footerBrand img {
+    width: min(100%, 22rem);
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+  .appFooterInner {
+    width: calc(100% - 1.4rem);
+    min-height: 15rem;
+    grid-template-columns: minmax(12rem, 1fr) minmax(11rem, 0.8fr) minmax(11rem, 0.7fr);
+    gap: 1.2rem 1.5rem;
+    padding: 2.25rem 0 1.4rem;
+  }
+
+  .footerColumn a,
+  .footerContact a {
+    font-size: 0.96rem;
+  }
+
+  .footerBrand img {
+    width: 19rem;
+  }
+}

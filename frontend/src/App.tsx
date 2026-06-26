@@ -22,6 +22,7 @@ import {
 } from "./api";
 import { loginRequest } from "./authConfig";
 import knecoLogoBlue from "./assets/kneco-logo-blue.png";
+import pfohFooterLogo from "./assets/pfoh-footer-logo.png";
 
 const blankForm: SaveHonoreeChangeRequest = {
   firstName: "",
@@ -43,11 +44,12 @@ const blankForm: SaveHonoreeChangeRequest = {
   submitterEmailAddress: ""
 };
 
-type AppRoute = "/find" | "/my-flags" | "/admin/review" | "/admin/flag-map" | "/admin/printing";
+type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/admin/review" | "/admin/flag-map" | "/admin/printing";
 
 const appRoutes: AppRoute[] = [
   "/find",
   "/my-flags",
+  "/honor-a-hero",
   "/admin/review",
   "/admin/flag-map",
   "/admin/printing"
@@ -294,6 +296,7 @@ export default function App() {
 
   const isFindRoute = activeRoute === "/find";
   const isMyFlagsRoute = activeRoute === "/my-flags";
+  const isHonorHeroRoute = activeRoute === "/honor-a-hero";
   const isAdminReviewRoute = activeRoute === "/admin/review";
   const isFlagMapRoute = activeRoute === "/admin/flag-map";
   const isPrintingRoute = activeRoute === "/admin/printing";
@@ -557,6 +560,20 @@ export default function App() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
+  useEffect(() => {
+    if (activeRoute !== "/honor-a-hero" || !account || selectedClaim || isNominating) {
+      return;
+    }
+
+    setSelectedPhoto(null);
+    setSelectedPhotoRotation(0);
+    setSelectedClaim(null);
+    setIsNominating(true);
+    setForm(applySubmitterProfileDefaults(blankForm));
+    setNotice("");
+    setError("");
+  }, [activeRoute, account, selectedClaim, isNominating, submitterContact.email, submitterContact.phone]);
+
   async function loadAdminData() {
     if (!account) return;
 
@@ -779,7 +796,7 @@ export default function App() {
     setForm(applySubmitterProfileDefaults(blankForm));
     setNotice("");
     setError("");
-    navigateToRoute("/my-flags");
+    navigateToRoute("/honor-a-hero");
   }
 
   async function claimSearchResult(honoree: HonoreeSearchResult) {
@@ -1734,7 +1751,7 @@ export default function App() {
             {isAdmin ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
             {isAdmin ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
             <a
-              href="/my-flags"
+              href="/honor-a-hero"
               onClick={(event) => {
                 event.preventDefault();
                 beginNomination();
@@ -1781,7 +1798,7 @@ export default function App() {
                   {isAdmin ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
                   {isAdmin ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
                   <a
-                    href="/my-flags"
+                    href="/honor-a-hero"
                     onClick={(event) => {
                       event.preventDefault();
                       setMobileNavOpen(false);
@@ -2534,6 +2551,16 @@ export default function App() {
             </section>
           ) : null}
 
+          {isHonorHeroRoute && !isAuthenticated ? (
+            <section className="card guestNotice">
+              <h2>Honor a Hero</h2>
+              <p>Register or sign in to nominate a veteran or first responder for Plano Flags of Honor.</p>
+              <button type="button" onClick={signIn}>
+                Register / sign in
+              </button>
+            </section>
+          ) : null}
+
           {isAdminRoute && !isAdmin ? (
             <section className="card guestNotice">
               <h2>Administrator access required</h2>
@@ -3260,11 +3287,56 @@ export default function App() {
             </section>
           ) : null}
 
-      <footer className="siteCredit" aria-label="Application credit">
-        <span>Built by</span>
-        <a href="https://www.kneco.com" target="_blank" rel="noreferrer" aria-label="KNECO, Inc. website">
-          <img src={knecoLogoBlue} alt="KNECO, Inc." />
-        </a>
+      <footer className="appFooter" aria-label="Plano Flags of Honor footer">
+        <div className="appFooterInner">
+          <div className="footerColumn footerExplore">
+            <h2>Explore</h2>
+            <a href="https://planoflagsofhonor.com/about-pfoh/" target="_blank" rel="noreferrer">
+              About Plano Flags of Honor
+            </a>
+            <a
+              href="/honor-a-hero"
+              onClick={(event) => {
+                event.preventDefault();
+                beginNomination();
+              }}
+            >
+              Honor a Hero
+            </a>
+            <a href="https://planoflagsofhonor.com/become-a-sponsor/" target="_blank" rel="noreferrer">
+              Become a Sponsor
+            </a>
+          </div>
+
+          <div className="footerColumn footerLoop">
+            <h2>Stay in the loop</h2>
+            <div className="footerSocials" aria-label="Social links">
+              <a href="https://www.facebook.com/planoflagsofhonor" target="_blank" rel="noreferrer" aria-label="Plano Flags of Honor on Facebook">
+                f
+              </a>
+              <a href="https://www.instagram.com/planoflagsofhonor/" target="_blank" rel="noreferrer" aria-label="Plano Flags of Honor on Instagram">
+                ◎
+              </a>
+            </div>
+          </div>
+
+          <div className="footerBrand">
+            <img src={pfohFooterLogo} alt="Rotary Clubs of Plano and Plano Flags of Honor Rotary Community Corps" />
+          </div>
+
+          <div className="footerContact">
+            <a href="https://planoflagsofhonor.com/contact-us/" target="_blank" rel="noreferrer">
+              Contact Us
+            </a>
+          </div>
+
+          <div className="footerCredit">
+            <span>Built by</span>
+            <a href="https://www.kneco.com" target="_blank" rel="noreferrer" aria-label="KNECO, Inc. website">
+              <img src={knecoLogoBlue} alt="KNECO, Inc." />
+            </a>
+          </div>
+        </div>
       </footer>
     </main>
   );
