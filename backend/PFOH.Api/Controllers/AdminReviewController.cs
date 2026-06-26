@@ -25,6 +25,8 @@ public record AdminFlagPositionDto(
 
 public record AssignFlagPositionRequest(int HonoreeId);
 
+public record RemoveReprintQueueItemsRequest(IReadOnlyList<int> ChangeRequestIds);
+
 public record AdminUnassignedHonoreeDto(
     int Id,
     string FullName,
@@ -95,6 +97,67 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
             .ToList();
 
         return Ok(dtos);
+    }
+
+
+    [HttpPost("reprint-queue/remove")]
+    public async Task<ActionResult<object>> RemoveFromReprintQueue(
+        [FromBody] RemoveReprintQueueItemsRequest request,
+        CancellationToken ct)
+    {
+        var ids = request.ChangeRequestIds
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+
+        if (ids.Count == 0)
+        {
+            return BadRequest(new { message = "Select at least one reprint queue item to remove." });
+        }
+
+        var adminName = User.GetEmail();
+        if (string.IsNullOrWhiteSpace(adminName))
+        {
+            adminName = User.GetDisplayName() ?? "PFOH.Admin";
+        }
+
+        var queueItems = await db.HonoreeChangeRequests
+            .Include(r => r.FlagClaim)
+            .Where(r =>
+                ids.Contains(r.Id) &&
+                r.RequestStatus == "Approved" &&
+                r.RequiresCardReprint &&
+                r.CardPrintedUtc == null)
+            .ToListAsync(ct);
+
+        if (queueItems.Count == 0)
+        {
+            return NotFound(new { message = "No active reprint queue items were found for the selected records." });
+        }
+
+        var now = DateTime.UtcNow;
+
+        foreach (var item in queueItems)
+        {
+            item.RequiresCardReprint = false;
+            item.ReviewedBy = adminName;
+            item.ReviewedUtc = now;
+            item.ReviewNotes = string.IsNullOrWhiteSpace(item.ReviewNotes)
+                ? "Removed from the reprint queue by administrator."
+                : $"{item.ReviewNotes}\nRemoved from the reprint queue by administrator.";
+
+            if (item.FlagClaim?.ClaimStatus == "AdminReprintQueued")
+            {
+                item.FlagClaim.ClaimStatus = "AdminReprintRemoved";
+                item.FlagClaim.AdminNotes = string.IsNullOrWhiteSpace(item.FlagClaim.AdminNotes)
+                    ? "Removed from the reprint queue by administrator."
+                    : $"{item.FlagClaim.AdminNotes}\nRemoved from the reprint queue by administrator.";
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        return Ok(new { count = queueItems.Count });
     }
 
 

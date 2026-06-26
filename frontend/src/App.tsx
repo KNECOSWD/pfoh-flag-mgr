@@ -1419,6 +1419,59 @@ export default function App() {
     }
   }
 
+  async function removeSelectedFromReprintQueue() {
+    if (!account) return;
+
+    if (selectedPrintIds.length === 0) {
+      setError("Select at least one item to remove from the reprint queue.");
+      return;
+    }
+
+    const ok = await requestConfirmation(
+      "Remove the selected card reprints from the reprint queue? This does not mark them printed.",
+      { title: "Remove from reprint queue", confirmText: "Remove from queue", tone: "danger" }
+    );
+    if (!ok) return;
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const result = await adminApi.removeFromReprintQueue(instance, account, selectedPrintIds);
+      await loadData();
+      setNotice(`${result.count} item(s) removed from the reprint queue.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to remove item(s) from the reprint queue.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeOneFromReprintQueue(changeRequestId: number, honoreeName: string) {
+    if (!account) return;
+
+    const ok = await requestConfirmation(
+      `Remove ${honoreeName || "this card"} from the reprint queue? This does not mark it printed.`,
+      { title: "Remove from reprint queue", confirmText: "Remove from queue", tone: "danger" }
+    );
+    if (!ok) return;
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const result = await adminApi.removeFromReprintQueue(instance, account, [changeRequestId]);
+      await loadData();
+      setNotice(`${result.count} item(s) removed from the reprint queue.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to remove this item from the reprint queue.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function togglePrintSelection(changeRequestId: number) {
     setSelectedPrintIds((current) =>
       current.includes(changeRequestId)
@@ -2436,6 +2489,7 @@ export default function App() {
                           <th>Flag grid</th>
                           <th>Approved</th>
                           <th>PDF</th>
+                          <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2463,6 +2517,16 @@ export default function App() {
                               ) : (
                                 <span className="pdfWarning">Missing PDF</span>
                               )}
+                            </td>
+                            <td data-label="Actions">
+                              <button
+                                type="button"
+                                className="secondary compactButton dangerSoftButton"
+                                onClick={() => removeOneFromReprintQueue(item.changeRequestId, item.honoreeName)}
+                                disabled={saving}
+                              >
+                                Remove
+                              </button>
                             </td>
                           </tr>
                         ))}

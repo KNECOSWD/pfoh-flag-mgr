@@ -6941,3 +6941,35 @@ img.ownedFlagImage {
     height: 3.85rem !important;
   }
 }
+
+
+/* Reprint queue removal action */
+.dangerSoftButton {
+  border-color: #f0c4c4 !important;
+  background: #fff4f4 !important;
+  color: #8b1d1d !important;
+  box-shadow: none !important;
+}
+
+.dangerSoftButton:hover:not(:disabled),
+.dangerSoftButton:focus-visible:not(:disabled) {
+  background: #ffe7e7 !important;
+  border-color: #e29b9b !important;
+  color: #711717 !important;
+}
+
+@media (max-width: 760px) {
+  .printActions {
+    grid-template-columns: 1fr !important;
+  }
+
+  .printActions .selectedCount,
+  .printActions button {
+    width: 100%;
+  }
+
+  .printQueueTable .compactButton {
+    width: 100%;
+    min-height: 2.1rem;
+  }
+}
