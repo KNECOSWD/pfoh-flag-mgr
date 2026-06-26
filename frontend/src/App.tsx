@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
+import * as Dialog from "@radix-ui/react-dialog";
 import {
   AdminClaimantSummary,
   AdminFlagPosition,
@@ -1522,68 +1523,104 @@ export default function App() {
           )}
         </div>
 
-          <button
-            type="button"
-            className="mobileNavToggle"
-            onClick={() => setMobileNavOpen((current) => !current)}
-            aria-expanded={mobileNavOpen}
-            aria-controls="hero-navigation"
-          >
-            Menu
-            <span aria-hidden="true">{mobileNavOpen ? "▲" : "▼"}</span>
-          </button>
-
-          <nav
-            id="hero-navigation"
-            className={mobileNavOpen ? "heroNav isOpen" : "heroNav"}
-            aria-label="Main navigation"
-          >
-            <a href="#search" onClick={() => setMobileNavOpen(false)}>Find a flag</a>
-            {isAuthenticated ? <a href="#my-flags" onClick={() => setMobileNavOpen(false)}>My flags</a> : null}
-            {isAdmin ? <a href="#admin" onClick={() => setMobileNavOpen(false)}>Admin</a> : null}
-            {isAdmin ? <a href="#reprint-queue" onClick={() => setMobileNavOpen(false)}>Reprint queue</a> : null}
-            {isAdmin ? <a href="#flag-position-manager" onClick={() => setMobileNavOpen(false)}>Flag grids</a> : null}
+          <nav id="hero-navigation" className="heroNav desktopHeroNav" aria-label="Main navigation">
+            <a href="#search">Find a flag</a>
+            {isAuthenticated ? <a href="#my-flags">My flags</a> : null}
+            {isAdmin ? <a href="#admin">Admin</a> : null}
+            {isAdmin ? <a href="#reprint-queue">Reprint queue</a> : null}
+            {isAdmin ? <a href="#flag-position-manager">Flag grids</a> : null}
             <a
               href="#nominate"
               onClick={(event) => {
                 event.preventDefault();
-                setMobileNavOpen(false);
                 beginNomination();
               }}
             >
               Nominate a honoree
             </a>
-            <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer" onClick={() => setMobileNavOpen(false)}>
+            <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer">
               PlanoFlagsOfHonor.com
             </a>
+          </nav>
 
-            <div className="mobileAccountMenu">
-              {isAuthenticated ? (
-                <>
-                  <span>{displayName}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
+          <Dialog.Root open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+            <Dialog.Trigger asChild>
+              <button type="button" className="mobileNavToggle" aria-label="Open menu">
+                <span aria-hidden="true" className="mobileNavIcon">☰</span>
+                <span>Menu</span>
+              </button>
+            </Dialog.Trigger>
+
+            <Dialog.Portal>
+              <Dialog.Overlay className="mobileDrawerOverlay" />
+              <Dialog.Content className="mobileDrawerContent" aria-describedby="mobile-menu-description">
+                <div className="mobileDrawerHeader">
+                  <div>
+                    <p className="eyebrow">Plano Flags of Honor</p>
+                    <Dialog.Title className="mobileDrawerTitle">Menu</Dialog.Title>
+                  </div>
+                  <Dialog.Close asChild>
+                    <button type="button" className="mobileDrawerClose" aria-label="Close menu">
+                      ×
+                    </button>
+                  </Dialog.Close>
+                </div>
+
+                <p id="mobile-menu-description" className="srOnly">
+                  Mobile navigation menu for the Plano Flags of Honor Find a Flag app.
+                </p>
+
+                <nav className="mobileDrawerNav" aria-label="Mobile navigation">
+                  <a href="#search" onClick={() => setMobileNavOpen(false)}>Find a flag</a>
+                  {isAuthenticated ? <a href="#my-flags" onClick={() => setMobileNavOpen(false)}>My flags</a> : null}
+                  {isAdmin ? <a href="#admin" onClick={() => setMobileNavOpen(false)}>Admin</a> : null}
+                  {isAdmin ? <a href="#reprint-queue" onClick={() => setMobileNavOpen(false)}>Reprint queue</a> : null}
+                  {isAdmin ? <a href="#flag-position-manager" onClick={() => setMobileNavOpen(false)}>Flag grids</a> : null}
+                  <a
+                    href="#nominate"
+                    onClick={(event) => {
+                      event.preventDefault();
                       setMobileNavOpen(false);
-                      void signOut();
+                      beginNomination();
                     }}
                   >
-                    Sign out
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMobileNavOpen(false);
-                    void signIn();
-                  }}
-                >
-                  Register / sign in
-                </button>
-              )}
-            </div>
-          </nav>
+                    Nominate a honoree
+                  </a>
+                  <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer" onClick={() => setMobileNavOpen(false)}>
+                    PlanoFlagsOfHonor.com
+                  </a>
+                </nav>
+
+                <div className="mobileDrawerAccount">
+                  {isAuthenticated ? (
+                    <>
+                      <span>Signed in as</span>
+                      <strong>{displayName}</strong>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileNavOpen(false);
+                          void signOut();
+                        }}
+                      >
+                        Sign out
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileNavOpen(false);
+                        void signIn();
+                      }}
+                    >
+                      Register / sign in
+                    </button>
+                  )}
+                </div>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
       </header>
 
           {(error || notice) && (

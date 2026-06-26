@@ -7485,3 +7485,458 @@ img.ownedFlagImage {
     max-height: calc(100vh - 8.4rem) !important;
   }
 }
+
+
+/* iPhone landscape header correction
+   iPhone landscape can be wider than the normal mobile breakpoint, so force
+   the header to use the mobile menu pattern instead of the desktop nav bar. */
+@media (orientation: landscape) and (max-height: 520px) and (max-width: 1000px) {
+  .hero {
+    width: calc(100% + 1.4rem);
+    min-height: 76px !important;
+    margin: 0 -0.7rem 0.55rem !important;
+    padding: 0.44rem 0.7rem 0.48rem !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand menu"
+      "title menu";
+    align-items: center !important;
+    align-content: center !important;
+    gap: 0.08rem 0.7rem !important;
+    overflow: visible !important;
+    border-radius: 0 0 0.75rem 0.75rem;
+  }
+
+  .hero::before {
+    background-repeat: no-repeat !important;
+    background-size: 145% auto !important;
+    background-position: center 37% !important;
+    transform: none !important;
+  }
+
+  .hero::after {
+    background:
+      linear-gradient(
+        90deg,
+        rgba(3, 12, 30, 0.94) 0%,
+        rgba(6, 20, 48, 0.84) 58%,
+        rgba(45, 8, 16, 0.58) 100%
+      ) !important;
+  }
+
+  .heroContent {
+    display: contents !important;
+  }
+
+  .hero .kicker,
+  .hero .eyebrow {
+    grid-area: brand;
+    margin: 0 !important;
+    font-size: 0.52rem !important;
+    letter-spacing: 0.22em !important;
+    line-height: 1 !important;
+  }
+
+  .hero h1 {
+    grid-area: title;
+    max-width: calc(100vw - 8rem) !important;
+    margin: 0 !important;
+    font-size: clamp(1.6rem, 5.8vw, 2.25rem) !important;
+    line-height: 0.92 !important;
+    letter-spacing: -0.07em !important;
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: clip;
+  }
+
+  .heroSubtitle,
+  .hero .authBox {
+    display: none !important;
+  }
+
+  .mobileNavToggle {
+    grid-area: menu;
+    position: relative !important;
+    top: auto !important;
+    right: auto !important;
+    justify-self: end;
+    align-self: center;
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 2rem !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 0.42rem;
+    margin: 0 !important;
+    padding: 0.32rem 0.66rem !important;
+    border-radius: 999px !important;
+    background: rgba(4, 13, 31, 0.54) !important;
+    color: #ffffff;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(7px);
+    font-size: 0.76rem !important;
+    font-weight: 850;
+    line-height: 1;
+  }
+
+  .mobileNavToggle::before {
+    content: "☰";
+    font-size: 0.98rem;
+    line-height: 1;
+  }
+
+  .mobileNavToggle[aria-expanded="true"]::before {
+    content: "×";
+    font-size: 1.18rem;
+    font-weight: 900;
+  }
+
+  .mobileNavToggle span {
+    display: none !important;
+  }
+
+  .heroNav {
+    display: none !important;
+  }
+
+  .heroNav.isOpen {
+    position: absolute !important;
+    z-index: 10;
+    top: calc(100% + 0.35rem) !important;
+    left: auto !important;
+    right: 0.7rem !important;
+    width: min(20rem, calc(100vw - 1.4rem)) !important;
+    max-width: none !important;
+    max-height: calc(100vh - 5.4rem);
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 0.08rem;
+    overflow-y: auto;
+    margin: 0 !important;
+    padding: 0.42rem !important;
+    border-radius: 0.8rem !important;
+    background: rgba(5, 17, 40, 0.97) !important;
+    background-image: none !important;
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+    backdrop-filter: blur(10px);
+  }
+
+  .heroNav.isOpen::before {
+    content: "";
+    position: absolute;
+    top: -0.35rem;
+    right: 1.05rem;
+    width: 0.72rem;
+    height: 0.72rem;
+    transform: rotate(45deg);
+    border-left: 1px solid rgba(255, 255, 255, 0.18);
+    border-top: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(5, 17, 40, 0.97) !important;
+  }
+
+  .heroNav a {
+    width: 100%;
+    min-height: 1.85rem !important;
+    display: flex;
+    align-items: center;
+    padding: 0.34rem 0.5rem !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 0.55rem;
+    color: #ffffff;
+    font-size: 0.78rem !important;
+    font-weight: 800;
+    opacity: 1;
+  }
+
+  .heroNav a:last-of-type {
+    border-bottom: 0;
+  }
+
+  .heroNav a:hover,
+  .heroNav a:focus-visible {
+    background: rgba(255, 255, 255, 0.10);
+  }
+
+  .mobileAccountMenu {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.45rem;
+    align-items: center;
+    padding: 0.4rem 0.35rem 0.12rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+  }
+}
+
+@media (orientation: landscape) and (max-height: 390px) and (max-width: 1000px) {
+  .hero {
+    min-height: 62px !important;
+    grid-template-areas: "title menu";
+    padding-top: 0.32rem !important;
+    padding-bottom: 0.36rem !important;
+  }
+
+  .hero .kicker,
+  .hero .eyebrow {
+    display: none !important;
+  }
+
+  .hero h1 {
+    max-width: calc(100vw - 7.4rem) !important;
+    font-size: clamp(1.45rem, 5vw, 1.95rem) !important;
+  }
+
+  .heroNav.isOpen {
+    max-height: calc(100vh - 4.4rem);
+  }
+}
+
+
+/* Radix mobile drawer navigation */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.mobileDrawerOverlay,
+.mobileDrawerContent {
+  display: none;
+}
+
+@media (max-width: 760px), (orientation: landscape) and (max-height: 520px) and (max-width: 1000px) {
+  .desktopHeroNav {
+    display: none !important;
+  }
+
+  .mobileNavToggle {
+    position: absolute !important;
+    top: 0.62rem !important;
+    right: 0.72rem !important;
+    z-index: 20;
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 2.05rem !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 0.42rem;
+    margin: 0 !important;
+    padding: 0.34rem 0.68rem !important;
+    border: 1px solid rgba(255, 255, 255, 0.30);
+    border-radius: 999px !important;
+    background: rgba(4, 13, 31, 0.62) !important;
+    color: #ffffff;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(7px);
+    font-size: 0.78rem !important;
+    font-weight: 850;
+    line-height: 1;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.42);
+  }
+
+  .mobileNavIcon {
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .mobileDrawerOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: block;
+    background: rgba(4, 13, 31, 0.48);
+    backdrop-filter: blur(2px);
+  }
+
+  .mobileDrawerContent {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9001;
+    width: min(86vw, 22rem);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: 0.7rem;
+    padding: max(0.85rem, env(safe-area-inset-top)) 0.85rem max(0.9rem, env(safe-area-inset-bottom));
+    border-left: 1px solid rgba(255, 255, 255, 0.14);
+    background: #071a3b;
+    color: #ffffff;
+    box-shadow: -18px 0 44px rgba(0, 0, 0, 0.34);
+  }
+
+  .mobileDrawerContent[data-state="open"] {
+    animation: mobileDrawerIn 180ms ease-out;
+  }
+
+  .mobileDrawerContent[data-state="closed"] {
+    animation: mobileDrawerOut 140ms ease-in;
+  }
+
+  .mobileDrawerOverlay[data-state="open"] {
+    animation: mobileOverlayIn 160ms ease-out;
+  }
+
+  .mobileDrawerOverlay[data-state="closed"] {
+    animation: mobileOverlayOut 120ms ease-in;
+  }
+
+  .mobileDrawerHeader {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 0.8rem;
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  .mobileDrawerHeader .eyebrow {
+    color: #ffd56a;
+    font-size: 0.62rem;
+    letter-spacing: 0.2em;
+  }
+
+  .mobileDrawerTitle {
+    margin: 0.1rem 0 0;
+    color: #ffffff;
+    font-size: 1.45rem;
+    line-height: 1;
+  }
+
+  .mobileDrawerClose {
+    width: 2.15rem;
+    min-width: 2.15rem;
+    height: 2.15rem;
+    min-height: 2.15rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+    box-shadow: none;
+    font-size: 1.45rem;
+    line-height: 1;
+  }
+
+  .mobileDrawerNav {
+    display: grid;
+    align-content: start;
+    gap: 0.28rem;
+    overflow-y: auto;
+    padding: 0.1rem 0;
+  }
+
+  .mobileDrawerNav a {
+    min-height: 2.55rem;
+    display: flex;
+    align-items: center;
+    padding: 0.58rem 0.68rem;
+    border-radius: 0.72rem;
+    color: #ffffff;
+    font-size: 0.98rem;
+    font-weight: 850;
+    text-decoration: none;
+  }
+
+  .mobileDrawerNav a:hover,
+  .mobileDrawerNav a:focus-visible {
+    background: rgba(255, 255, 255, 0.10);
+  }
+
+  .mobileDrawerAccount {
+    display: grid;
+    gap: 0.35rem;
+    padding-top: 0.7rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+  }
+
+  .mobileDrawerAccount span {
+    color: rgba(255, 255, 255, 0.70);
+    font-size: 0.74rem;
+    font-weight: 700;
+  }
+
+  .mobileDrawerAccount strong {
+    min-width: 0;
+    color: #ffffff;
+    font-size: 0.92rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobileDrawerAccount button {
+    width: 100%;
+    min-height: 2.35rem;
+    margin-top: 0.2rem;
+    border-radius: 0.75rem;
+    background: #ffffff;
+    color: #173b73;
+    box-shadow: none;
+  }
+
+  @keyframes mobileDrawerIn {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes mobileDrawerOut {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes mobileOverlayIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes mobileOverlayOut {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+}
+
+@media (orientation: landscape) and (max-height: 520px) and (max-width: 1000px) {
+  .mobileNavToggle {
+    position: relative !important;
+    top: auto !important;
+    right: auto !important;
+    grid-area: menu;
+    justify-self: end;
+  }
+
+  .mobileDrawerContent {
+    width: min(44vw, 22rem);
+    min-width: 19rem;
+  }
+}
+
+@media (min-width: 761px) and (min-height: 521px) {
+  .mobileNavToggle {
+    display: none !important;
+  }
+}
