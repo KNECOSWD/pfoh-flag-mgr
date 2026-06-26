@@ -6973,3 +6973,93 @@ img.ownedFlagImage {
     min-height: 2.1rem;
   }
 }
+
+
+/* Print Center tighter workflow layout */
+.adminPrintingCard .adminCardSummary {
+  margin-bottom: 0.65rem;
+}
+
+.slimWorkflowHelp,
+.compactPrintCenter.slimWorkflowHelp {
+  margin: 0.45rem 0 0.85rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.85rem;
+  background: #fbfdff;
+  border: 1px solid #dce6f3;
+}
+
+.compactPrintCenter.slimWorkflowHelp summary {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.compactPrintCenter.slimWorkflowHelp summary::after {
+  content: "Details";
+  grid-column: auto;
+  margin-top: 0;
+  justify-self: end;
+  align-self: center;
+  padding: 0.16rem 0.45rem;
+  border-radius: 999px;
+  background: #eef3f9;
+  color: #173b73;
+  font-size: 0.74rem;
+  font-weight: 900;
+}
+
+.compactPrintCenter.slimWorkflowHelp[open] summary::after {
+  content: "Hide";
+}
+
+.compactPrintCenter.slimWorkflowHelp h3 {
+  margin: 0.08rem 0 0;
+  font-size: 0.98rem;
+}
+
+.compactPrintCenter.slimWorkflowHelp .pdfHealth {
+  min-width: 0;
+  padding: 0.32rem 0.55rem;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.compactPrintCenter.slimWorkflowHelp .pdfHealth strong,
+.compactPrintCenter.slimWorkflowHelp .pdfHealth span {
+  font-size: 0.78rem;
+  line-height: 1.15;
+}
+
+.compactPrintCenter.slimWorkflowHelp .printCenterDetails {
+  margin: 0.5rem 0 0;
+  padding-top: 0.45rem;
+  border-top: 1px solid #e4ebf5;
+  font-size: 0.86rem;
+}
+
+.adminPrintingCard .reprintQueuePanel {
+  margin-top: 0.7rem;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.adminPrintingCard .printHeader {
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 760px) {
+  .compactPrintCenter.slimWorkflowHelp summary {
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
+  }
+
+  .compactPrintCenter.slimWorkflowHelp summary::after {
+    justify-self: start;
+  }
+
+  .compactPrintCenter.slimWorkflowHelp .pdfHealth {
+    justify-self: start;
+    width: auto;
+  }
+}
