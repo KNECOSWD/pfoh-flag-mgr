@@ -367,10 +367,15 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         {
             await RegenerateHonoreePdfAsync(honoree.Id, ct);
         }
-        catch
+        catch (Exception ex)
         {
-            // The honoree still needs to enter the reprint workflow even if PDF regeneration fails.
-            // The queue item will surface the record for admin follow-up.
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = "The flag grid was assigned, but the card PDF could not be regenerated. The honoree was not added to the reprint queue.",
+                    detail = ex.InnerException?.Message ?? ex.Message
+                });
         }
 
         await AddHonoreeToReprintQueueAsync(
@@ -491,6 +496,21 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
                 return Ok(await ToPrintQueueDto(existingQueueItem, ct));
             }
 
+            try
+            {
+                await RegenerateHonoreePdfAsync(honoree.Id, ct);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new
+                    {
+                        message = "The card PDF could not be regenerated. The honoree was not added to the reprint queue.",
+                        detail = ex.InnerException?.Message ?? ex.Message
+                    });
+            }
+
             // HonoreeChangeRequest.FlagClaimId is required. Create an internal/admin claim
             // so the reprint queue item has a valid foreign key without assigning the flag
             // to a public user's My claimed flags list.
@@ -547,16 +567,6 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
             db.FlagClaims.Add(queueClaim);
             db.HonoreeChangeRequests.Add(queueRequest);
             await db.SaveChangesAsync(ct);
-
-            try
-            {
-                await RegenerateHonoreePdfAsync(honoree.Id, ct);
-            }
-            catch
-            {
-                queueRequest.ReviewNotes = "Added to the reprint queue by administrator. PDF regeneration failed; regenerate the PDF manually before printing.";
-                await db.SaveChangesAsync(ct);
-            }
 
             return Ok(await ToPrintQueueDto(queueRequest, ct));
         }

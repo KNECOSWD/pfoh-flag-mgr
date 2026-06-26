@@ -806,7 +806,7 @@ export default function App() {
       await loadData();
       setNotice(`${displayNameWithNickname(honoree.fullName, honoree.nickname)} was added to the reprint queue.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to add honoree to the reprint queue.");
+      setError(err instanceof Error ? err.message : "Unable to regenerate the PDF or add honoree to the reprint queue.");
       setNotice("");
     } finally {
       setQueueingReprintHonoreeId(null);
@@ -2404,7 +2404,6 @@ export default function App() {
                 <div className="adminCardSummary">
                   <span><strong>{printQueue.length}</strong> ready to print</span>
                   <span><strong>{selectedPrintIds.length}</strong> selected</span>
-                  <span><strong>{printQueueMissingPdfCount}</strong> PDF warnings</span>
                 </div>
 
               {printQueue.length === 0 ? (
