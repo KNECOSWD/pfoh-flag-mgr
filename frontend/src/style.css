@@ -7149,3 +7149,46 @@ img.ownedFlagImage {
     right: 0.58rem;
   }
 }
+
+
+/* Mobile menu open: prevent clunky repeated flag/background feel */
+@media (max-width: 760px) {
+  .hero:has(.heroNav.isOpen) {
+    overflow: visible !important;
+  }
+
+  .hero:has(.heroNav.isOpen)::before {
+    background-repeat: no-repeat !important;
+    background-size: 210% auto !important;
+    background-position: center 30% !important;
+  }
+
+  .hero:has(.heroNav.isOpen)::after {
+    background:
+      linear-gradient(
+        90deg,
+        rgba(3, 12, 30, 0.94) 0%,
+        rgba(6, 20, 48, 0.86) 52%,
+        rgba(45, 8, 16, 0.66) 100%
+      ) !important;
+  }
+
+  .heroNav.isOpen {
+    top: calc(100% + 0.5rem) !important;
+    background: #071a3b !important;
+    background-image: none !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+  }
+
+  .heroNav.isOpen::before {
+    background: #071a3b !important;
+    background-image: none !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .hero:has(.heroNav.isOpen)::before {
+    background-size: 235% auto !important;
+    background-position: center 28% !important;
+  }
+}
