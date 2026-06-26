@@ -298,6 +298,36 @@ export default function App() {
   const isPrintingRoute = activeRoute === "/admin/printing";
   const isAdminRoute = activeRoute.startsWith("/admin");
 
+  const adminAlertItems = useMemo(
+    () =>
+      [
+        {
+          key: "pending-review",
+          label: "Pending review",
+          count: pendingReviews.length,
+          route: "/admin/review" as AppRoute
+        },
+        {
+          key: "ready-to-print",
+          label: "Ready to print",
+          count: printQueue.length,
+          route: "/admin/printing" as AppRoute
+        },
+        {
+          key: "multiple-claim-alerts",
+          label: "Multiple-claim alerts",
+          count: claimedByMultipleCount,
+          route: "/admin/review" as AppRoute
+        }
+      ].filter((item) => item.count > 0),
+    [pendingReviews.length, printQueue.length, claimedByMultipleCount]
+  );
+
+  const adminAlertTotalCount = useMemo(
+    () => adminAlertItems.reduce((total, item) => total + item.count, 0),
+    [adminAlertItems]
+  );
+
   const flagPositionSections = useMemo(
     () =>
       [...new Set(flagPositions.map((position) => position.rowLabel || "Other"))]
@@ -1791,6 +1821,31 @@ export default function App() {
             </Dialog.Portal>
           </Dialog.Root>
       </header>
+
+          {isAdmin && adminAlertItems.length > 0 ? (
+            <section className="adminAlertBanner" aria-label="Administrator notifications">
+              <div className="adminAlertBannerText">
+                <strong>Admin attention needed</strong>
+                <span>
+                  {adminAlertTotalCount} item{adminAlertTotalCount === 1 ? "" : "s"} need attention.
+                </span>
+              </div>
+
+              <div className="adminAlertBannerLinks">
+                {adminAlertItems.map((item) => (
+                  <a
+                    key={item.key}
+                    href={item.route}
+                    className={activeRoute === item.route ? "isActive" : ""}
+                    onClick={(event) => handleRouteLink(event, item.route)}
+                  >
+                    <strong>{item.count}</strong>
+                    <span>{item.label}</span>
+                  </a>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           {(error || notice) && (
             <section className="messageStack" aria-live="polite" aria-atomic="true">
