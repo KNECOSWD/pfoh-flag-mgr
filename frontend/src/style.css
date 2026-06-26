@@ -9897,3 +9897,147 @@ main {
     padding-bottom: 0 !important;
   }
 }
+
+
+/* Compact footer, wider Flag Map workspace, and simplified admin panels */
+.appFooterInner {
+  min-height: 12.5rem !important;
+  gap: 0.95rem 2rem !important;
+  padding-top: 1.85rem !important;
+  padding-bottom: 0.95rem !important;
+}
+
+.footerColumn {
+  gap: 0.48rem !important;
+}
+
+.footerColumn h2 {
+  margin-bottom: 0.35rem !important;
+  font-size: 0.9rem !important;
+}
+
+.footerColumn a,
+.footerContact a {
+  font-size: 0.92rem !important;
+}
+
+.footerSocials a {
+  width: 2.2rem !important;
+  height: 2.2rem !important;
+}
+
+.footerBrand img {
+  width: min(17rem, 100%) !important;
+}
+
+.footerCredit img {
+  width: 6.1rem !important;
+}
+
+.footerCredit span {
+  font-size: 0.78rem !important;
+}
+
+.appFooterInner::after {
+  bottom: -11.5rem !important;
+  opacity: 0.20 !important;
+}
+
+/* Flag Map is an admin workspace, so let it use more horizontal space than normal content pages. */
+main > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
+  width: min(1540px, calc(100% - 2rem)) !important;
+  max-width: min(1540px, calc(100% - 2rem)) !important;
+}
+
+.adminSectionStack:has(.flagPositionManager.adminStandalonePanel) .flagPositionManager.adminStandalonePanel {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.flagPositionManager .flagSeatCells {
+  grid-template-columns: repeat(auto-fill, minmax(5.9rem, 1fr));
+}
+
+/* Hide zero-value review summary noise and tighten empty review pages. */
+.adminReviewCard .adminCardSummary:empty {
+  display: none;
+}
+
+.adminReviewCard > p,
+.adminReviewCard .emptyState {
+  margin-top: 0.7rem;
+}
+
+/* Simplified Print Center */
+.adminPrintingCard .printCenterHeader {
+  align-items: start;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid #e4ebf5;
+}
+
+.adminPrintingCard .printCenterHeader .helperText {
+  margin-top: 0.25rem;
+}
+
+.adminPrintingCard .printActions {
+  align-self: center;
+}
+
+.adminPrintingCard .compactReprintQueuePanel {
+  margin-top: 0.85rem;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.adminPrintingCard .compactEmptyState {
+  margin: 0.85rem 0 0;
+}
+
+@media (max-width: 760px) {
+  .appFooterInner {
+    min-height: 0 !important;
+    gap: 0.95rem !important;
+    padding-top: 1.35rem !important;
+    padding-bottom: 1rem !important;
+  }
+
+  .footerBrand img {
+    width: min(100%, 17rem) !important;
+  }
+
+  main > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
+    width: min(100%, 34rem) !important;
+    max-width: calc(100vw - 1.44rem) !important;
+  }
+
+  .flagPositionManager .flagSeatCells {
+    grid-template-columns: repeat(auto-fill, minmax(4.2rem, 1fr));
+  }
+
+  .adminPrintingCard .printCenterHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .adminPrintingCard .printActions {
+    width: 100%;
+    justify-content: stretch;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+  .appFooterInner {
+    min-height: 9.5rem !important;
+    gap: 0.65rem 1rem !important;
+    padding-top: 1rem !important;
+    padding-bottom: 0.75rem !important;
+  }
+
+  .footerBrand img {
+    width: 14.5rem !important;
+  }
+
+  main > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
+    width: calc(100% - 1.4rem) !important;
+    max-width: calc(100% - 1.4rem) !important;
+  }
+}

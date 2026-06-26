@@ -2638,10 +2638,16 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="adminCardSummary">
-                  <span><strong>{pendingReviews.length}</strong> pending review</span>
-                  <span><strong>{claimedByMultipleCount}</strong> multiple-claim alerts</span>
-                </div>
+                {pendingReviews.length > 0 || claimedByMultipleCount > 0 ? (
+                  <div className="adminCardSummary">
+                    {pendingReviews.length > 0 ? (
+                      <span><strong>{pendingReviews.length}</strong> pending review</span>
+                    ) : null}
+                    {claimedByMultipleCount > 0 ? (
+                      <span><strong>{claimedByMultipleCount}</strong> multiple-claim alerts</span>
+                    ) : null}
+                  </div>
+                ) : null}
 
               {pendingReviews.length === 0 ? (
                 <p>No submitted changes are waiting for review.</p>
@@ -2894,67 +2900,46 @@ export default function App() {
 
               {isPrintingRoute ? (
               <section className="card adminCard adminPrintingCard" aria-label="Printing">
-                <div className="sectionHeader">
+                <div className="sectionHeader printCenterHeader">
                   <div>
                     <p className="eyebrow">Printing</p>
                     <h2>
                       Print Center
                       <span className="countBadge">{printQueue.length}</span>
                     </h2>
+                    <p className="helperText">
+                      {printQueue.length === 0
+                        ? "No approved cards are waiting for reprint."
+                        : `${printQueue.length} card${printQueue.length === 1 ? "" : "s"} ready to print.`}
+                    </p>
                   </div>
-                </div>
 
-                <div className="adminCardSummary">
-                  <span><strong>{printQueue.length}</strong> ready to print</span>
-                  <span><strong>{selectedPrintIds.length}</strong> selected</span>
+                  <div className="actions printActions">
+                    <span className="selectedCount">{selectedPrintIds.length} selected</span>
+
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={downloadSelectedPrintPdf}
+                      disabled={saving || selectedPrintIds.length === 0}
+                    >
+                      Download merged PDF
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={markSelectedPrinted}
+                      disabled={saving || selectedPrintIds.length === 0}
+                    >
+                      Mark printed
+                    </button>
+                  </div>
                 </div>
 
               {printQueue.length === 0 ? (
-                <details id="reprint-queue" className="reprintQueuePanel collapsedEmptyPanel thinEmptyPanel">
-                  <summary className="sectionHeader printHeader">
-                    <div>
-                      <p className="eyebrow">Card printing</p>
-                      <h2>
-                        Reprint queue
-                        <span className="countBadge">{printQueue.length}</span>
-                      </h2>
-                    </div>
-                    <span className="emptyPanelHint">No approved cards waiting</span>
-                  </summary>
-                  <p className="compactEmptyState">No approved cards are waiting for reprint.</p>
-                </details>
+                <p id="reprint-queue" className="compactEmptyState">No approved cards are waiting for reprint.</p>
               ) : (
-                <section id="reprint-queue" className="reprintQueuePanel">
-                  <div className="sectionHeader printHeader">
-                    <div>
-                      <p className="eyebrow">Card printing</p>
-                      <h2>
-                        Reprint queue
-                        <span className="countBadge">{printQueue.length}</span>
-                      </h2>
-                    </div>
-                    <div className="actions printActions">
-                      <span className="selectedCount">{selectedPrintIds.length} selected</span>
-
-                      <button
-                        type="button"
-                        className="secondary"
-                        onClick={downloadSelectedPrintPdf}
-                        disabled={saving || selectedPrintIds.length === 0}
-                      >
-                        Download merged PDF
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={markSelectedPrinted}
-                        disabled={saving || selectedPrintIds.length === 0}
-                      >
-                        Mark printed
-                      </button>
-                    </div>
-                  </div>
-
+                <section id="reprint-queue" className="reprintQueuePanel compactReprintQueuePanel">
                   <div className="tableWrap">
                     <table className="responsiveTable printQueueTable">
                       <thead>
