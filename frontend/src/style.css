@@ -8484,3 +8484,67 @@ img.ownedFlagImage {
     width: min(78vw, 20rem) !important;
   }
 }
+
+
+/* Phone landscape hero overlay and title clipping fix */
+@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+  .hero {
+    isolation: isolate !important;
+    overflow: hidden !important;
+    min-height: 82px !important;
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.6rem !important;
+  }
+
+  .hero::before {
+    z-index: -2 !important;
+  }
+
+  .hero::after {
+    content: "" !important;
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: -1 !important;
+    pointer-events: none !important;
+    display: block !important;
+    opacity: 1 !important;
+    background:
+      linear-gradient(
+        90deg,
+        rgba(3, 12, 30, 0.82) 0%,
+        rgba(6, 20, 48, 0.52) 44%,
+        rgba(45, 8, 16, 0.35) 100%
+      ) !important;
+  }
+
+  .hero > * {
+    position: relative !important;
+    z-index: 2 !important;
+  }
+
+  .hero h1 {
+    padding-bottom: 0.16em !important;
+    line-height: 1.05 !important;
+    overflow: visible !important;
+    max-width: calc(100vw - 7.5rem) !important;
+    text-shadow: 0 3px 12px rgba(0, 0, 0, 0.62) !important;
+  }
+
+  .mobileNavToggle {
+    z-index: 3 !important;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 420px) and (max-width: 1100px) {
+  .hero {
+    min-height: 76px !important;
+    padding-top: 0.42rem !important;
+    padding-bottom: 0.54rem !important;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.5rem, 4.7vw, 2rem) !important;
+    line-height: 1.05 !important;
+    padding-bottom: 0.15em !important;
+  }
+}
