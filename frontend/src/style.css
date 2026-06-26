@@ -8694,3 +8694,35 @@ img.ownedFlagImage {
     max-height: 30vh;
   }
 }
+
+
+/* Route-based SPA navigation polish */
+.desktopHeroNav a.isActive,
+.mobileDrawerNav a.isActive {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.desktopHeroNav a.isActive {
+  border-bottom-color: rgba(255, 255, 255, 0.72);
+}
+
+.mobileDrawerNav a.isActive {
+  box-shadow: inset 3px 0 0 #ffd56a;
+}
+
+@media (max-width: 760px) {
+  main > .guestNotice {
+    width: min(100%, 34rem) !important;
+    max-width: calc(100vw - 1.44rem) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+  main > .guestNotice {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}

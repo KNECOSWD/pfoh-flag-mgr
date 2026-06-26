@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
@@ -42,6 +42,21 @@ const blankForm: SaveHonoreeChangeRequest = {
   submitterPhoneNumber: "",
   submitterEmailAddress: ""
 };
+
+type AppRoute = "/find" | "/my-flags" | "/admin/review" | "/admin/flag-map" | "/admin/printing";
+
+const appRoutes: AppRoute[] = [
+  "/find",
+  "/my-flags",
+  "/admin/review",
+  "/admin/flag-map",
+  "/admin/printing"
+];
+
+function normalizeAppRoute(pathname: string): AppRoute {
+  const normalized = pathname.replace(/\/$/, "") || "/find";
+  return appRoutes.includes(normalized as AppRoute) ? (normalized as AppRoute) : "/find";
+}
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -238,6 +253,7 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [activeRoute, setActiveRoute] = useState<AppRoute>(() => normalizeAppRoute(window.location.pathname));
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const confirmResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
 
@@ -274,6 +290,13 @@ export default function App() {
     () => printQueue.filter((item) => selectedPrintIds.includes(item.changeRequestId)),
     [printQueue, selectedPrintIds]
   );
+
+  const isFindRoute = activeRoute === "/find";
+  const isMyFlagsRoute = activeRoute === "/my-flags";
+  const isAdminReviewRoute = activeRoute === "/admin/review";
+  const isFlagMapRoute = activeRoute === "/admin/flag-map";
+  const isPrintingRoute = activeRoute === "/admin/printing";
+  const isAdminRoute = activeRoute.startsWith("/admin");
 
   const flagPositionSections = useMemo(
     () =>
@@ -444,21 +467,26 @@ export default function App() {
     await instance.logoutRedirect();
   }
 
-  function scrollToAppSection(hash: string) {
-    window.setTimeout(() => {
-      const id = hash.replace("#", "");
-      const target = document.getElementById(id);
+  function navigateToRoute(route: AppRoute, options?: { replace?: boolean }) {
+    setActiveRoute(route);
+    setMobileNavOpen(false);
 
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-        window.history.replaceState(null, "", hash);
+    if (window.location.pathname !== route) {
+      if (options?.replace) {
+        window.history.replaceState(null, "", route);
+      } else {
+        window.history.pushState(null, "", route);
       }
-    }, 80);
+    }
+
+    window.setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }, 40);
   }
 
-  function navigateFromMobileDrawer(hash: string) {
-    setMobileNavOpen(false);
-    scrollToAppSection(hash);
+  function handleRouteLink(event: MouseEvent<HTMLAnchorElement>, route: AppRoute) {
+    event.preventDefault();
+    navigateToRoute(route);
   }
 
   function requestConfirmation(
@@ -487,6 +515,16 @@ export default function App() {
     confirmResolveRef.current = null;
     setConfirmDialog(null);
   }
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveRoute(normalizeAppRoute(window.location.pathname));
+      setMobileNavOpen(false);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   async function loadAdminData() {
     if (!account) return;
@@ -694,6 +732,7 @@ export default function App() {
     setFormFromClaim(claim);
     setNotice("");
     setError("");
+    navigateToRoute("/my-flags");
   }
 
   function beginNomination() {
@@ -709,6 +748,7 @@ export default function App() {
     setForm(applySubmitterProfileDefaults(blankForm));
     setNotice("");
     setError("");
+    navigateToRoute("/my-flags");
   }
 
   async function claimSearchResult(honoree: HonoreeSearchResult) {
@@ -1653,13 +1693,13 @@ export default function App() {
         </div>
 
           <nav id="hero-navigation" className="heroNav desktopHeroNav" aria-label="Main navigation">
-            <a href="#search">Find a flag</a>
-            {isAuthenticated ? <a href="#my-flags">My flags</a> : null}
-            {isAdmin ? <a href="#admin">Admin</a> : null}
-            {isAdmin ? <a href="#reprint-queue">Reprint queue</a> : null}
-            {isAdmin ? <a href="#flag-position-manager">Flag grids</a> : null}
+            <a className={activeRoute === "/find" ? "isActive" : ""} href="/find" onClick={(event) => handleRouteLink(event, "/find")}>Find a flag</a>
+            {isAuthenticated ? <a className={activeRoute === "/my-flags" ? "isActive" : ""} href="/my-flags" onClick={(event) => handleRouteLink(event, "/my-flags")}>My flags</a> : null}
+            {isAdmin ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
+            {isAdmin ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
+            {isAdmin ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
             <a
-              href="#nominate"
+              href="/my-flags"
               onClick={(event) => {
                 event.preventDefault();
                 beginNomination();
@@ -1700,18 +1740,17 @@ export default function App() {
                 </p>
 
                 <nav className="mobileDrawerNav" aria-label="Mobile navigation">
-                  <a href="#search" onClick={(event) => { event.preventDefault(); navigateFromMobileDrawer("#search"); }}>Find a flag</a>
-                  {isAuthenticated ? <a href="#my-flags" onClick={(event) => { event.preventDefault(); navigateFromMobileDrawer("#my-flags"); }}>My flags</a> : null}
-                  {isAdmin ? <a href="#admin" onClick={(event) => { event.preventDefault(); navigateFromMobileDrawer("#admin"); }}>Admin</a> : null}
-                  {isAdmin ? <a href="#reprint-queue" onClick={(event) => { event.preventDefault(); navigateFromMobileDrawer("#reprint-queue"); }}>Reprint queue</a> : null}
-                  {isAdmin ? <a href="#flag-position-manager" onClick={(event) => { event.preventDefault(); navigateFromMobileDrawer("#flag-position-manager"); }}>Flag grids</a> : null}
+                  <a className={activeRoute === "/find" ? "isActive" : ""} href="/find" onClick={(event) => handleRouteLink(event, "/find")}>Find a flag</a>
+                  {isAuthenticated ? <a className={activeRoute === "/my-flags" ? "isActive" : ""} href="/my-flags" onClick={(event) => handleRouteLink(event, "/my-flags")}>My flags</a> : null}
+                  {isAdmin ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
+                  {isAdmin ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
+                  {isAdmin ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
                   <a
-                    href="#nominate"
+                    href="/my-flags"
                     onClick={(event) => {
                       event.preventDefault();
                       setMobileNavOpen(false);
                       beginNomination();
-                      scrollToAppSection("#nominate");
                     }}
                   >
                     Nominate a honoree
@@ -2095,6 +2134,7 @@ export default function App() {
             </div>
           ) : null}
 
+          {isFindRoute ? (
           <section id="search" className="card searchCard">
             <div className="sectionHeader searchHeader">
               <div>
@@ -2322,9 +2362,10 @@ export default function App() {
               )
             ) : null}
           </section>
+          ) : null}
 
 
-          {!isAuthenticated ? (
+          {isFindRoute && !isAuthenticated ? (
             <section className="card guestNotice">
               <h2>Search is open to everyone</h2>
               <p>
@@ -2336,7 +2377,7 @@ export default function App() {
             </section>
           ) : null}
 
-          {isAuthenticated ? (
+          {isMyFlagsRoute && isAuthenticated ? (
             <>
           <section id="my-flags" className="card ownershipCard">
             <div className="sectionHeader">
@@ -2420,9 +2461,34 @@ export default function App() {
               </div>
             )}
           </section>
+            </>
+          ) : null}
 
-          {isAdmin ? (
+          {isMyFlagsRoute && !isAuthenticated ? (
+            <section className="card guestNotice">
+              <h2>Sign in to view your claimed flags</h2>
+              <p>Register or sign in to manage claimed flag records, submit nominations, and track updates.</p>
+              <button type="button" onClick={signIn}>
+                Register / sign in
+              </button>
+            </section>
+          ) : null}
+
+          {isAdminRoute && !isAdmin ? (
+            <section className="card guestNotice">
+              <h2>Administrator access required</h2>
+              <p>Sign in with an account assigned the PFOH.Admin role to use review, flag map, and printing tools.</p>
+              {!isAuthenticated ? (
+                <button type="button" onClick={signIn}>
+                  Register / sign in
+                </button>
+              ) : null}
+            </section>
+          ) : null}
+
+          {isAdminRoute && isAdmin ? (
             <div id="admin" className="adminSectionStack" aria-label="Administrator tools">
+              {isAdminReviewRoute ? (
               <section className="card adminCard adminReviewCard">
                 <div className="sectionHeader">
                   <div>
@@ -2511,7 +2577,9 @@ export default function App() {
 
 
               </section>
+              ) : null}
 
+              {isFlagMapRoute ? (
                 <section id="flag-position-manager" className="flagPositionManager adminStandalonePanel" aria-label="Flag Map">
                   <div className="sectionHeader">
                     <div>
@@ -2649,8 +2717,10 @@ export default function App() {
                     )}
                   </div>
                 </section>
+              ) : null}
 
 
+              {isPrintingRoute ? (
               <section className="card adminCard adminPrintingCard" aria-label="Printing">
                 <div className="sectionHeader">
                   <div>
@@ -2781,6 +2851,7 @@ export default function App() {
               )}
 
               </section>
+              ) : null}
             </div>
           ) : null}
 
@@ -3085,10 +3156,6 @@ export default function App() {
                 </div>
               </form>
             </section>
-          ) : null}
-
-
-            </>
           ) : null}
 
       <footer className="siteCredit" aria-label="Application credit">
