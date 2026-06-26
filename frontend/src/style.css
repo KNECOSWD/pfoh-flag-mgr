@@ -6019,3 +6019,734 @@ img.ownedFlagImage {
     padding: 1.15rem 1rem 1rem !important;
   }
 }
+
+
+/* iPhone/mobile design overhaul */
+@media (max-width: 760px) {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    background:
+      radial-gradient(circle at top, rgba(23, 59, 115, 0.08), transparent 18rem),
+      #eef3f9;
+  }
+
+  main {
+    width: 100%;
+    max-width: 100%;
+    padding: 0 0.72rem 2.5rem;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  button,
+  .button,
+  a.textLink {
+    -webkit-tap-highlight-color: rgba(23, 59, 115, 0.15);
+  }
+
+  .card,
+  .messageStack {
+    margin-top: 0.78rem;
+  }
+
+  .card {
+    border-radius: 1rem;
+    padding: 0.9rem;
+    box-shadow: 0 8px 20px rgba(20, 31, 48, 0.07);
+  }
+
+  .sectionHeader {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.65rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .sectionHeader h2 {
+    font-size: 1.35rem;
+    line-height: 1.08;
+  }
+
+  .sectionHeader h3 {
+    font-size: 1.05rem;
+    line-height: 1.12;
+  }
+
+  .eyebrow {
+    font-size: 0.68rem;
+    letter-spacing: 0.18em;
+  }
+
+  .helperText,
+  .card p {
+    font-size: 0.92rem;
+    line-height: 1.45;
+  }
+
+  .emptyState {
+    margin-top: 0.65rem;
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+    font-size: 0.9rem;
+  }
+
+  .message {
+    align-items: start;
+    padding: 0.75rem 0.85rem;
+    border-radius: 0.85rem;
+    font-size: 0.9rem;
+  }
+
+  /* Compact mobile hero */
+  .hero {
+    width: calc(100% + 1.44rem);
+    min-height: 116px;
+    margin: 0 -0.72rem 0;
+    padding: 0.74rem 0.72rem 0.62rem;
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 0.42rem;
+    border-radius: 0 0 1rem 1rem;
+    box-shadow: 0 10px 22px rgba(20, 31, 48, 0.20);
+  }
+
+  .hero::before {
+    background-size: 160% auto;
+    background-position: center 43%;
+    opacity: 0.95;
+  }
+
+  .hero::after {
+    background:
+      linear-gradient(
+        90deg,
+        rgba(3, 12, 30, 0.92) 0%,
+        rgba(6, 20, 48, 0.82) 54%,
+        rgba(45, 8, 16, 0.56) 100%
+      );
+  }
+
+  .heroContent {
+    gap: 0.22rem;
+    width: 100%;
+  }
+
+  .hero .kicker {
+    font-size: 0.62rem;
+    letter-spacing: 0.25em;
+  }
+
+  .hero h1 {
+    display: block;
+    margin: 0;
+    font-size: clamp(2.15rem, 14vw, 3.35rem);
+    line-height: 0.94;
+    letter-spacing: -0.07em;
+  }
+
+  .heroSubtitle {
+    display: none !important;
+  }
+
+  .authBox {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.55rem;
+    margin: 0.18rem 0 0;
+  }
+
+  .authBox strong {
+    max-width: 58vw;
+    font-size: 0.88rem;
+    line-height: 1.1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .authBox button {
+    min-height: 2rem;
+    padding: 0.35rem 0.72rem;
+    font-size: 0.78rem;
+  }
+
+  .mobileNavToggle {
+    min-height: 2rem;
+    margin-top: 0.16rem;
+    padding: 0.34rem 0.58rem;
+    border-radius: 0.56rem;
+    font-size: 0.82rem;
+  }
+
+  .heroNav.isOpen {
+    padding: 0.35rem;
+    border-radius: 0.68rem;
+  }
+
+  .heroNav a {
+    min-height: 1.9rem;
+    padding: 0.32rem 0.4rem;
+    font-size: 0.82rem;
+  }
+
+  /* Search */
+  .searchCard {
+    padding: 0.88rem;
+  }
+
+  .searchHeader {
+    margin-bottom: 0.65rem;
+  }
+
+  .searchHeader h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 1.28rem;
+  }
+
+  .searchHeader .helperText {
+    margin-top: 0.35rem;
+  }
+
+  .nativeSearchBar,
+  .searchBar {
+    min-height: 2.65rem;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    padding: 0.15rem 0.2rem 0.15rem 0.65rem;
+    border-radius: 999px;
+    border: 1px solid #cad7e8;
+    background: #ffffff;
+    box-shadow: inset 0 1px 2px rgba(15, 55, 107, 0.04);
+  }
+
+  .nativeSearchBar::before {
+    font-size: 0.9rem;
+  }
+
+  .nativeSearchBar input,
+  .searchBar input[type="search"] {
+    min-height: 2.2rem;
+    padding: 0.2rem 0.35rem;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    font-size: 1rem;
+  }
+
+  .nativeSearchClear {
+    width: 2.12rem;
+    min-width: 2.12rem;
+    height: 2.12rem;
+    min-height: 2.12rem;
+    margin-right: 0.05rem;
+    border-radius: 999px;
+  }
+
+  /* Search results */
+  .honoreeResults {
+    display: grid;
+    gap: 0.65rem;
+    margin-top: 0.75rem;
+  }
+
+  .honoreeCard {
+    display: grid;
+    grid-template-columns: 4.25rem minmax(0, 1fr);
+    gap: 0.72rem;
+    padding: 0.75rem;
+    border-radius: 0.95rem;
+  }
+
+  .honoreeCard > img,
+  .honoreePlaceholder {
+    width: 4.25rem;
+    height: 4.25rem;
+    border-radius: 0.78rem;
+  }
+
+  .honoreeTitleRow {
+    align-items: start;
+    gap: 0.35rem;
+  }
+
+  .honoreeTitleRow h3 {
+    font-size: 1rem;
+    line-height: 1.15;
+  }
+
+  .detailGrid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.45rem;
+    margin: 0.55rem 0;
+  }
+
+  .detailGrid dt {
+    font-size: 0.63rem;
+  }
+
+  .detailGrid dd {
+    font-size: 0.82rem;
+  }
+
+  .cardActions {
+    gap: 0.45rem;
+    margin-top: 0.55rem;
+  }
+
+  .honoreeActionArea,
+  .honoreeActionButtons {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+  }
+
+  .honoreeActionArea button,
+  .honoreeActionButtons button,
+  .compactButton {
+    width: 100%;
+    min-height: 2.35rem;
+    border-radius: 0.72rem;
+    font-size: 0.86rem;
+  }
+
+  /* Claimed flags */
+  .ownedFlagGrid {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .ownedFlagCard {
+    grid-template-columns: 3.9rem minmax(0, 1fr);
+    gap: 0.68rem;
+    padding: 0.75rem;
+    border-radius: 0.95rem;
+  }
+
+  .ownedFlagImage,
+  .ownedFlagImagePlaceholder {
+    width: 3.9rem;
+    height: 3.9rem;
+    border-radius: 0.75rem;
+  }
+
+  .ownedFlagMain h3 {
+    font-size: 1.02rem;
+    line-height: 1.15;
+  }
+
+  .ownedFlagMain p {
+    margin-top: 0.18rem;
+    font-size: 0.84rem;
+  }
+
+  .ownedFlagMeta {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.38rem;
+    margin-top: 0.1rem;
+  }
+
+  .ownedFlagMeta span,
+  .miniTimeline span,
+  .adminCardSummary span {
+    font-size: 0.72rem;
+  }
+
+  .ownedFlagActions {
+    grid-column: 1 / -1;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.45rem;
+    margin-top: 0.25rem;
+  }
+
+  .ownedFlagActions button {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.45rem;
+    border-radius: 0.75rem;
+    font-size: 0.88rem;
+  }
+
+  .claimNotice,
+  .miniTimeline {
+    grid-column: 1 / -1;
+  }
+
+  .miniTimeline {
+    gap: 0.35rem;
+    margin-top: 0.25rem;
+  }
+
+  /* Admin as clean mobile cards */
+  .adminSectionStack {
+    margin-top: 0.9rem;
+    gap: 0.78rem;
+  }
+
+  .adminReviewCard,
+  .adminPrintingCard,
+  .flagPositionManager.adminStandalonePanel {
+    border-top-width: 2px;
+  }
+
+  .adminHeaderActions,
+  .flagPositionActions,
+  .printActions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.45rem;
+  }
+
+  .adminHeaderActions button,
+  .flagPositionActions button,
+  .printActions button {
+    width: 100%;
+    min-height: 2.25rem;
+    border-radius: 0.7rem;
+    font-size: 0.82rem;
+  }
+
+  .adminCardSummary {
+    gap: 0.32rem;
+    margin: 0.35rem 0 0.62rem;
+  }
+
+  .adminCardSummary span {
+    min-height: 1.36rem;
+    padding: 0.18rem 0.46rem;
+    font-size: 0.7rem;
+  }
+
+  .adminCardSummary strong {
+    font-size: 0.82rem;
+  }
+
+  .adminReviewCard .emptyState,
+  .adminReviewCard > p,
+  .adminPrintingCard .compactEmptyState {
+    font-size: 0.86rem;
+  }
+
+  /* Flag Map mobile */
+  .flagPositionManager {
+    padding: 0.72rem;
+    border-radius: 0.95rem;
+  }
+
+  .flagAssignmentHelp {
+    margin: 0.42rem 0 0.55rem;
+    font-size: 0.82rem;
+  }
+
+  .flagMapToolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.42rem;
+    padding: 0;
+    margin: 0.45rem 0 0.58rem;
+    border: 0;
+    background: transparent;
+  }
+
+  .flagMapToolbar .flagSeatLegend {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.3rem;
+    overflow-x: auto;
+    padding-bottom: 0.12rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .flagMapToolbar .flagSeatLegend::-webkit-scrollbar {
+    display: none;
+  }
+
+  .flagMapToolbar .legendButton {
+    flex: 0 0 auto;
+    min-height: 1.9rem;
+    padding: 0.28rem 0.52rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+  }
+
+  .flagMapToolbar .flagPositionFilters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(7.5rem, 0.72fr);
+    gap: 0.38rem;
+    align-items: center;
+  }
+
+  .flagMapToolbar .flagPositionFilters .subtleRefreshButton {
+    grid-column: 1 / -1;
+    min-height: 1.9rem;
+    justify-self: start;
+    width: auto;
+    padding-inline: 0.62rem;
+  }
+
+  .flagMapToolbar .flagPositionFilters input[type="search"],
+  .flagMapToolbar .flagPositionFilters select {
+    width: 100%;
+    min-height: 2rem;
+    padding: 0.28rem 0.48rem;
+    border-radius: 0.55rem;
+    font-size: 0.82rem;
+  }
+
+  .flagSeatMap {
+    max-height: 54vh;
+    padding: 0.35rem;
+    border: 1px solid #dce6f3;
+    border-radius: 0.8rem;
+    background: #ffffff;
+    overscroll-behavior: contain;
+  }
+
+  .flagSeatRow {
+    grid-template-columns: 1.65rem minmax(0, 1fr);
+    gap: 0.24rem;
+  }
+
+  .flagSeatRowLabel {
+    position: sticky;
+    left: 0;
+    min-height: 2.08rem;
+    border-radius: 0.44rem;
+    font-size: 0.68rem;
+    z-index: 2;
+  }
+
+  .flagSeatCells {
+    grid-template-columns: repeat(auto-fill, minmax(4.35rem, 1fr));
+    gap: 0.22rem;
+  }
+
+  .flagSeat {
+    min-height: 2.24rem;
+    padding: 0.25rem 0.31rem;
+    border-radius: 0.42rem;
+  }
+
+  .flagSeat strong {
+    font-size: 0.68rem;
+    line-height: 1;
+  }
+
+  .flagSeat span {
+    font-size: 0.58rem;
+    line-height: 1.05;
+  }
+
+  /* Tables and print workflow */
+  .tableWrap {
+    margin-top: 0.55rem;
+    border-radius: 0.85rem;
+  }
+
+  .responsiveTable {
+    min-width: 0;
+  }
+
+  .responsiveTable thead {
+    display: none;
+  }
+
+  .responsiveTable,
+  .responsiveTable tbody,
+  .responsiveTable tr,
+  .responsiveTable td {
+    display: block;
+    width: 100%;
+  }
+
+  .responsiveTable tr {
+    padding: 0.68rem;
+    border-bottom: 1px solid #e4ebf5;
+  }
+
+  .responsiveTable td {
+    display: grid;
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+    gap: 0.55rem;
+    padding: 0.28rem 0;
+    font-size: 0.86rem;
+  }
+
+  .responsiveTable td::before {
+    content: attr(data-label);
+    color: #60708a;
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .responsiveTable .rowActions,
+  .responsiveTable .stackedActions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.38rem;
+  }
+
+  .compactPrintCenter.isCollapsedEmpty,
+  .collapsedEmptyPanel,
+  .thinEmptyPanel {
+    padding: 0.5rem 0.58rem;
+    border-radius: 0.75rem;
+  }
+
+  .compactPrintCenter summary,
+  .collapsedEmptyPanel summary {
+    gap: 0.5rem;
+  }
+
+  .pdfHealth,
+  .emptyPanelHint {
+    justify-self: start;
+    font-size: 0.72rem;
+  }
+
+  .selectedCount {
+    min-height: 2.25rem;
+    justify-content: center;
+  }
+
+  /* Forms */
+  .formCard {
+    padding: 0.9rem;
+  }
+
+  .gridForm {
+    gap: 0.7rem;
+  }
+
+  label,
+  .fieldLabelText {
+    font-size: 0.86rem;
+  }
+
+  input,
+  select,
+  textarea {
+    border-radius: 0.68rem;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.48rem;
+  }
+
+  .actions button {
+    width: 100%;
+  }
+
+  /* Modals */
+  .modalOverlay,
+  .appConfirmOverlay,
+  .assignFlagModalOverlay,
+  .flagPositionDetailOverlay {
+    align-items: end;
+    place-items: end center;
+    padding: 0.65rem;
+  }
+
+  .modalCard,
+  .appConfirmModal,
+  .assignFlagModal,
+  .flagPositionDetailModal {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 86vh;
+    border-radius: 1rem;
+  }
+
+  .modalActions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.45rem;
+  }
+
+  .modalActions button {
+    width: 100%;
+    min-height: 2.5rem;
+  }
+}
+
+@media (max-width: 430px) {
+  main {
+    padding-inline: 0.55rem;
+  }
+
+  .hero {
+    width: calc(100% + 1.1rem);
+    margin-inline: -0.55rem;
+    min-height: 108px;
+    padding-inline: 0.58rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(2rem, 13.5vw, 2.85rem);
+  }
+
+  .card {
+    padding: 0.78rem;
+    border-radius: 0.88rem;
+  }
+
+  .honoreeCard,
+  .ownedFlagCard {
+    grid-template-columns: 3.45rem minmax(0, 1fr);
+    gap: 0.56rem;
+  }
+
+  .honoreeCard > img,
+  .honoreePlaceholder,
+  .ownedFlagImage,
+  .ownedFlagImagePlaceholder {
+    width: 3.45rem;
+    height: 3.45rem;
+    border-radius: 0.64rem;
+  }
+
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .ownedFlagActions {
+    grid-template-columns: 1fr;
+  }
+
+  .flagMapToolbar .flagPositionFilters {
+    grid-template-columns: 1fr;
+  }
+
+  .flagSeatCells {
+    grid-template-columns: repeat(auto-fill, minmax(3.95rem, 1fr));
+  }
+
+  .flagSeatMap {
+    max-height: 50vh;
+  }
+}
