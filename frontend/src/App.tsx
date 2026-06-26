@@ -158,6 +158,14 @@ function displayUnassignedHonoreeName(honoree: AdminUnassignedHonoree) {
   return displayNameWithNickname(honoree.fullName, honoree.nickname);
 }
 
+type ConfirmDialogState = {
+  title: string;
+  message: string;
+  confirmText: string;
+  cancelText: string;
+  tone?: "default" | "danger";
+};
+
 function compareFlagSections(left: string, right: string) {
   const normalize = (value: string) => value.trim().toUpperCase();
   const leftValue = normalize(left);
@@ -225,6 +233,8 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
+  const confirmResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
 
   const displayName = useMemo(
     () => account?.name || account?.username || "Supporter",
@@ -383,6 +393,33 @@ export default function App() {
 
   async function signOut() {
     await instance.logoutRedirect();
+  }
+
+  function requestConfirmation(
+    message: string,
+    options?: {
+      title?: string;
+      confirmText?: string;
+      cancelText?: string;
+      tone?: "default" | "danger";
+    }
+  ) {
+    return new Promise<boolean>((resolve) => {
+      confirmResolveRef.current = resolve;
+      setConfirmDialog({
+        title: options?.title ?? "Please confirm",
+        message,
+        confirmText: options?.confirmText ?? "Continue",
+        cancelText: options?.cancelText ?? "Cancel",
+        tone: options?.tone ?? "default"
+      });
+    });
+  }
+
+  function resolveConfirmation(confirmed: boolean) {
+    confirmResolveRef.current?.(confirmed);
+    confirmResolveRef.current = null;
+    setConfirmDialog(null);
   }
 
   async function loadAdminData() {
@@ -614,8 +651,9 @@ export default function App() {
       return;
     }
 
-    const ok = window.confirm(
-      `Claim ${displayNameWithNickname(honoree.fullName, honoree.nickname)}'s flag record? You will be able to submit corrections or updates for review.`
+    const ok = await requestConfirmation(
+      `Claim ${displayNameWithNickname(honoree.fullName, honoree.nickname)}'s flag record? You will be able to submit corrections or updates for review.`,
+      { title: "Claim flag record", confirmText: "Claim flag" }
     );
 
     if (!ok) return;
@@ -643,8 +681,9 @@ export default function App() {
   async function unclaimFlag(claim: FlagClaim) {
     if (!account) return;
 
-    const ok = window.confirm(
-      `Unclaim ${claim.honoreeName || "this flag"}? It will be removed from your claimed flags.`
+    const ok = await requestConfirmation(
+      `Unclaim ${claim.honoreeName || "this flag"}? It will be removed from your claimed flags.`,
+      { title: "Unclaim flag", confirmText: "Unclaim", tone: "danger" }
     );
 
     if (!ok) return;
@@ -684,8 +723,9 @@ export default function App() {
       return;
     }
 
-    const ok = window.confirm(
-      `Edit ${displayNameWithNickname(honoree.fullName, honoree.nickname)}'s flag record directly and queue a card reprint after saving?`
+    const ok = await requestConfirmation(
+      `Edit ${displayNameWithNickname(honoree.fullName, honoree.nickname)}'s flag record directly and queue a card reprint after saving?`,
+      { title: "Start admin edit", confirmText: "Start edit" }
     );
 
     if (!ok) return;
@@ -754,8 +794,9 @@ export default function App() {
       return;
     }
 
-    const ok = window.confirm(
-      `Add ${displayNameWithNickname(honoree.fullName, honoree.nickname)} to the card reprint queue?`
+    const ok = await requestConfirmation(
+      `Add ${displayNameWithNickname(honoree.fullName, honoree.nickname)} to the card reprint queue?`,
+      { title: "Add to reprint queue", confirmText: "Add to queue" }
     );
 
     if (!ok) return;
@@ -787,8 +828,9 @@ export default function App() {
       return;
     }
 
-    const ok = window.confirm(
-      `Generate a new PDF for ${displayNameWithNickname(honoree.fullName, honoree.nickname)} and overwrite the existing stored PDF?`
+    const ok = await requestConfirmation(
+      `Generate a new PDF for ${displayNameWithNickname(honoree.fullName, honoree.nickname)} and overwrite the existing stored PDF?`,
+      { title: "Regenerate PDF", confirmText: "Regenerate PDF" }
     );
 
     if (!ok) return;
@@ -1149,7 +1191,10 @@ export default function App() {
     }
 
     const honoreeName = displayUnassignedHonoreeName(selectedHonoree);
-    const ok = window.confirm(`Assign ${honoreeName} to flag grid ${position.flagGridName}?`);
+    const ok = await requestConfirmation(
+      `Assign ${honoreeName} to flag grid ${position.flagGridName}?`,
+      { title: "Assign flag grid", confirmText: "Assign" }
+    );
 
     if (!ok) return;
 
@@ -1196,7 +1241,10 @@ export default function App() {
     if (!account || position.isOpen) return;
 
     const honoreeName = position.honoreeName || "this honoree";
-    const ok = window.confirm(`Remove ${honoreeName} from flag grid ${position.flagGridName}?`);
+    const ok = await requestConfirmation(
+      `Remove ${honoreeName} from flag grid ${position.flagGridName}?`,
+      { title: "Remove from flag grid", confirmText: "Remove", tone: "danger" }
+    );
 
     if (!ok) return;
 
@@ -1354,7 +1402,10 @@ export default function App() {
       return;
     }
 
-    const ok = window.confirm("Mark the selected card reprints as printed?");
+    const ok = await requestConfirmation(
+      "Mark the selected card reprints as printed?",
+      { title: "Mark printed", confirmText: "Mark printed" }
+    );
     if (!ok) return;
 
     setSaving(true);
@@ -1490,6 +1541,40 @@ export default function App() {
               ) : null}
             </section>
           )}
+
+          {confirmDialog ? (
+            <div
+              className="modalOverlay appConfirmOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="app-confirm-title"
+              onClick={() => resolveConfirmation(false)}
+            >
+              <div className="modalCard appConfirmModal" onClick={(event) => event.stopPropagation()}>
+                <div>
+                  <p className="eyebrow">Confirm action</p>
+                  <h2 id="app-confirm-title">{confirmDialog.title}</h2>
+                  <p className="helperText">{confirmDialog.message}</p>
+                </div>
+                <div className="modalActions">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => resolveConfirmation(false)}
+                  >
+                    {confirmDialog.cancelText}
+                  </button>
+                  <button
+                    type="button"
+                    className={confirmDialog.tone === "danger" ? "dangerButton" : ""}
+                    onClick={() => resolveConfirmation(true)}
+                  >
+                    {confirmDialog.confirmText}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {flagPositionDetailPosition ? (
             <div
