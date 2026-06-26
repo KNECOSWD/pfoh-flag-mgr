@@ -332,6 +332,12 @@ export default function App() {
     [adminAlertItems]
   );
 
+  const showInlineHowItWorks =
+    isFindRoute &&
+    !searchLoading &&
+    !honoreeSearchPerformed &&
+    honoreeSearchText.trim() === "";
+
   const flagPositionSections = useMemo(
     () =>
       [...new Set(flagPositions.map((position) => position.rowLabel || "Other"))]
@@ -2283,6 +2289,26 @@ export default function App() {
                 Search
               </button>
             </form>
+
+            {showInlineHowItWorks ? (
+              <section className="inlineHowItWorks" aria-label="How Find a Flag works">
+                <div>
+                  <span>1</span>
+                  <strong>Search</strong>
+                  <p>Find an existing honoree by name, branch, rank, submitter, or flag grid.</p>
+                </div>
+                <div>
+                  <span>2</span>
+                  <strong>Claim or nominate</strong>
+                  <p>Sign in to manage a flag record or nominate someone who is missing.</p>
+                </div>
+                <div>
+                  <span>3</span>
+                  <strong>Admin review</strong>
+                  <p>Administrators approve changes before records are published or reprinted.</p>
+                </div>
+              </section>
+            ) : null}
 
             {honoreeSearchPerformed ? (
               honoreeResults.length === 0 ? (
