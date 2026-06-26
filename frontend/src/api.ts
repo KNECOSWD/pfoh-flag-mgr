@@ -165,6 +165,27 @@ export type AdminPrintQueueItem = {
   cardPrintedUtc?: string | null;
 };
 
+export type AdminFlagPosition = {
+  flagGridId: number;
+  flagGridName: string;
+  rowLabel: string;
+  columnNumber?: number | null;
+  isOpen: boolean;
+  isReserved: boolean;
+  honoreeId?: number | null;
+  honoreeName?: string | null;
+  rank?: string | null;
+  serviceBranchName?: string | null;
+};
+
+export type AdminUnassignedHonoree = {
+  id: number;
+  fullName: string;
+  nickname?: string | null;
+  rank?: string | null;
+  serviceBranchName?: string | null;
+};
+
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export function honoreePdfUrl(honoreeId: number) {
@@ -493,6 +514,32 @@ export const adminApi = {
     request<{ batchId: string; count: number }>(instance, account, "/api/admin/print/mark-printed", {
       method: "POST",
       body: JSON.stringify({ changeRequestIds })
+    }),
+
+  flagPositions: (instance: IPublicClientApplication, account: AccountInfo) =>
+    request<AdminFlagPosition[]>(instance, account, "/api/admin/review/flag-positions"),
+
+  unassignedHonorees: (instance: IPublicClientApplication, account: AccountInfo) =>
+    request<AdminUnassignedHonoree[]>(instance, account, "/api/admin/review/unassigned-honorees"),
+
+  assignFlagPosition: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    flagGridId: number,
+    honoreeId: number
+  ) =>
+    request<AdminFlagPosition>(instance, account, `/api/admin/review/flag-positions/${flagGridId}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ honoreeId })
+    }),
+
+  clearFlagPosition: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    flagGridId: number
+  ) =>
+    request<AdminFlagPosition>(instance, account, `/api/admin/review/flag-positions/${flagGridId}/clear`, {
+      method: "POST"
     }),
 
   exportHonoreesExcel: (instance: IPublicClientApplication, account: AccountInfo) =>
