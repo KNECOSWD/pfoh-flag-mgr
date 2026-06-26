@@ -505,6 +505,14 @@ export default function App() {
     setActiveRoute(route);
     setMobileNavOpen(false);
 
+    if (route !== "/honor-a-hero") {
+      setIsNominating(false);
+    }
+
+    if (route !== "/my-flags") {
+      setSelectedClaim(null);
+    }
+
     if (window.location.pathname !== route) {
       if (options?.replace) {
         window.history.replaceState(null, "", route);
@@ -552,8 +560,17 @@ export default function App() {
 
   useEffect(() => {
     const handlePopState = () => {
-      setActiveRoute(normalizeAppRoute(window.location.pathname));
+      const nextRoute = normalizeAppRoute(window.location.pathname);
+      setActiveRoute(nextRoute);
       setMobileNavOpen(false);
+
+      if (nextRoute !== "/honor-a-hero") {
+        setIsNominating(false);
+      }
+
+      if (nextRoute !== "/my-flags") {
+        setSelectedClaim(null);
+      }
     };
 
     window.addEventListener("popstate", handlePopState);
@@ -2984,7 +3001,7 @@ export default function App() {
             </div>
           ) : null}
 
-          {selectedClaim || isNominating ? (
+          {((selectedClaim && isMyFlagsRoute) || (isNominating && isHonorHeroRoute)) ? (
             <section id={isNominating ? "nominate" : undefined} ref={formCardRef} className="card formCard">
               <div className="sectionHeader">
                 <div>
