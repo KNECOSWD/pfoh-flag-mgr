@@ -60,6 +60,14 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
     [HttpGet("approved-reprint-queue")]
     public async Task<ActionResult<IReadOnlyList<AdminPrintQueueItemDto>>> GetApprovedReprintQueue(CancellationToken ct)
     {
+        var adminName = User.GetEmail();
+        if (string.IsNullOrWhiteSpace(adminName))
+        {
+            adminName = User.GetDisplayName() ?? "PFOH.Admin";
+        }
+
+        await DeactivateDuplicateActiveReprintQueueItemsAsync(adminName, ct);
+
         var approved = await db.HonoreeChangeRequests
             .AsNoTracking()
             .Include(r => r.FlagClaim)
@@ -479,6 +487,8 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
                 return BadRequest(new { message = "This honoree is not assigned to a flag grid yet." });
             }
 
+            await DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, keepChangeRequestId: null, adminName, ct);
+
             var existingQueueItem = await db.HonoreeChangeRequests
                 .AsNoTracking()
                 .Include(r => r.FlagGrid)
@@ -648,6 +658,8 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
 
             if (request.RequiresCardReprint)
             {
+                await DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, change.Id, adminName, ct);
+
                 try
                 {
                     await RegenerateHonoreePdfAsync(honoree.Id, ct);
@@ -983,6 +995,8 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         string reviewNotes,
         CancellationToken ct)
     {
+        await DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, keepChangeRequestId: null, adminName, ct);
+
         var existingQueueItem = await db.HonoreeChangeRequests
             .AsNoTracking()
             .Include(r => r.FlagGrid)
@@ -1056,6 +1070,83 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         await db.SaveChangesAsync(ct);
 
         return await ToPrintQueueDto(queueRequest, ct);
+    }
+
+    private async Task DeactivateDuplicateActiveReprintQueueItemsAsync(string adminName, CancellationToken ct)
+    {
+        var duplicateHonoreeIds = await db.HonoreeChangeRequests
+            .AsNoTracking()
+            .Where(r =>
+                r.HonoreeId.HasValue &&
+                r.RequestStatus == "Approved" &&
+                r.RequiresCardReprint &&
+                r.CardPrintedUtc == null)
+            .GroupBy(r => r.HonoreeId!.Value)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToListAsync(ct);
+
+        foreach (var honoreeId in duplicateHonoreeIds)
+        {
+            await DeactivateOtherActiveReprintItemsForHonoreeAsync(honoreeId, keepChangeRequestId: null, adminName, ct);
+        }
+    }
+
+    private async Task DeactivateOtherActiveReprintItemsForHonoreeAsync(
+        int honoreeId,
+        int? keepChangeRequestId,
+        string adminName,
+        CancellationToken ct)
+    {
+        var activeItems = await db.HonoreeChangeRequests
+            .Include(r => r.FlagClaim)
+            .Where(r =>
+                r.HonoreeId == honoreeId &&
+                r.RequestStatus == "Approved" &&
+                r.RequiresCardReprint &&
+                r.CardPrintedUtc == null)
+            .OrderByDescending(r => r.ReviewedUtc ?? r.SubmittedUtc ?? r.CreatedUtc)
+            .ThenByDescending(r => r.Id)
+            .ToListAsync(ct);
+
+        if (activeItems.Count <= 1)
+        {
+            return;
+        }
+
+        var keepItem = keepChangeRequestId.HasValue
+            ? activeItems.FirstOrDefault(r => r.Id == keepChangeRequestId.Value)
+            : activeItems.FirstOrDefault();
+
+        if (keepItem is null)
+        {
+            keepItem = activeItems.First();
+        }
+
+        var now = DateTime.UtcNow;
+        var duplicates = activeItems
+            .Where(r => r.Id != keepItem.Id)
+            .ToList();
+
+        foreach (var duplicate in duplicates)
+        {
+            duplicate.RequiresCardReprint = false;
+            duplicate.ReviewedBy = adminName;
+            duplicate.ReviewedUtc = now;
+            duplicate.ReviewNotes = string.IsNullOrWhiteSpace(duplicate.ReviewNotes)
+                ? $"Removed duplicate reprint queue item. Active queue item #{keepItem.Id} remains for this honoree."
+                : $"{duplicate.ReviewNotes}\nRemoved duplicate reprint queue item. Active queue item #{keepItem.Id} remains for this honoree.";
+
+            if (duplicate.FlagClaim?.ClaimStatus == "AdminReprintQueued")
+            {
+                duplicate.FlagClaim.ClaimStatus = "AdminReprintDuplicateRemoved";
+                duplicate.FlagClaim.AdminNotes = string.IsNullOrWhiteSpace(duplicate.FlagClaim.AdminNotes)
+                    ? $"Removed duplicate reprint queue item. Active queue item #{keepItem.Id} remains for this honoree."
+                    : $"{duplicate.FlagClaim.AdminNotes}\nRemoved duplicate reprint queue item. Active queue item #{keepItem.Id} remains for this honoree.";
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
     }
 
     private async Task<AdminPrintQueueItemDto> ToPrintQueueDto(HonoreeChangeRequest r, CancellationToken ct)
