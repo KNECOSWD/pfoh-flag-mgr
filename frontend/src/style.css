@@ -10215,3 +10215,129 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
     box-shadow: inset 3px 0 0 #ffd56a !important;
   }
 }
+
+
+/* Mobile footer polish */
+@media (max-width: 760px) {
+  .appFooter {
+    margin-top: auto !important;
+    background:
+      linear-gradient(180deg, #eaf1f8 0%, #e5edf6 100%),
+      #e5edf6 !important;
+  }
+
+  .appFooterInner {
+    width: min(100% - 2rem, 34rem) !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 1.15rem !important;
+    padding-top: 1.35rem !important;
+    padding-bottom: 1.15rem !important;
+  }
+
+  .appFooterInner::after {
+    right: -10rem !important;
+    bottom: -8rem !important;
+    width: 28rem !important;
+    height: 12rem !important;
+    opacity: 0.16 !important;
+  }
+
+  .footerExplore,
+  .footerLoop,
+  .footerBrand,
+  .footerContact,
+  .footerCredit {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    justify-self: stretch !important;
+  }
+
+  .footerColumn {
+    gap: 0.6rem !important;
+  }
+
+  .footerColumn h2 {
+    margin-bottom: 0.35rem !important;
+    font-size: 0.88rem !important;
+    letter-spacing: 0.03em !important;
+  }
+
+  .footerColumn a {
+    font-size: 0.98rem !important;
+    line-height: 1.2 !important;
+  }
+
+  .footerLoop {
+    padding-top: 0.85rem;
+    border-top: 1px solid rgba(15, 50, 108, 0.10);
+  }
+
+  .footerSocials {
+    gap: 0.55rem !important;
+  }
+
+  .footerSocials a {
+    width: 2.35rem !important;
+    height: 2.35rem !important;
+  }
+
+  .footerBrand {
+    padding-top: 0.85rem;
+    border-top: 1px solid rgba(15, 50, 108, 0.10);
+  }
+
+  .footerBrand img {
+    width: min(100%, 18.5rem) !important;
+  }
+
+  .footerContact {
+    padding-top: 0.35rem;
+  }
+
+  .footerContact a {
+    width: fit-content !important;
+    min-height: 2.15rem !important;
+    padding: 0.42rem 0.85rem !important;
+    font-size: 0.94rem !important;
+  }
+
+  .footerCredit {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 0.5rem !important;
+    width: 100% !important;
+    margin-top: 0 !important;
+    padding-top: 0.8rem !important;
+    border-top: 1px solid rgba(15, 50, 108, 0.12) !important;
+  }
+
+  .footerCredit span {
+    font-size: 0.82rem !important;
+  }
+
+  .footerCredit img {
+    width: 6.6rem !important;
+    max-width: 45vw !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .appFooterInner {
+    width: calc(100% - 1.4rem) !important;
+    gap: 1rem !important;
+  }
+
+  .footerColumn a {
+    font-size: 0.92rem !important;
+  }
+
+  .footerBrand img {
+    width: min(100%, 17rem) !important;
+  }
+
+  .footerCredit img {
+    width: 6.1rem !important;
+  }
+}
