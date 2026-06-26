@@ -9263,3 +9263,90 @@ img.ownedFlagImage {
     justify-content: center;
   }
 }
+
+
+/* Align admin alert with page content and footer bottom row */
+.adminAlertBanner {
+  width: min(1180px, calc(100% - 2rem)) !important;
+  max-width: min(1180px, calc(100% - 2rem)) !important;
+}
+
+.footerBrand {
+  grid-column: 1 / 2 !important;
+  grid-row: 3 !important;
+  align-self: center;
+}
+
+.footerCredit {
+  grid-column: 2 / 3 !important;
+  grid-row: 3 !important;
+  justify-self: center;
+  align-self: center;
+  width: auto !important;
+  justify-content: center;
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+  border-top: 0 !important;
+}
+
+.footerContact {
+  grid-column: 3 / 4 !important;
+  grid-row: 3 !important;
+  align-self: center;
+  justify-self: end;
+}
+
+.footerCredit img {
+  width: 7.35rem;
+  max-width: 100%;
+}
+
+@media (max-width: 760px) {
+  .adminAlertBanner {
+    width: min(100%, 34rem) !important;
+    max-width: calc(100vw - 1.44rem) !important;
+  }
+
+  .footerBrand,
+  .footerCredit,
+  .footerContact {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    justify-self: start;
+  }
+
+  .footerCredit {
+    width: 100% !important;
+    justify-content: flex-start;
+    padding-top: 0.9rem !important;
+    border-top: 1px solid rgba(15, 50, 108, 0.12) !important;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+  .adminAlertBanner {
+    width: calc(100% - 1.4rem) !important;
+    max-width: calc(100% - 1.4rem) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  .footerBrand {
+    grid-column: 1 / 2 !important;
+    grid-row: 3 !important;
+  }
+
+  .footerCredit {
+    grid-column: 2 / 3 !important;
+    grid-row: 3 !important;
+    justify-self: center;
+    width: auto !important;
+    padding-top: 0 !important;
+    border-top: 0 !important;
+  }
+
+  .footerContact {
+    grid-column: 3 / 4 !important;
+    grid-row: 3 !important;
+  }
+}
