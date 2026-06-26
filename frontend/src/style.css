@@ -8548,3 +8548,149 @@ img.ownedFlagImage {
     padding-bottom: 0.15em !important;
   }
 }
+
+
+/* Assign flag grid modal from honoree search */
+.assignGridModal {
+  width: min(100% - 2rem, 44rem);
+}
+
+.assignGridFilters {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(9rem, 0.45fr);
+  gap: 0.7rem;
+  margin: 0.85rem 0 0.75rem;
+}
+
+.assignGridFilters label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.assignGridFilters input,
+.assignGridFilters select {
+  width: 100%;
+  min-height: 2.35rem;
+  border: 1px solid #cfd8e8;
+  border-radius: 0.65rem;
+  padding: 0.45rem 0.65rem;
+  background: #ffffff;
+  color: #071a3b;
+  font-size: 0.95rem;
+}
+
+.assignGridListHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0.35rem 0 0.45rem;
+  color: #53627a;
+  font-size: 0.86rem;
+}
+
+.assignGridListHeader strong {
+  color: #071a3b;
+}
+
+.assignGridListHeader span {
+  flex: 0 0 auto;
+  padding: 0.18rem 0.48rem;
+  border-radius: 999px;
+  background: #eef3f9;
+  color: #173b73;
+  font-weight: 850;
+}
+
+.assignGridList {
+  max-height: min(42vh, 22rem);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.6rem, 1fr));
+  gap: 0.45rem;
+  overflow: auto;
+  padding: 0.45rem;
+  border: 1px solid #dce6f3;
+  border-radius: 0.85rem;
+  background: #fbfdff;
+}
+
+.assignGridOption {
+  min-height: 3.35rem;
+  display: grid;
+  align-content: center;
+  gap: 0.12rem;
+  padding: 0.45rem;
+  border: 1px solid #bfe4ce;
+  border-radius: 0.7rem;
+  background: #f0fbf4;
+  color: #071a3b;
+  box-shadow: none;
+  text-align: left;
+}
+
+.assignGridOption strong {
+  font-size: 0.98rem;
+  line-height: 1;
+}
+
+.assignGridOption span {
+  color: #53627a;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.assignGridOption:hover:not(:disabled),
+.assignGridOption:focus-visible {
+  border-color: #173b73;
+  background: #eaf2fc;
+  color: #071a3b;
+  transform: none;
+  box-shadow: 0 0 0 3px rgba(23, 59, 115, 0.10);
+}
+
+.assignGridOption.isSelected {
+  border-color: #173b73;
+  background: #173b73;
+  color: #ffffff;
+}
+
+.assignGridOption.isSelected span {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+@media (max-width: 760px) {
+  .assignGridModal {
+    width: min(100% - 1rem, 44rem) !important;
+  }
+
+  .assignGridFilters {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+  }
+
+  .assignGridList {
+    max-height: 38vh;
+    grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr));
+  }
+
+  .assignGridOption {
+    min-height: 3.05rem;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+  .assignGridModal {
+    width: min(100% - 1rem, 48rem) !important;
+    max-height: calc(100vh - 1rem) !important;
+    overflow: auto;
+  }
+
+  .assignGridFilters {
+    grid-template-columns: minmax(12rem, 1fr) minmax(8rem, 0.45fr);
+    margin-top: 0.55rem;
+  }
+
+  .assignGridList {
+    max-height: 30vh;
+  }
+}

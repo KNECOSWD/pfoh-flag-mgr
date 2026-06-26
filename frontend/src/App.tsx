@@ -216,6 +216,10 @@ export default function App() {
   const [claimantBusyHonoreeId, setClaimantBusyHonoreeId] = useState<number | null>(null);
   const [flagPositions, setFlagPositions] = useState<AdminFlagPosition[]>([]);
   const [flagPositionHonoree, setFlagPositionHonoree] = useState<HonoreeSearchResult | null>(null);
+  const [assignGridHonoree, setAssignGridHonoree] = useState<HonoreeSearchResult | null>(null);
+  const [selectedAssignFlagGridId, setSelectedAssignFlagGridId] = useState("");
+  const [assignGridSearchText, setAssignGridSearchText] = useState("");
+  const [assignGridSectionFilter, setAssignGridSectionFilter] = useState("");
   const [flagPositionBusyId, setFlagPositionBusyId] = useState<number | null>(null);
   const [flagPositionsLoading, setFlagPositionsLoading] = useState(false);
   const [showFlagPositionManager, setShowFlagPositionManager] = useState(true);
@@ -276,6 +280,50 @@ export default function App() {
       [...new Set(flagPositions.map((position) => position.rowLabel || "Other"))]
         .sort(compareFlagSections),
     [flagPositions]
+  );
+
+  const openAssignableFlagPositions = useMemo(
+    () =>
+      flagPositions
+        .filter((position) => position.isOpen && !position.isReserved)
+        .sort((a, b) => a.flagGridName.localeCompare(b.flagGridName, undefined, { numeric: true, sensitivity: "base" })),
+    [flagPositions]
+  );
+
+  const assignGridSections = useMemo(
+    () =>
+      [...new Set(openAssignableFlagPositions.map((position) => position.rowLabel || "Other"))]
+        .sort(compareFlagSections),
+    [openAssignableFlagPositions]
+  );
+
+  const filteredAssignableFlagPositions = useMemo(() => {
+    const query = assignGridSearchText.trim().toLowerCase();
+
+    return openAssignableFlagPositions.filter((position) => {
+      if (assignGridSectionFilter && (position.rowLabel || "Other") !== assignGridSectionFilter) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      return [
+        position.flagGridName,
+        position.rowLabel
+      ]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(query));
+    });
+  }, [assignGridSearchText, assignGridSectionFilter, openAssignableFlagPositions]);
+
+  const selectedAssignFlagGrid = useMemo(
+    () =>
+      openAssignableFlagPositions.find(
+        (position) => String(position.flagGridId) === selectedAssignFlagGridId
+      ) ?? null,
+    [openAssignableFlagPositions, selectedAssignFlagGridId]
   );
 
   const filteredFlagPositions = useMemo(() => {
@@ -1123,17 +1171,81 @@ export default function App() {
     }
   }
 
-  function beginFlagPositionAssignment(honoree: HonoreeSearchResult) {
-    setFlagPositionHonoree(honoree);
-    setShowFlagPositionManager(true);
-    setNotice(`Select an open flag grid for ${displayNameWithNickname(honoree.fullName, honoree.nickname)}.`);
+  async function beginFlagPositionAssignment(honoree: HonoreeSearchResult) {
+    if (!account || !isAdmin) return;
 
-    window.setTimeout(() => {
-      document.getElementById("flag-position-manager")?.scrollIntoView({
-        behavior: "smooth",
-        block: "start"
-      });
-    }, 75);
+    setAssignGridHonoree(honoree);
+    setSelectedAssignFlagGridId("");
+    setAssignGridSearchText("");
+    setAssignGridSectionFilter("");
+    setFlagPositionHonoree(null);
+    setError("");
+    setNotice("");
+
+    setFlagPositionsLoading(true);
+    try {
+      const positions = await adminApi.flagPositions(instance, account);
+      setFlagPositions(positions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load open flag grids.");
+    } finally {
+      setFlagPositionsLoading(false);
+    }
+  }
+
+  function closeAssignGridHonoreeModal() {
+    setAssignGridHonoree(null);
+    setSelectedAssignFlagGridId("");
+    setAssignGridSearchText("");
+    setAssignGridSectionFilter("");
+  }
+
+  async function assignSelectedGridToHonoree() {
+    if (!account || !assignGridHonoree || !selectedAssignFlagGrid) return;
+
+    const honoreeName = displayNameWithNickname(assignGridHonoree.fullName, assignGridHonoree.nickname);
+    const flagGridName = selectedAssignFlagGrid.flagGridName;
+    const ok = await requestConfirmation(
+      `Assign ${honoreeName} to flag grid ${flagGridName}? The PDF will be regenerated and the card will be added to the reprint queue.`,
+      { title: "Assign flag grid", confirmText: "Assign flag grid" }
+    );
+
+    if (!ok) return;
+
+    setFlagPositionBusyId(selectedAssignFlagGrid.flagGridId);
+    setError("");
+    setNotice(`Assigning ${honoreeName} to ${flagGridName}...`);
+
+    try {
+      await adminApi.assignFlagPosition(instance, account, selectedAssignFlagGrid.flagGridId, assignGridHonoree.id);
+      const [positions, results, unassigned, queue] = await Promise.all([
+        adminApi.flagPositions(instance, account),
+        honoreeSearchPerformed ? honoreeApi.search(honoreeSearchText, 25) : Promise.resolve(honoreeResults),
+        adminApi.unassignedHonorees(instance, account),
+        adminApi.printQueue(instance, account)
+      ]);
+
+      setFlagPositions(positions);
+      setUnassignedHonorees(unassigned);
+      setPrintQueue(queue);
+      setSelectedPrintIds((current) =>
+        current.filter((id) => queue.some((item) => item.changeRequestId === id))
+      );
+
+      if (honoreeSearchPerformed) {
+        setHonoreeResults(results);
+        setClaimantsByHonoreeId({});
+        await loadClaimantsForSearchResults(results);
+      }
+
+      closeAssignGridHonoreeModal();
+      setNotice(`${honoreeName} was assigned to ${flagGridName}, the PDF was regenerated, and the card was added to the reprint queue.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to assign flag grid.");
+      setNotice("");
+    } finally {
+      setFlagPositionBusyId(null);
+    }
   }
 
   function selectFlagPositionHonoree(honoreeIdValue: string) {
@@ -1789,6 +1901,108 @@ export default function App() {
             </div>
           ) : null}
 
+          {assignGridHonoree ? (
+            <div
+              className="modalOverlay assignGridModalOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="assign-grid-title"
+              onClick={closeAssignGridHonoreeModal}
+            >
+              <div className="modalCard assignGridModal" onClick={(event) => event.stopPropagation()}>
+                <div className="sectionHeader">
+                  <div>
+                    <p className="eyebrow">Assign flag grid</p>
+                    <h2 id="assign-grid-title">{displayNameWithNickname(assignGridHonoree.fullName, assignGridHonoree.nickname)}</h2>
+                    <p className="helperText">
+                      Choose an open, non-reserved flag grid. The PDF will regenerate and the card will be added to the reprint queue.
+                    </p>
+                  </div>
+                  <button type="button" className="secondary subtleRefreshButton" onClick={closeAssignGridHonoreeModal}>
+                    Close
+                  </button>
+                </div>
+
+                <div className="assignGridFilters" aria-label="Open flag grid filters">
+                  <label>
+                    <span className="fieldLabelText">Search open flag grids</span>
+                    <input
+                      type="search"
+                      placeholder="Search grid or section"
+                      value={assignGridSearchText}
+                      onChange={(event) => setAssignGridSearchText(event.target.value)}
+                    />
+                  </label>
+
+                  <label>
+                    <span className="fieldLabelText">Section</span>
+                    <select
+                      value={assignGridSectionFilter}
+                      onChange={(event) => setAssignGridSectionFilter(event.target.value)}
+                    >
+                      <option value="">All sections</option>
+                      {assignGridSections.map((section) => (
+                        <option key={section} value={section}>
+                          {section}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="assignGridListHeader">
+                  <strong>Available open grids</strong>
+                  <span>{filteredAssignableFlagPositions.length} shown</span>
+                </div>
+
+                {flagPositionsLoading ? (
+                  <p className="emptyState">Loading open flag grids...</p>
+                ) : filteredAssignableFlagPositions.length === 0 ? (
+                  <p className="emptyState">No open flag grids match the current filters.</p>
+                ) : (
+                  <div className="assignGridList" role="listbox" aria-label="Available open flag grids">
+                    {filteredAssignableFlagPositions.map((position) => (
+                      <button
+                        key={position.flagGridId}
+                        type="button"
+                        className={selectedAssignFlagGridId === String(position.flagGridId) ? "assignGridOption isSelected" : "assignGridOption"}
+                        onClick={() => setSelectedAssignFlagGridId(String(position.flagGridId))}
+                        role="option"
+                        aria-selected={selectedAssignFlagGridId === String(position.flagGridId)}
+                      >
+                        <strong>{position.flagGridName}</strong>
+                        <span>Section {position.rowLabel || "Other"}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="modalActions">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={closeAssignGridHonoreeModal}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      !selectedAssignFlagGrid ||
+                      flagPositionsLoading ||
+                      (selectedAssignFlagGrid ? flagPositionBusyId === selectedAssignFlagGrid.flagGridId : false)
+                    }
+                    onClick={() => void assignSelectedGridToHonoree()}
+                  >
+                    {selectedAssignFlagGrid && flagPositionBusyId === selectedAssignFlagGrid.flagGridId
+                      ? "Assigning..."
+                      : "Assign selected grid"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {flagPositionModalPosition ? (
             <div
               className="modalOverlay assignFlagModalOverlay"
@@ -2051,7 +2265,7 @@ export default function App() {
                                     className="secondary compactButton"
                                     onClick={(event) => {
                                       (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
-                                      beginFlagPositionAssignment(honoree);
+                                      void beginFlagPositionAssignment(honoree);
                                     }}
                                     disabled={saving}
                                   >
@@ -2318,14 +2532,6 @@ export default function App() {
                       </button>
                     </div>
                   </div>
-
-                  {flagPositionHonoree ? (
-                    <div className="flagPositionSummary">
-                      <span>
-                        Assigning <strong>{displayNameWithNickname(flagPositionHonoree.fullName, flagPositionHonoree.nickname)}</strong>
-                      </span>
-                    </div>
-                  ) : null}
 
                   <p className="helperText flagAssignmentHelp">
                     Click a flag grid to view details, assign open grids, or clear occupied grids.
