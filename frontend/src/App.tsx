@@ -396,6 +396,23 @@ export default function App() {
     await instance.logoutRedirect();
   }
 
+  function scrollToAppSection(hash: string) {
+    window.setTimeout(() => {
+      const id = hash.replace("#", "");
+      const target = document.getElementById(id);
+
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        window.history.replaceState(null, "", hash);
+      }
+    }, 80);
+  }
+
+  function navigateFromMobileDrawer(hash: string) {
+    setMobileNavOpen(false);
+    scrollToAppSection(hash);
+  }
+
   function requestConfirmation(
     message: string,
     options?: {
@@ -1571,17 +1588,18 @@ export default function App() {
                 </p>
 
                 <nav className="mobileDrawerNav" aria-label="Mobile navigation">
-                  <a href="#search" onClick={() => setMobileNavOpen(false)}>Find a flag</a>
-                  {isAuthenticated ? <a href="#my-flags" onClick={() => setMobileNavOpen(false)}>My flags</a> : null}
-                  {isAdmin ? <a href="#admin" onClick={() => setMobileNavOpen(false)}>Admin</a> : null}
-                  {isAdmin ? <a href="#reprint-queue" onClick={() => setMobileNavOpen(false)}>Reprint queue</a> : null}
-                  {isAdmin ? <a href="#flag-position-manager" onClick={() => setMobileNavOpen(false)}>Flag grids</a> : null}
+                  <a href="#search" onClick={(event) => { event.preventDefault(); navigateFromMobileDrawer("#search"); }}>Find a flag</a>
+                  {isAuthenticated ? <a href="#my-flags" onClick={(event) => { event.preventDefault(); navigateFromMobileDrawer("#my-flags"); }}>My flags</a> : null}
+                  {isAdmin ? <a href="#admin" onClick={(event) => { event.preventDefault(); navigateFromMobileDrawer("#admin"); }}>Admin</a> : null}
+                  {isAdmin ? <a href="#reprint-queue" onClick={(event) => { event.preventDefault(); navigateFromMobileDrawer("#reprint-queue"); }}>Reprint queue</a> : null}
+                  {isAdmin ? <a href="#flag-position-manager" onClick={(event) => { event.preventDefault(); navigateFromMobileDrawer("#flag-position-manager"); }}>Flag grids</a> : null}
                   <a
                     href="#nominate"
                     onClick={(event) => {
                       event.preventDefault();
                       setMobileNavOpen(false);
                       beginNomination();
+                      scrollToAppSection("#nominate");
                     }}
                   >
                     Nominate a honoree
