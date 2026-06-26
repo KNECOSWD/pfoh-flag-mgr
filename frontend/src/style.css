@@ -6973,3 +6973,44 @@ img.ownedFlagImage {
     min-height: 2.1rem;
   }
 }
+
+
+/* Print Center empty-space cleanup */
+.adminPrintingCard .adminCardSummary {
+  margin-bottom: 0.8rem;
+}
+
+.adminPrintingCard .reprintQueuePanel {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.adminPrintingCard .printHeader {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.adminPrintingCard .printHeader + .tableWrap {
+  margin-top: 0;
+}
+
+.adminPrintingCard .tableWrap {
+  margin-top: 0.35rem;
+}
+
+.adminPrintingCard > .sectionHeader {
+  margin-bottom: 0.7rem;
+}
+
+@media (max-width: 760px) {
+  .adminPrintingCard .adminCardSummary {
+    margin-bottom: 0.55rem;
+  }
+
+  .adminPrintingCard .printHeader {
+    margin-bottom: 0.55rem;
+  }
+}
