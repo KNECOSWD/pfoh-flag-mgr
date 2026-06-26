@@ -9839,3 +9839,61 @@ main {
     font-size: 0.9rem !important;
   }
 }
+
+
+/* Remove bottom gap below footer */
+html,
+body,
+#root {
+  min-height: 100%;
+  margin-bottom: 0 !important;
+}
+
+body {
+  background: #e9eef4 !important;
+}
+
+#root {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1 0 auto;
+  min-height: 100dvh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+  background: #eef3f9;
+}
+
+.appFooter {
+  flex-shrink: 0;
+  margin-top: auto !important;
+  margin-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.appFooterInner {
+  margin-bottom: 0 !important;
+}
+
+/* The app footer owns the final page edge, so do not let later mobile safe-area/body padding create a visible strip. */
+@media (max-width: 760px) {
+  body {
+    padding-bottom: 0 !important;
+  }
+
+  main {
+    padding-bottom: 0 !important;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+  body,
+  main {
+    padding-bottom: 0 !important;
+  }
+}
