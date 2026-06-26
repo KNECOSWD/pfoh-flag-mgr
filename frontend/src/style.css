@@ -7014,3 +7014,138 @@ img.ownedFlagImage {
     margin-bottom: 0.55rem;
   }
 }
+
+
+/* Mobile header menu polish: make it feel like a real site menu, not a form dropdown */
+@media (max-width: 760px) {
+  .hero {
+    position: relative;
+    overflow: visible !important;
+  }
+
+  .mobileNavToggle {
+    position: absolute;
+    top: 0.62rem;
+    right: 0.72rem;
+    z-index: 8;
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 2.05rem !important;
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    gap: 0.42rem;
+    margin: 0 !important;
+    padding: 0.34rem 0.68rem !important;
+    border: 1px solid rgba(255, 255, 255, 0.30);
+    border-radius: 999px !important;
+    background: rgba(4, 13, 31, 0.54) !important;
+    color: #ffffff;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(7px);
+    font-size: 0.78rem !important;
+    font-weight: 850;
+    line-height: 1;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.42);
+  }
+
+  .mobileNavToggle::before {
+    content: "☰";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.98rem;
+    line-height: 1;
+    transform: translateY(-0.02rem);
+  }
+
+  .mobileNavToggle[aria-expanded="true"]::before {
+    content: "×";
+    font-size: 1.18rem;
+    font-weight: 900;
+  }
+
+  .mobileNavToggle span {
+    display: none !important;
+  }
+
+  .heroNav,
+  .heroNav.isOpen {
+    z-index: 9;
+  }
+
+  .heroNav {
+    display: none;
+  }
+
+  .heroNav.isOpen {
+    position: absolute;
+    top: calc(100% + 0.46rem);
+    left: 0.72rem;
+    right: 0.72rem;
+    width: auto !important;
+    max-width: none !important;
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 0.08rem;
+    margin: 0 !important;
+    padding: 0.45rem !important;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 0.95rem !important;
+    background: rgba(5, 17, 40, 0.96) !important;
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+    backdrop-filter: blur(10px);
+  }
+
+  .heroNav.isOpen::before {
+    content: "";
+    position: absolute;
+    top: -0.43rem;
+    right: 1.25rem;
+    width: 0.72rem;
+    height: 0.72rem;
+    transform: rotate(45deg);
+    border-left: 1px solid rgba(255, 255, 255, 0.18);
+    border-top: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(5, 17, 40, 0.96);
+  }
+
+  .heroNav a {
+    min-height: 2.1rem !important;
+    padding: 0.46rem 0.58rem !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 0.55rem;
+    color: #ffffff;
+    font-size: 0.84rem !important;
+    font-weight: 800;
+  }
+
+  .heroNav a:last-of-type {
+    border-bottom: 0;
+  }
+
+  .heroNav a:hover,
+  .heroNav a:focus-visible {
+    background: rgba(255, 255, 255, 0.10);
+  }
+
+  .mobileAccountMenu {
+    margin-top: 0.12rem;
+    padding: 0.52rem 0.48rem 0.18rem;
+  }
+}
+
+@media (max-width: 430px) {
+  .mobileNavToggle {
+    top: 0.55rem;
+    right: 0.58rem;
+    min-height: 1.95rem !important;
+    padding: 0.32rem 0.58rem !important;
+    font-size: 0.74rem !important;
+  }
+
+  .heroNav.isOpen {
+    left: 0.58rem;
+    right: 0.58rem;
+  }
+}
