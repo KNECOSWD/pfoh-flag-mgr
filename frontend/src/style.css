@@ -10173,3 +10173,45 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
     grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr)) !important;
   }
 }
+
+
+/* Active navigation underline fix */
+.desktopHeroNav a.isActive {
+  position: relative !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-decoration: none !important;
+}
+
+.desktopHeroNav a.isActive::after {
+  content: "";
+  position: absolute;
+  left: 0.15rem;
+  right: 0.15rem;
+  bottom: 0.12rem;
+  height: 2px;
+  border-radius: 0 !important;
+  background: #ffd56a;
+}
+
+.desktopHeroNav a.isActive:hover,
+.desktopHeroNav a.isActive:focus-visible {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-radius: 0.4rem !important;
+}
+
+.desktopHeroNav a.isActive:hover::after,
+.desktopHeroNav a.isActive:focus-visible::after {
+  left: 0.2rem;
+  right: 0.2rem;
+}
+
+@media (max-width: 760px) {
+  .mobileDrawerNav a.isActive {
+    border-radius: 0.55rem !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+    box-shadow: inset 3px 0 0 #ffd56a !important;
+  }
+}
