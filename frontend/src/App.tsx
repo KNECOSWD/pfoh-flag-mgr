@@ -2407,22 +2407,6 @@ export default function App() {
                   <span><strong>{printQueueMissingPdfCount}</strong> PDF warnings</span>
                 </div>
 
-              <details className={`printCenterIntro compactPrintCenter slimWorkflowHelp ${printQueue.length === 0 && selectedPrintQueueItems.length === 0 ? "isCollapsedEmpty thinEmptyPanel" : ""}`}>
-                <summary>
-                  <div>
-                    <p className="eyebrow">Print Center</p>
-                    <h3>Reprint workflow</h3>
-                  </div>
-                  <div className="pdfHealth">
-                    <strong>{printQueueMissingPdfCount === 0 ? "PDFs ready" : `${printQueueMissingPdfCount} PDF warning(s)`}</strong>
-                    <span>{selectedPrintQueueItems.length} selected</span>
-                  </div>
-                </summary>
-                <p className="printCenterDetails">
-                  Verify PDFs, select cards, download one merged PDF, then mark printed after the physical cards are accepted.
-                </p>
-              </details>
-
               {printQueue.length === 0 ? (
                 <details id="reprint-queue" className="reprintQueuePanel collapsedEmptyPanel thinEmptyPanel">
                   <summary className="sectionHeader printHeader">
