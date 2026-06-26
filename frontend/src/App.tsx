@@ -794,13 +794,9 @@ export default function App() {
       return;
     }
 
-    const ok = await requestConfirmation(
-      `Add ${displayNameWithNickname(honoree.fullName, honoree.nickname)} to the card reprint queue?`,
-      { title: "Add to reprint queue", confirmText: "Add to queue" }
-    );
-
-    if (!ok) return;
-
+    // This action is safe/idempotent and is often triggered from a mobile
+    // details/dropdown menu. Run it directly instead of opening a confirmation
+    // dialog so iPhone/iPad Safari does not swallow the tap.
     setQueueingReprintHonoreeId(honoree.id);
     setError("");
     setNotice(`Adding ${displayNameWithNickname(honoree.fullName, honoree.nickname)} to the reprint queue...`);
