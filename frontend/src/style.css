@@ -8841,3 +8841,111 @@ img.ownedFlagImage {
     flex: 0 0 auto;
   }
 }
+
+
+/* Review actions dropdown */
+.reviewActionsMenu {
+  position: relative;
+  width: max-content;
+  min-width: 10.5rem;
+}
+
+.reviewActionsMenu summary {
+  min-height: 2.2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.42rem 0.65rem;
+  border: 1px solid #cfd8e8;
+  border-radius: 0.7rem;
+  background: #ffffff;
+  color: #173b73;
+  box-shadow: 0 4px 12px rgba(15, 55, 107, 0.08);
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 850;
+  list-style: none;
+}
+
+.reviewActionsMenu summary::-webkit-details-marker {
+  display: none;
+}
+
+.reviewActionsMenu summary::after {
+  content: "▾";
+  color: #53627a;
+  font-size: 0.72rem;
+}
+
+.reviewActionsMenu[open] summary::after {
+  content: "▴";
+}
+
+.reviewActionsMenu.isBusy summary {
+  cursor: wait;
+  opacity: 0.8;
+}
+
+.reviewActionsPanel {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 30;
+  width: min(15rem, 72vw);
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.45rem;
+  border: 1px solid #dce6f3;
+  border-radius: 0.85rem;
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(7, 26, 59, 0.18);
+}
+
+.reviewActionsPanel button {
+  width: 100%;
+  min-height: 2.15rem;
+  justify-content: flex-start;
+  border-radius: 0.62rem;
+  box-shadow: none;
+  font-size: 0.84rem;
+}
+
+.reviewActionsPanel button.danger {
+  background: #fff4f4;
+  border: 1px solid #f0c4c4;
+  color: #8b1d1d;
+}
+
+.reviewActionsPanel button.danger:hover:not(:disabled),
+.reviewActionsPanel button.danger:focus-visible:not(:disabled) {
+  background: #9b1c31;
+  color: #ffffff;
+}
+
+.reviewTable .rowActions {
+  overflow: visible;
+}
+
+.reviewTable td {
+  overflow: visible;
+}
+
+@media (max-width: 760px) {
+  .reviewActionsMenu {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .reviewActionsMenu summary {
+    width: 100%;
+  }
+
+  .reviewActionsPanel {
+    position: static;
+    width: 100%;
+    margin-top: 0.4rem;
+    box-shadow: none;
+  }
+}

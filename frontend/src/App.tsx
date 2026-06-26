@@ -225,6 +225,7 @@ export default function App() {
   const [printQueue, setPrintQueue] = useState<AdminPrintQueueItem[]>([]);
   const [selectedPrintIds, setSelectedPrintIds] = useState<number[]>([]);
   const [adminBusyId, setAdminBusyId] = useState<number | null>(null);
+  const [adminBusyAction, setAdminBusyAction] = useState<"approve-reprint" | "approve" | "reject" | null>(null);
   const [regeneratingPdfHonoreeId, setRegeneratingPdfHonoreeId] = useState<number | null>(null);
   const [queueingReprintHonoreeId, setQueueingReprintHonoreeId] = useState<number | null>(null);
   const [claimantsByHonoreeId, setClaimantsByHonoreeId] = useState<Record<number, AdminClaimantSummary[]>>({});
@@ -1520,6 +1521,7 @@ export default function App() {
     }
 
     setAdminBusyId(item.changeRequestId);
+    setAdminBusyAction(requiresCardReprint ? "approve-reprint" : "approve");
     setError("");
     setNotice(`${requiresCardReprint ? "Approving and queuing reprint" : "Approving"} ${item.honoreeName}...`);
 
@@ -1532,6 +1534,7 @@ export default function App() {
       setNotice("");
     } finally {
       setAdminBusyId(null);
+      setAdminBusyAction(null);
     }
   }
 
@@ -1553,6 +1556,7 @@ export default function App() {
     }
 
     setAdminBusyId(item.changeRequestId);
+    setAdminBusyAction("reject");
     setError("");
     setNotice(`Rejecting ${item.honoreeName}...`);
 
@@ -1565,6 +1569,7 @@ export default function App() {
       setNotice("");
     } finally {
       setAdminBusyId(null);
+      setAdminBusyAction(null);
     }
   }
 
@@ -2597,30 +2602,72 @@ export default function App() {
                             <span>{item.claimantEmail}</span>
                           </td>
                           <td data-label="Submitted">{formatDate(item.submittedUtc)}</td>
-                          <td data-label="Actions" className="rowActions stackedActions">
-                            <button
-                              type="button"
-                              disabled={adminBusyId === item.changeRequestId}
-                              onClick={() => approveReview(item, true)}
+                          <td data-label="Actions" className="rowActions">
+                            <details
+                              className={adminBusyId === item.changeRequestId ? "reviewActionsMenu isBusy" : "reviewActionsMenu"}
+                              onBlur={(event) => {
+                                const nextFocus = event.relatedTarget as Node | null;
+                                if (!nextFocus || !event.currentTarget.contains(nextFocus)) {
+                                  event.currentTarget.removeAttribute("open");
+                                }
+                              }}
                             >
-                              {adminBusyId === item.changeRequestId ? "Approving..." : "Approve + reprint"}
-                            </button>
-                            <button
-                              type="button"
-                              className="secondary"
-                              disabled={adminBusyId === item.changeRequestId}
-                              onClick={() => approveReview(item, false)}
-                            >
-                              {adminBusyId === item.changeRequestId ? "Approving..." : "Approve only"}
-                            </button>
-                            <button
-                              type="button"
-                              className="danger"
-                              disabled={adminBusyId === item.changeRequestId}
-                              onClick={() => rejectReview(item)}
-                            >
-                              {adminBusyId === item.changeRequestId ? "Rejecting..." : "Reject"}
-                            </button>
+                              <summary
+                                onClick={(event) => {
+                                  if (adminBusyId === item.changeRequestId) {
+                                    event.preventDefault();
+                                  }
+                                }}
+                              >
+                                {adminBusyId === item.changeRequestId
+                                  ? adminBusyAction === "reject"
+                                    ? "Rejecting..."
+                                    : "Approving..."
+                                  : "Review actions"}
+                              </summary>
+                              <div className="reviewActionsPanel">
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
+                                    approveReview(item, true);
+                                  }}
+                                  disabled={adminBusyId === item.changeRequestId}
+                                >
+                                  {adminBusyId === item.changeRequestId && adminBusyAction === "approve-reprint"
+                                    ? "Approving + queueing..."
+                                    : "Approve + reprint"}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="secondary"
+                                  onClick={(event) => {
+                                    (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
+                                    approveReview(item, false);
+                                  }}
+                                  disabled={adminBusyId === item.changeRequestId}
+                                >
+                                  {adminBusyId === item.changeRequestId && adminBusyAction === "approve"
+                                    ? "Approving..."
+                                    : "Approve only"}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="danger"
+                                  onClick={(event) => {
+                                    (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
+                                    rejectReview(item);
+                                  }}
+                                  disabled={adminBusyId === item.changeRequestId}
+                                >
+                                  {adminBusyId === item.changeRequestId && adminBusyAction === "reject"
+                                    ? "Rejecting..."
+                                    : "Reject"}
+                                </button>
+                              </div>
+                            </details>
                           </td>
                         </tr>
                       ))}
