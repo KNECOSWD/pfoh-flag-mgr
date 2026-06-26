@@ -1774,11 +1774,9 @@ export default function App() {
             {isAdmin ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
             {isAdmin ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
             <a
+              className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
               href="/honor-a-hero"
-              onClick={(event) => {
-                event.preventDefault();
-                beginNomination();
-              }}
+              onClick={(event) => handleRouteLink(event, "/honor-a-hero")}
             >
               Nominate a honoree
             </a>
@@ -1821,12 +1819,9 @@ export default function App() {
                   {isAdmin ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
                   {isAdmin ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
                   <a
+                    className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
                     href="/honor-a-hero"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setMobileNavOpen(false);
-                      beginNomination();
-                    }}
+                    onClick={(event) => handleRouteLink(event, "/honor-a-hero")}
                   >
                     Nominate a honoree
                   </a>
