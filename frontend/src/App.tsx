@@ -2269,20 +2269,23 @@ export default function App() {
                 }}
                 aria-label="Search honorees"
               />
-              {honoreeSearchText ? (
+              <div className="searchActionButtons">
+                <button
+                  type="submit"
+                  className="searchSubmitButton"
+                  disabled={searchLoading || honoreeSearchText.trim() === ""}
+                >
+                  {searchLoading ? "Searching..." : "Search"}
+                </button>
                 <button
                   type="button"
-                  className="nativeSearchClear"
+                  className="secondary searchClearButton"
                   onClick={clearHonoreeSearch}
-                  aria-label="Clear search"
-                  title="Clear search"
+                  disabled={searchLoading || (honoreeSearchText.trim() === "" && !honoreeSearchPerformed)}
                 >
-                  ×
+                  Clear
                 </button>
-              ) : null}
-              <button type="submit" className="visuallyHidden">
-                Search
-              </button>
+              </div>
             </form>
 
             {showInlineHowItWorks ? (

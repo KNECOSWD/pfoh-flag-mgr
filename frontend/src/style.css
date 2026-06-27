@@ -10341,3 +10341,72 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
     width: 6.1rem !important;
   }
 }
+
+
+/* Search and clear buttons */
+.nativeSearchBar {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 0.65rem !important;
+  align-items: center !important;
+}
+
+.nativeSearchBar input {
+  min-width: 0;
+}
+
+.searchActionButtons {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.searchSubmitButton,
+.searchClearButton {
+  min-height: 2.35rem;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 0.48rem 0.85rem;
+}
+
+.searchClearButton {
+  min-width: 4.6rem;
+}
+
+@media (max-width: 760px) {
+  .nativeSearchBar {
+    grid-template-columns: 1fr !important;
+    gap: 0.55rem !important;
+  }
+
+  .searchActionButtons {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.75fr);
+    gap: 0.5rem;
+  }
+
+  .searchSubmitButton,
+  .searchClearButton {
+    width: 100%;
+    min-height: 2.45rem;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+  .nativeSearchBar {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .searchActionButtons {
+    width: auto;
+    display: inline-flex;
+  }
+
+  .searchSubmitButton,
+  .searchClearButton {
+    width: auto;
+    min-height: 2.15rem;
+    padding: 0.38rem 0.68rem;
+  }
+}
