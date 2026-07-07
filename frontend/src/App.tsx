@@ -2686,71 +2686,39 @@ export default function App() {
                           </td>
                           <td data-label="Submitted">{formatDate(item.submittedUtc)}</td>
                           <td data-label="Actions" className="rowActions">
-                            <details
-                              className={adminBusyId === item.changeRequestId ? "reviewActionsMenu isBusy" : "reviewActionsMenu"}
-                              onBlur={(event) => {
-                                const nextFocus = event.relatedTarget as Node | null;
-                                if (!nextFocus || !event.currentTarget.contains(nextFocus)) {
-                                  event.currentTarget.removeAttribute("open");
+                            <select
+                              className="reviewActionSelect"
+                              aria-label={`Review actions for ${item.honoreeName}`}
+                              value=""
+                              disabled={adminBusyId === item.changeRequestId}
+                              onChange={(event) => {
+                                const action = event.currentTarget.value;
+                                event.currentTarget.value = "";
+
+                                if (action === "approve-reprint") {
+                                  void approveReview(item, true);
+                                }
+
+                                if (action === "approve-only") {
+                                  void approveReview(item, false);
+                                }
+
+                                if (action === "reject") {
+                                  void rejectReview(item);
                                 }
                               }}
                             >
-                              <summary
-                                onClick={(event) => {
-                                  if (adminBusyId === item.changeRequestId) {
-                                    event.preventDefault();
-                                  }
-                                }}
-                              >
+                              <option value="">
                                 {adminBusyId === item.changeRequestId
                                   ? adminBusyAction === "reject"
                                     ? "Rejecting..."
                                     : "Approving..."
                                   : "Review actions"}
-                              </summary>
-                              <div className="reviewActionsPanel">
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
-                                    approveReview(item, true);
-                                  }}
-                                  disabled={adminBusyId === item.changeRequestId}
-                                >
-                                  {adminBusyId === item.changeRequestId && adminBusyAction === "approve-reprint"
-                                    ? "Approving + queueing..."
-                                    : "Approve + reprint"}
-                                </button>
-
-                                <button
-                                  type="button"
-                                  className="secondary"
-                                  onClick={(event) => {
-                                    (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
-                                    approveReview(item, false);
-                                  }}
-                                  disabled={adminBusyId === item.changeRequestId}
-                                >
-                                  {adminBusyId === item.changeRequestId && adminBusyAction === "approve"
-                                    ? "Approving..."
-                                    : "Approve only"}
-                                </button>
-
-                                <button
-                                  type="button"
-                                  className="danger"
-                                  onClick={(event) => {
-                                    (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
-                                    rejectReview(item);
-                                  }}
-                                  disabled={adminBusyId === item.changeRequestId}
-                                >
-                                  {adminBusyId === item.changeRequestId && adminBusyAction === "reject"
-                                    ? "Rejecting..."
-                                    : "Reject"}
-                                </button>
-                              </div>
-                            </details>
+                              </option>
+                              <option value="approve-reprint">Approve + reprint</option>
+                              <option value="approve-only">Approve only</option>
+                              <option value="reject">Reject</option>
+                            </select>
                           </td>
                         </tr>
                       ))}

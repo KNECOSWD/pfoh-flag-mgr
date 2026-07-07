@@ -10410,3 +10410,113 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
     padding: 0.38rem 0.68rem;
   }
 }
+
+
+/* Mobile search layout fix */
+.nativeSearchBar input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  display: none !important;
+}
+
+@media (max-width: 760px) {
+  .searchCard .nativeSearchBar,
+  .searchCard .searchBar {
+    min-height: 0 !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 0.6rem !important;
+    align-items: stretch !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+  }
+
+  .searchCard .nativeSearchBar::before,
+  .searchCard .searchBar::before {
+    display: none !important;
+    content: none !important;
+  }
+
+  .searchCard .nativeSearchBar input[type="search"],
+  .searchCard .searchBar input[type="search"] {
+    width: 100% !important;
+    min-height: 2.85rem !important;
+    display: block !important;
+    padding: 0.55rem 0.9rem !important;
+    border: 1px solid #cad7e8 !important;
+    border-radius: 999px !important;
+    background: #ffffff !important;
+    background-image: none !important;
+    box-shadow: inset 0 1px 2px rgba(15, 55, 107, 0.04) !important;
+    color: #071a3b !important;
+    font-size: 1rem !important;
+    text-align: left !important;
+    caret-color: #173b73 !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+  }
+
+  .searchCard .nativeSearchBar input[type="search"]::placeholder,
+  .searchCard .searchBar input[type="search"]::placeholder {
+    color: #60708a !important;
+    opacity: 1 !important;
+    text-align: left !important;
+  }
+
+  .searchCard .searchActionButtons {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.75fr) !important;
+    gap: 0.5rem !important;
+  }
+
+  .searchCard .searchSubmitButton,
+  .searchCard .searchClearButton {
+    width: 100% !important;
+    min-height: 2.55rem !important;
+    justify-content: center !important;
+    border-radius: 999px !important;
+    padding: 0.55rem 0.7rem !important;
+    font-size: 0.95rem !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .searchCard .nativeSearchBar input[type="search"],
+  .searchCard .searchBar input[type="search"] {
+    min-height: 2.75rem !important;
+    font-size: 0.95rem !important;
+  }
+
+  .searchCard .searchSubmitButton,
+  .searchCard .searchClearButton {
+    min-height: 2.45rem !important;
+    font-size: 0.9rem !important;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+  .searchCard .nativeSearchBar,
+  .searchCard .searchBar {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+  }
+
+  .searchCard .searchActionButtons {
+    width: auto !important;
+    display: inline-flex !important;
+    gap: 0.4rem !important;
+  }
+
+  .searchCard .searchSubmitButton,
+  .searchCard .searchClearButton {
+    width: auto !important;
+    min-height: 2.2rem !important;
+    padding: 0.38rem 0.7rem !important;
+    font-size: 0.84rem !important;
+  }
+}
