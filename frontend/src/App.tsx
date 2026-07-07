@@ -184,6 +184,18 @@ type ConfirmDialogState = {
   tone?: "default" | "danger";
 };
 
+function reportableErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return `${fallback} Details: ${error.message}. Please share this message with the developer if the issue continues.`;
+  }
+
+  return `${fallback} Please share this message with the developer if the issue continues.`;
+}
+
 function compareFlagSections(left: string, right: string) {
   const normalize = (value: string) => value.trim().toUpperCase();
   const leftValue = normalize(left);
@@ -646,7 +658,7 @@ export default function App() {
 
       await loadAdminData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load flag data.");
+      setError(reportableErrorMessage(err, "Unable to load flag data."));
     } finally {
       setLoading(false);
     }
@@ -713,7 +725,7 @@ export default function App() {
       setClaimantsByHonoreeId({});
       await loadClaimantsForSearchResults(results);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to search honorees.");
+      setError(reportableErrorMessage(err, "Unable to search honorees."));
     } finally {
       setSearchLoading(false);
     }
@@ -848,7 +860,7 @@ export default function App() {
       setNotice(`${displayNameWithNickname(honoree.fullName, honoree.nickname)}'s flag record has been claimed. Review the prefilled details below and submit any changes.${coClaimNotice}`);
       beginEdit(claim);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to claim this honoree's flag record.");
+      setError(reportableErrorMessage(err, "Unable to claim this honoree's flag record."));
     } finally {
       setSaving(false);
     }
@@ -882,7 +894,7 @@ export default function App() {
       await loadData();
       setNotice(`${claim.honoreeName || "Flag"} was unclaimed.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to unclaim this flag.");
+      setError(reportableErrorMessage(err, "Unable to unclaim this flag."));
       setNotice("");
     } finally {
       setSaving(false);
@@ -916,7 +928,7 @@ export default function App() {
       beginEdit(claim);
       setNotice("Admin edit started. Save changes and queue the reprint when ready.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to start admin edit.");
+      setError(reportableErrorMessage(err, "Unable to start admin edit."));
     } finally {
       setSaving(false);
     }
@@ -954,7 +966,7 @@ export default function App() {
         [honoree.id]: claimants
       }));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load claimants for this honoree.");
+      setError(reportableErrorMessage(err, "Unable to load claimants for this honoree."));
     } finally {
       setClaimantBusyHonoreeId(null);
     }
@@ -983,7 +995,7 @@ export default function App() {
       await loadData();
       setNotice(`${displayNameWithNickname(honoree.fullName, honoree.nickname)} was added to the reprint queue.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to regenerate the PDF or add honoree to the reprint queue.");
+      setError(reportableErrorMessage(err, "Unable to regenerate the PDF or add honoree to the reprint queue."));
       setNotice("");
     } finally {
       setQueueingReprintHonoreeId(null);
@@ -1021,7 +1033,7 @@ export default function App() {
         setError(result.message || "PDF was generated but could not be saved.");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to regenerate PDF.");
+      setError(reportableErrorMessage(err, "Unable to regenerate PDF."));
     } finally {
       setRegeneratingPdfHonoreeId(null);
     }
@@ -1072,7 +1084,7 @@ export default function App() {
       setSelectedPhotoRotation(normalizeRotation(degrees));
       setNotice("Photo rotation is staged. Save or submit the form to apply it.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load the current photo for rotation.");
+      setError(reportableErrorMessage(err, "Unable to load the current photo for rotation."));
     }
   }
 
@@ -1201,7 +1213,7 @@ export default function App() {
       setSelectedPhotoRotation(0);
       setForm(blankForm);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to submit nomination.");
+      setError(reportableErrorMessage(err, "Unable to submit nomination."));
     } finally {
       setSaving(false);
     }
@@ -1222,7 +1234,7 @@ export default function App() {
       await loadData();
       setNotice("Draft saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save draft.");
+      setError(reportableErrorMessage(err, "Unable to save draft."));
     } finally {
       setSaving(false);
     }
@@ -1260,7 +1272,7 @@ export default function App() {
       setSelectedPhotoRotation(0);
       setForm(blankForm);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to submit changes.");
+      setError(reportableErrorMessage(err, "Unable to submit changes."));
     } finally {
       setSaving(false);
     }
@@ -1276,7 +1288,7 @@ export default function App() {
       const positions = await adminApi.flagPositions(instance, account);
       setFlagPositions(positions);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load flag grids.");
+      setError(reportableErrorMessage(err, "Unable to load flag grids."));
     } finally {
       setFlagPositionsLoading(false);
     }
@@ -1298,7 +1310,7 @@ export default function App() {
       const positions = await adminApi.flagPositions(instance, account);
       setFlagPositions(positions);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load open flag grids.");
+      setError(reportableErrorMessage(err, "Unable to load open flag grids."));
     } finally {
       setFlagPositionsLoading(false);
     }
@@ -1352,7 +1364,7 @@ export default function App() {
       closeAssignGridHonoreeModal();
       setNotice(`${honoreeName} was assigned to ${flagGridName}, the PDF was regenerated, and the card was added to the reprint queue.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to assign flag grid.");
+      setError(reportableErrorMessage(err, "Unable to assign flag grid."));
       setNotice("");
     } finally {
       setFlagPositionBusyId(null);
@@ -1405,7 +1417,7 @@ export default function App() {
         setSelectedUnassignedHonoreeId("");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load unassigned honorees.");
+      setError(reportableErrorMessage(err, "Unable to load unassigned honorees."));
     } finally {
       setUnassignedHonoreesLoading(false);
     }
@@ -1467,7 +1479,7 @@ export default function App() {
       closeFlagPositionDetail();
       setNotice(`${honoreeName} was assigned to ${position.flagGridName} and added to the reprint queue.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to assign flag grid.");
+      setError(reportableErrorMessage(err, "Unable to assign flag grid."));
       setNotice("");
     } finally {
       setFlagPositionBusyId(null);
@@ -1520,7 +1532,7 @@ export default function App() {
 
       setNotice(`${honoreeName} was removed from ${position.flagGridName}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to remove the honoree from this flag grid.");
+      setError(reportableErrorMessage(err, "Unable to remove the honoree from this flag grid."));
       setNotice("");
     } finally {
       setFlagPositionBusyId(null);
@@ -1545,7 +1557,7 @@ export default function App() {
       await adminApi.exportHonoreesExcel(instance, account);
       setNotice("Honoree export downloaded.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to export honorees.");
+      setError(reportableErrorMessage(err, "Unable to export honorees."));
     }
   }
 
@@ -1570,7 +1582,7 @@ export default function App() {
       await loadData();
       setNotice(`${item.honoreeName} approved${requiresCardReprint ? " and added to the card reprint queue" : ""}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to approve item.");
+      setError(reportableErrorMessage(err, "Unable to approve item."));
       setNotice("");
     } finally {
       setAdminBusyId(null);
@@ -1605,7 +1617,7 @@ export default function App() {
       await loadData();
       setNotice(`${item.honoreeName} rejected.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to reject item.");
+      setError(reportableErrorMessage(err, "Unable to reject item."));
       setNotice("");
     } finally {
       setAdminBusyId(null);
@@ -1629,7 +1641,7 @@ export default function App() {
       await adminApi.downloadMergedPrintPdf(instance, account, selectedPrintIds);
       setNotice("Merged PDF downloaded. Send the downloaded PDF to the printer.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to download merged PDF.");
+      setError(reportableErrorMessage(err, "Unable to download merged PDF."));
     } finally {
       setSaving(false);
     }
@@ -1658,7 +1670,7 @@ export default function App() {
       await loadData();
       setNotice(`${result.count} item(s) marked printed.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to mark printed.");
+      setError(reportableErrorMessage(err, "Unable to mark printed."));
     } finally {
       setSaving(false);
     }
@@ -1687,7 +1699,7 @@ export default function App() {
       await loadData();
       setNotice(`${result.count} item(s) removed from the reprint queue.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to remove item(s) from the reprint queue.");
+      setError(reportableErrorMessage(err, "Unable to remove item(s) from the reprint queue."));
     } finally {
       setSaving(false);
     }
@@ -1711,7 +1723,7 @@ export default function App() {
       await loadData();
       setNotice(`${result.count} item(s) removed from the reprint queue.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to remove this item from the reprint queue.");
+      setError(reportableErrorMessage(err, "Unable to remove this item from the reprint queue."));
     } finally {
       setSaving(false);
     }
@@ -2269,23 +2281,20 @@ export default function App() {
                 }}
                 aria-label="Search honorees"
               />
-              <div className="searchActionButtons">
-                <button
-                  type="submit"
-                  className="searchSubmitButton"
-                  disabled={searchLoading || honoreeSearchText.trim() === ""}
-                >
-                  {searchLoading ? "Searching..." : "Search"}
-                </button>
+              {honoreeSearchText ? (
                 <button
                   type="button"
-                  className="secondary searchClearButton"
+                  className="nativeSearchClear"
                   onClick={clearHonoreeSearch}
-                  disabled={searchLoading || (honoreeSearchText.trim() === "" && !honoreeSearchPerformed)}
+                  aria-label="Clear search"
+                  title="Clear search"
                 >
-                  Clear
+                  ×
                 </button>
-              </div>
+              ) : null}
+              <button type="submit" className="visuallyHidden">
+                Search
+              </button>
             </form>
 
             {showInlineHowItWorks ? (

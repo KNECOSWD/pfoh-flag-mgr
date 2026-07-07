@@ -631,9 +631,42 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
                 return NotFound("Change request was not found.");
             }
 
+            if (change.RequestStatus == "Approved")
+            {
+                // Treat repeated approval calls as idempotent success. This avoids false
+                // failures when the admin double-clicks, a request is retried, or the UI is
+                // working from a slightly stale pending-review list.
+                if (request.RequiresCardReprint && change.HonoreeId.HasValue && !change.CardPrintedUtc.HasValue)
+                {
+                    change.RequiresCardReprint = true;
+                    change.ReviewedBy = adminName;
+                    change.ReviewedUtc = DateTime.UtcNow;
+
+                    await db.SaveChangesAsync(ct);
+                    await DeactivateOtherActiveReprintItemsForHonoreeAsync(change.HonoreeId.Value, change.Id, adminName, ct);
+
+                    try
+                    {
+                        await RegenerateHonoreePdfAsync(change.HonoreeId.Value, ct);
+                    }
+                    catch
+                    {
+                        // Do not convert an otherwise approved item into a failure just because
+                        // PDF regeneration/storage had a temporary problem.
+                    }
+                }
+
+                await transaction.CommitAsync(ct);
+                return Ok(ToReviewDto(change));
+            }
+
             if (change.RequestStatus != "Submitted")
             {
-                return Conflict("Only submitted change requests can be approved.");
+                return Conflict(new
+                {
+                    message = "Only submitted change requests can be approved.",
+                    currentStatus = change.RequestStatus
+                });
             }
 
             var honoree = await ApplyApprovedChanges(change, adminName, ct);
@@ -671,6 +704,7 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
                     change.ReviewNotes = string.IsNullOrWhiteSpace(change.ReviewNotes)
                         ? "Approved, but PDF regeneration failed. Regenerate the PDF manually before printing."
                         : $"{change.ReviewNotes}\n\nApproved, but PDF regeneration failed. Regenerate the PDF manually before printing.";
+                    await db.SaveChangesAsync(ct);
                 }
             }
 

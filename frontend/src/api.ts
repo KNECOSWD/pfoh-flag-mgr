@@ -7,11 +7,110 @@ import { loginRequest } from "./authConfig";
 
 export class ApiError extends Error {
   status: number;
+  method?: string;
+  url?: string;
+  requestId?: string;
+  detail?: string;
 
-  constructor(message: string, status: number) {
+  constructor(
+    message: string,
+    status: number,
+    options: { method?: string; url?: string; requestId?: string; detail?: string } = {}
+  ) {
     super(message);
+    this.name = "ApiError";
     this.status = status;
+    this.method = options.method;
+    this.url = options.url;
+    this.requestId = options.requestId;
+    this.detail = options.detail;
   }
+}
+
+function supportCode() {
+  const randomPart =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().slice(0, 8).toUpperCase()
+      : Math.random().toString(16).slice(2, 10).toUpperCase();
+
+  return `PFOH-${new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${randomPart}`;
+}
+
+async function buildApiError(response: Response, method: string, url: string): Promise<ApiError> {
+  const rawMessage = await response.text();
+  let serverMessage = rawMessage;
+  let detail = "";
+
+  try {
+    const parsed = JSON.parse(rawMessage) as {
+      message?: string;
+      detail?: string;
+      title?: string;
+      errors?: Record<string, string[]>;
+      currentStatus?: string;
+    };
+
+    const validationErrors = parsed.errors
+      ? Object.entries(parsed.errors)
+          .flatMap(([field, messages]) => messages.map((message) => `${field}: ${message}`))
+          .join("; ")
+      : "";
+
+    serverMessage =
+      parsed.message ||
+      parsed.detail ||
+      parsed.title ||
+      validationErrors ||
+      rawMessage;
+
+    detail = [parsed.detail, validationErrors, parsed.currentStatus ? `Current status: ${parsed.currentStatus}` : ""]
+      .filter(Boolean)
+      .join(" | ");
+  } catch {
+    // Use raw response text.
+  }
+
+  const requestId =
+    response.headers.get("x-correlation-id") ||
+    response.headers.get("x-request-id") ||
+    response.headers.get("traceparent") ||
+    supportCode();
+
+  const statusText = `${response.status} ${response.statusText}`.trim();
+  const endpoint = `${method.toUpperCase()} ${url}`;
+  const message = [
+    `Request failed: ${endpoint}.`,
+    `Status: ${statusText}.`,
+    serverMessage ? `Server message: ${serverMessage}.` : "",
+    `Reference: ${requestId}.`,
+    "Please share this message with the developer if the issue continues."
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return new ApiError(message, response.status, {
+    method,
+    url,
+    requestId,
+    detail: detail || rawMessage
+  });
+}
+
+function buildNetworkError(error: unknown, method: string, url: string) {
+  const requestId = supportCode();
+  const detail = error instanceof Error ? error.message : String(error);
+  return new ApiError(
+    [
+      `Network or browser error while calling ${method.toUpperCase()} ${url}.`,
+      detail ? `Details: ${detail}.` : "",
+      `Reference: ${requestId}.`,
+      "Please check the connection and share this message with the developer if the issue continues."
+    ]
+      .filter(Boolean)
+      .join(" "),
+    0,
+    { method, url, requestId, detail }
+  );
 }
 
 export type ServiceBranch = {
@@ -198,33 +297,38 @@ export function honoreePhotoUrl(honoreeId: number) {
 
 
 async function publicRequest<T>(url: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${apiBase}${url}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers ?? {})
-    }
-  });
+  const method = options.method ?? "GET";
+
+  let response: Response;
+  try {
+    response = await fetch(`${apiBase}${url}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {})
+      }
+    });
+  } catch (error) {
+    throw buildNetworkError(error, method, url);
+  }
 
   if (!response.ok) {
-    const rawMessage = await response.text();
-    let message = rawMessage;
-
-    try {
-      const parsed = JSON.parse(rawMessage) as { message?: string; detail?: string; title?: string };
-      message = parsed.message || parsed.detail || parsed.title || rawMessage;
-    } catch {
-      // Use raw response text.
-    }
-
-    throw new ApiError(message || `${response.status} ${response.statusText}`, response.status);
+    throw await buildApiError(response, method, url);
   }
 
   if (response.status === 204) {
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  try {
+    return (await response.json()) as T;
+  } catch (error) {
+    throw new ApiError(
+      `The server returned an invalid JSON response for ${method.toUpperCase()} ${url}. Reference: ${supportCode()}. Please share this message with the developer.`,
+      0,
+      { method, url, detail: error instanceof Error ? error.message : String(error) }
+    );
+  }
 }
 
 
@@ -254,7 +358,19 @@ async function getToken(instance: IPublicClientApplication, account: AccountInfo
       await instance.acquireTokenRedirect({ ...loginRequest, account });
     }
 
-    throw error;
+    const requestId = supportCode();
+    throw new ApiError(
+      [
+        "Authentication failed before the API request could be sent.",
+        error instanceof Error ? `Details: ${error.message}.` : "",
+        `Reference: ${requestId}.`,
+        "Please sign out and sign back in. If it continues, share this message with the developer."
+      ]
+        .filter(Boolean)
+        .join(" "),
+      0,
+      { requestId, detail: error instanceof Error ? error.message : String(error) }
+    );
   }
 }
 
@@ -264,38 +380,42 @@ async function request<T>(
   url: string,
   options: RequestInit = {}
 ): Promise<T> {
+  const method = options.method ?? "GET";
   const token = await getToken(instance, account);
 
   const isFormData = options.body instanceof FormData;
 
-  const response = await fetch(`${apiBase}${url}`, {
-    ...options,
-    headers: {
-      ...(isFormData ? {} : { "Content-Type": "application/json" }),
-      Authorization: `Bearer ${token}`,
-      ...(options.headers ?? {})
-    }
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${apiBase}${url}`, {
+      ...options,
+      headers: {
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
+        Authorization: `Bearer ${token}`,
+        ...(options.headers ?? {})
+      }
+    });
+  } catch (error) {
+    throw buildNetworkError(error, method, url);
+  }
 
   if (!response.ok) {
-    const rawMessage = await response.text();
-    let message = rawMessage;
-
-    try {
-      const parsed = JSON.parse(rawMessage) as { message?: string; detail?: string; title?: string };
-      message = parsed.message || parsed.detail || parsed.title || rawMessage;
-    } catch {
-      // Use raw response text.
-    }
-
-    throw new ApiError(message || `${response.status} ${response.statusText}`, response.status);
+    throw await buildApiError(response, method, url);
   }
 
   if (response.status === 204) {
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  try {
+    return (await response.json()) as T;
+  } catch (error) {
+    throw new ApiError(
+      `The server returned an invalid JSON response for ${method.toUpperCase()} ${url}. Reference: ${supportCode()}. Please share this message with the developer.`,
+      0,
+      { method, url, detail: error instanceof Error ? error.message : String(error) }
+    );
+  }
 }
 
 async function downloadFile(
@@ -305,31 +425,27 @@ async function downloadFile(
   fileName: string,
   options: RequestInit = {}
 ) {
+  const method = options.method ?? "GET";
   const token = await getToken(instance, account);
 
   const isFormData = options.body instanceof FormData;
 
-  const response = await fetch(`${apiBase}${url}`, {
-    ...options,
-    headers: {
-      ...(isFormData ? {} : { "Content-Type": "application/json" }),
-      Authorization: `Bearer ${token}`,
-      ...(options.headers ?? {})
-    }
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${apiBase}${url}`, {
+      ...options,
+      headers: {
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
+        Authorization: `Bearer ${token}`,
+        ...(options.headers ?? {})
+      }
+    });
+  } catch (error) {
+    throw buildNetworkError(error, method, url);
+  }
 
   if (!response.ok) {
-    const rawMessage = await response.text();
-    let message = rawMessage;
-
-    try {
-      const parsed = JSON.parse(rawMessage) as { message?: string; detail?: string; title?: string };
-      message = parsed.message || parsed.detail || parsed.title || rawMessage;
-    } catch {
-      // Use raw response text.
-    }
-
-    throw new ApiError(message || `${response.status} ${response.statusText}`, response.status);
+    throw await buildApiError(response, method, url);
   }
 
   const blob = await response.blob();
