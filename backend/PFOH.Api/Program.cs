@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
 using PFOH.Api.Data;
+using PFOH.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -79,6 +80,7 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddHttpClient();
+builder.Services.AddScoped<UserProfileService>();
 
 var app = builder.Build();
 
@@ -107,3 +109,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "PFOH.Api"
 app.MapControllers();
 app.MapFallbackToFile("index.html");
 app.Run();
+
+public partial class Program
+{
+}

@@ -14,6 +14,7 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
     public DbSet<AvailableFlagGrid> AvailableFlagGrids => Set<AvailableFlagGrid>();
 
     public DbSet<FlagClaim> FlagClaims => Set<FlagClaim>();
+    public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
     public DbSet<HonoreeSearchResult> HonoreeSearchResults => Set<HonoreeSearchResult>();
     public DbSet<HonoreeChangeRequest> HonoreeChangeRequests => Set<HonoreeChangeRequest>();
 
@@ -166,6 +167,18 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
                 .WithMany()
                 .HasForeignKey(e => e.HonoreeId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<UserProfile>(entity =>
+        {
+            entity.ToTable("UserProfiles", "dbo");
+            entity.HasKey(e => e.Id);
+
+            entity.Property(e => e.OwnerObjectId).HasMaxLength(UserProfileLimits.OwnerObjectIdMaxLength).IsRequired();
+            entity.Property(e => e.DisplayName).HasMaxLength(UserProfileLimits.DisplayNameMaxLength).IsRequired();
+            entity.Property(e => e.Email).HasMaxLength(UserProfileLimits.EmailMaxLength).IsRequired();
+
+            entity.HasIndex(e => e.OwnerObjectId).IsUnique();
         });
 
         modelBuilder.Entity<HonoreeSearchResult>(entity =>

@@ -674,3 +674,23 @@ export const adminApi = {
       `pfoh-flag-map-${new Date().toISOString().slice(0, 10)}.xlsx`
     )
 };
+
+export const displayNameMaxLength = 100;
+
+export type UserProfile = {
+  ownerObjectId: string;
+  displayName: string;
+  email: string;
+  hasSavedDisplayName: boolean;
+};
+
+export const profileApi = {
+  get: (instance: IPublicClientApplication, account: AccountInfo) =>
+    request<UserProfile>(instance, account, "/api/profile"),
+
+  update: (instance: IPublicClientApplication, account: AccountInfo, displayName: string) =>
+    request<UserProfile>(instance, account, "/api/profile", {
+      method: "PUT",
+      body: JSON.stringify({ displayName })
+    })
+};
