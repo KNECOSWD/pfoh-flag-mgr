@@ -252,6 +252,7 @@ export default function App() {
   const [assignGridSectionFilter, setAssignGridSectionFilter] = useState("");
   const [flagPositionBusyId, setFlagPositionBusyId] = useState<number | null>(null);
   const [flagPositionsLoading, setFlagPositionsLoading] = useState(false);
+  const [flagMapExporting, setFlagMapExporting] = useState(false);
   const [showFlagPositionManager, setShowFlagPositionManager] = useState(true);
   const [flagPositionSearchText, setFlagPositionSearchText] = useState("");
   const [flagPositionSectionFilter, setFlagPositionSectionFilter] = useState("");
@@ -1539,6 +1540,31 @@ export default function App() {
     }
   }
 
+  async function exportFlagMapExcel() {
+    if (!account) {
+      await signIn();
+      return;
+    }
+
+    if (!isAdmin) {
+      setError("Only PFOH administrators can export the flag map.");
+      return;
+    }
+
+    setError("");
+    setNotice("");
+    setFlagMapExporting(true);
+
+    try {
+      await adminApi.exportFlagMapExcel(instance, account);
+      setNotice("Flag map export downloaded.");
+    } catch (err) {
+      setError(reportableErrorMessage(err, "Unable to export the flag map."));
+    } finally {
+      setFlagMapExporting(false);
+    }
+  }
+
   async function exportHonoreesExcel() {
     if (!account) {
       await signIn();
@@ -2746,6 +2772,14 @@ export default function App() {
                       </p>
                     </div>
                     <div className="flagPositionActions">
+                      <button
+                        type="button"
+                        className="secondary exportExcelButton"
+                        onClick={() => void exportFlagMapExcel()}
+                        disabled={flagMapExporting}
+                      >
+                        {flagMapExporting ? "Exporting..." : "Export Excel"}
+                      </button>
                       <button
                         type="button"
                         className="secondary subtleRefreshButton"

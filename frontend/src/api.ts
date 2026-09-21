@@ -664,5 +664,13 @@ export const adminApi = {
       account,
       "/api/admin/review/honorees-export",
       `pfoh-honorees-${new Date().toISOString().slice(0, 10)}.xls`
+    ),
+
+  exportFlagMapExcel: (instance: IPublicClientApplication, account: AccountInfo) =>
+    downloadFile(
+      instance,
+      account,
+      "/api/admin/review/flag-map-export",
+      `pfoh-flag-map-${new Date().toISOString().slice(0, 10)}.xlsx`
     )
 };
