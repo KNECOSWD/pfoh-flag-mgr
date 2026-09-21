@@ -305,6 +305,21 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         return Ok(positions);
     }
 
+    [HttpGet("flag-map-export")]
+    public async Task<IActionResult> ExportFlagMap(CancellationToken ct)
+    {
+        var positions = await BuildFlagPositionsAsync(ct);
+        var rows = FlagMapExcelExporter.SelectRows(positions.Select(position => new FlagMapExportSource(
+            position.FlagGridName,
+            position.RowLabel,
+            position.ColumnNumber,
+            position.HonoreeName)));
+
+        var bytes = FlagMapExcelExporter.Build(rows);
+        var fileName = $"pfoh-flag-map-{DateTime.UtcNow:yyyyMMdd}.xlsx";
+        return File(bytes, FlagMapExcelExporter.ContentType, fileName);
+    }
+
     [HttpPost("flag-positions/{flagGridId:int}/assign")]
     public async Task<ActionResult<AdminFlagPositionDto>> AssignFlagPosition(
         int flagGridId,
