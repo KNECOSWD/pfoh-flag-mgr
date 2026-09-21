@@ -12,7 +12,7 @@ namespace PFOH.Api.Controllers;
 [ApiController]
 [Route("api/flag-claims")]
 [Authorize]
-public class FlagClaimsController(PfohDbContext db, IConfiguration configuration, IWebHostEnvironment environment) : ControllerBase
+public class FlagClaimsController(PfohDbContext db, IConfiguration configuration, IWebHostEnvironment environment, UserProfileService profiles) : ControllerBase
 {
     private readonly HonoreeFileStorage fileStorage = new(configuration);
 
@@ -162,7 +162,7 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
     {
         var userObjectId = User.GetExternalObjectId();
         var email = User.GetEmail();
-        var name = User.GetDisplayName();
+        var name = await profiles.ResolveDisplayNameAsync(User, ct);
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
@@ -232,7 +232,7 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
     {
         var userObjectId = User.GetExternalObjectId();
         var email = User.GetEmail();
-        var name = User.GetDisplayName();
+        var name = await profiles.ResolveDisplayNameAsync(User, ct);
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
@@ -325,7 +325,7 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
 
         var userObjectId = User.GetExternalObjectId();
         var email = User.GetEmail();
-        var name = User.GetDisplayName();
+        var name = await profiles.ResolveDisplayNameAsync(User, ct);
 
         if (string.IsNullOrWhiteSpace(email))
         {
@@ -400,7 +400,7 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
     {
         var adminObjectId = User.GetExternalObjectId();
         var adminEmail = User.GetEmail();
-        var adminName = User.GetDisplayName();
+        var adminName = await profiles.ResolveDisplayNameAsync(User, ct);
 
         var honoree = await db.Honorees
             .Include(h => h.FlagGrid)

@@ -168,6 +168,29 @@ Sign in as a `PFOH.Admin` user, open **Flag Map**, and click **Export Excel** ne
 
 The API (`GET /api/admin/review/flag-map-export`, same admin-only policy as the map) returns `pfoh-flag-map-YYYY-MM-DD.xlsx`. The workbook has one sheet, **Flag Map**, and one Excel table, **FlagMap**, with AutoFilter on so Excel can filter and sort. Columns are **Honoree name** and **Flag grid**. Flag grid is the existing `FlagGridName` value (for example `A-01`). Rows are the occupied seats shown on the admin map, sorted by section then grid number (`A-01`, `A-02`, `A-10`, `B-01`). Open and reserved grids with no honoree are left out. The Review page honoree export is unchanged.
 
+### Your profile
+
+Signed-in users open **Profile** from the header (and from the mobile menu). The page shows the sign-in email from the Entra token as read-only and lets the user set a display name. That name is stored in `dbo.UserProfiles`, keyed by the token object id (`OwnerObjectId`), and replaces a placeholder token name such as `unknown` in the header after save. The same saved name is copied onto that user's flag claims.
+
+Display name is trimmed, required, and limited to 100 characters. Users can read and update only their own profile. `GET /api/profile` and `PUT /api/profile` require a signed-in user. `PUT /api/profile/{ownerObjectId}` returns 403 when the id is not the caller.
+
+The API creates `dbo.UserProfiles` on first use if the table is missing. It does not change the existing honoree tables. If the database login cannot create tables, run this once against the app database:
+
+```sql
+IF OBJECT_ID(N'[dbo].[UserProfiles]', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[UserProfiles] (
+        [Id] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_UserProfiles] PRIMARY KEY,
+        [OwnerObjectId] nvarchar(128) NOT NULL,
+        [DisplayName] nvarchar(100) NOT NULL,
+        [Email] nvarchar(255) NOT NULL CONSTRAINT [DF_UserProfiles_Email] DEFAULT (N''),
+        [CreatedUtc] datetime2 NOT NULL,
+        [UpdatedUtc] datetime2 NOT NULL,
+        CONSTRAINT [UQ_UserProfiles_OwnerObjectId] UNIQUE ([OwnerObjectId])
+    );
+END
+```
+
 ## Deploy to Azure with GitHub Actions
 
 ### 1. Create the Azure resources

@@ -1,4 +1,4 @@
-import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
@@ -18,7 +18,9 @@ import {
   honoreeApi,
   honoreePdfUrl,
   honoreePhotoUrl,
-  lookupApi
+  displayNameMaxLength,
+  lookupApi,
+  profileApi
 } from "./api";
 import { loginRequest } from "./authConfig";
 import knecoLogoBlue from "./assets/kneco-logo-blue.png";
@@ -154,6 +156,11 @@ function getAccountSubmitterContact(
   };
 }
 
+function isPlaceholderDisplayName(value?: string | null) {
+  const normalized = value?.trim().toLowerCase().replace(/\s+/g, " ") ?? "";
+  return normalized === "" || normalized === "unknown" || normalized === "unknown unknown";
+}
+
 function displayNameWithNickname(name: string, nickname?: string | null) {
   const cleanName = name.trim();
   const cleanNickname = nickname?.trim();
@@ -273,10 +280,31 @@ export default function App() {
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const confirmResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
 
-  const displayName = useMemo(
-    () => account?.name || account?.username || "Supporter",
-    [account]
-  );
+  const [savedDisplayName, setSavedDisplayName] = useState("");
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [profileNotice, setProfileNotice] = useState("");
+  const [profileDisplayName, setProfileDisplayName] = useState("");
+  const [profileEmail, setProfileEmail] = useState("");
+  const accountKey = account?.homeAccountId ?? "";
+
+  const displayName = useMemo(() => {
+    if (savedDisplayName.trim()) {
+      return savedDisplayName.trim();
+    }
+
+    if (!isPlaceholderDisplayName(account?.name)) {
+      return account!.name!.trim();
+    }
+
+    if (!isPlaceholderDisplayName(account?.username)) {
+      return account!.username!.trim();
+    }
+
+    return "Supporter";
+  }, [savedDisplayName, account]);
 
   const submitterContact = useMemo(
     () => getAccountSubmitterContact(account),
@@ -511,6 +539,88 @@ export default function App() {
       (branch) => branch.serviceBranchCategoryId === form.serviceBranchCategoryId
     );
   }, [form.serviceBranchCategoryId, serviceBranches]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !account) {
+      setSavedDisplayName("");
+      return;
+    }
+
+    let cancelled = false;
+
+    profileApi.get(instance, account)
+      .then((profile) => {
+        if (cancelled) return;
+
+        setSavedDisplayName((current) => {
+          if (current.trim()) return current;
+          return profile.hasSavedDisplayName ? profile.displayName : "";
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSavedDisplayName("");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, account, accountKey, instance]);
+
+  async function openProfile() {
+    if (!account) return;
+
+    setProfileOpen(true);
+    setProfileError("");
+    setProfileNotice("");
+    setProfileLoading(true);
+
+    try {
+      const profile = await profileApi.get(instance, account);
+      setProfileDisplayName(profile.displayName);
+      setProfileEmail(profile.email);
+      setSavedDisplayName(profile.hasSavedDisplayName ? profile.displayName : "");
+    } catch (err) {
+      setProfileError(reportableErrorMessage(err, "Unable to load your profile."));
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
+  async function saveProfile(event: FormEvent) {
+    event.preventDefault();
+    if (!account) return;
+
+    const trimmed = profileDisplayName.trim();
+    if (!trimmed) {
+      setProfileError("Display name is required.");
+      setProfileNotice("");
+      return;
+    }
+
+    if (trimmed.length > displayNameMaxLength) {
+      setProfileError(`Display name must be ${displayNameMaxLength} characters or fewer.`);
+      setProfileNotice("");
+      return;
+    }
+
+    setProfileSaving(true);
+    setProfileError("");
+    setProfileNotice("");
+
+    try {
+      const profile = await profileApi.update(instance, account, trimmed);
+      setSavedDisplayName(profile.displayName);
+      setProfileDisplayName(profile.displayName);
+      setProfileEmail(profile.email);
+      setProfileNotice("Profile saved. The header name is updated.");
+    } catch (err) {
+      setProfileError(reportableErrorMessage(err, "Unable to save your profile."));
+    } finally {
+      setProfileSaving(false);
+    }
+  }
 
   async function signIn() {
     await instance.loginRedirect(loginRequest);
@@ -1794,9 +1904,14 @@ export default function App() {
           {isAuthenticated ? (
             <>
               <strong>{displayName}</strong>
-              <button type="button" onClick={signOut}>
-                Sign out
-              </button>
+              <div className="authActions">
+                <button type="button" onClick={() => void openProfile()}>
+                  Profile
+                </button>
+                <button type="button" onClick={signOut}>
+                  Sign out
+                </button>
+              </div>
             </>
           ) : (
             <button type="button" onClick={signIn}>
@@ -1873,6 +1988,15 @@ export default function App() {
                     <>
                       <span>Signed in as</span>
                       <strong>{displayName}</strong>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMobileNavOpen(false);
+                          void openProfile();
+                        }}
+                      >
+                        Profile
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -1956,6 +2080,75 @@ export default function App() {
               ) : null}
             </section>
           )}
+
+          {profileOpen ? (
+            <div
+              className="modalOverlay appConfirmOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="profile-dialog-title"
+              onClick={() => {
+                if (!profileSaving) setProfileOpen(false);
+              }}
+            >
+              <div className="modalCard appConfirmModal profileModal" onClick={(event) => event.stopPropagation()}>
+                <div>
+                  <p className="eyebrow">Your account</p>
+                  <h2 id="profile-dialog-title">Profile</h2>
+                  <p className="helperText">
+                    This display name is shown in the header. Your sign-in email comes from your account and stays read-only.
+                  </p>
+                </div>
+
+                <form className="profileForm" onSubmit={(event) => void saveProfile(event)}>
+                  <label>
+                    Display name
+                    <input
+                      type="text"
+                      name="displayName"
+                      autoComplete="name"
+                      maxLength={displayNameMaxLength}
+                      value={profileDisplayName}
+                      disabled={profileLoading || profileSaving}
+                      autoFocus
+                      onChange={(event) => {
+                        setProfileDisplayName(event.target.value);
+                        setProfileNotice("");
+                      }}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Sign-in email
+                    <input
+                      type="email"
+                      name="email"
+                      value={profileEmail}
+                      readOnly
+                      aria-readonly="true"
+                    />
+                  </label>
+
+                  {profileError ? <p className="profileFieldError" role="alert">{profileError}</p> : null}
+                  {profileNotice ? <p className="profileSaved" role="status">{profileNotice}</p> : null}
+
+                  <div className="modalActions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={profileSaving}
+                      onClick={() => setProfileOpen(false)}
+                    >
+                      Close
+                    </button>
+                    <button type="submit" disabled={profileLoading || profileSaving}>
+                      {profileSaving ? "Saving..." : "Save profile"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          ) : null}
 
           {confirmDialog ? (
             <div
