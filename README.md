@@ -166,7 +166,7 @@ Open `http://localhost:5173`.
 
 Sign in as a `PFOH.Admin` user, open **Flag Map**, and click **Export Excel** next to **Refresh Flag Map**.
 
-The API (`GET /api/admin/review/flag-map-export`, same admin-only policy as the map) returns `pfoh-flag-map-YYYY-MM-DD.xlsx`. The workbook has one sheet, **Flag Map**, and one Excel table, **FlagMap**, with AutoFilter on so Excel can filter and sort. Columns are **Honoree name** and **Flag grid**. Flag grid is the existing `FlagGridName` value (for example `A-01`). Rows are the occupied seats shown on the admin map, sorted by section then grid number (`A-01`, `A-02`, `A-10`, `B-01`). Open and reserved grids with no honoree are left out. The Review page honoree export is unchanged.
+The API (`GET /api/admin/review/flag-map-export`, same admin-only policy as the map) returns `pfoh-flag-map-YYYY-MM-DD.xlsx`. The workbook has one sheet, **Flag Map**, and one Excel table, **FlagMap**, with AutoFilter on so Excel can filter and sort. Columns are **First name**, **Last name**, and **Flag grid**. First name is the given names before the surname. Last name is the final name token, and keeps a trailing Jr, Sr, II, III, or IV with that surname (for example `Jones Jr.`). A trailing `(Nickname)` stays on the last name. A one-word name is written as the last name. Flag grid is the existing `FlagGridName` value (for example `A-01`). Rows are the occupied seats shown on the admin map, sorted by section then grid number (`A-01`, `A-02`, `A-10`, `B-01`). Open and reserved grids with no honoree are left out. The Review page honoree export is unchanged.
 
 ### Your profile
 
