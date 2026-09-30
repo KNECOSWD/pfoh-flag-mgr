@@ -4314,6 +4314,79 @@ img {
   }
 }
 
+.flagMapExportOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(7, 18, 38, 0.42);
+  backdrop-filter: blur(2px);
+}
+
+.flagMapExportModal {
+  box-sizing: border-box;
+  width: min(100% - 2rem, 32rem);
+  max-height: min(90vh, 42rem);
+  overflow: auto;
+  padding: 1.45rem 1.5rem 1.2rem;
+  border: 1px solid #dce6f3;
+  border-radius: 1.1rem;
+  background: #ffffff;
+  color: #071a3b;
+  box-shadow: 0 28px 80px rgba(7, 26, 59, 0.34);
+}
+
+.flagMapExportModal .sectionHeader {
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.flagMapExportModal h2 {
+  margin: 0;
+  color: #071a3b;
+}
+
+.flagMapExportFields {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
+.flagMapExportFields .checkRow {
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #e3e9f2;
+  border-radius: 0.75rem;
+  background: #f9fbfe;
+}
+
+.flagMapExportHint {
+  color: #526179;
+  font-size: 0.86rem;
+}
+
+.flagMapExportError {
+  margin: 0.85rem 0 0;
+}
+
+.flagMapExportModal .modalActions button:not(.secondary) {
+  background: #173b73;
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(23, 59, 115, 0.22);
+}
+
+.flagMapExportModal .modalActions button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
 
 /* Honor EXIF orientation for website image display */
 .honoreeCard img,

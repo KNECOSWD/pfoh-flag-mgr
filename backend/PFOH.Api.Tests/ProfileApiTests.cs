@@ -301,6 +301,7 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
     public const string OidHeader = "X-Test-Oid";
     public const string EmailHeader = "X-Test-Email";
     public const string NameHeader = "X-Test-Name";
+    public const string RolesHeader = "X-Test-Roles";
 
     public TestAuthHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
@@ -333,6 +334,14 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
         if (Request.Headers.TryGetValue(NameHeader, out var nameValues) && !string.IsNullOrWhiteSpace(nameValues.ToString()))
         {
             claims.Add(new Claim("name", nameValues.ToString()));
+        }
+
+        if (Request.Headers.TryGetValue(RolesHeader, out var roleValues))
+        {
+            foreach (var role in roleValues.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                claims.Add(new Claim(ClaimTypes.Role, role));
+            }
         }
 
         var identity = new ClaimsIdentity(claims, SchemeName);

@@ -89,10 +89,10 @@ public class FlagMapExcelExporterTests
         Assert.NotNull(table);
         Assert.Equal("table", table.Name.LocalName);
         Assert.Equal("FlagMap", table.Attribute("displayName")?.Value ?? table.Attribute("name")?.Value);
-        Assert.Equal("A1:C4", table.Attribute("ref")?.Value);
+        Assert.Equal("A1:I4", table.Attribute("ref")?.Value);
 
         var autoFilter = table.Elements().Single(element => element.Name.LocalName == "autoFilter");
-        Assert.Equal("A1:C4", autoFilter.Attribute("ref")?.Value);
+        Assert.Equal("A1:I4", autoFilter.Attribute("ref")?.Value);
 
         var headers = table
             .Elements()
@@ -100,7 +100,7 @@ public class FlagMapExcelExporterTests
             .Elements()
             .Select(column => column.Attribute("name")!.Value)
             .ToArray();
-        Assert.Equal(["First name", "Last name", "Flag grid"], headers);
+        Assert.Equal(LockedHeaders, headers);
 
         using var workbook = new XLWorkbook(new MemoryStream(bytes));
         var worksheet = workbook.Worksheet(FlagMapExcelExporter.SheetName);
@@ -109,13 +109,168 @@ public class FlagMapExcelExporterTests
         Assert.True(excelTable.ShowAutoFilter);
         Assert.Equal("Mary Ann", worksheet.Cell(2, 1).GetString());
         Assert.Equal("Smith", worksheet.Cell(2, 2).GetString());
-        Assert.Equal("A-01", worksheet.Cell(2, 3).GetString());
+        Assert.Equal("Mary Ann Smith", worksheet.Cell(2, 3).GetString());
+        Assert.Equal("A-01", worksheet.Cell(2, 4).GetString());
+        Assert.Equal("Occupied", worksheet.Cell(2, 5).GetString());
         Assert.Equal("Robert", worksheet.Cell(3, 1).GetString());
         Assert.Equal("Jones Jr.", worksheet.Cell(3, 2).GetString());
-        Assert.Equal("A-02", worksheet.Cell(3, 3).GetString());
+        Assert.Equal("A-02", worksheet.Cell(3, 4).GetString());
         Assert.Equal("Ten", worksheet.Cell(4, 1).GetString());
         Assert.Equal("Person", worksheet.Cell(4, 2).GetString());
-        Assert.Equal("A-10", worksheet.Cell(4, 3).GetString());
+        Assert.Equal("A-10", worksheet.Cell(4, 4).GetString());
+    }
+
+    [Fact]
+    public void Build_default_columns_are_the_locked_offer_set_and_nothing_else()
+    {
+        Assert.Equal(
+            [
+                "firstName",
+                "lastName",
+                "fullName",
+                "flagGrid",
+                "status",
+                "rank",
+                "serviceBranch",
+                "sponsorName",
+                "kia"
+            ],
+            FlagMapExcelExporter.ColumnKeys);
+
+        var parsed = FlagMapExcelExporter.TryParseColumns(null, out var selected, out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal(FlagMapExcelExporter.ColumnKeys, selected);
+
+        var bytes = FlagMapExcelExporter.Build(
+        [
+            new FlagMapExportRow(
+                "Mary Ann",
+                "Jones III",
+                "Mary Ann Jones III",
+                "A-01",
+                "Occupied",
+                "SGT",
+                "Army",
+                "Jane Sponsor",
+                "Yes")
+        ]);
+
+        var headers = ReadHeaders(bytes);
+        Assert.Equal(LockedHeaders, headers);
+        Assert.DoesNotContain(headers, header => InventedHeaders.Contains(header));
+    }
+
+    [Fact]
+    public void Build_omits_an_unchecked_field_and_keeps_flag_grid_when_checked()
+    {
+        var rows = FlagMapExcelExporter.SelectRows(
+        [
+            new FlagMapExportSource(
+                "A-01",
+                "A",
+                1,
+                "Mary Ann Jones III",
+                Rank: "SGT",
+                ServiceBranchName: "Army",
+                SponsorName: "Jane Sponsor",
+                Kia: true),
+            new FlagMapExportSource("A-02", "A", 2, null, IsOpen: true),
+            new FlagMapExportSource("C-01", "C", 1, "   ", IsReserved: true)
+        ]);
+
+        var only = Assert.Single(rows);
+        Assert.Equal("A-01", only.FlagGridName);
+        Assert.Equal("Mary Ann", only.FirstName);
+        Assert.Equal("Jones III", only.LastName);
+        Assert.Equal("Mary Ann Jones III", only.FullName);
+        Assert.Equal("Occupied", only.Status);
+        Assert.Equal("SGT", only.Rank);
+        Assert.Equal("Army", only.ServiceBranch);
+        Assert.Equal("Jane Sponsor", only.SponsorName);
+        Assert.Equal("Yes", only.Kia);
+
+        var parsed = FlagMapExcelExporter.TryParseColumns(
+            "kia,flagGrid,sponsorName,kia",
+            out var selected,
+            out var error);
+
+        Assert.True(parsed);
+        Assert.Null(error);
+        Assert.Equal(["flagGrid", "sponsorName", "kia"], selected);
+
+        var bytes = FlagMapExcelExporter.Build(rows, selected);
+        var headers = ReadHeaders(bytes);
+        Assert.Equal(["Flag Grid", "Sponsor Name", "KIA"], headers);
+
+        using var workbook = new XLWorkbook(new MemoryStream(bytes));
+        var worksheet = workbook.Worksheet(FlagMapExcelExporter.SheetName);
+        Assert.Equal("A-01", worksheet.Cell(2, 1).GetString());
+        Assert.Equal("Jane Sponsor", worksheet.Cell(2, 2).GetString());
+        Assert.Equal("Yes", worksheet.Cell(2, 3).GetString());
+        Assert.Equal(string.Empty, worksheet.Cell(1, 4).GetString());
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("nickname")]
+    [InlineData("middleName")]
+    [InlineData("description,serviceYears,submitter,claimants")]
+    [InlineData("firstName,nickname")]
+    public void TryParseColumns_rejects_an_empty_selection_or_fields_outside_the_offer_set(string columns)
+    {
+        var parsed = FlagMapExcelExporter.TryParseColumns(columns, out var selected, out var error);
+
+        Assert.False(parsed);
+        Assert.Empty(selected);
+        Assert.False(string.IsNullOrWhiteSpace(error));
+    }
+
+    [Fact]
+    public void SelectRows_writes_status_rank_branch_sponsor_and_kia_from_the_source()
+    {
+        var rows = FlagMapExcelExporter.SelectRows(
+        [
+            new FlagMapExportSource(
+                "B-01",
+                "B",
+                1,
+                "Robert Jones Jr.",
+                IsReserved: true,
+                Rank: " CPT ",
+                ServiceBranchName: " Navy ",
+                SponsorName: "  ",
+                Kia: false),
+            new FlagMapExportSource(
+                "A-01",
+                "A",
+                1,
+                "Mary Ann Smith (Mae)",
+                Rank: "SFC",
+                ServiceBranchName: "Army",
+                SponsorName: " Pat Q. Sponsor Sr. ",
+                Kia: true)
+        ]);
+
+        Assert.Equal(["A-01", "B-01"], rows.Select(row => row.FlagGridName).ToArray());
+
+        Assert.Equal("Mary Ann", rows[0].FirstName);
+        Assert.Equal("Smith (Mae)", rows[0].LastName);
+        Assert.Equal("Mary Ann Smith (Mae)", rows[0].FullName);
+        Assert.Equal("Occupied", rows[0].Status);
+        Assert.Equal("SFC", rows[0].Rank);
+        Assert.Equal("Army", rows[0].ServiceBranch);
+        Assert.Equal("Pat Q. Sponsor Sr.", rows[0].SponsorName);
+        Assert.Equal("Yes", rows[0].Kia);
+
+        Assert.Equal("Robert", rows[1].FirstName);
+        Assert.Equal("Jones Jr.", rows[1].LastName);
+        Assert.Equal("Reserved", rows[1].Status);
+        Assert.Equal("CPT", rows[1].Rank);
+        Assert.Equal("Navy", rows[1].ServiceBranch);
+        Assert.Equal(string.Empty, rows[1].SponsorName);
+        Assert.Equal("No", rows[1].Kia);
     }
 
     [Fact]
@@ -127,10 +282,45 @@ public class FlagMapExcelExporterTests
         var worksheet = workbook.Worksheet(FlagMapExcelExporter.SheetName);
         var excelTable = Assert.Single(worksheet.Tables);
         Assert.True(excelTable.ShowAutoFilter);
-        Assert.Equal("First name", worksheet.Cell(1, 1).GetString());
-        Assert.Equal("Last name", worksheet.Cell(1, 2).GetString());
-        Assert.Equal("Flag grid", worksheet.Cell(1, 3).GetString());
+        Assert.Equal(LockedHeaders, ReadHeaders(bytes));
         Assert.Equal(string.Empty, worksheet.Cell(2, 1).GetString());
         Assert.Equal(string.Empty, worksheet.Cell(2, 2).GetString());
+    }
+
+    private static readonly string[] LockedHeaders =
+    [
+        "First Name",
+        "Last Name",
+        "Full Name",
+        "Flag Grid",
+        "Status",
+        "Rank",
+        "Service Branch",
+        "Sponsor Name",
+        "KIA"
+    ];
+
+    private static readonly string[] InventedHeaders =
+    [
+        "Middle Name",
+        "Nickname",
+        "Description",
+        "Service Years",
+        "Submitter",
+        "Claimants",
+        "Honoree name"
+    ];
+
+    private static string[] ReadHeaders(byte[] bytes)
+    {
+        using var workbook = new XLWorkbook(new MemoryStream(bytes));
+        var worksheet = workbook.Worksheet(FlagMapExcelExporter.SheetName);
+        var headers = new List<string>();
+        for (var column = 1; worksheet.Cell(1, column).GetString().Length > 0; column++)
+        {
+            headers.Add(worksheet.Cell(1, column).GetString());
+        }
+
+        return headers.ToArray();
     }
 }

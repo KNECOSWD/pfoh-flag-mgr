@@ -15,10 +15,12 @@ import {
   ServiceBranchCategory,
   adminApi,
   flagClaimApi,
+  flagMapExportFields,
   honoreeApi,
   honoreePdfUrl,
   honoreePhotoUrl,
   displayNameMaxLength,
+  type FlagMapExportField,
   lookupApi,
   profileApi
 } from "./api";
@@ -260,6 +262,11 @@ export default function App() {
   const [flagPositionBusyId, setFlagPositionBusyId] = useState<number | null>(null);
   const [flagPositionsLoading, setFlagPositionsLoading] = useState(false);
   const [flagMapExporting, setFlagMapExporting] = useState(false);
+  const [flagMapExportOpen, setFlagMapExportOpen] = useState(false);
+  const [flagMapExportError, setFlagMapExportError] = useState("");
+  const [flagMapExportSelection, setFlagMapExportSelection] = useState<FlagMapExportField[]>(
+    flagMapExportFields.map((field) => field.id)
+  );
   const [showFlagPositionManager, setShowFlagPositionManager] = useState(true);
   const [flagPositionSearchText, setFlagPositionSearchText] = useState("");
   const [flagPositionSectionFilter, setFlagPositionSectionFilter] = useState("");
@@ -1650,9 +1657,9 @@ export default function App() {
     }
   }
 
-  async function exportFlagMapExcel() {
+  function openFlagMapExport() {
     if (!account) {
-      await signIn();
+      void signIn();
       return;
     }
 
@@ -1663,13 +1670,47 @@ export default function App() {
 
     setError("");
     setNotice("");
+    setFlagMapExportError("");
+    setFlagMapExportOpen(true);
+  }
+
+  function toggleFlagMapExportField(fieldId: FlagMapExportField) {
+    setFlagMapExportSelection((current) =>
+      current.includes(fieldId) ? current.filter((id) => id !== fieldId) : [...current, fieldId]
+    );
+  }
+
+  async function confirmFlagMapExport() {
+    if (!account) {
+      await signIn();
+      return;
+    }
+
+    if (!isAdmin) {
+      setError("Only PFOH administrators can export the flag map.");
+      return;
+    }
+
+    const selected = flagMapExportFields
+      .map((field) => field.id)
+      .filter((id) => flagMapExportSelection.includes(id));
+
+    if (selected.length === 0) {
+      setFlagMapExportError("Select at least one field to export.");
+      return;
+    }
+
+    setError("");
+    setNotice("");
+    setFlagMapExportError("");
     setFlagMapExporting(true);
 
     try {
-      await adminApi.exportFlagMapExcel(instance, account);
+      await adminApi.exportFlagMapExcel(instance, account, selected);
+      setFlagMapExportOpen(false);
       setNotice("Flag map export downloaded.");
     } catch (err) {
-      setError(reportableErrorMessage(err, "Unable to export the flag map."));
+      setFlagMapExportError(reportableErrorMessage(err, "Unable to export the flag map."));
     } finally {
       setFlagMapExporting(false);
     }
@@ -2968,7 +3009,7 @@ export default function App() {
                       <button
                         type="button"
                         className="secondary exportExcelButton"
-                        onClick={() => void exportFlagMapExcel()}
+                        onClick={openFlagMapExport}
                         disabled={flagMapExporting}
                       >
                         {flagMapExporting ? "Exporting..." : "Export Excel"}
@@ -2983,6 +3024,85 @@ export default function App() {
                       </button>
                     </div>
                   </div>
+
+                  {flagMapExportOpen ? (
+                    <div
+                      className="modalOverlay flagMapExportOverlay"
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="flag-map-export-title"
+                      onClick={() => {
+                        if (!flagMapExporting) {
+                          setFlagMapExportOpen(false);
+                        }
+                      }}
+                    >
+                      <div className="modalCard flagMapExportModal" onClick={(event) => event.stopPropagation()}>
+                        <div className="sectionHeader">
+                          <div>
+                            <p className="eyebrow">Flag map</p>
+                            <h2 id="flag-map-export-title">Export Excel</h2>
+                            <p className="helperText">
+                              Choose the fields to include. The sheet lists seats that have an honoree, sorted by section then grid. Open grids and reserved grids with no honoree are left out.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="secondary subtleRefreshButton"
+                            onClick={() => setFlagMapExportOpen(false)}
+                            disabled={flagMapExporting}
+                          >
+                            Close
+                          </button>
+                        </div>
+
+                        <fieldset className="flagMapExportFields">
+                          <legend className="srOnly">Export fields</legend>
+                          {flagMapExportFields.map((field) => (
+                            <label key={field.id} className="checkRow" htmlFor={`flag-map-export-${field.id}`}>
+                              <input
+                                id={`flag-map-export-${field.id}`}
+                                type="checkbox"
+                                checked={flagMapExportSelection.includes(field.id)}
+                                onChange={() => toggleFlagMapExportField(field.id)}
+                                disabled={flagMapExporting}
+                              />
+                              <span>
+                                {field.label}
+                                {"hint" in field && field.hint ? (
+                                  <span className="flagMapExportHint"> {field.hint}</span>
+                                ) : null}
+                              </span>
+                            </label>
+                          ))}
+                        </fieldset>
+
+                        {flagMapExportError ? (
+                          <p className="message error flagMapExportError" role="alert">{flagMapExportError}</p>
+                        ) : null}
+
+                        <div className="modalActions">
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() =>
+                              setFlagMapExportSelection(flagMapExportFields.map((field) => field.id))
+                            }
+                            disabled={flagMapExporting}
+                          >
+                            Select all
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void confirmFlagMapExport()}
+                            disabled={flagMapExporting || flagMapExportSelection.length === 0}
+                          >
+                            {flagMapExporting ? "Exporting..." : "Export Excel"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <p className="helperText flagAssignmentHelp">
                     Click a flag grid to view details, assign open grids, or clear occupied grids.

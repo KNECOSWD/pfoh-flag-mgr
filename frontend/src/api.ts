@@ -666,14 +666,42 @@ export const adminApi = {
       `pfoh-honorees-${new Date().toISOString().slice(0, 10)}.xls`
     ),
 
-  exportFlagMapExcel: (instance: IPublicClientApplication, account: AccountInfo) =>
-    downloadFile(
+  exportFlagMapExcel: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    columns: readonly FlagMapExportField[]
+  ) => {
+    const selected = flagMapExportFields
+      .map((field) => field.id)
+      .filter((id) => columns.includes(id));
+    const params = new URLSearchParams();
+    if (selected.length > 0) {
+      params.set("columns", selected.join(","));
+    }
+
+    const query = params.toString();
+    return downloadFile(
       instance,
       account,
-      "/api/admin/review/flag-map-export",
+      query ? `/api/admin/review/flag-map-export?${query}` : "/api/admin/review/flag-map-export",
       `pfoh-flag-map-${new Date().toISOString().slice(0, 10)}.xlsx`
-    )
+    );
+  }
 };
+
+export const flagMapExportFields = [
+  { id: "firstName", label: "First Name" },
+  { id: "lastName", label: "Last Name" },
+  { id: "fullName", label: "Full Name" },
+  { id: "flagGrid", label: "Flag Grid", hint: "A-01" },
+  { id: "status", label: "Status", hint: "Open / Occupied / Reserved" },
+  { id: "rank", label: "Rank" },
+  { id: "serviceBranch", label: "Service Branch" },
+  { id: "sponsorName", label: "Sponsor Name" },
+  { id: "kia", label: "KIA", hint: "Yes / No" }
+] as const;
+
+export type FlagMapExportField = (typeof flagMapExportFields)[number]["id"];
 
 export const displayNameMaxLength = 100;
 

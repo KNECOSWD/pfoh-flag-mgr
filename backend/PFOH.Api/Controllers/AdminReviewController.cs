@@ -308,14 +308,20 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
     [HttpGet("flag-map-export")]
     public async Task<IActionResult> ExportFlagMap(CancellationToken ct)
     {
-        var positions = await BuildFlagPositionsAsync(ct);
-        var rows = FlagMapExcelExporter.SelectRows(positions.Select(position => new FlagMapExportSource(
-            position.FlagGridName,
-            position.RowLabel,
-            position.ColumnNumber,
-            position.HonoreeName)));
+        // A missing columns query keeps the full offer set. columns= (present but empty)
+        // is an explicit empty selection and is rejected.
+        var columns = Request.Query.ContainsKey("columns")
+            ? Request.Query["columns"].ToString()
+            : null;
 
-        var bytes = FlagMapExcelExporter.Build(rows);
+        if (!FlagMapExcelExporter.TryParseColumns(columns, out var selected, out var error))
+        {
+            return BadRequest(new { message = error });
+        }
+
+        var sources = await BuildFlagMapExportSourcesAsync(ct);
+        var rows = FlagMapExcelExporter.SelectRows(sources);
+        var bytes = FlagMapExcelExporter.Build(rows, selected);
         var fileName = $"pfoh-flag-map-{DateTime.UtcNow:yyyyMMdd}.xlsx";
         return File(bytes, FlagMapExcelExporter.ContentType, fileName);
     }
@@ -1282,6 +1288,59 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
             .OrderBy(position => position.RowLabel)
             .ThenBy(position => position.ColumnNumber ?? int.MaxValue)
             .ThenBy(position => position.FlagGridName)
+            .ToList();
+    }
+
+    private async Task<IReadOnlyList<FlagMapExportSource>> BuildFlagMapExportSourcesAsync(CancellationToken ct)
+    {
+        var flagGrids = await db.FlagGrids
+            .AsNoTracking()
+            .Where(g => g.DeletedDate == null)
+            .ToListAsync(ct);
+
+        var gridIds = flagGrids.Select(g => g.Id).ToList();
+
+        var honorees = gridIds.Count == 0
+            ? new List<Honoree>()
+            : await db.Honorees
+                .AsNoTracking()
+                .Include(h => h.ServiceBranch)
+                .Include(h => h.Sponsor)
+                .Where(h =>
+                    h.FlagGridId.HasValue &&
+                    gridIds.Contains(h.FlagGridId.Value) &&
+                    h.IsActive &&
+                    h.DeletedDate == null)
+                .ToListAsync(ct);
+
+        var honoreeByGridId = honorees
+            .Where(h => h.FlagGridId.HasValue)
+            .GroupBy(h => h.FlagGridId!.Value)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(h => h.LastName)
+                    .ThenBy(h => h.FirstName)
+                    .First());
+
+        return flagGrids
+            .Select(flagGrid =>
+            {
+                honoreeByGridId.TryGetValue(flagGrid.Id, out var honoree);
+                var isReserved = flagGrid.Reserved;
+                var isOpen = honoree is null && !flagGrid.HonoreeId.HasValue && !flagGrid.Reserved;
+                return new FlagMapExportSource(
+                    flagGrid.FlagGridName,
+                    BuildFlagPositionRowLabel(flagGrid.FlagGridName),
+                    BuildFlagPositionColumnNumber(flagGrid.FlagGridName),
+                    honoree is null ? null : BuildHonoreeName(honoree),
+                    isOpen,
+                    isReserved,
+                    honoree?.Rank,
+                    honoree?.ServiceBranch?.ServiceBranchName,
+                    honoree is null ? null : BuildSponsorName(honoree.Sponsor),
+                    honoree?.KIA ?? false);
+            })
             .ToList();
     }
 
