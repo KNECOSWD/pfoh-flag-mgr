@@ -2621,7 +2621,7 @@ export default function App() {
 
                         <div className="cardActions">
                           <a className="textLink" href={honoreePdfUrl(honoree.id)} target="_blank" rel="noreferrer">
-                            Open honoree PDF
+                            Download / Print Honoree PDF
                           </a>
 
                           <div className="honoreeActionArea">
