@@ -47,8 +47,6 @@ const publicCopy = {
   submitVeteran: "Submit a veteran",
   suggestChange: "Suggest a change",
   loginRequired: "Login required to submit.",
-  noResults:
-    "No matching veteran records found. Try a different spelling or fewer search details. If the veteran isn’t listed, submit a new record.",
   loginPrompt:
     "Log in or create an account to submit a veteran record or suggest a change. You can search and view records without an account.",
   aboveSubmit: "Your submission will be reviewed by an administrator before it appears publicly.",
@@ -2713,7 +2711,7 @@ export default function App() {
             {honoreeSearchPerformed ? (
               honoreeResults.length === 0 ? (
                 <p className="emptyState">
-                  {publicCopy.noResults}
+                  No matching veteran records found. Try a different spelling or fewer search details. If the veteran isn’t listed, <a className="emptyStateSubmitLink" href="/honor-a-hero" onClick={(event) => { event.preventDefault(); if (!saving) beginNomination(); }}>submit a new record</a>.
                 </p>
               ) : (
                 <div className="honoreeResults">

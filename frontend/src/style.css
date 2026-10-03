@@ -288,6 +288,13 @@ main {
   color: #53627a;
 }
 
+.emptyState a.emptyStateSubmitLink {
+  color: #173b73;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
 
 .guestNotice {
   display: flex;
