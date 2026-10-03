@@ -9492,7 +9492,7 @@ img.ownedFlagImage {
   }
 
   .searchCard::after {
-    content: "Can’t find someone?  Nominate a honoree";
+    content: "Can’t find your veteran? Submit a veteran";
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -9547,7 +9547,7 @@ img.ownedFlagImage {
   }
 
   .searchCard::after {
-    content: "Can’t find someone?  Nominate a honoree";
+    content: "Can’t find your veteran? Submit a veteran";
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -9612,7 +9612,7 @@ img.ownedFlagImage {
 }
 
 
-/* Inline How Find a Flag works panel */
+/* Inline how search, submit, and review work */
 .inlineHowItWorks {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -10750,5 +10750,82 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
 
   .authBox strong {
     max-width: calc(100% - 13.5rem) !important;
+  }
+}
+
+.hero {
+  height: auto !important;
+  max-height: none !important;
+}
+
+.hero h1 {
+  white-space: normal !important;
+}
+
+.heroLead {
+  display: block !important;
+  max-width: 42rem;
+  margin: 0.35rem 0 0;
+  color: #f3f6fb;
+  font-size: 1.02rem;
+  line-height: 1.35;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.searchIntro {
+  margin: 0 0 1rem;
+  max-width: 68rem;
+  color: #24344d;
+  font-size: 1.02rem;
+  line-height: 1.5;
+}
+
+.missingVeteranPrompt {
+  display: grid;
+  justify-items: start;
+  gap: 0.35rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e1e7f0;
+}
+
+.missingVeteranPrompt p {
+  margin: 0;
+}
+
+.missingVeteranPrompt button {
+  margin-left: 0.35rem;
+}
+
+.authChoiceButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.guestNotice .authChoiceButtons {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 760px) {
+  .hero {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .hero h1 {
+    white-space: normal !important;
+  }
+
+  .heroLead {
+    display: block !important;
+    max-width: 22rem;
+    font-size: 0.92rem;
+  }
+
+  .guestNotice {
+    flex-wrap: wrap;
   }
 }

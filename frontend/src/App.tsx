@@ -28,6 +28,46 @@ import { loginRequest } from "./authConfig";
 import knecoLogoBlue from "./assets/kneco-logo-blue.png";
 import pfohFooterLogo from "./assets/pfoh-footer-logo.png";
 
+const RETURN_INTENT_KEY = "pfoh-return-intent";
+
+type ReturnIntent =
+  | { action: "submit-veteran" }
+  | { action: "suggest-change"; honoreeId: number };
+
+const publicCopy = {
+  title: "HONOR A VETERAN",
+  subtitle: "Find a veteran or submit a tribute. No cost to look or submit a hero.",
+  intro:
+    "Search our veteran records—no account needed. To submit a new veteran record or suggest changes to an existing record, log in or create an account. All submissions and changes require administrator approval before they appear publicly.",
+  searchHeading: "Search veteran records",
+  searchHelp:
+    "Search by name, military branch, rank, submitter’s name, or flag grid location. A flag grid location is the spot on the field, such as AA-10.",
+  searchPlaceholder: "Enter a name, submitter, branch, rank, or flag grid (such as AA-10)",
+  missingLead: "Can’t find your veteran?",
+  submitVeteran: "Submit a veteran",
+  suggestChange: "Suggest a change",
+  loginRequired: "Login required to submit.",
+  noResults:
+    "No matching veteran records found. Try a different spelling or fewer search details. If the veteran isn’t listed, submit a new record.",
+  loginPrompt:
+    "Log in or create an account to submit a veteran record or suggest a change. You can search and view records without an account.",
+  aboveSubmit: "Your submission will be reviewed by an administrator before it appears publicly.",
+  newRecordConfirmation:
+    "Your veteran record has been submitted for review. It will appear publicly after administrator approval.",
+  editConfirmation:
+    "Your suggested changes have been submitted for review. The current record will remain visible until your changes are approved.",
+  pendingReview: "Pending review",
+  mySubmissions: "My submissions",
+  stepSearchTitle: "Search first",
+  stepSearchBody: "Look for an existing record for the veteran you want to honor.",
+  stepSubmitTitle: "Submit a record or suggest a change",
+  stepSubmitBody:
+    "If you find the veteran, open their record (login required) and select “Suggest a change.” If no record exists, select “Submit a veteran.” You’ll need to log in or create an account.",
+  stepReviewTitle: "Administrator review",
+  stepReviewBody:
+    "An administrator reviews all new records and suggested changes. They appear publicly only after approval."
+};
+
 const blankForm: SaveHonoreeChangeRequest = {
   firstName: "",
   middleName: "",
@@ -93,14 +133,14 @@ function latestRequestStatus(claim: FlagClaim) {
 }
 
 function ownershipStatusLabel(claim: FlagClaim) {
-  const latest = claim.latestChangeRequest?.requestStatus;
+  const latest = claim.latestChangeRequest?.requestStatus ?? claim.claimStatus;
 
-  if (latest === "Submitted") return "Awaiting admin review";
+  if (latest === "Submitted") return publicCopy.pendingReview;
   if (latest === "Approved") return "Approved";
   if (latest === "Rejected") return "Needs revision";
   if (latest === "Draft") return "Draft saved";
 
-  return "Managed by you";
+  return "In progress";
 }
 
 function profileClaimString(claims: Record<string, unknown> | undefined, keys: string[]) {
@@ -285,6 +325,7 @@ export default function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [activeRoute, setActiveRoute] = useState<AppRoute>(() => normalizeAppRoute(window.location.pathname));
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
+  const [authPrompt, setAuthPrompt] = useState<ReturnIntent | null>(null);
   const confirmResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
 
   const [savedDisplayName, setSavedDisplayName] = useState("");
@@ -629,8 +670,21 @@ export default function App() {
     }
   }
 
-  async function signIn() {
-    await instance.loginRedirect(loginRequest);
+  async function signIn(mode: "login" | "create" = "login", intent?: ReturnIntent | null) {
+    if (intent) {
+      sessionStorage.setItem(RETURN_INTENT_KEY, JSON.stringify(intent));
+    } else {
+      sessionStorage.removeItem(RETURN_INTENT_KEY);
+    }
+
+    setAuthPrompt(null);
+    setMobileNavOpen(false);
+
+    await instance.loginRedirect({
+      ...loginRequest,
+      prompt: mode === "create" ? "create" : "login",
+      redirectStartPage: window.location.href
+    });
   }
 
   async function signOut() {
@@ -727,6 +781,45 @@ export default function App() {
     setError("");
   }, [activeRoute, account, selectedClaim, isNominating, submitterContact.email, submitterContact.phone]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !account) return;
+
+    const raw = sessionStorage.getItem(RETURN_INTENT_KEY);
+    if (!raw) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+
+      sessionStorage.removeItem(RETURN_INTENT_KEY);
+
+      let intent: ReturnIntent;
+      try {
+        intent = JSON.parse(raw) as ReturnIntent;
+      } catch {
+        return;
+      }
+
+      if (intent.action === "submit-veteran") {
+        beginNomination();
+        return;
+      }
+
+      if (intent.action === "suggest-change") {
+        await suggestChange(intent.honoreeId);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+
+    // The return intent is read once after sign-in. The handlers below close over the signed-in account.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, account?.homeAccountId]);
+
   async function loadAdminData() {
     if (!account) return;
 
@@ -798,7 +891,7 @@ export default function App() {
     }
 
     if (notice) {
-      timers.push(window.setTimeout(() => setNotice(""), 5000));
+      timers.push(window.setTimeout(() => setNotice(""), 12000));
     }
 
     return () => {
@@ -938,10 +1031,11 @@ export default function App() {
 
   function beginNomination() {
     if (!account) {
-      void signIn();
+      setAuthPrompt({ action: "submit-veteran" });
       return;
     }
 
+    setAuthPrompt(null);
     setSelectedPhoto(null);
     setSelectedPhotoRotation(0);
     setSelectedClaim(null);
@@ -952,33 +1046,23 @@ export default function App() {
     navigateToRoute("/honor-a-hero");
   }
 
-  async function claimSearchResult(honoree: HonoreeSearchResult) {
+  async function suggestChange(honoreeId: number) {
     if (!account) {
-      await signIn();
+      setAuthPrompt({ action: "suggest-change", honoreeId });
       return;
     }
 
-    const ok = await requestConfirmation(
-      `Claim ${displayNameWithNickname(honoree.fullName, honoree.nickname)}'s flag record? You will be able to submit corrections or updates for review.`,
-      { title: "Claim flag record", confirmText: "Claim flag" }
-    );
-
-    if (!ok) return;
-
+    setAuthPrompt(null);
     setSaving(true);
     setError("");
     setNotice("");
 
     try {
-      const claim = await flagClaimApi.claimHonoree(instance, account, honoree.id);
+      const claim = await flagClaimApi.claimHonoree(instance, account, honoreeId);
       await loadData();
-      const coClaimNotice = claim.claimNotice
-        ? ` ${claim.claimNotice}`
-        : "";
-      setNotice(`${displayNameWithNickname(honoree.fullName, honoree.nickname)}'s flag record has been claimed. Review the prefilled details below and submit any changes.${coClaimNotice}`);
       beginEdit(claim);
     } catch (err) {
-      setError(reportableErrorMessage(err, "Unable to claim this honoree's flag record."));
+      setError(reportableErrorMessage(err, "Unable to open this record for a suggested change."));
     } finally {
       setSaving(false);
     }
@@ -989,15 +1073,15 @@ export default function App() {
     if (!account) return;
 
     const ok = await requestConfirmation(
-      `Unclaim ${claim.honoreeName || "this flag"}? It will be removed from your claimed flags.`,
-      { title: "Unclaim flag", confirmText: "Unclaim", tone: "danger" }
+      `Withdraw your submission for ${claim.honoreeName || "this veteran"}? It will be removed from My submissions.`,
+      { title: "Withdraw submission", confirmText: "Withdraw", tone: "danger" }
     );
 
     if (!ok) return;
 
     setSaving(true);
     setError("");
-    setNotice(`Unclaiming ${claim.honoreeName || "flag"}...`);
+    setNotice(`Withdrawing ${claim.honoreeName || "this submission"}...`);
 
     try {
       await flagClaimApi.unclaim(instance, account, claim.id);
@@ -1010,9 +1094,9 @@ export default function App() {
       }
 
       await loadData();
-      setNotice(`${claim.honoreeName || "Flag"} was unclaimed.`);
+      setNotice(`${claim.honoreeName || "This submission"} was withdrawn.`);
     } catch (err) {
-      setError(reportableErrorMessage(err, "Unable to unclaim this flag."));
+      setError(reportableErrorMessage(err, "Unable to withdraw this submission."));
       setNotice("");
     } finally {
       setSaving(false);
@@ -1325,11 +1409,12 @@ export default function App() {
       setForm(formToSubmit);
       await flagClaimApi.nominate(instance, account, formToSubmit, photoForUpload);
       await loadData();
-      setNotice("Nomination submitted for admin review and claimed under your account.");
       setIsNominating(false);
       setSelectedPhoto(null);
       setSelectedPhotoRotation(0);
       setForm(blankForm);
+      setNotice(publicCopy.newRecordConfirmation);
+      navigateToRoute("/my-flags");
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to submit nomination."));
     } finally {
@@ -1382,13 +1467,17 @@ export default function App() {
       } else {
         await flagClaimApi.submit(instance, account, selectedClaim.id);
         await loadData();
-        setNotice("Honoree information submitted for review.");
+        setNotice(publicCopy.editConfirmation);
       }
 
       setSelectedClaim(null);
       setSelectedPhoto(null);
       setSelectedPhotoRotation(0);
       setForm(blankForm);
+
+      if (!isAdminDirectEdit) {
+        navigateToRoute("/my-flags");
+      }
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to submit changes."));
     } finally {
@@ -1935,10 +2024,8 @@ export default function App() {
         <div className="heroContent">
 
           <p className="eyebrow">Plano Flags of Honor</p>
-          <h1>Find a Flag</h1>
-          <p className="heroSubtitle">
-            Search Plano Flags of Honor honoree records and view flag details.
-          </p>
+          <h1>{publicCopy.title}</h1>
+          <p className="heroLead">{publicCopy.subtitle}</p>
         </div>
 
         <div className="authBox">
@@ -1955,15 +2042,20 @@ export default function App() {
               </div>
             </>
           ) : (
-            <button type="button" onClick={signIn}>
-              Register / sign in
-            </button>
+            <div className="authActions">
+              <button type="button" onClick={() => void signIn("login")}>
+                Log in
+              </button>
+              <button type="button" className="secondary" onClick={() => void signIn("create")}>
+                Create an account
+              </button>
+            </div>
           )}
         </div>
 
           <nav id="hero-navigation" className="heroNav desktopHeroNav" aria-label="Main navigation">
-            <a className={activeRoute === "/find" ? "isActive" : ""} href="/find" onClick={(event) => handleRouteLink(event, "/find")}>Find a flag</a>
-            {isAuthenticated ? <a className={activeRoute === "/my-flags" ? "isActive" : ""} href="/my-flags" onClick={(event) => handleRouteLink(event, "/my-flags")}>My flags</a> : null}
+            <a className={activeRoute === "/find" ? "isActive" : ""} href="/find" onClick={(event) => handleRouteLink(event, "/find")}>Search</a>
+            <a className={activeRoute === "/my-flags" ? "isActive" : ""} href="/my-flags" onClick={(event) => handleRouteLink(event, "/my-flags")}>{publicCopy.mySubmissions}</a>
             {isAdmin ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
             {isAdmin ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
             {isAdmin ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
@@ -1972,7 +2064,7 @@ export default function App() {
               href="/honor-a-hero"
               onClick={(event) => handleRouteLink(event, "/honor-a-hero")}
             >
-              Nominate a honoree
+              {publicCopy.submitVeteran}
             </a>
             <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer">
               PlanoFlagsOfHonor.com
@@ -2003,12 +2095,12 @@ export default function App() {
                 </div>
 
                 <p id="mobile-menu-description" className="srOnly">
-                  Mobile navigation menu for the Plano Flags of Honor Find a Flag app.
+                  Mobile navigation menu for the Plano Flags of Honor public search.
                 </p>
 
                 <nav className="mobileDrawerNav" aria-label="Mobile navigation">
-                  <a className={activeRoute === "/find" ? "isActive" : ""} href="/find" onClick={(event) => handleRouteLink(event, "/find")}>Find a flag</a>
-                  {isAuthenticated ? <a className={activeRoute === "/my-flags" ? "isActive" : ""} href="/my-flags" onClick={(event) => handleRouteLink(event, "/my-flags")}>My flags</a> : null}
+                  <a className={activeRoute === "/find" ? "isActive" : ""} href="/find" onClick={(event) => handleRouteLink(event, "/find")}>Search</a>
+                  <a className={activeRoute === "/my-flags" ? "isActive" : ""} href="/my-flags" onClick={(event) => handleRouteLink(event, "/my-flags")}>{publicCopy.mySubmissions}</a>
                   {isAdmin ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
                   {isAdmin ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
                   {isAdmin ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
@@ -2017,7 +2109,7 @@ export default function App() {
                     href="/honor-a-hero"
                     onClick={(event) => handleRouteLink(event, "/honor-a-hero")}
                   >
-                    Nominate a honoree
+                    {publicCopy.submitVeteran}
                   </a>
                   <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer" onClick={() => setMobileNavOpen(false)}>
                     PlanoFlagsOfHonor.com
@@ -2049,15 +2141,25 @@ export default function App() {
                       </button>
                     </>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMobileNavOpen(false);
-                        void signIn();
-                      }}
-                    >
-                      Register / sign in
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void signIn("login");
+                        }}
+                      >
+                        Log in
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => {
+                          void signIn("create");
+                        }}
+                      >
+                        Create an account
+                      </button>
+                    </>
                   )}
                 </div>
               </Dialog.Content>
@@ -2187,6 +2289,35 @@ export default function App() {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          ) : null}
+
+          {authPrompt ? (
+            <div
+              className="modalOverlay appConfirmOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="auth-prompt-title"
+              onClick={() => setAuthPrompt(null)}
+            >
+              <div className="modalCard appConfirmModal" onClick={(event) => event.stopPropagation()}>
+                <div>
+                  <p className="eyebrow">Account</p>
+                  <h2 id="auth-prompt-title">Log in or create an account</h2>
+                  <p className="helperText">{publicCopy.loginPrompt}</p>
+                </div>
+                <div className="modalActions authChoiceButtons">
+                  <button type="button" className="secondary" onClick={() => setAuthPrompt(null)}>
+                    Cancel
+                  </button>
+                  <button type="button" className="secondary" onClick={() => void signIn("create", authPrompt)}>
+                    Create an account
+                  </button>
+                  <button type="button" onClick={() => void signIn("login", authPrompt)}>
+                    Log in
+                  </button>
+                </div>
               </div>
             </div>
           ) : null}
@@ -2486,16 +2617,15 @@ export default function App() {
                 onMouseDown={(event) => event.stopPropagation()}
               >
                 <div className="modalHeader">
-                  <h2 id="how-it-works-title">How Find a Flag works</h2>
+                  <h2 id="how-it-works-title">How this works</h2>
                   <button type="button" className="modalClose" onClick={() => setShowHowItWorks(false)} aria-label="Close how this works">
                     ×
                   </button>
                 </div>
                 <ol className="modalSteps">
-                  <li><strong>Search</strong><span>Find an existing honoree by name, branch, rank, submitter, or flag grid.</span></li>
-                  <li><strong>Review</strong><span>Open the honoree PDF or review the record details.</span></li>
-                  <li><strong>Claim or nominate</strong><span>Sign in to claim a record, submit an update, or nominate someone who is missing.</span></li>
-                  <li><strong>Admin review</strong><span>Administrators approve changes and add cards to the reprint queue when needed.</span></li>
+                  <li><strong>{publicCopy.stepSearchTitle}</strong><span>{publicCopy.stepSearchBody}</span></li>
+                  <li><strong>{publicCopy.stepSubmitTitle}</strong><span>{publicCopy.stepSubmitBody}</span></li>
+                  <li><strong>{publicCopy.stepReviewTitle}</strong><span>{publicCopy.stepReviewBody}</span></li>
                 </ol>
               </section>
             </div>
@@ -2503,11 +2633,11 @@ export default function App() {
 
           {isFindRoute ? (
           <section id="search" className="card searchCard">
+            <p className="searchIntro">{publicCopy.intro}</p>
             <div className="sectionHeader searchHeader">
               <div>
-                <p className="eyebrow">Find an existing honoree</p>
                 <h2>
-                  Honoree search
+                  {publicCopy.searchHeading}
                   <button
                     type="button"
                     className="infoIconButton"
@@ -2517,7 +2647,7 @@ export default function App() {
                     i
                   </button>
                 </h2>
-                <p className="helperText">Search by name, branch, rank, submitter, or flag grid.</p>
+                <p className="helperText">{publicCopy.searchHelp}</p>
               </div>
             </div>
 
@@ -2528,7 +2658,7 @@ export default function App() {
               <input
                 id="honoree-search"
                 type="search"
-                placeholder="Search name, branch, rank, or flag grid"
+                placeholder={publicCopy.searchPlaceholder}
                 value={honoreeSearchText}
                 onChange={(e) => {
                   const value = e.target.value;
@@ -2561,21 +2691,21 @@ export default function App() {
             </form>
 
             {showInlineHowItWorks ? (
-              <section className="inlineHowItWorks" aria-label="How Find a Flag works">
+              <section className="inlineHowItWorks" aria-label="How to submit or suggest a change">
                 <div>
                   <span>1</span>
-                  <strong>Search</strong>
-                  <p>Find an existing honoree by name, branch, rank, submitter, or flag grid.</p>
+                  <strong>{publicCopy.stepSearchTitle}</strong>
+                  <p>{publicCopy.stepSearchBody}</p>
                 </div>
                 <div>
                   <span>2</span>
-                  <strong>Claim or nominate</strong>
-                  <p>Sign in to manage a flag record or nominate someone who is missing.</p>
+                  <strong>{publicCopy.stepSubmitTitle}</strong>
+                  <p>{publicCopy.stepSubmitBody}</p>
                 </div>
                 <div>
                   <span>3</span>
-                  <strong>Admin review</strong>
-                  <p>Administrators approve changes before records are published or reprinted.</p>
+                  <strong>{publicCopy.stepReviewTitle}</strong>
+                  <p>{publicCopy.stepReviewBody}</p>
                 </div>
               </section>
             ) : null}
@@ -2583,7 +2713,7 @@ export default function App() {
             {honoreeSearchPerformed ? (
               honoreeResults.length === 0 ? (
                 <p className="emptyState">
-                  No honorees found. A signed-in user can nominate a veteran or first responder for admin review.
+                  {publicCopy.noResults}
                 </p>
               ) : (
                 <div className="honoreeResults">
@@ -2628,10 +2758,10 @@ export default function App() {
                             <button
                               type="button"
                               className="primaryAction"
-                              onClick={() => claimSearchResult(honoree)}
+                              onClick={() => void suggestChange(honoree.id)}
                               disabled={saving}
                             >
-                              {isAuthenticated ? "Claim this flag" : "Sign in to claim"}
+                              {publicCopy.suggestChange}
                             </button>
 
                             {isAdmin ? (
@@ -2751,20 +2881,19 @@ export default function App() {
                 </div>
               )
             ) : null}
+
+            {honoreeSearchPerformed && !searchLoading ? (
+              <div className="missingVeteranPrompt">
+                <p>
+                  {publicCopy.missingLead}{" "}
+                  <button type="button" onClick={beginNomination} disabled={saving}>
+                    {publicCopy.submitVeteran}
+                  </button>
+                </p>
+                <p className="helperText">{publicCopy.loginRequired}</p>
+              </div>
+            ) : null}
           </section>
-          ) : null}
-
-
-          {isFindRoute && !isAuthenticated ? (
-            <section className="card guestNotice">
-              <h2>Search is open to everyone</h2>
-              <p>
-                You can search and view honoree flag records without signing in. Sign in or register when you are ready to claim a flag record, submit updates, or nominate a veteran or first responder.
-              </p>
-              <button type="button" onClick={signIn}>
-                Register / sign in
-              </button>
-            </section>
           ) : null}
 
           {isMyFlagsRoute && isAuthenticated ? (
@@ -2773,9 +2902,9 @@ export default function App() {
             <div className="sectionHeader">
               <div>
                 <p className="eyebrow">Your account</p>
-                <h2>My claimed flags</h2>
+                <h2>{publicCopy.mySubmissions}</h2>
                 <p className="helperText">
-                  These are the flag records you manage, including nominations you submitted. You can submit updates at any time; admins review and approve changes before they are published or reprinted.
+                  Check veteran records you submitted and changes you suggested. A suggested change does not replace the public record until an administrator approves it.
                 </p>
               </div>
               <button type="button" className="secondary subtleRefreshButton" onClick={loadData} disabled={loading}>
@@ -2784,7 +2913,7 @@ export default function App() {
             </div>
 
             {myClaims.length === 0 ? (
-              <p className="emptyState">You have not claimed a flag record yet.</p>
+              <p className="emptyState">You have no submissions yet.</p>
             ) : (
               <div className="ownedFlagGrid">
                 {myClaims.map((claim) => {
@@ -2806,19 +2935,19 @@ export default function App() {
                         <p className="eyebrow">Honoree</p>
                         <h3>{claim.honoreeName || "Honoree details pending"}</h3>
                         <p>
-                          Flag grid {claim.flagGridName || `Grid ${claim.flagGridId}`} • Claim #{claim.id}
+                          Flag grid {claim.flagGridName || `Grid ${claim.flagGridId}`} • Submission #{claim.id}
                         </p>
                       </div>
 
                       <div className="ownedFlagMeta">
                         <span className={statusClass(status)}>{ownershipStatusLabel(claim)}</span>
-                        <span>Claimed {formatDate(claim.createdUtc)}</span>
+                        <span>Started {formatDate(claim.createdUtc)}</span>
                         {claim.submittedUtc ? <span>Last submitted {formatDate(claim.submittedUtc)}</span> : null}
                       </div>
 
                       <div className="ownedFlagActions">
                         <button type="button" onClick={() => beginEdit(claim)}>
-                          Manage flag
+                          Open
                         </button>
                         <button
                           type="button"
@@ -2826,7 +2955,7 @@ export default function App() {
                           onClick={() => unclaimFlag(claim)}
                           disabled={saving}
                         >
-                          Unclaim
+                          Withdraw
                         </button>
                       </div>
 
@@ -2836,13 +2965,13 @@ export default function App() {
                         <p className="claimNotice">{claim.claimNotice}</p>
                       ) : null}
 
-                      <div className="miniTimeline" aria-label="Claim timeline">
-                        <span>Claimed {formatDate(claim.createdUtc)}</span>
+                      <div className="miniTimeline" aria-label="Submission timeline">
+                        <span>Started {formatDate(claim.createdUtc)}</span>
                         {claim.latestChangeRequest?.submittedUtc ? (
                           <span>Submitted {formatDate(claim.latestChangeRequest.submittedUtc)}</span>
                         ) : null}
                         {claim.latestChangeRequest?.requestStatus ? (
-                          <span>Status: {claim.latestChangeRequest.requestStatus}</span>
+                          <span>Status: {ownershipStatusLabel(claim)}</span>
                         ) : null}
                       </div>
                     </article>
@@ -2856,21 +2985,31 @@ export default function App() {
 
           {isMyFlagsRoute && !isAuthenticated ? (
             <section className="card guestNotice">
-              <h2>Sign in to view your claimed flags</h2>
-              <p>Register or sign in to manage claimed flag records, submit nominations, and track updates.</p>
-              <button type="button" onClick={signIn}>
-                Register / sign in
-              </button>
+              <h2>{publicCopy.mySubmissions}</h2>
+              <p>{publicCopy.loginPrompt}</p>
+              <div className="authChoiceButtons">
+                <button type="button" onClick={() => void signIn("login")}>
+                  Log in
+                </button>
+                <button type="button" className="secondary" onClick={() => void signIn("create")}>
+                  Create an account
+                </button>
+              </div>
             </section>
           ) : null}
 
           {isHonorHeroRoute && !isAuthenticated ? (
             <section className="card guestNotice">
-              <h2>Honor a Hero</h2>
-              <p>Register or sign in to nominate a veteran or first responder for Plano Flags of Honor.</p>
-              <button type="button" onClick={signIn}>
-                Register / sign in
-              </button>
+              <h2>{publicCopy.submitVeteran}</h2>
+              <p>{publicCopy.loginPrompt}</p>
+              <div className="authChoiceButtons">
+                <button type="button" onClick={() => void signIn("login", { action: "submit-veteran" })}>
+                  Log in
+                </button>
+                <button type="button" className="secondary" onClick={() => void signIn("create", { action: "submit-veteran" })}>
+                  Create an account
+                </button>
+              </div>
             </section>
           ) : null}
 
@@ -2879,9 +3018,14 @@ export default function App() {
               <h2>Administrator access required</h2>
               <p>Sign in with an account assigned the PFOH.Admin role to use review, flag map, and printing tools.</p>
               {!isAuthenticated ? (
-                <button type="button" onClick={signIn}>
-                  Register / sign in
-                </button>
+                <div className="authChoiceButtons">
+                  <button type="button" onClick={() => void signIn("login")}>
+                    Log in
+                  </button>
+                  <button type="button" className="secondary" onClick={() => void signIn("create")}>
+                    Create an account
+                  </button>
+                </div>
               ) : null}
             </section>
           ) : null}
@@ -3343,17 +3487,17 @@ export default function App() {
                 <div>
                   <p className="eyebrow">
                     {isNominating
-                      ? "New nomination"
+                      ? publicCopy.submitVeteran
                       : selectedClaim?.claimStatus === "AdminDirectEdit"
                         ? "Administrator edit"
-                        : `Claim #${selectedClaim?.id}`}
+                        : publicCopy.suggestChange}
                   </p>
                   <h2>
                     {isNominating
-                      ? "Nominate a veteran or first responder"
+                      ? publicCopy.submitVeteran
                       : selectedClaim?.claimStatus === "AdminDirectEdit"
                         ? `Directly edit ${selectedClaim?.honoreeName || "honoree record"}`
-                        : `Manage flag record for ${selectedClaim?.flagGridName || `grid ${selectedClaim?.flagGridId}`}`}
+                        : `${publicCopy.suggestChange}${selectedClaim?.honoreeName ? ` for ${selectedClaim.honoreeName}` : ""}`}
                   </h2>
                 </div>
                 <button
@@ -3371,13 +3515,11 @@ export default function App() {
                 </button>
               </div>
 
-              <p className="helperText">
-                {isNominating
-                  ? "Submit the honoree information for admin review. The nomination will be listed under your claimed flags, and you will be recorded as the submitter."
-                  : selectedClaim?.claimStatus === "AdminDirectEdit"
-                    ? "As an administrator, you can save these changes directly and add the card to the reprint queue without claiming the flag."
-                    : "You can submit updates to this flag record whenever needed. Changes go to the Plano Flags of Honor admin team for approval before publishing and reprinting."}
-              </p>
+              {selectedClaim?.claimStatus === "AdminDirectEdit" ? (
+                <p className="helperText">
+                  As an administrator, you can save these changes directly and add the card to the reprint queue.
+                </p>
+              ) : null}
 
               <p className="requiredFieldsNote">
                 Fields marked <span className="requiredMark" aria-hidden="true">*</span> are required.
@@ -3620,6 +3762,10 @@ export default function App() {
                   Killed in action / Gold Star recognition
                 </label>
 
+                {selectedClaim?.claimStatus === "AdminDirectEdit" ? null : (
+                  <p className="helperText wide">{publicCopy.aboveSubmit}</p>
+                )}
+
                 <div className="actions wide">
                   {!isNominating ? (
                     <button type="button" className="secondary" disabled={saving} onClick={saveDraft}>
@@ -3629,11 +3775,9 @@ export default function App() {
                   <button type="submit" disabled={saving}>
                     {saving
                       ? "Submitting..."
-                      : isNominating
-                        ? "Submit nomination"
-                        : selectedClaim?.claimStatus === "AdminDirectEdit"
-                          ? "Save and queue reprint"
-                          : "Submit changes for review"}
+                      : selectedClaim?.claimStatus === "AdminDirectEdit"
+                        ? "Save and queue reprint"
+                        : "Submit for review"}
                   </button>
                 </div>
               </form>
@@ -3654,7 +3798,7 @@ export default function App() {
                 beginNomination();
               }}
             >
-              Honor a Hero
+              {publicCopy.submitVeteran}
             </a>
             <a href="https://planoflagsofhonor.com/become-a-sponsor/" target="_blank" rel="noreferrer">
               Become a Sponsor
