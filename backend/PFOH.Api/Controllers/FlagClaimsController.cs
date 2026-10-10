@@ -346,7 +346,7 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
 
         if (string.IsNullOrWhiteSpace(email))
         {
-            return BadRequest("Your signed-in account must have an email address before you can nominate a hero.");
+            return BadRequest("Your signed-in account must have an email address before you can nominate an honoree.");
         }
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
