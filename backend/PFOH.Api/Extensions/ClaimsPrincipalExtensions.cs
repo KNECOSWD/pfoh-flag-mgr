@@ -42,7 +42,7 @@ public static class ClaimsPrincipalExtensions
     /// Phone from the access token. The short claim phone wins, then
     /// extension_{extensionsAppId}_Phone, then a standard phone claim such as phone_number.
     /// A blank extensions app id accepts any extension_{32 hex}_Phone claim.
-    /// Missing claims return null. The value is not checked as E.164 here.
+    /// Missing claims return null. The value is not checked as a US number here.
     /// </summary>
     public static string? GetPhoneNumber(this ClaimsPrincipal user, string? extensionsAppId = null)
     {

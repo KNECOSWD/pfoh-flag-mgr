@@ -9,7 +9,7 @@ namespace PFOH.Api.Extensions;
 /// If they are absent, the directory extension names are used:
 /// extension_{extensionsAppIdWithoutDashes}_Phone and _Organization.
 /// The default extensions app id is the live b2c-extensions-app. Configuration can replace it.
-/// A missing claim returns null. Phone is not checked as E.164 here.
+/// A missing claim returns null. Phone is not checked as a US number here.
 /// </summary>
 public static partial class EntraExtensionClaims
 {

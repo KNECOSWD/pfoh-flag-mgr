@@ -23,7 +23,7 @@ public class UserProfile
 
     public string Email { get; set; } = string.Empty;
 
-    /// <summary>E.164 phone number. Required for new and updated profiles. Empty only on rows created before the column existed.</summary>
+    /// <summary>US phone number stored as +1 and 10 digits. Required for new and updated profiles. Empty only on rows created before the column existed.</summary>
     public string Phone { get; set; } = string.Empty;
 
     /// <summary>Optional organization. There is no city or state column on this table.</summary>

@@ -20,7 +20,10 @@ import {
   honoreePdfUrl,
   honoreePhotoUrl,
   displayNameMaxLength,
-  normalizeE164Phone,
+  displayUsPhone,
+  formatUsPhone,
+  normalizeUsPhone,
+  usPhoneErrorMessage,
   organizationMaxLength,
   type FlagMapExportField,
   lookupApi,
@@ -605,6 +608,9 @@ export default function App() {
           if (current.trim()) return current;
           return profile.hasSavedDisplayName ? profile.displayName : "";
         });
+        if (profile.phoneNeedsCorrection) {
+          setError(usPhoneErrorMessage);
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -627,11 +633,16 @@ export default function App() {
 
     try {
       const profile = await profileApi.get(instance, account);
+      const claimPhone = readMappedAccountClaim(account.idTokenClaims, "Phone");
+      const normalizedPhone = normalizeUsPhone(profile.phone) || normalizeUsPhone(claimPhone);
       setProfileDisplayName(profile.displayName);
       setProfileEmail(profile.email);
-      setProfilePhone(profile.phone || normalizeE164Phone(readMappedAccountClaim(account.idTokenClaims, "Phone")));
+      setProfilePhone(normalizedPhone ? formatUsPhone(normalizedPhone) : "");
       setProfileOrganization(profile.organization || readMappedAccountClaim(account.idTokenClaims, "Organization"));
       setSavedDisplayName(profile.hasSavedDisplayName ? profile.displayName : "");
+      if (!normalizedPhone && (profile.phoneNeedsCorrection || (claimPhone.trim() && !normalizeUsPhone(claimPhone)))) {
+        setProfileError(usPhoneErrorMessage);
+      }
     } catch (err) {
       setProfileError(reportableErrorMessage(err, "Unable to load your profile."));
     } finally {
@@ -644,7 +655,7 @@ export default function App() {
     if (!account) return;
 
     const trimmed = profileDisplayName.trim();
-    const phone = normalizeE164Phone(profilePhone);
+    const phone = normalizeUsPhone(profilePhone);
     const organization = profileOrganization.trim();
     if (!trimmed) {
       setProfileError("Name is required.");
@@ -665,7 +676,7 @@ export default function App() {
     }
 
     if (!phone) {
-      setProfileError("Phone is required and must be an E.164 number, such as +1 2145551234.");
+      setProfileError(usPhoneErrorMessage);
       setProfileNotice("");
       return;
     }
@@ -689,7 +700,7 @@ export default function App() {
       setSavedDisplayName(profile.displayName);
       setProfileDisplayName(profile.displayName);
       setProfileEmail(profile.email);
-      setProfilePhone(profile.phone);
+      setProfilePhone(formatUsPhone(profile.phone));
       setProfileOrganization(profile.organization);
       setProfileNotice("Profile saved. The header name is updated.");
     } catch (err) {
@@ -1019,7 +1030,7 @@ export default function App() {
     return {
       ...currentForm,
       submitterPhoneNumber:
-        currentForm.submitterPhoneNumber?.trim() || submitterContact.phone,
+        currentForm.submitterPhoneNumber?.trim() || formatUsPhone(submitterContact.phone),
       submitterEmailAddress:
         currentForm.submitterEmailAddress?.trim() || submitterContact.email
     };
@@ -1044,7 +1055,7 @@ export default function App() {
       awards: draft?.awards ?? "",
       description: draft?.description ?? "",
       kia: draft?.kia ?? false,
-      submitterPhoneNumber: draft?.submitterPhoneNumber ?? "",
+      submitterPhoneNumber: displayUsPhone(draft?.submitterPhoneNumber ?? ""),
       submitterEmailAddress: draft?.submitterEmailAddress ?? ""
     };
 
@@ -2312,7 +2323,7 @@ export default function App() {
                       name="phone"
                       autoComplete="tel"
                       inputMode="tel"
-                      placeholder="+1 2145551234"
+                      placeholder="214-555-1234"
                       value={profilePhone}
                       disabled={profileLoading || profileSaving}
                       onChange={(event) => {
@@ -2322,7 +2333,7 @@ export default function App() {
                       required
                     />
                   </label>
-                  <p className="helperText">Use international format, such as +1 2145551234. The app checks that this is an E.164 number.</p>
+                  <p className="helperText">Use a 10-digit US number, like 214-555-1234.</p>
                   <label>
                     Organization <span className="helperText">(optional)</span>
                     <input
@@ -2932,7 +2943,7 @@ export default function App() {
                                     <span>{claimant.claimantName || claimant.claimantEmail}</span>
                                     <small>
                                       {claimant.claimantEmail}
-                                      {claimant.claimantPhone ? ` • ${claimant.claimantPhone}` : ""}
+                                      {claimant.claimantPhone ? ` • ${displayUsPhone(claimant.claimantPhone)}` : ""}
                                       {claimant.claimantOrganization ? ` • ${claimant.claimantOrganization}` : ""}
                                       {" • "}
                                       {claimant.claimStatus}
@@ -3164,7 +3175,7 @@ export default function App() {
                             {item.claimantPhone ? (
                               <>
                                 <br />
-                                <span>{item.claimantPhone}</span>
+                                <span>{displayUsPhone(item.claimantPhone)}</span>
                               </>
                             ) : null}
                             {item.claimantOrganization ? (

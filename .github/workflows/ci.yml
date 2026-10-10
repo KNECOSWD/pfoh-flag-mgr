@@ -26,6 +26,9 @@ jobs:
       - name: Check mapped phone and organization claims
         run: node --test frontend/scripts/check-entra-claims.mjs
 
+      - name: Check US phone formats
+        run: node --test frontend/scripts/check-us-phone.mjs
+
       - name: Typecheck frontend
         working-directory: frontend
         run: |

@@ -710,12 +710,7 @@ export type FlagMapExportField = (typeof flagMapExportFields)[number]["id"];
 export const displayNameMaxLength = 100;
 export const organizationMaxLength = 200;
 
-const e164PhonePattern = /^\+[1-9]\d{1,14}$/;
-
-export function normalizeE164Phone(value: string) {
-  const compact = value.trim().replace(/[\s().-]/g, "");
-  return e164PhonePattern.test(compact) ? compact : "";
-}
+export { displayUsPhone, formatUsPhone, normalizeUsPhone, usPhoneErrorMessage } from "./usPhone.js";
 
 export type UserProfile = {
   ownerObjectId: string;
@@ -724,6 +719,7 @@ export type UserProfile = {
   hasSavedDisplayName: boolean;
   phone: string;
   organization: string;
+  phoneNeedsCorrection?: boolean;
 };
 
 export type UpdateUserProfileRequest = {

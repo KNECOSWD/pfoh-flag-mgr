@@ -6,14 +6,15 @@ public record UserProfileDto(
     string Email,
     bool HasSavedDisplayName,
     string Phone,
-    string Organization);
+    string Organization,
+    bool PhoneNeedsCorrection = false);
 
 public record UpdateUserProfileRequest
 {
     /// <summary>Account name. Stored as <see cref="UserProfileDto.DisplayName"/>.</summary>
     public string? DisplayName { get; set; }
 
-    /// <summary>Required E.164 phone number, such as +19725550100.</summary>
+    /// <summary>Required US phone number. Stored as +1 and 10 digits, such as +12145551234.</summary>
     public string? Phone { get; set; }
 
     /// <summary>Optional organization. Blank clears a previously saved value.</summary>

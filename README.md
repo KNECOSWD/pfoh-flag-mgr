@@ -94,7 +94,7 @@ User flow **SignUpSignIn** is attached to SPA app **pfoh-flags-spa** (`06e5ea83-
 Already live:
 
 - Custom user attributes, type String: **Phone** and **Organization**.
-- The user flow collects only **Email**, **Display Name** (required), **Phone** (required, label `Mobile phone (e.g. +1 2145551234)`), and **Organization** (optional).
+- The user flow collects only **Email**, **Display Name** (required, label `Your name`), **Phone** (required, label `Mobile phone (US, e.g. 214-555-1234)`), and **Organization** (optional).
 - Identity provider: **Email with password**. Email one-time passcode is offered and is not selected. Sign-up is email-verified only.
 - SMS stays off. Matthew declined the per-SMS charge. No Conditional Access changes were made.
 - Claims mapping is live on **pfoh-flags-spa** (`06e5ea83-b3c7-4d53-9513-9ddbcfc2d434`, ID token) and **pfoh-flags-api** (`c9004926-396b-47e0-93e7-57f19504185e`, access token).
@@ -102,7 +102,7 @@ Already live:
 
 The tokens emit the short claims `phone` and `organization`, mapped from `extension_a29a0dc74c9b4cef9f783444e62907d3_Phone` and `extension_a29a0dc74c9b4cef9f783444e62907d3_Organization`. This app does not read app-registration `optionalClaims`. It reads `phone` and `organization` first, then those extension names. The extensions app id defaults to `a29a0dc7-4c9b-4cef-9f78-3444e62907d3` and stays configurable: `Entra:ExtensionsAppId` / `Entra__ExtensionsAppId` on the API, and `VITE_ENTRA_EXTENSIONS_APP_ID` on the SPA. A non-empty value replaces the default.
 
-Entra does not check the phone as E.164. The app does, including the spaced example `+1 2145551234`.
+Entra does not check that the phone is a US number. The app does. It accepts `2145551234`, `214-555-1234`, `(214) 555-1234`, `214.555.1234`, `+1 214 555 1234`, and `1-214-555-1234`. A valid number is stored as `+12145551234` and shown as `(214) 555-1234`. A non-US number, such as `+44...`, is not saved. The profile still loads, and the app asks for a 10-digit US mobile number.
 
 The portal warned that OIDC applications require custom signing keys to customize claims. Without the manifest change below, sign-in fails with **AADSTS50146**. The app shows that error and leaves search and the public pages usable.
 
@@ -202,13 +202,13 @@ Rows are seats that have an honoree, sorted by section then grid number (`A-01`,
 
 ### Your profile
 
-Signed-in users open **Profile** from the header (and from the mobile menu). The form asks for **Name** (stored as the display name), **Email**, **Phone**, and optional **Organization**. Email comes from the Entra token and stays read-only. Name, email, and phone are required. Phone must be E.164, such as `+1 2145551234` (stored as `+12145551234`). Entra does not validate that format. The profile is stored in `dbo.UserProfiles`, keyed by the token object id (`OwnerObjectId`). The saved name replaces a placeholder token name such as `unknown` in the header and is copied onto that user's flag claims.
+Signed-in users open **Profile** from the header (and from the mobile menu). The form asks for **Name** (stored as the display name), **Email**, **Phone**, and optional **Organization**. Email comes from the Entra token and stays read-only. Name, email, and phone are required. Phone must be a 10-digit US number, such as `214-555-1234`. It is stored as `+12145551234` and shown as `(214) 555-1234` on the profile and on admin claimant lists. Entra does not validate that format. The profile is stored in `dbo.UserProfiles`, keyed by the token object id (`OwnerObjectId`). The saved name replaces a placeholder token name such as `unknown` in the header and is copied onto that user's flag claims.
 
 There are no city or state fields on the account profile. `dbo.Sponsors` still has City and State because those columns hold sponsor mailing addresses, and dropping them would delete existing data.
 
 Display name is trimmed, required, and limited to 100 characters. Organization is optional and limited to 200 characters. Users can read and update only their own profile. `GET /api/profile` and `PUT /api/profile` require a signed-in user. `PUT /api/profile/{ownerObjectId}` returns 403 when the id is not the caller.
 
-If the access token includes `phone` or `organization`, the API copies a missing value onto the profile. Those short names are the live claims-mapping output. If they are absent, the API uses `extension_{extensionsAppIdWithoutDashes}_Phone` and `extension_{extensionsAppIdWithoutDashes}_Organization`. `extensionsAppId` defaults to `a29a0dc7-4c9b-4cef-9f78-3444e62907d3` (`Entra:ExtensionsAppId`). A non-empty setting replaces that default. A missing claim is left blank. A saved phone or organization is not overwritten by a different claim. The app still requires an E.164 phone number on save. A sign-in failure, including AADSTS50146, is shown on the page. Search and the public pages still work.
+If the access token includes `phone` or `organization`, the API copies a missing value onto the profile. Those short names are the live claims-mapping output. If they are absent, the API uses `extension_{extensionsAppIdWithoutDashes}_Phone` and `extension_{extensionsAppIdWithoutDashes}_Organization`. `extensionsAppId` defaults to `a29a0dc7-4c9b-4cef-9f78-3444e62907d3` (`Entra:ExtensionsAppId`). A non-empty setting replaces that default. A phone claim is normalized the same way as a typed number. A missing claim is left blank. A claim that is not a valid US number is not saved, the profile still loads, and the user is asked to enter a 10-digit US mobile number. A saved phone or organization is not overwritten by a different claim. A sign-in failure, including AADSTS50146, is shown on the page. Search and the public pages still work.
 
 The API creates `dbo.UserProfiles` on first use if the table is missing, and adds Phone and Organization when an older profile table is already present. It does not change the existing honoree or sponsor tables. If the database login cannot create tables, run this once against the app database:
 

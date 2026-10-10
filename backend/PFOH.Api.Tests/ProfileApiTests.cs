@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PFOH.Api.Data;
 using PFOH.Api.Models;
+using PFOH.Api.Services;
 using Xunit;
 
 namespace PFOH.Api.Tests;
@@ -253,11 +254,25 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
             "user-bad-phone",
             "bad-phone@example.com",
             "Pat Claims",
-            phoneClaim: "972-555-0100"));
+            phoneClaim: "+44 20 7946 0958"));
+        Assert.Equal(HttpStatusCode.OK, invalid.StatusCode);
         var invalidProfile = await invalid.Content.ReadFromJsonAsync<UserProfileResponse>();
         Assert.NotNull(invalidProfile);
         Assert.Equal("", invalidProfile.Phone);
+        Assert.True(invalidProfile.PhoneNeedsCorrection);
         Assert.Equal("", invalidProfile.Organization);
+
+        var localFormat = await client.SendAsync(ProfileRequest(
+            HttpMethod.Get,
+            "/api/profile",
+            "user-local-phone",
+            "local-phone@example.com",
+            "Pat Claims",
+            phoneClaim: "(214) 555-1234"));
+        var localProfile = await localFormat.Content.ReadFromJsonAsync<UserProfileResponse>();
+        Assert.NotNull(localProfile);
+        Assert.Equal("+12145551234", localProfile.Phone);
+        Assert.False(localProfile.PhoneNeedsCorrection);
 
         var missing = await client.SendAsync(ProfileRequest(
             HttpMethod.Get,
@@ -272,7 +287,7 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
     }
 
     [Fact]
-    public async Task Update_requires_e164_phone_keeps_email_and_treats_organization_as_optional()
+    public async Task Update_requires_a_us_phone_keeps_email_and_treats_organization_as_optional()
     {
         await ResetAsync();
         var client = factory.CreateClient();
@@ -285,6 +300,7 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
             "Pat Phone",
             new { displayName = "Pat Phone", organization = "Station 1" }));
         Assert.Equal(HttpStatusCode.BadRequest, missingPhone.StatusCode);
+        Assert.Equal(UsPhone.InvalidMessage, await ErrorMessageAsync(missingPhone));
 
         var badPhone = await client.SendAsync(ProfileRequest(
             HttpMethod.Put,
@@ -292,8 +308,28 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
             "user-phone",
             "phone@example.com",
             "Pat Phone",
-            new { displayName = "Pat Phone", phone = "9725550100" }));
+            new { displayName = "Pat Phone", phone = "214555123" }));
         Assert.Equal(HttpStatusCode.BadRequest, badPhone.StatusCode);
+        Assert.Equal(UsPhone.InvalidMessage, await ErrorMessageAsync(badPhone));
+
+        var nonUsPhone = await client.SendAsync(ProfileRequest(
+            HttpMethod.Put,
+            "/api/profile",
+            "user-phone",
+            "phone@example.com",
+            "Pat Phone",
+            new { displayName = "Pat Phone", phone = "+44 20 7946 0958" }));
+        Assert.Equal(HttpStatusCode.BadRequest, nonUsPhone.StatusCode);
+        Assert.Equal(UsPhone.InvalidMessage, await ErrorMessageAsync(nonUsPhone));
+
+        var letterPhone = await client.SendAsync(ProfileRequest(
+            HttpMethod.Put,
+            "/api/profile",
+            "user-phone",
+            "phone@example.com",
+            "Pat Phone",
+            new { displayName = "Pat Phone", phone = "214-555-ABCD" }));
+        Assert.Equal(HttpStatusCode.BadRequest, letterPhone.StatusCode);
 
         var missingEmail = await client.SendAsync(ProfileRequest(
             HttpMethod.Put,
@@ -310,11 +346,12 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
             "user-phone",
             "phone@example.com",
             "Pat Phone",
-            new { displayName = "Pat Phone", phone = "+44 20 7946 0958", email = "evil@example.com" }));
+            new { displayName = "Pat Phone", phone = "214-555-1234", email = "evil@example.com" }));
         Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
         var profile = await saved.Content.ReadFromJsonAsync<UserProfileResponse>();
         Assert.NotNull(profile);
-        Assert.Equal("+442079460958", profile.Phone);
+        Assert.Equal("+12145551234", profile.Phone);
+        Assert.False(profile.PhoneNeedsCorrection);
         Assert.Equal("phone@example.com", profile.Email);
         Assert.Equal("", profile.Organization);
 
@@ -553,7 +590,15 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
         string Email,
         bool HasSavedDisplayName,
         string Phone,
-        string Organization);
+        string Organization,
+        bool PhoneNeedsCorrection = false);
+
+    private static async Task<string> ErrorMessageAsync(HttpResponseMessage response)
+    {
+        var payload = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+        Assert.NotNull(payload);
+        return payload["message"];
+    }
 
     private sealed record ClaimantResponse(
         int ClaimId,

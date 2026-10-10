@@ -20,11 +20,12 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         var saved = await db.UserProfiles
             .FirstOrDefaultAsync(profile => profile.OwnerObjectId == ownerObjectId, ct);
 
+        var rawClaimPhone = user.GetPhoneNumber(ExtensionsAppId);
         var phone = ResolvePhone(user, saved, ExtensionsAppId);
         var organization = ResolveOrganization(user, saved, ExtensionsAppId);
         await TryPersistClaimFillAsync(saved, phone, organization, ct);
 
-        return ToDto(user, saved, phone, organization);
+        return ToDto(user, saved, phone, organization, PhoneNeedsCorrection(saved, rawClaimPhone, phone));
     }
 
     public async Task<UserProfileUpdateResult> UpdateOwnAsync(
@@ -60,12 +61,9 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
             return new UserProfileUpdateResult(false, "Email is required.", null);
         }
 
-        if (!E164Phone.TryNormalize(phone, out var normalizedPhone))
+        if (!UsPhone.TryNormalize(phone, out var normalizedPhone))
         {
-            var phoneError = string.IsNullOrWhiteSpace(phone)
-                ? "Phone is required."
-                : $"Phone must be an E.164 number, such as {E164Phone.Example}.";
-            return new UserProfileUpdateResult(false, phoneError, null);
+            return new UserProfileUpdateResult(false, UsPhone.InvalidMessage, null);
         }
 
         var organizationError = ValidateOrganization(organization, out var normalizedOrganization);
@@ -253,7 +251,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
 
         var dirty = false;
-        if (!string.IsNullOrWhiteSpace(phone) && !E164Phone.TryNormalize(saved.Phone, out _))
+        if (!string.IsNullOrWhiteSpace(phone) && !UsPhone.TryNormalize(saved.Phone, out _))
         {
             saved.Phone = phone;
             dirty = true;
@@ -283,12 +281,12 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
 
     private static string ResolvePhone(ClaimsPrincipal user, UserProfile? saved, string? extensionsAppId)
     {
-        if (saved is not null && E164Phone.TryNormalize(saved.Phone, out var savedPhone))
+        if (saved is not null && UsPhone.TryNormalize(saved.Phone, out var savedPhone))
         {
             return savedPhone;
         }
 
-        return E164Phone.TryNormalize(user.GetPhoneNumber(extensionsAppId), out var claimPhone) ? claimPhone : string.Empty;
+        return UsPhone.TryNormalize(user.GetPhoneNumber(extensionsAppId), out var claimPhone) ? claimPhone : string.Empty;
     }
 
     private static string ResolveOrganization(ClaimsPrincipal user, UserProfile? saved, string? extensionsAppId)
@@ -377,7 +375,24 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
-    private static UserProfileDto ToDto(ClaimsPrincipal user, UserProfile? saved, string phone, string organization)
+    private static bool PhoneNeedsCorrection(UserProfile? saved, string? rawClaimPhone, string resolvedPhone)
+    {
+        if (UsPhone.TryNormalize(resolvedPhone, out _))
+        {
+            return false;
+        }
+
+        var savedIsUnusable = saved is not null && !string.IsNullOrWhiteSpace(saved.Phone);
+        var claimIsUnusable = !string.IsNullOrWhiteSpace(rawClaimPhone);
+        return savedIsUnusable || claimIsUnusable;
+    }
+
+    private static UserProfileDto ToDto(
+        ClaimsPrincipal user,
+        UserProfile? saved,
+        string phone,
+        string organization,
+        bool phoneNeedsCorrection = false)
     {
         var tokenName = user.GetDisplayName();
         var displayName = saved is not null && !string.IsNullOrWhiteSpace(saved.DisplayName)
@@ -392,6 +407,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
             email,
             saved is not null && !string.IsNullOrWhiteSpace(saved.DisplayName),
             phone,
-            organization);
+            organization,
+            phoneNeedsCorrection);
     }
 }

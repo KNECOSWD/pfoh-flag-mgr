@@ -6,32 +6,40 @@ using Xunit;
 
 namespace PFOH.Api.Tests;
 
-public class E164PhoneTests
+public class UsPhoneTests
 {
     [Theory]
-    [InlineData("+19725550100", "+19725550100")]
-    [InlineData("+1 (972) 555-0100", "+19725550100")]
-    [InlineData("+1-972-555-0100", "+19725550100")]
-    [InlineData("+44 20 7946 0958", "+442079460958")]
-    [InlineData("+1 2145551234", "+12145551234")]
-    public void Accepts_an_e164_number(string input, string expected)
+    [InlineData("2145551234")]
+    [InlineData("214-555-1234")]
+    [InlineData("(214) 555-1234")]
+    [InlineData("214.555.1234")]
+    [InlineData("+1 214 555 1234")]
+    [InlineData("1-214-555-1234")]
+    [InlineData("+12145551234")]
+    public void Accepts_common_us_formats(string input)
     {
-        Assert.True(E164Phone.TryNormalize(input, out var normalized));
-        Assert.Equal(expected, normalized);
+        Assert.True(UsPhone.TryNormalize(input, out var normalized));
+        Assert.Equal("+12145551234", normalized);
+        Assert.Equal("(214) 555-1234", UsPhone.Format(input));
     }
 
     [Theory]
+    [InlineData("214555123")]
+    [InlineData("+44 20 7946 0958")]
+    [InlineData("214-555-ABCD")]
+    [InlineData("not-a-phone")]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    [InlineData("9725550100")]
-    [InlineData("+012345678")]
     [InlineData("+1")]
-    [InlineData("++19725550100")]
-    [InlineData("not-a-phone")]
-    public void Rejects_a_value_that_is_not_e164(string? input)
+    [InlineData("++12145551234")]
+    [InlineData("9115551234")]
+    [InlineData("411-555-1234")]
+    [InlineData("214-155-1234")]
+    public void Rejects_short_non_us_letter_and_n11_numbers(string? input)
     {
-        Assert.False(E164Phone.TryNormalize(input, out _));
+        Assert.False(UsPhone.TryNormalize(input, out _));
+        Assert.Equal(UsPhone.InvalidMessage, "Please enter a 10-digit US mobile number, like 214-555-1234.");
     }
 }
 
