@@ -37,4 +37,24 @@ public static class ClaimsPrincipalExtensions
             user.FindFirstValue("given_name") ??
             user.Identity?.Name;
     }
+
+    /// <summary>
+    /// Phone from the access token. The short claim phone wins, then
+    /// extension_{extensionsAppId}_Phone, then a standard phone claim such as phone_number.
+    /// A blank extensions app id accepts any extension_{32 hex}_Phone claim.
+    /// Missing claims return null. The value is not checked as a US number here.
+    /// </summary>
+    public static string? GetPhoneNumber(this ClaimsPrincipal user, string? extensionsAppId = null)
+    {
+        return EntraExtensionClaims.GetPhone(user, extensionsAppId);
+    }
+
+    /// <summary>
+    /// Organization from the short claim organization, then extension_{extensionsAppId}_Organization.
+    /// Missing claims return null.
+    /// </summary>
+    public static string? GetOrganization(this ClaimsPrincipal user, string? extensionsAppId = null)
+    {
+        return EntraExtensionClaims.GetOrganization(user, extensionsAppId);
+    }
 }

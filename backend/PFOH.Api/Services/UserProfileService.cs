@@ -9,17 +9,23 @@ namespace PFOH.Api.Services;
 
 public sealed record UserProfileUpdateResult(bool Forbidden, string? Error, UserProfileDto? Profile);
 
-public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> logger)
+public sealed record UserAccountContact(string? Phone, string? Organization);
+
+public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> logger, IConfiguration configuration)
 {
     public async Task<UserProfileDto> GetOwnAsync(ClaimsPrincipal user, CancellationToken ct)
     {
         await EnsureStoreAsync(ct);
         var ownerObjectId = user.GetExternalObjectId();
         var saved = await db.UserProfiles
-            .AsNoTracking()
             .FirstOrDefaultAsync(profile => profile.OwnerObjectId == ownerObjectId, ct);
 
-        return ToDto(user, saved);
+        var rawClaimPhone = user.GetPhoneNumber(ExtensionsAppId);
+        var phone = ResolvePhone(user, saved, ExtensionsAppId);
+        var organization = ResolveOrganization(user, saved, ExtensionsAppId);
+        await TryPersistClaimFillAsync(saved, phone, organization, ct);
+
+        return ToDto(user, saved, phone, organization, PhoneNeedsCorrection(saved, rawClaimPhone, phone));
     }
 
     public async Task<UserProfileUpdateResult> UpdateOwnAsync(
@@ -27,6 +33,8 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         string routeOwnerObjectId,
         string? bodyOwnerObjectId,
         string? displayName,
+        string? phone,
+        string? organization,
         CancellationToken ct)
     {
         var callerId = user.GetExternalObjectId();
@@ -43,10 +51,25 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
 
         await EnsureStoreAsync(ct);
 
-        var email = user.GetEmail().Trim();
-        if (email.Length > UserProfileLimits.EmailMaxLength)
+        var existing = await db.UserProfiles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(item => item.OwnerObjectId == callerId, ct);
+
+        var email = ResolveEmail(user, existing);
+        if (string.IsNullOrWhiteSpace(email))
         {
-            email = email[..UserProfileLimits.EmailMaxLength];
+            return new UserProfileUpdateResult(false, "Email is required.", null);
+        }
+
+        if (!UsPhone.TryNormalize(phone, out var normalizedPhone))
+        {
+            return new UserProfileUpdateResult(false, UsPhone.InvalidMessage, null);
+        }
+
+        var organizationError = ValidateOrganization(organization, out var normalizedOrganization);
+        if (organizationError is not null)
+        {
+            return new UserProfileUpdateResult(false, organizationError, null);
         }
 
         var now = DateTime.UtcNow;
@@ -60,6 +83,8 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
                 OwnerObjectId = callerId,
                 DisplayName = trimmed,
                 Email = email,
+                Phone = normalizedPhone,
+                Organization = normalizedOrganization,
                 CreatedUtc = now,
                 UpdatedUtc = now
             };
@@ -69,6 +94,8 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         {
             profile.DisplayName = trimmed;
             profile.Email = email;
+            profile.Phone = normalizedPhone;
+            profile.Organization = normalizedOrganization;
             profile.UpdatedUtc = now;
         }
 
@@ -90,12 +117,43 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
 
             profile.DisplayName = trimmed;
             profile.Email = email;
+            profile.Phone = normalizedPhone;
+            profile.Organization = normalizedOrganization;
             profile.UpdatedUtc = now;
             await ApplyDisplayNameToClaimsAsync(callerId, trimmed, ct);
             await db.SaveChangesAsync(ct);
         }
 
-        return new UserProfileUpdateResult(false, null, ToDto(user, profile));
+        return new UserProfileUpdateResult(false, null, ToDto(user, profile, normalizedPhone, normalizedOrganization ?? string.Empty));
+    }
+
+    public async Task<IReadOnlyDictionary<string, UserAccountContact>> GetAccountContactsAsync(
+        IEnumerable<string> ownerObjectIds,
+        CancellationToken ct)
+    {
+        var ids = ownerObjectIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (ids.Count == 0)
+        {
+            return new Dictionary<string, UserAccountContact>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        await EnsureStoreAsync(ct);
+
+        var profiles = await db.UserProfiles
+            .AsNoTracking()
+            .Where(profile => ids.Contains(profile.OwnerObjectId))
+            .Select(profile => new { profile.OwnerObjectId, profile.Phone, profile.Organization })
+            .ToListAsync(ct);
+
+        return profiles.ToDictionary(
+            profile => profile.OwnerObjectId,
+            profile => new UserAccountContact(BlankToNull(profile.Phone), BlankToNull(profile.Organization)),
+            StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -160,6 +218,112 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         return null;
     }
 
+    public static string? ValidateOrganization(string? organization, out string? normalized)
+    {
+        normalized = string.IsNullOrWhiteSpace(organization) ? null : organization.Trim();
+        if (normalized is null)
+        {
+            return null;
+        }
+
+        if (normalized.Length > UserProfileLimits.OrganizationMaxLength)
+        {
+            return $"Organization must be {UserProfileLimits.OrganizationMaxLength} characters or fewer.";
+        }
+
+        if (normalized.Any(char.IsControl))
+        {
+            return "Organization cannot include line breaks or control characters.";
+        }
+
+        return null;
+    }
+
+    private async Task TryPersistClaimFillAsync(
+        UserProfile? saved,
+        string phone,
+        string organization,
+        CancellationToken ct)
+    {
+        if (saved is null)
+        {
+            return;
+        }
+
+        var dirty = false;
+        if (!string.IsNullOrWhiteSpace(phone) && !UsPhone.TryNormalize(saved.Phone, out _))
+        {
+            saved.Phone = phone;
+            dirty = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(saved.Organization) && !string.IsNullOrWhiteSpace(organization))
+        {
+            saved.Organization = organization;
+            dirty = true;
+        }
+
+        if (!dirty)
+        {
+            return;
+        }
+
+        saved.UpdatedUtc = DateTime.UtcNow;
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Phone or organization from the sign-in token could not be saved for {OwnerObjectId}.", saved.OwnerObjectId);
+        }
+    }
+
+    private static string ResolvePhone(ClaimsPrincipal user, UserProfile? saved, string? extensionsAppId)
+    {
+        if (saved is not null && UsPhone.TryNormalize(saved.Phone, out var savedPhone))
+        {
+            return savedPhone;
+        }
+
+        return UsPhone.TryNormalize(user.GetPhoneNumber(extensionsAppId), out var claimPhone) ? claimPhone : string.Empty;
+    }
+
+    private static string ResolveOrganization(ClaimsPrincipal user, UserProfile? saved, string? extensionsAppId)
+    {
+        if (saved is not null && !string.IsNullOrWhiteSpace(saved.Organization))
+        {
+            return saved.Organization.Trim();
+        }
+
+        var claim = user.GetOrganization(extensionsAppId);
+        if (string.IsNullOrWhiteSpace(claim))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = claim.Trim();
+        return trimmed.Length <= UserProfileLimits.OrganizationMaxLength
+            ? trimmed
+            : trimmed[..UserProfileLimits.OrganizationMaxLength];
+    }
+
+    private static string ResolveEmail(ClaimsPrincipal user, UserProfile? saved)
+    {
+        var email = user.GetEmail().Trim();
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            email = saved?.Email.Trim() ?? string.Empty;
+        }
+
+        if (email.Length > UserProfileLimits.EmailMaxLength)
+        {
+            email = email[..UserProfileLimits.EmailMaxLength];
+        }
+
+        return email;
+    }
+
     private async Task ApplyDisplayNameToClaimsAsync(string ownerObjectId, string displayName, CancellationToken ct)
     {
         var claims = await db.FlagClaims
@@ -169,6 +333,17 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         foreach (var claim in claims)
         {
             claim.ExternalUserName = displayName;
+        }
+    }
+
+    private string ExtensionsAppId
+    {
+        get
+        {
+            var configured = configuration["Entra:ExtensionsAppId"];
+            return string.IsNullOrWhiteSpace(configured)
+                ? EntraExtensionClaims.DefaultExtensionsAppId
+                : configured.Trim();
         }
     }
 
@@ -195,23 +370,44 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         return string.Equals(callerId, requestedOwnerObjectId.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
-    private static UserProfileDto ToDto(ClaimsPrincipal user, UserProfile? saved)
+    private static string? BlankToNull(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static bool PhoneNeedsCorrection(UserProfile? saved, string? rawClaimPhone, string resolvedPhone)
+    {
+        if (UsPhone.TryNormalize(resolvedPhone, out _))
+        {
+            return false;
+        }
+
+        var savedIsUnusable = saved is not null && !string.IsNullOrWhiteSpace(saved.Phone);
+        var claimIsUnusable = !string.IsNullOrWhiteSpace(rawClaimPhone);
+        return savedIsUnusable || claimIsUnusable;
+    }
+
+    private static UserProfileDto ToDto(
+        ClaimsPrincipal user,
+        UserProfile? saved,
+        string phone,
+        string organization,
+        bool phoneNeedsCorrection = false)
     {
         var tokenName = user.GetDisplayName();
         var displayName = saved is not null && !string.IsNullOrWhiteSpace(saved.DisplayName)
             ? saved.DisplayName.Trim()
             : IsPlaceholderDisplayName(tokenName) ? string.Empty : tokenName!.Trim();
 
-        var email = user.GetEmail().Trim();
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            email = saved?.Email.Trim() ?? string.Empty;
-        }
+        var email = ResolveEmail(user, saved);
 
         return new UserProfileDto(
             user.GetExternalObjectId(),
             displayName,
             email,
-            saved is not null && !string.IsNullOrWhiteSpace(saved.DisplayName));
+            saved is not null && !string.IsNullOrWhiteSpace(saved.DisplayName),
+            phone,
+            organization,
+            phoneNeedsCorrection);
     }
 }

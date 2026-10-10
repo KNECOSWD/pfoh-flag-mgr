@@ -85,28 +85,44 @@ Create **two app registrations** in your Microsoft Entra External ID tenant.
    - Select delegated scope `access_as_user`.
    - Grant admin consent if your tenant requires it.
 
-### 3. Create a sign-up/sign-in user flow
+### 3. Sign-up user flow (live)
 
-In the External ID tenant:
+Tenant `pfohflags.onmicrosoft.com` (`77f89427-b4a7-43ed-92fc-3eb5bd63d0f1`) already has this configuration. Do not change it from the app.
 
-1. Go to **Entra ID > External Identities > User flows**.
-2. Create a user flow such as `SignUpSignIn`.
-3. Choose sign-in methods such as email with password.
-4. Select user attributes you want to collect, such as display name, given name, surname, city, state, or custom attributes.
-5. Add the SPA app registration to the user flow.
+User flow **SignUpSignIn** is attached to SPA app **pfoh-flags-spa** (`06e5ea83-b3c7-4d53-9513-9ddbcfc2d434`).
+
+Already live:
+
+- Custom user attributes, type String: **Phone** and **Organization**.
+- The user flow collects only **Email**, **Display Name** (required, label `Your name`), **Phone** (required, label `Mobile phone (US, e.g. 214-555-1234)`), and **Organization** (optional).
+- Identity provider: **Email with password**. Email one-time passcode is offered and is not selected. Sign-up is email-verified only.
+- SMS stays off. Matthew declined the per-SMS charge. No Conditional Access changes were made.
+- Claims mapping is live on **pfoh-flags-spa** (`06e5ea83-b3c7-4d53-9513-9ddbcfc2d434`, ID token) and **pfoh-flags-api** (`c9004926-396b-47e0-93e7-57f19504185e`, access token).
+- **b2c-extensions-app** application id: `a29a0dc7-4c9b-4cef-9f78-3444e62907d3`.
+
+The tokens emit the short claims `phone` and `organization`, mapped from `extension_a29a0dc74c9b4cef9f783444e62907d3_Phone` and `extension_a29a0dc74c9b4cef9f783444e62907d3_Organization`. This app does not read app-registration `optionalClaims`. It reads `phone` and `organization` first, then those extension names. The extensions app id defaults to `a29a0dc7-4c9b-4cef-9f78-3444e62907d3` and stays configurable: `Entra:ExtensionsAppId` / `Entra__ExtensionsAppId` on the API, and `VITE_ENTRA_EXTENSIONS_APP_ID` on the SPA. A non-empty value replaces the default.
+
+Entra does not check that the phone is a US number. The app does. It accepts `2145551234`, `214-555-1234`, `(214) 555-1234`, `214.555.1234`, `+1 214 555 1234`, and `1-214-555-1234`. A valid number is stored as `+12145551234` and shown as `(214) 555-1234`. A non-US number, such as `+44...`, is not saved. The profile still loads, and the app asks for a 10-digit US mobile number.
+
+The portal warned that OIDC applications require custom signing keys to customize claims. Without the manifest change below, sign-in fails with **AADSTS50146**. The app shows that error and leaves search and the public pages usable.
+
+Remaining admin step, in each app registration's **Manifest** (Graph application resource, not only the older root property):
+
+- **pfoh-flags-spa** (`06e5ea83-b3c7-4d53-9513-9ddbcfc2d434`), so the ID token is accepted.
+- **pfoh-flags-api** (`c9004926-396b-47e0-93e7-57f19504185e`), so the access token is accepted.
+
+```json
+"api": {
+  "acceptMappedClaims": true,
+  "requestedAccessTokenVersion": 2
+}
+```
+
+`acceptMappedClaims` lets this tenant's claim-mapping policy customize the token without a custom signing key. That is acceptable for a single-tenant app. It is not safe for a multi-tenant app, because another tenant could inject claims. This tenant is single-tenant External ID. This repository does not change the tenant.
 
 ### 4. Enable MFA
 
-In the External ID tenant:
-
-1. Go to **Protection > Conditional Access**.
-2. Create a policy such as `Require MFA - PFOH Flag Manager`.
-3. Users: include all users, but exclude break-glass/admin emergency accounts.
-4. Target resources/cloud apps: select the SPA/API app, or all cloud apps if appropriate.
-5. Grant: require multifactor authentication.
-6. Enable the policy.
-
-Also review **Entra ID > Authentication methods** so your desired MFA second factors are available.
+SMS stays off. Matthew declined the per-SMS charge, so sign-up stays **Email with password** and is email-verified only. No Conditional Access policy was added. Do not enable SMS.
 
 ### 5. Configure frontend
 
@@ -124,6 +140,7 @@ VITE_TENANT_SUBDOMAIN=pfoh
 VITE_TENANT_ID=<external-tenant-id>
 VITE_SPA_CLIENT_ID=<spa-client-id>
 VITE_API_CLIENT_ID=<api-client-id>
+VITE_ENTRA_EXTENSIONS_APP_ID=a29a0dc7-4c9b-4cef-9f78-3444e62907d3
 VITE_API_BASE_URL=https://localhost:7050
 ```
 
@@ -140,6 +157,7 @@ dotnet user-secrets set "AzureAd:Instance" "https://<tenant-subdomain>.ciamlogin
 dotnet user-secrets set "AzureAd:TenantId" "<external-tenant-id>"
 dotnet user-secrets set "AzureAd:ClientId" "<api-client-id>"
 dotnet user-secrets set "AzureAd:Audience" "api://<api-client-id>"
+dotnet user-secrets set "Entra:ExtensionsAppId" "a29a0dc7-4c9b-4cef-9f78-3444e62907d3"
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=(localdb)\\mssqllocaldb;Database=PfohFlagManager;Trusted_Connection=True;MultipleActiveResultSets=true"
 ```
 
@@ -184,11 +202,15 @@ Rows are seats that have an honoree, sorted by section then grid number (`A-01`,
 
 ### Your profile
 
-Signed-in users open **Profile** from the header (and from the mobile menu). The page shows the sign-in email from the Entra token as read-only and lets the user set a display name. That name is stored in `dbo.UserProfiles`, keyed by the token object id (`OwnerObjectId`), and replaces a placeholder token name such as `unknown` in the header after save. The same saved name is copied onto that user's flag claims.
+Signed-in users open **Profile** from the header (and from the mobile menu). The form asks for **Name** (stored as the display name), **Email**, **Phone**, and optional **Organization**. Email comes from the Entra token and stays read-only. Name, email, and phone are required. Phone must be a 10-digit US number, such as `214-555-1234`. It is stored as `+12145551234` and shown as `(214) 555-1234` on the profile and on admin claimant lists. Entra does not validate that format. The profile is stored in `dbo.UserProfiles`, keyed by the token object id (`OwnerObjectId`). The saved name replaces a placeholder token name such as `unknown` in the header and is copied onto that user's flag claims.
 
-Display name is trimmed, required, and limited to 100 characters. Users can read and update only their own profile. `GET /api/profile` and `PUT /api/profile` require a signed-in user. `PUT /api/profile/{ownerObjectId}` returns 403 when the id is not the caller.
+There are no city or state fields on the account profile. `dbo.Sponsors` still has City and State because those columns hold sponsor mailing addresses, and dropping them would delete existing data.
 
-The API creates `dbo.UserProfiles` on first use if the table is missing. It does not change the existing honoree tables. If the database login cannot create tables, run this once against the app database:
+Display name is trimmed, required, and limited to 100 characters. Organization is optional and limited to 200 characters. Users can read and update only their own profile. `GET /api/profile` and `PUT /api/profile` require a signed-in user. `PUT /api/profile/{ownerObjectId}` returns 403 when the id is not the caller.
+
+If the access token includes `phone` or `organization`, the API copies a missing value onto the profile. Those short names are the live claims-mapping output. If they are absent, the API uses `extension_{extensionsAppIdWithoutDashes}_Phone` and `extension_{extensionsAppIdWithoutDashes}_Organization`. `extensionsAppId` defaults to `a29a0dc7-4c9b-4cef-9f78-3444e62907d3` (`Entra:ExtensionsAppId`). A non-empty setting replaces that default. A phone claim is normalized the same way as a typed number. A missing claim is left blank. A claim that is not a valid US number is not saved, the profile still loads, and the user is asked to enter a 10-digit US mobile number. A saved phone or organization is not overwritten by a different claim. A sign-in failure, including AADSTS50146, is shown on the page. Search and the public pages still work.
+
+The API creates `dbo.UserProfiles` on first use if the table is missing, and adds Phone and Organization when an older profile table is already present. It does not change the existing honoree or sponsor tables. If the database login cannot create tables, run this once against the app database:
 
 ```sql
 IF OBJECT_ID(N'[dbo].[UserProfiles]', N'U') IS NULL
@@ -198,10 +220,24 @@ BEGIN
         [OwnerObjectId] nvarchar(128) NOT NULL,
         [DisplayName] nvarchar(100) NOT NULL,
         [Email] nvarchar(255) NOT NULL CONSTRAINT [DF_UserProfiles_Email] DEFAULT (N''),
+        [Phone] nvarchar(16) NOT NULL CONSTRAINT [DF_UserProfiles_Phone] DEFAULT (N''),
+        [Organization] nvarchar(200) NULL,
         [CreatedUtc] datetime2 NOT NULL,
         [UpdatedUtc] datetime2 NOT NULL,
         CONSTRAINT [UQ_UserProfiles_OwnerObjectId] UNIQUE ([OwnerObjectId])
     );
+END
+
+IF OBJECT_ID(N'[dbo].[UserProfiles]', N'U') IS NOT NULL AND COL_LENGTH(N'[dbo].[UserProfiles]', N'Phone') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[UserProfiles]
+        ADD [Phone] nvarchar(16) NOT NULL CONSTRAINT [DF_UserProfiles_Phone] DEFAULT (N'');
+END
+
+IF OBJECT_ID(N'[dbo].[UserProfiles]', N'U') IS NOT NULL AND COL_LENGTH(N'[dbo].[UserProfiles]', N'Organization') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[UserProfiles]
+        ADD [Organization] nvarchar(200) NULL;
 END
 ```
 
@@ -236,6 +272,7 @@ In Azure Portal, open the App Service, then go to **Settings > Environment varia
 | `AzureAd__TenantId` | `<external-tenant-id>` |
 | `AzureAd__ClientId` | `<api-client-id>` |
 | `AzureAd__Audience` | `api://<api-client-id>` |
+| `Entra__ExtensionsAppId` | b2c-extensions-app id. Default in appsettings is `a29a0dc7-4c9b-4cef-9f78-3444e62907d3`. Set this only to replace that default. |
 | `ASPNETCORE_ENVIRONMENT` | `Production` |
 
 The SQL connection string can be stored under **Connection strings** as `DefaultConnection` with type `SQLAzure`.
@@ -250,6 +287,7 @@ In GitHub, go to **Settings > Secrets and variables > Actions** and add:
 | `ENTRA_TENANT_ID` | External ID tenant ID |
 | `ENTRA_SPA_CLIENT_ID` | SPA app registration client ID |
 | `ENTRA_API_CLIENT_ID` | API app registration client ID |
+| `ENTRA_EXTENSIONS_APP_ID` | Optional override of the SPA default `a29a0dc7-4c9b-4cef-9f78-3444e62907d3`, baked in as `VITE_ENTRA_EXTENSIONS_APP_ID`. Leave it unset to keep the default. |
 | `AZURE_CLIENT_ID` | GitHub deployment app/client ID |
 | `AZURE_TENANT_ID` | Azure tenant ID for deployment identity |
 | `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |

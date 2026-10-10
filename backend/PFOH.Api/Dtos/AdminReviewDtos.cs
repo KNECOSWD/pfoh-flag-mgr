@@ -18,7 +18,9 @@ public record AdminReviewItemDto(
     DateTime? SubmittedUtc,
     bool RequiresCardReprint,
     DateTime? CardPrintedUtc,
-    string? ReviewNotes);
+    string? ReviewNotes,
+    string? ClaimantPhone = null,
+    string? ClaimantOrganization = null);
 
 public record AdminPrintQueueItemDto(
     int ChangeRequestId,

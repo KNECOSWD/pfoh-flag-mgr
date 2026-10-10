@@ -37,7 +37,7 @@ public record AdminUnassignedHonoreeDto(
 [ApiController]
 [Route("api/admin/review")]
 [Authorize(Policy = "AdminOnly")]
-public class AdminReviewController(PfohDbContext db, IConfiguration configuration, IWebHostEnvironment environment) : ControllerBase
+public class AdminReviewController(PfohDbContext db, IConfiguration configuration, IWebHostEnvironment environment, UserProfileService profiles) : ControllerBase
 {
     private readonly HonoreeFileStorage fileStorage = new(configuration);
 
@@ -54,7 +54,7 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
             .Select(r => ToReviewDto(r))
             .ToListAsync(ct);
 
-        return Ok(submitted);
+        return Ok(await AttachClaimantAccountsAsync(submitted, ct));
     }
 
     [HttpGet("approved-reprint-queue")]
@@ -1227,6 +1227,41 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
             pdfUrl,
             r.ReviewedUtc,
             r.CardPrintedUtc);
+    }
+
+    private async Task<IReadOnlyList<AdminReviewItemDto>> AttachClaimantAccountsAsync(
+        IReadOnlyList<AdminReviewItemDto> items,
+        CancellationToken ct)
+    {
+        if (items.Count == 0)
+        {
+            return items;
+        }
+
+        var claimIds = items.Select(item => item.ClaimId).Distinct().ToList();
+        var owners = await db.FlagClaims
+            .AsNoTracking()
+            .Where(claim => claimIds.Contains(claim.Id))
+            .Select(claim => new { claim.Id, claim.ExternalUserObjectId })
+            .ToListAsync(ct);
+
+        var contacts = await profiles.GetAccountContactsAsync(owners.Select(owner => owner.ExternalUserObjectId), ct);
+        var ownerByClaim = owners.ToDictionary(owner => owner.Id, owner => owner.ExternalUserObjectId);
+
+        return items.Select(item =>
+        {
+            if (!ownerByClaim.TryGetValue(item.ClaimId, out var ownerId) ||
+                !contacts.TryGetValue(ownerId, out var contact))
+            {
+                return item;
+            }
+
+            return item with
+            {
+                ClaimantPhone = contact.Phone,
+                ClaimantOrganization = contact.Organization
+            };
+        }).ToList();
     }
 
     private static AdminReviewItemDto ToReviewDto(HonoreeChangeRequest r) => new(

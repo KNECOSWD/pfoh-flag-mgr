@@ -76,7 +76,6 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
     {
         var claims = await db.FlagClaims
             .AsNoTracking()
-            .Include(c => c.HonoreeChangeRequests)
             .Where(c =>
                 c.HonoreeId == honoreeId &&
                 c.ClaimStatus != "Unclaimed" &&
@@ -88,6 +87,7 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
                 claimId = c.Id,
                 claimantName = c.ExternalUserName,
                 claimantEmail = c.ExternalUserEmail,
+                ownerObjectId = c.ExternalUserObjectId,
                 claimStatus = c.ClaimStatus,
                 createdUtc = c.CreatedUtc,
                 submittedUtc = c.SubmittedUtc,
@@ -98,7 +98,24 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
             })
             .ToListAsync(ct);
 
-        return Ok(claims);
+        var contacts = await profiles.GetAccountContactsAsync(claims.Select(claim => claim.ownerObjectId), ct);
+
+        return Ok(claims.Select(claim =>
+        {
+            contacts.TryGetValue(claim.ownerObjectId, out var contact);
+            return new
+            {
+                claim.claimId,
+                claim.claimantName,
+                claim.claimantEmail,
+                claimantPhone = contact?.Phone,
+                claimantOrganization = contact?.Organization,
+                claim.claimStatus,
+                claim.createdUtc,
+                claim.submittedUtc,
+                claim.latestRequestStatus
+            };
+        }));
     }
 
     [HttpPost("{claimId:int}/unclaim")]
@@ -329,7 +346,7 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
 
         if (string.IsNullOrWhiteSpace(email))
         {
-            return BadRequest("Your signed-in account must have an email address before you can nominate a honoree.");
+            return BadRequest("Your signed-in account must have an email address before you can nominate an honoree.");
         }
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
