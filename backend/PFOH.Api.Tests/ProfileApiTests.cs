@@ -207,13 +207,45 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
             "Pat Claims",
             phoneClaim: "+1 2145551234",
             organizationClaim: "First Responders",
-            phoneClaimType: "extension_0123456789abcdef0123456789abcdef_Phone",
-            organizationClaimType: "extension_0123456789abcdef0123456789abcdef_Organization"));
+            phoneClaimType: "phone",
+            organizationClaimType: "organization"));
         var mappedProfile = await mapped.Content.ReadFromJsonAsync<UserProfileResponse>();
         Assert.NotNull(mappedProfile);
         Assert.Equal("+12145551234", mappedProfile.Phone);
         Assert.Equal("First Responders", mappedProfile.Organization);
         Assert.False(mappedProfile.HasSavedDisplayName);
+
+        var extensionId = PFOH.Api.Extensions.EntraExtensionClaims.NormalizeAppId(
+            PFOH.Api.Extensions.EntraExtensionClaims.DefaultExtensionsAppId);
+        var extensionMapped = await client.SendAsync(ProfileRequest(
+            HttpMethod.Get,
+            "/api/profile",
+            "user-extension-claims",
+            "extension-claims@example.com",
+            "Pat Claims",
+            phoneClaim: "+1 2145551234",
+            organizationClaim: "Honor Guard",
+            phoneClaimType: $"extension_{extensionId}_Phone",
+            organizationClaimType: $"extension_{extensionId}_Organization"));
+        var extensionProfile = await extensionMapped.Content.ReadFromJsonAsync<UserProfileResponse>();
+        Assert.NotNull(extensionProfile);
+        Assert.Equal("+12145551234", extensionProfile.Phone);
+        Assert.Equal("Honor Guard", extensionProfile.Organization);
+
+        var foreign = await client.SendAsync(ProfileRequest(
+            HttpMethod.Get,
+            "/api/profile",
+            "user-foreign-extension",
+            "foreign-claims@example.com",
+            "Pat Claims",
+            phoneClaim: "+12145551234",
+            organizationClaim: "Other",
+            phoneClaimType: "extension_0123456789abcdef0123456789abcdef_Phone",
+            organizationClaimType: "extension_0123456789abcdef0123456789abcdef_Organization"));
+        var foreignProfile = await foreign.Content.ReadFromJsonAsync<UserProfileResponse>();
+        Assert.NotNull(foreignProfile);
+        Assert.Equal("", foreignProfile.Phone);
+        Assert.Equal("", foreignProfile.Organization);
 
         var invalid = await client.SendAsync(ProfileRequest(
             HttpMethod.Get,
@@ -333,7 +365,7 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
             "Pat Fill",
             phoneClaim: "+19725550999",
             organizationClaim: "Honor Guard",
-            organizationClaimType: "extension_0123456789abcdef0123456789abcdef_Organization"));
+            organizationClaimType: $"extension_{PFOH.Api.Extensions.EntraExtensionClaims.NormalizeAppId(PFOH.Api.Extensions.EntraExtensionClaims.DefaultExtensionsAppId)}_Organization"));
         var profile = await filled.Content.ReadFromJsonAsync<UserProfileResponse>();
         Assert.NotNull(profile);
         Assert.Equal("+19725550123", profile.Phone);

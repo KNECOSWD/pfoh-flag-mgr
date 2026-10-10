@@ -89,6 +89,39 @@ public class EntraProfileClaimTests
         Assert.Equal("+12145551234", user.GetPhoneNumber());
     }
 
+    [Fact]
+    public void Short_phone_and_organization_win_over_extension_claims()
+    {
+        var extensionId = EntraExtensionClaims.NormalizeAppId(EntraExtensionClaims.DefaultExtensionsAppId);
+        var user = Principal(
+            new Claim($"extension_{extensionId}_Phone", "+19995550100"),
+            new Claim($"extension_{extensionId}_Organization", "Extension Org"),
+            new Claim("phone_number", "+18885550100"),
+            new Claim("phone", " +12145551234 "),
+            new Claim("organization", " Plano Fire "));
+
+        Assert.Equal("+12145551234", user.GetPhoneNumber(EntraExtensionClaims.DefaultExtensionsAppId));
+        Assert.Equal("Plano Fire", user.GetOrganization(EntraExtensionClaims.DefaultExtensionsAppId));
+        Assert.Equal("+12145551234", user.GetPhoneNumber("not-a-guid"));
+        Assert.Equal("Plano Fire", user.GetOrganization("not-a-guid"));
+    }
+
+    [Fact]
+    public void Extension_claims_are_used_when_short_names_are_absent()
+    {
+        var extensionId = EntraExtensionClaims.NormalizeAppId(EntraExtensionClaims.DefaultExtensionsAppId);
+        var user = Principal(
+            new Claim("phone_number", "+19995550100"),
+            new Claim($"extension_{extensionId}_Phone", "+12145551234"),
+            new Claim($"extension_{extensionId}_Organization", " Honor Guard "),
+            new Claim("extension_0123456789abcdef0123456789abcdef_Phone", "+18885550100"),
+            new Claim("extension_0123456789abcdef0123456789abcdef_Organization", "Other"));
+
+        Assert.Equal("+12145551234", user.GetPhoneNumber(EntraExtensionClaims.DefaultExtensionsAppId));
+        Assert.Equal("Honor Guard", user.GetOrganization(EntraExtensionClaims.DefaultExtensionsAppId));
+        Assert.Equal("a29a0dc7-4c9b-4cef-9f78-3444e62907d3", EntraExtensionClaims.DefaultExtensionsAppId);
+    }
+
     private static ClaimsPrincipal Principal(params Claim[] extra)
     {
         var claims = new List<Claim> { new("oid", "user-1") };

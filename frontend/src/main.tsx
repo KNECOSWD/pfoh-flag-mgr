@@ -8,6 +8,7 @@ import {
 import { MsalProvider } from "@azure/msal-react";
 import { msalConfig } from "./authConfig";
 import App from "./App";
+import { publishSignInError, readAuthErrorFromLocation } from "./signInError";
 import "./style.css";
 
 const msalInstance = new PublicClientApplication(msalConfig);
@@ -19,14 +20,38 @@ msalInstance.addEventCallback((event) => {
       msalInstance.setActiveAccount(payload.account);
     }
   }
+
+  if (
+    event.eventType === EventType.LOGIN_FAILURE ||
+    event.eventType === EventType.ACQUIRE_TOKEN_FAILURE
+  ) {
+    publishSignInError(event.error);
+  }
+
+  if (event.eventType === EventType.HANDLE_REDIRECT_END) {
+    const leftover = readAuthErrorFromLocation();
+    if (leftover) {
+      publishSignInError(leftover);
+    }
+  }
 });
 
 async function startApp() {
-  await msalInstance.initialize();
+  try {
+    await msalInstance.initialize();
+    await msalInstance.handleRedirectPromise();
 
-  const accounts = msalInstance.getAllAccounts();
-  if (accounts.length > 0) {
-    msalInstance.setActiveAccount(accounts[0]);
+    const accounts = msalInstance.getAllAccounts();
+    if (accounts.length > 0) {
+      msalInstance.setActiveAccount(accounts[0]);
+    }
+  } catch (error) {
+    publishSignInError(error);
+  }
+
+  const leftover = readAuthErrorFromLocation();
+  if (leftover) {
+    publishSignInError(leftover);
   }
 
   ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -40,4 +65,5 @@ async function startApp() {
 
 startApp().catch((error) => {
   console.error("Failed to start app", error);
+  publishSignInError(error);
 });

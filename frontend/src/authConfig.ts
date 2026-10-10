@@ -1,4 +1,12 @@
 import { Configuration, LogLevel } from "@azure/msal-browser";
+import {
+  claimMatchesExtension as matchExtensionClaim,
+  defaultExtensionsAppId,
+  normalizeExtensionsAppId as normalizeExtensionsAppIdValue,
+  readMappedAccountClaim as readMappedClaim
+} from "./entraClaims.js";
+
+export { defaultExtensionsAppId };
 
 // Replace these values after creating your Microsoft Entra External ID tenant and app registrations.
 export const authConfig = {
@@ -6,13 +14,12 @@ export const authConfig = {
   tenantId: import.meta.env.VITE_TENANT_ID ?? "YOUR_EXTERNAL_TENANT_ID",
   spaClientId: import.meta.env.VITE_SPA_CLIENT_ID ?? "YOUR_SPA_APP_CLIENT_ID",
   apiClientId: import.meta.env.VITE_API_CLIENT_ID ?? "YOUR_API_APP_CLIENT_ID",
-  // b2c-extensions-app application id. Empty until it is set. Not hard-coded.
-  extensionsAppId: import.meta.env.VITE_ENTRA_EXTENSIONS_APP_ID ?? ""
+  // b2c-extensions-app application id. A non-empty env value replaces the live default.
+  extensionsAppId: import.meta.env.VITE_ENTRA_EXTENSIONS_APP_ID || defaultExtensionsAppId
 };
 
 export function normalizeExtensionsAppId(value?: string | null) {
-  const compact = (value ?? "").replace(/[{}\s-]/g, "").toLowerCase();
-  return /^[0-9a-f]{32}$/.test(compact) ? compact : null;
+  return normalizeExtensionsAppIdValue(value);
 }
 
 export function claimMatchesExtension(
@@ -20,20 +27,15 @@ export function claimMatchesExtension(
   attribute: "Phone" | "Organization",
   extensionsAppId: string | null | undefined = authConfig.extensionsAppId
 ) {
-  const slash = claimType.lastIndexOf("/");
-  const name = slash >= 0 ? claimType.slice(slash + 1) : claimType;
-  const match = /^extension_([0-9a-f]{32})_(phone|organization)$/i.exec(name);
-  if (!match || match[2].toLowerCase() !== attribute.toLowerCase()) {
-    return false;
-  }
+  return matchExtensionClaim(claimType, attribute, extensionsAppId);
+}
 
-  const configured = normalizeExtensionsAppId(extensionsAppId);
-  const configuredWasSet = (extensionsAppId ?? "").trim().length > 0;
-  if (configuredWasSet && !configured) {
-    return false;
-  }
-
-  return !configured || match[1].toLowerCase() === configured;
+export function readMappedAccountClaim(
+  claims: Record<string, unknown> | null | undefined,
+  attribute: "Phone" | "Organization",
+  extensionsAppId: string | null | undefined = authConfig.extensionsAppId
+) {
+  return readMappedClaim(claims, attribute, extensionsAppId) as string;
 }
 
 export const apiScope = `api://${authConfig.apiClientId}/access_as_user`;

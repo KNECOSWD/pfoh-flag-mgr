@@ -23,6 +23,9 @@ jobs:
       - name: Reject user-facing veteran copy
         run: node frontend/scripts/check-honoree-copy.mjs
 
+      - name: Check mapped phone and organization claims
+        run: node --test frontend/scripts/check-entra-claims.mjs
+
       - name: Typecheck frontend
         working-directory: frontend
         run: |

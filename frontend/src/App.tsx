@@ -26,7 +26,8 @@ import {
   lookupApi,
   profileApi
 } from "./api";
-import { claimMatchesExtension, loginRequest } from "./authConfig";
+import { loginRequest, readMappedAccountClaim } from "./authConfig";
+import { publishSignInError, subscribeSignInError } from "./signInError";
 import knecoLogoBlue from "./assets/kneco-logo-blue.png";
 import pfohFooterLogo from "./assets/pfoh-footer-logo.png";
 
@@ -149,40 +150,6 @@ function ownershipStatusLabel(claim: FlagClaim) {
   return "In progress";
 }
 
-function isPhoneClaim(key: string) {
-  const slash = key.lastIndexOf("/");
-  const name = (slash >= 0 ? key.slice(slash + 1) : key).toLowerCase();
-  return (
-    claimMatchesExtension(key, "Phone") ||
-    name === "phone_number" ||
-    name === "phonenumber" ||
-    name === "phone" ||
-    name === "mobile_phone" ||
-    name === "mobilephone" ||
-    name === "telephonenumber" ||
-    name === "signinames.phonenumber" ||
-    name === "strongauthenticationphonenumber"
-  );
-}
-
-function idTokenExtensionValue(
-  account: { idTokenClaims?: Record<string, unknown> } | null | undefined,
-  attribute: "Phone" | "Organization"
-) {
-  const claims = account?.idTokenClaims;
-  if (!claims) return "";
-
-  for (const key of Object.keys(claims)) {
-    if (!claimMatchesExtension(key, attribute)) continue;
-    const value = claims[key];
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
-    }
-  }
-
-  return "";
-}
-
 function profileClaimString(claims: Record<string, unknown> | undefined, keys: string[]) {
   if (!claims) return "";
 
@@ -222,7 +189,7 @@ function getAccountSubmitterContact(
       ]) ||
       account?.username ||
       "",
-    phone: profileClaimString(claims, Object.keys(claims ?? {}).filter(isPhoneClaim))
+    phone: readMappedAccountClaim(claims, "Phone")
   };
 }
 
@@ -618,6 +585,10 @@ export default function App() {
     );
   }, [form.serviceBranchCategoryId, serviceBranches]);
 
+  useEffect(() => subscribeSignInError((message) => {
+    if (message) setError(message);
+  }), []);
+
   useEffect(() => {
     if (!isAuthenticated || !account) {
       setSavedDisplayName("");
@@ -658,8 +629,8 @@ export default function App() {
       const profile = await profileApi.get(instance, account);
       setProfileDisplayName(profile.displayName);
       setProfileEmail(profile.email);
-      setProfilePhone(profile.phone || normalizeE164Phone(idTokenExtensionValue(account, "Phone")));
-      setProfileOrganization(profile.organization || idTokenExtensionValue(account, "Organization"));
+      setProfilePhone(profile.phone || normalizeE164Phone(readMappedAccountClaim(account.idTokenClaims, "Phone")));
+      setProfileOrganization(profile.organization || readMappedAccountClaim(account.idTokenClaims, "Organization"));
       setSavedDisplayName(profile.hasSavedDisplayName ? profile.displayName : "");
     } catch (err) {
       setProfileError(reportableErrorMessage(err, "Unable to load your profile."));
@@ -738,11 +709,15 @@ export default function App() {
     setAuthPrompt(null);
     setMobileNavOpen(false);
 
-    await instance.loginRedirect({
-      ...loginRequest,
-      prompt: mode === "create" ? "create" : "login",
-      redirectStartPage: window.location.href
-    });
+    try {
+      await instance.loginRedirect({
+        ...loginRequest,
+        prompt: mode === "create" ? "create" : "login",
+        redirectStartPage: window.location.href
+      });
+    } catch (err) {
+      setError(publishSignInError(err));
+    }
   }
 
   async function signOut() {

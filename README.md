@@ -95,18 +95,34 @@ Already live:
 
 - Custom user attributes, type String: **Phone** and **Organization**.
 - The user flow collects only **Email**, **Display Name** (required), **Phone** (required, label `Mobile phone (e.g. +1 2145551234)`), and **Organization** (optional).
-- Identity provider: **Email with password**. Email one-time passcode is offered and is not selected.
-- SMS is not enabled. No Conditional Access changes were made.
+- Identity provider: **Email with password**. Email one-time passcode is offered and is not selected. Sign-up is email-verified only.
+- SMS stays off. Matthew declined the per-SMS charge. No Conditional Access changes were made.
+- Claims mapping is live on **pfoh-flags-spa** (`06e5ea83-b3c7-4d53-9513-9ddbcfc2d434`, ID token) and **pfoh-flags-api** (`c9004926-396b-47e0-93e7-57f19504185e`, access token).
+- **b2c-extensions-app** application id: `a29a0dc7-4c9b-4cef-9f78-3444e62907d3`.
+
+The tokens emit the short claims `phone` and `organization`, mapped from `extension_a29a0dc74c9b4cef9f783444e62907d3_Phone` and `extension_a29a0dc74c9b4cef9f783444e62907d3_Organization`. This app does not read app-registration `optionalClaims`. It reads `phone` and `organization` first, then those extension names. The extensions app id defaults to `a29a0dc7-4c9b-4cef-9f78-3444e62907d3` and stays configurable: `Entra:ExtensionsAppId` / `Entra__ExtensionsAppId` on the API, and `VITE_ENTRA_EXTENSIONS_APP_ID` on the SPA. A non-empty value replaces the default.
 
 Entra does not check the phone as E.164. The app does, including the spaced example `+1 2145551234`.
 
-The custom attributes are stored on **b2c-extensions-app**. They are not in the token until a claims-mapping policy emits them. This app does not read app-registration `optionalClaims`. Set `Entra:ExtensionsAppId` (and `VITE_ENTRA_EXTENSIONS_APP_ID`) to the b2c-extensions-app application id. The API then reads `extension_{that id without dashes}_Phone` and `extension_{that id without dashes}_Organization` from the access token. The SPA reads the same names from the ID token when the profile value is still blank.
+The portal warned that OIDC applications require custom signing keys to customize claims. Without the manifest change below, sign-in fails with **AADSTS50146**. The app shows that error and leaves search and the public pages usable.
 
-Remaining admin step, on the API enterprise application and on pfoh-flags-spa: **Single sign-on > Attributes & Claims > Add new claim**, Source **Directory schema extension**, application **b2c-extensions-app**. Name the claims exactly `extension_{id-without-dashes}_Phone` and `extension_{id-without-dashes}_Organization`. Set `acceptMappedClaims` to true on both app manifests. SMS stays off until the per-message charge is approved.
+Remaining admin step, in each app registration's **Manifest** (Graph application resource, not only the older root property):
+
+- **pfoh-flags-spa** (`06e5ea83-b3c7-4d53-9513-9ddbcfc2d434`), so the ID token is accepted.
+- **pfoh-flags-api** (`c9004926-396b-47e0-93e7-57f19504185e`), so the access token is accepted.
+
+```json
+"api": {
+  "acceptMappedClaims": true,
+  "requestedAccessTokenVersion": 2
+}
+```
+
+`acceptMappedClaims` lets this tenant's claim-mapping policy customize the token without a custom signing key. That is acceptable for a single-tenant app. It is not safe for a multi-tenant app, because another tenant could inject claims. This tenant is single-tenant External ID. This repository does not change the tenant.
 
 ### 4. Enable MFA
 
-SMS multifactor authentication is not enabled in the live tenant, and no Conditional Access policy was added for it. Leave it that way until the SMS charge is approved. Email with password remains the first factor.
+SMS stays off. Matthew declined the per-SMS charge, so sign-up stays **Email with password** and is email-verified only. No Conditional Access policy was added. Do not enable SMS.
 
 ### 5. Configure frontend
 
@@ -124,7 +140,7 @@ VITE_TENANT_SUBDOMAIN=pfoh
 VITE_TENANT_ID=<external-tenant-id>
 VITE_SPA_CLIENT_ID=<spa-client-id>
 VITE_API_CLIENT_ID=<api-client-id>
-VITE_ENTRA_EXTENSIONS_APP_ID=<b2c-extensions-app-client-id>
+VITE_ENTRA_EXTENSIONS_APP_ID=a29a0dc7-4c9b-4cef-9f78-3444e62907d3
 VITE_API_BASE_URL=https://localhost:7050
 ```
 
@@ -141,7 +157,7 @@ dotnet user-secrets set "AzureAd:Instance" "https://<tenant-subdomain>.ciamlogin
 dotnet user-secrets set "AzureAd:TenantId" "<external-tenant-id>"
 dotnet user-secrets set "AzureAd:ClientId" "<api-client-id>"
 dotnet user-secrets set "AzureAd:Audience" "api://<api-client-id>"
-dotnet user-secrets set "Entra:ExtensionsAppId" "<b2c-extensions-app-client-id>"
+dotnet user-secrets set "Entra:ExtensionsAppId" "a29a0dc7-4c9b-4cef-9f78-3444e62907d3"
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=(localdb)\\mssqllocaldb;Database=PfohFlagManager;Trusted_Connection=True;MultipleActiveResultSets=true"
 ```
 
@@ -192,7 +208,7 @@ There are no city or state fields on the account profile. `dbo.Sponsors` still h
 
 Display name is trimmed, required, and limited to 100 characters. Organization is optional and limited to 200 characters. Users can read and update only their own profile. `GET /api/profile` and `PUT /api/profile` require a signed-in user. `PUT /api/profile/{ownerObjectId}` returns 403 when the id is not the caller.
 
-If the access token includes `extension_{extensionsAppIdWithoutDashes}_Phone` or `extension_{extensionsAppIdWithoutDashes}_Organization`, the API copies a missing value onto the profile. `extensionsAppId` is `Entra:ExtensionsAppId`, the b2c-extensions-app application id, and is not hard-coded. A missing claim is left blank. A saved phone or organization is not overwritten by a different claim. Those claims are not optionalClaims in the app manifest. They appear only after the claims-mapping step in the sign-up section above. The app still requires an E.164 phone number on save.
+If the access token includes `phone` or `organization`, the API copies a missing value onto the profile. Those short names are the live claims-mapping output. If they are absent, the API uses `extension_{extensionsAppIdWithoutDashes}_Phone` and `extension_{extensionsAppIdWithoutDashes}_Organization`. `extensionsAppId` defaults to `a29a0dc7-4c9b-4cef-9f78-3444e62907d3` (`Entra:ExtensionsAppId`). A non-empty setting replaces that default. A missing claim is left blank. A saved phone or organization is not overwritten by a different claim. The app still requires an E.164 phone number on save. A sign-in failure, including AADSTS50146, is shown on the page. Search and the public pages still work.
 
 The API creates `dbo.UserProfiles` on first use if the table is missing, and adds Phone and Organization when an older profile table is already present. It does not change the existing honoree or sponsor tables. If the database login cannot create tables, run this once against the app database:
 
@@ -256,7 +272,7 @@ In Azure Portal, open the App Service, then go to **Settings > Environment varia
 | `AzureAd__TenantId` | `<external-tenant-id>` |
 | `AzureAd__ClientId` | `<api-client-id>` |
 | `AzureAd__Audience` | `api://<api-client-id>` |
-| `Entra__ExtensionsAppId` | b2c-extensions-app application (client) id |
+| `Entra__ExtensionsAppId` | b2c-extensions-app id. Default in appsettings is `a29a0dc7-4c9b-4cef-9f78-3444e62907d3`. Set this only to replace that default. |
 | `ASPNETCORE_ENVIRONMENT` | `Production` |
 
 The SQL connection string can be stored under **Connection strings** as `DefaultConnection` with type `SQLAzure`.
@@ -271,7 +287,7 @@ In GitHub, go to **Settings > Secrets and variables > Actions** and add:
 | `ENTRA_TENANT_ID` | External ID tenant ID |
 | `ENTRA_SPA_CLIENT_ID` | SPA app registration client ID |
 | `ENTRA_API_CLIENT_ID` | API app registration client ID |
-| `ENTRA_EXTENSIONS_APP_ID` | b2c-extensions-app application id, baked into the SPA as `VITE_ENTRA_EXTENSIONS_APP_ID` |
+| `ENTRA_EXTENSIONS_APP_ID` | Optional override of the SPA default `a29a0dc7-4c9b-4cef-9f78-3444e62907d3`, baked in as `VITE_ENTRA_EXTENSIONS_APP_ID`. Leave it unset to keep the default. |
 | `AZURE_CLIENT_ID` | GitHub deployment app/client ID |
 | `AZURE_TENANT_ID` | Azure tenant ID for deployment identity |
 | `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |

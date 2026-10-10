@@ -338,7 +338,16 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
     }
 
-    private string? ExtensionsAppId => configuration["Entra:ExtensionsAppId"];
+    private string ExtensionsAppId
+    {
+        get
+        {
+            var configured = configuration["Entra:ExtensionsAppId"];
+            return string.IsNullOrWhiteSpace(configured)
+                ? EntraExtensionClaims.DefaultExtensionsAppId
+                : configured.Trim();
+        }
+    }
 
     private async Task EnsureStoreAsync(CancellationToken ct)
     {

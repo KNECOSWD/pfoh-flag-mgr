@@ -4,15 +4,16 @@ using System.Text.RegularExpressions;
 namespace PFOH.Api.Extensions;
 
 /// <summary>
-/// Reads the External ID custom attributes Phone and Organization.
-/// Entra stores them on b2c-extensions-app and emits them only after a claims-mapping
-/// policy. The JWT claim names are extension_{extensionsAppIdWithoutDashes}_Phone and
-/// extension_{extensionsAppIdWithoutDashes}_Organization.
-/// The extensions app id comes from configuration (Entra:ExtensionsAppId). It is not
-/// hard-coded. A missing claim, or a missing id, returns null.
+/// Reads Phone and Organization from an External ID token.
+/// Claims mapping emits the short names phone and organization. Those win.
+/// If they are absent, the directory extension names are used:
+/// extension_{extensionsAppIdWithoutDashes}_Phone and _Organization.
+/// The default extensions app id is the live b2c-extensions-app. Configuration can replace it.
+/// A missing claim returns null. Phone is not checked as E.164 here.
 /// </summary>
 public static partial class EntraExtensionClaims
 {
+    public const string DefaultExtensionsAppId = "a29a0dc7-4c9b-4cef-9f78-3444e62907d3";
     public const string PhoneAttribute = "Phone";
     public const string OrganizationAttribute = "Organization";
 
@@ -21,12 +22,15 @@ public static partial class EntraExtensionClaims
 
     public static string? GetPhone(ClaimsPrincipal user, string? extensionsAppId)
     {
-        return Find(user, extensionsAppId, PhoneAttribute) ?? StandardPhone(user);
+        return ShortClaim(user, "phone")
+            ?? Find(user, extensionsAppId, PhoneAttribute)
+            ?? StandardPhone(user);
     }
 
     public static string? GetOrganization(ClaimsPrincipal user, string? extensionsAppId)
     {
-        return Find(user, extensionsAppId, OrganizationAttribute);
+        return ShortClaim(user, "organization")
+            ?? Find(user, extensionsAppId, OrganizationAttribute);
     }
 
     public static string? NormalizeAppId(string? extensionsAppId)
@@ -43,6 +47,22 @@ public static partial class EntraExtensionClaims
         }
 
         return compact.ToLowerInvariant();
+    }
+
+    private static string? ShortClaim(ClaimsPrincipal user, string name)
+    {
+        foreach (var claim in user.Claims)
+        {
+            if (!ClaimName(claim.Type).Equals(name, StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(claim.Value))
+            {
+                continue;
+            }
+
+            return claim.Value.Trim();
+        }
+
+        return null;
     }
 
     private static string? Find(ClaimsPrincipal user, string? extensionsAppId, string attribute)
@@ -98,7 +118,6 @@ public static partial class EntraExtensionClaims
         var name = ClaimName(type);
         return name.Equals("phone_number", StringComparison.OrdinalIgnoreCase)
             || name.Equals("phoneNumber", StringComparison.OrdinalIgnoreCase)
-            || name.Equals("phone", StringComparison.OrdinalIgnoreCase)
             || name.Equals("mobile_phone", StringComparison.OrdinalIgnoreCase)
             || name.Equals("mobilePhone", StringComparison.OrdinalIgnoreCase)
             || name.Equals("telephoneNumber", StringComparison.OrdinalIgnoreCase)
