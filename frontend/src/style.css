@@ -9499,7 +9499,7 @@ img.ownedFlagImage {
   }
 
   .searchCard::after {
-    content: "Can’t find your honoree? Submit an honoree";
+    content: "Can’t find your hero? Submit a hero";
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -9554,7 +9554,7 @@ img.ownedFlagImage {
   }
 
   .searchCard::after {
-    content: "Can’t find your honoree? Submit an honoree";
+    content: "Can’t find your hero? Submit a hero";
     display: inline-flex;
     align-items: center;
     justify-content: center;

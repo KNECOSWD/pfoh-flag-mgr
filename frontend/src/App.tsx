@@ -47,7 +47,7 @@ function isSubmitHonoreeIntent(intent: { action: string }) {
 }
 
 const publicCopy = {
-  title: "HONOR AN HONOREE",
+  title: "HONOR A HERO",
   subtitle: "Find an honoree or submit a tribute. No cost to look or submit a hero.",
   intro:
     "Search our honoree records—no account needed. To submit a new honoree record or suggest changes to an existing record, log in or create an account. All submissions and changes require administrator approval before they appear publicly.",
@@ -55,8 +55,8 @@ const publicCopy = {
   searchHelp:
     "Search by name, military branch, rank, submitter’s name, or flag grid location. A flag grid location is the spot on the field, such as AA-10.",
   searchPlaceholder: "Enter a name, submitter, branch, rank, or flag grid (such as AA-10)",
-  missingLead: "Can’t find your honoree?",
-  submitHonoree: "Submit an honoree",
+  missingLead: "Can’t find your hero?",
+  submitHonoree: "Submit a hero",
   suggestChange: "Suggest a change",
   loginRequired: "Login required to submit.",
   loginPrompt:
@@ -69,10 +69,10 @@ const publicCopy = {
   pendingReview: "Pending review",
   mySubmissions: "My submissions",
   stepSearchTitle: "Search first",
-  stepSearchBody: "Look for an existing record for the honoree you want to honor.",
+  stepSearchBody: "Look for an existing record for the hero you want to honor.",
   stepSubmitTitle: "Submit a record or suggest a change",
   stepSubmitBody:
-    "If you find the honoree, open their record (login required) and select “Suggest a change.” If no record exists, select “Submit an honoree.” You’ll need to log in or create an account.",
+    "If you find the honoree, open their record (login required) and select “Suggest a change.” If no record exists, select “Submit a hero.” You’ll need to log in or create an account.",
   stepReviewTitle: "Administrator review",
   stepReviewBody:
     "An administrator reviews all new records and suggested changes. They appear publicly only after approval."

@@ -446,7 +446,7 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
         var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("nominate an honoree", body, StringComparison.Ordinal);
+        Assert.Contains("nominate a hero", body, StringComparison.Ordinal);
     }
 
     [Fact]
