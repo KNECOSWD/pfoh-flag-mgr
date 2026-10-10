@@ -47,7 +47,7 @@ function isSubmitHonoreeIntent(intent: { action: string }) {
 }
 
 const publicCopy = {
-  title: "HONOR AN HONOREE",
+  title: "HONOR A HERO",
   subtitle: "Find an honoree or submit a tribute. No cost to look or submit a hero.",
   intro:
     "Search our honoree records—no account needed. To submit a new honoree record or suggest changes to an existing record, log in or create an account. All submissions and changes require administrator approval before they appear publicly.",
