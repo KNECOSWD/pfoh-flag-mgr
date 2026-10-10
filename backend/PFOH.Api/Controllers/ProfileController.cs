@@ -41,6 +41,8 @@ public class ProfileController(UserProfileService profiles) : ControllerBase
             ownerObjectId,
             request.OwnerObjectId,
             request.DisplayName,
+            request.Phone,
+            request.Organization,
             ct);
 
         if (result.Forbidden)

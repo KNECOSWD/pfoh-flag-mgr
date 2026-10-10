@@ -48,6 +48,8 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
         Assert.Equal("user-get", profile.OwnerObjectId);
         Assert.Equal("", profile.DisplayName);
         Assert.Equal("get@example.com", profile.Email);
+        Assert.Equal("", profile.Phone);
+        Assert.Equal("", profile.Organization);
         Assert.False(profile.HasSavedDisplayName);
     }
 
@@ -64,13 +66,15 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
             "user-ada",
             "ada@example.com",
             "unknown",
-            new { displayName = "  Ada Lovelace  ", email = "evil@example.com", ownerObjectId = "user-ada" }));
+            new { displayName = "  Ada Lovelace  ", email = "evil@example.com", phone = "+1 (972) 555-0100", organization = "  Plano Flags  ", ownerObjectId = "user-ada" }));
 
         Assert.Equal(HttpStatusCode.OK, update.StatusCode);
         var saved = await update.Content.ReadFromJsonAsync<UserProfileResponse>();
         Assert.NotNull(saved);
         Assert.Equal("Ada Lovelace", saved.DisplayName);
         Assert.Equal("ada@example.com", saved.Email);
+        Assert.Equal("+19725550100", saved.Phone);
+        Assert.Equal("Plano Flags", saved.Organization);
         Assert.True(saved.HasSavedDisplayName);
 
         var get = await client.SendAsync(ProfileRequest(HttpMethod.Get, "/api/profile", "user-ada", "ada@example.com", "unknown"));
@@ -78,6 +82,8 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
         Assert.NotNull(loaded);
         Assert.Equal("Ada Lovelace", loaded.DisplayName);
         Assert.Equal("ada@example.com", loaded.Email);
+        Assert.Equal("+19725550100", loaded.Phone);
+        Assert.Equal("Plano Flags", loaded.Organization);
 
         var claimName = await ClaimNameAsync("user-ada");
         Assert.Equal("Ada Lovelace", claimName);
@@ -131,7 +137,7 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
             "user-long",
             "long@example.com",
             "Pat",
-            new { displayName = accepted }));
+            new { displayName = accepted, phone = "+19725550199" }));
 
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         var profile = await ok.Content.ReadFromJsonAsync<UserProfileResponse>();
@@ -152,7 +158,7 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
             "user-bob",
             "bob@example.com",
             "unknown",
-            new { displayName = "Bob Volunteer" }));
+            new { displayName = "Bob Volunteer", phone = "+19725550101", organization = "KNECO" }));
         Assert.Equal(HttpStatusCode.OK, saveBob.StatusCode);
 
         var byRoute = await client.SendAsync(ProfileRequest(
@@ -185,6 +191,242 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
         Assert.NotNull(adaProfile);
         Assert.False(adaProfile.HasSavedDisplayName);
         Assert.Equal("Ada Lovelace", adaProfile.DisplayName);
+    }
+
+    [Fact]
+    public async Task Get_maps_phone_and_organization_claims_and_ignores_a_missing_or_invalid_phone_claim()
+    {
+        await ResetAsync();
+        var client = factory.CreateClient();
+
+        var mapped = await client.SendAsync(ProfileRequest(
+            HttpMethod.Get,
+            "/api/profile",
+            "user-claims",
+            "claims@example.com",
+            "Pat Claims",
+            phoneClaim: "+1 2145551234",
+            organizationClaim: "First Responders",
+            phoneClaimType: "extension_0123456789abcdef0123456789abcdef_Phone",
+            organizationClaimType: "extension_0123456789abcdef0123456789abcdef_Organization"));
+        var mappedProfile = await mapped.Content.ReadFromJsonAsync<UserProfileResponse>();
+        Assert.NotNull(mappedProfile);
+        Assert.Equal("+12145551234", mappedProfile.Phone);
+        Assert.Equal("First Responders", mappedProfile.Organization);
+        Assert.False(mappedProfile.HasSavedDisplayName);
+
+        var invalid = await client.SendAsync(ProfileRequest(
+            HttpMethod.Get,
+            "/api/profile",
+            "user-bad-phone",
+            "bad-phone@example.com",
+            "Pat Claims",
+            phoneClaim: "972-555-0100"));
+        var invalidProfile = await invalid.Content.ReadFromJsonAsync<UserProfileResponse>();
+        Assert.NotNull(invalidProfile);
+        Assert.Equal("", invalidProfile.Phone);
+        Assert.Equal("", invalidProfile.Organization);
+
+        var missing = await client.SendAsync(ProfileRequest(
+            HttpMethod.Get,
+            "/api/profile",
+            "user-no-claims",
+            "no-claims@example.com",
+            "Pat Claims"));
+        var missingProfile = await missing.Content.ReadFromJsonAsync<UserProfileResponse>();
+        Assert.NotNull(missingProfile);
+        Assert.Equal("", missingProfile.Phone);
+        Assert.Equal("", missingProfile.Organization);
+    }
+
+    [Fact]
+    public async Task Update_requires_e164_phone_keeps_email_and_treats_organization_as_optional()
+    {
+        await ResetAsync();
+        var client = factory.CreateClient();
+
+        var missingPhone = await client.SendAsync(ProfileRequest(
+            HttpMethod.Put,
+            "/api/profile",
+            "user-phone",
+            "phone@example.com",
+            "Pat Phone",
+            new { displayName = "Pat Phone", organization = "Station 1" }));
+        Assert.Equal(HttpStatusCode.BadRequest, missingPhone.StatusCode);
+
+        var badPhone = await client.SendAsync(ProfileRequest(
+            HttpMethod.Put,
+            "/api/profile",
+            "user-phone",
+            "phone@example.com",
+            "Pat Phone",
+            new { displayName = "Pat Phone", phone = "9725550100" }));
+        Assert.Equal(HttpStatusCode.BadRequest, badPhone.StatusCode);
+
+        var missingEmail = await client.SendAsync(ProfileRequest(
+            HttpMethod.Put,
+            "/api/profile",
+            "user-phone",
+            "",
+            "Pat Phone",
+            new { displayName = "Pat Phone", phone = "+19725550100" }));
+        Assert.Equal(HttpStatusCode.BadRequest, missingEmail.StatusCode);
+
+        var saved = await client.SendAsync(ProfileRequest(
+            HttpMethod.Put,
+            "/api/profile",
+            "user-phone",
+            "phone@example.com",
+            "Pat Phone",
+            new { displayName = "Pat Phone", phone = "+44 20 7946 0958", email = "evil@example.com" }));
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        var profile = await saved.Content.ReadFromJsonAsync<UserProfileResponse>();
+        Assert.NotNull(profile);
+        Assert.Equal("+442079460958", profile.Phone);
+        Assert.Equal("phone@example.com", profile.Email);
+        Assert.Equal("", profile.Organization);
+
+        var tooLongOrganization = new string('O', UserProfileLimits.OrganizationMaxLength + 1);
+        var longOrganization = await client.SendAsync(ProfileRequest(
+            HttpMethod.Put,
+            "/api/profile",
+            "user-phone",
+            "phone@example.com",
+            "Pat Phone",
+            new { displayName = "Pat Phone", phone = "+19725550100", organization = tooLongOrganization }));
+        Assert.Equal(HttpStatusCode.BadRequest, longOrganization.StatusCode);
+
+        var cleared = await client.SendAsync(ProfileRequest(
+            HttpMethod.Put,
+            "/api/profile",
+            "user-phone",
+            "phone@example.com",
+            "Pat Phone",
+            new { displayName = "Pat Phone", phone = "+19725550100", organization = "   " },
+            organizationClaim: "Should Not Replace A Saved Blank"));
+        Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
+        var clearedProfile = await cleared.Content.ReadFromJsonAsync<UserProfileResponse>();
+        Assert.NotNull(clearedProfile);
+        Assert.Equal("", clearedProfile.Organization);
+    }
+
+    [Fact]
+    public async Task Saved_phone_wins_over_a_different_token_claim_and_blank_organization_is_filled_from_the_claim()
+    {
+        await ResetAsync();
+        var client = factory.CreateClient();
+
+        var save = await client.SendAsync(ProfileRequest(
+            HttpMethod.Put,
+            "/api/profile",
+            "user-fill",
+            "fill@example.com",
+            "Pat Fill",
+            new { displayName = "Pat Fill", phone = "+19725550123" }));
+        Assert.Equal(HttpStatusCode.OK, save.StatusCode);
+
+        var filled = await client.SendAsync(ProfileRequest(
+            HttpMethod.Get,
+            "/api/profile",
+            "user-fill",
+            "fill@example.com",
+            "Pat Fill",
+            phoneClaim: "+19725550999",
+            organizationClaim: "Honor Guard",
+            organizationClaimType: "extension_0123456789abcdef0123456789abcdef_Organization"));
+        var profile = await filled.Content.ReadFromJsonAsync<UserProfileResponse>();
+        Assert.NotNull(profile);
+        Assert.Equal("+19725550123", profile.Phone);
+        Assert.Equal("Honor Guard", profile.Organization);
+
+        var again = await client.SendAsync(ProfileRequest(
+            HttpMethod.Get,
+            "/api/profile",
+            "user-fill",
+            "fill@example.com",
+            "Pat Fill"));
+        var persisted = await again.Content.ReadFromJsonAsync<UserProfileResponse>();
+        Assert.NotNull(persisted);
+        Assert.Equal("Honor Guard", persisted.Organization);
+        Assert.Equal("+19725550123", persisted.Phone);
+    }
+
+    [Fact]
+    public async Task Nominate_requires_an_account_email()
+    {
+        await ResetAsync();
+        var client = factory.CreateClient();
+        using var form = new MultipartFormDataContent
+        {
+            { new StringContent("Ada"), "firstName" },
+            { new StringContent("Lovelace"), "lastName" },
+            { new StringContent("1"), "serviceBranchId" },
+            { new StringContent("1"), "serviceBranchCategoryId" },
+            { new StringContent("A tribute"), "description" },
+            { new StringContent("+19725550100"), "submitterPhoneNumber" },
+            { new StringContent("ada@example.com"), "submitterEmailAddress" }
+        };
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/flag-claims/nominate")
+        {
+            Content = form
+        };
+        request.Headers.Add(TestAuthHandler.OidHeader, "user-nominate");
+        request.Headers.Add(TestAuthHandler.NameHeader, "Ada Lovelace");
+
+        var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("nominate an honoree", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Admin_claimant_list_includes_saved_phone_and_organization()
+    {
+        await ResetAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            db.FlagClaims.Add(new FlagClaim
+            {
+                Id = 41,
+                FlagGridId = 7,
+                HonoreeId = 9,
+                ExternalUserObjectId = "user-claimant",
+                ExternalUserEmail = "claimant@example.com",
+                ExternalUserName = "Casey Claimant",
+                ClaimStatus = "Claimed",
+                CreatedUtc = DateTime.UtcNow
+            });
+            db.UserProfiles.Add(new UserProfile
+            {
+                OwnerObjectId = "user-claimant",
+                DisplayName = "Casey Claimant",
+                Email = "claimant@example.com",
+                Phone = "+19725550177",
+                Organization = "Fire Station 3",
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient();
+        var response = await client.SendAsync(ProfileRequest(
+            HttpMethod.Get,
+            "/api/flag-claims/admin/honoree/9/claimants",
+            "admin-user",
+            "admin@example.com",
+            "Admin",
+            roles: "PFOH.Admin"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var claimants = await response.Content.ReadFromJsonAsync<List<ClaimantResponse>>();
+        Assert.NotNull(claimants);
+        var claimant = Assert.Single(claimants);
+        Assert.Equal("Casey Claimant", claimant.ClaimantName);
+        Assert.Equal("+19725550177", claimant.ClaimantPhone);
+        Assert.Equal("Fire Station 3", claimant.ClaimantOrganization);
     }
 
     private async Task ResetAsync()
@@ -229,12 +471,42 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
         string ownerObjectId,
         string email,
         string name,
-        object? body = null)
+        object? body = null,
+        string? phoneClaim = null,
+        string? organizationClaim = null,
+        string? phoneClaimType = null,
+        string? organizationClaimType = null,
+        string? roles = null)
     {
         var request = new HttpRequestMessage(method, url);
         request.Headers.Add(TestAuthHandler.OidHeader, ownerObjectId);
         request.Headers.Add(TestAuthHandler.EmailHeader, email);
         request.Headers.Add(TestAuthHandler.NameHeader, name);
+        if (phoneClaim is not null)
+        {
+            request.Headers.Add(TestAuthHandler.PhoneHeader, phoneClaim);
+        }
+
+        if (organizationClaim is not null)
+        {
+            request.Headers.Add(TestAuthHandler.OrganizationHeader, organizationClaim);
+        }
+
+        if (phoneClaimType is not null)
+        {
+            request.Headers.Add(TestAuthHandler.PhoneClaimTypeHeader, phoneClaimType);
+        }
+
+        if (organizationClaimType is not null)
+        {
+            request.Headers.Add(TestAuthHandler.OrganizationClaimTypeHeader, organizationClaimType);
+        }
+
+        if (roles is not null)
+        {
+            request.Headers.Add(TestAuthHandler.RolesHeader, roles);
+        }
+
         if (body is not null)
         {
             request.Content = JsonContent.Create(body);
@@ -247,7 +519,16 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
         string OwnerObjectId,
         string DisplayName,
         string Email,
-        bool HasSavedDisplayName);
+        bool HasSavedDisplayName,
+        string Phone,
+        string Organization);
+
+    private sealed record ClaimantResponse(
+        int ClaimId,
+        string? ClaimantName,
+        string ClaimantEmail,
+        string? ClaimantPhone,
+        string? ClaimantOrganization);
 }
 
 public sealed class PfohApiFactory : WebApplicationFactory<Program>
@@ -302,6 +583,10 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
     public const string EmailHeader = "X-Test-Email";
     public const string NameHeader = "X-Test-Name";
     public const string RolesHeader = "X-Test-Roles";
+    public const string PhoneHeader = "X-Test-Phone";
+    public const string PhoneClaimTypeHeader = "X-Test-Phone-Claim-Type";
+    public const string OrganizationHeader = "X-Test-Organization";
+    public const string OrganizationClaimTypeHeader = "X-Test-Organization-Claim-Type";
 
     public TestAuthHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
@@ -334,6 +619,25 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
         if (Request.Headers.TryGetValue(NameHeader, out var nameValues) && !string.IsNullOrWhiteSpace(nameValues.ToString()))
         {
             claims.Add(new Claim("name", nameValues.ToString()));
+        }
+
+        if (Request.Headers.TryGetValue(PhoneHeader, out var phoneValues) && !string.IsNullOrWhiteSpace(phoneValues.ToString()))
+        {
+            var phoneClaimType = Request.Headers.TryGetValue(PhoneClaimTypeHeader, out var phoneTypeValues) &&
+                !string.IsNullOrWhiteSpace(phoneTypeValues.ToString())
+                    ? phoneTypeValues.ToString()
+                    : "phone_number";
+            claims.Add(new Claim(phoneClaimType, phoneValues.ToString()));
+        }
+
+        if (Request.Headers.TryGetValue(OrganizationHeader, out var organizationValues) &&
+            !string.IsNullOrWhiteSpace(organizationValues.ToString()))
+        {
+            var organizationClaimType = Request.Headers.TryGetValue(OrganizationClaimTypeHeader, out var organizationTypeValues) &&
+                !string.IsNullOrWhiteSpace(organizationTypeValues.ToString())
+                    ? organizationTypeValues.ToString()
+                    : "organization";
+            claims.Add(new Claim(organizationClaimType, organizationValues.ToString()));
         }
 
         if (Request.Headers.TryGetValue(RolesHeader, out var roleValues))

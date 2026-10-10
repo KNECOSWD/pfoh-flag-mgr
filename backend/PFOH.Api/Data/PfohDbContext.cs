@@ -177,6 +177,8 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
             entity.Property(e => e.OwnerObjectId).HasMaxLength(UserProfileLimits.OwnerObjectIdMaxLength).IsRequired();
             entity.Property(e => e.DisplayName).HasMaxLength(UserProfileLimits.DisplayNameMaxLength).IsRequired();
             entity.Property(e => e.Email).HasMaxLength(UserProfileLimits.EmailMaxLength).IsRequired();
+            entity.Property(e => e.Phone).HasMaxLength(UserProfileLimits.PhoneMaxLength).IsRequired();
+            entity.Property(e => e.Organization).HasMaxLength(UserProfileLimits.OrganizationMaxLength);
 
             entity.HasIndex(e => e.OwnerObjectId).IsUnique();
         });

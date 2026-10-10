@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Reject user-facing veteran copy
+        run: node frontend/scripts/check-honoree-copy.mjs
+
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: |
+          npm install
+          npx tsc --noEmit
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Test API
+        run: dotnet test backend/PFOH.Api.Tests/PFOH.Api.Tests.csproj --configuration Release

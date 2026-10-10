@@ -5,6 +5,8 @@ public static class UserProfileLimits
     public const int OwnerObjectIdMaxLength = 128;
     public const int DisplayNameMaxLength = 100;
     public const int EmailMaxLength = 255;
+    public const int PhoneMaxLength = 16;
+    public const int OrganizationMaxLength = 200;
 }
 
 /// <summary>
@@ -20,6 +22,12 @@ public class UserProfile
     public string DisplayName { get; set; } = string.Empty;
 
     public string Email { get; set; } = string.Empty;
+
+    /// <summary>E.164 phone number. Required for new and updated profiles. Empty only on rows created before the column existed.</summary>
+    public string Phone { get; set; } = string.Empty;
+
+    /// <summary>Optional organization. There is no city or state column on this table.</summary>
+    public string? Organization { get; set; }
 
     public DateTime CreatedUtc { get; set; }
 

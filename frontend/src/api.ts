@@ -177,6 +177,8 @@ export type AdminClaimantSummary = {
   claimId: number;
   claimantName?: string | null;
   claimantEmail: string;
+  claimantPhone?: string | null;
+  claimantOrganization?: string | null;
   claimStatus: string;
   createdUtc: string;
   submittedUtc?: string | null;
@@ -233,6 +235,8 @@ export type AdminReviewItem = {
   serviceBranchName?: string | null;
   claimantEmail: string;
   claimantName?: string | null;
+  claimantPhone?: string | null;
+  claimantOrganization?: string | null;
   requestStatus: string;
   createdUtc: string;
   submittedUtc?: string | null;
@@ -704,21 +708,41 @@ export const flagMapExportFields = [
 export type FlagMapExportField = (typeof flagMapExportFields)[number]["id"];
 
 export const displayNameMaxLength = 100;
+export const organizationMaxLength = 200;
+
+const e164PhonePattern = /^\+[1-9]\d{1,14}$/;
+
+export function normalizeE164Phone(value: string) {
+  const compact = value.trim().replace(/[\s().-]/g, "");
+  return e164PhonePattern.test(compact) ? compact : "";
+}
 
 export type UserProfile = {
   ownerObjectId: string;
   displayName: string;
   email: string;
   hasSavedDisplayName: boolean;
+  phone: string;
+  organization: string;
+};
+
+export type UpdateUserProfileRequest = {
+  displayName: string;
+  phone: string;
+  organization?: string;
 };
 
 export const profileApi = {
   get: (instance: IPublicClientApplication, account: AccountInfo) =>
     request<UserProfile>(instance, account, "/api/profile"),
 
-  update: (instance: IPublicClientApplication, account: AccountInfo, displayName: string) =>
+  update: (instance: IPublicClientApplication, account: AccountInfo, profile: UpdateUserProfileRequest) =>
     request<UserProfile>(instance, account, "/api/profile", {
       method: "PUT",
-      body: JSON.stringify({ displayName })
+      body: JSON.stringify({
+        displayName: profile.displayName,
+        phone: profile.phone,
+        organization: profile.organization ?? ""
+      })
     })
 };

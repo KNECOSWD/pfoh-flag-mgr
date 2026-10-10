@@ -37,4 +37,23 @@ public static class ClaimsPrincipalExtensions
             user.FindFirstValue("given_name") ??
             user.Identity?.Name;
     }
+
+    /// <summary>
+    /// Phone from the access token. Prefers extension_{extensionsAppId}_Phone.
+    /// extensionsAppId is the b2c-extensions-app client id. Null accepts any
+    /// extension_{32 hex}_Phone claim, then standard phone claims. Missing claims return null.
+    /// The value is not checked as E.164 here.
+    /// </summary>
+    public static string? GetPhoneNumber(this ClaimsPrincipal user, string? extensionsAppId = null)
+    {
+        return EntraExtensionClaims.GetPhone(user, extensionsAppId);
+    }
+
+    /// <summary>
+    /// Organization from extension_{extensionsAppId}_Organization. Missing claims return null.
+    /// </summary>
+    public static string? GetOrganization(this ClaimsPrincipal user, string? extensionsAppId = null)
+    {
+        return EntraExtensionClaims.GetOrganization(user, extensionsAppId);
+    }
 }

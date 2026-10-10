@@ -20,47 +20,55 @@ import {
   honoreePdfUrl,
   honoreePhotoUrl,
   displayNameMaxLength,
+  normalizeE164Phone,
+  organizationMaxLength,
   type FlagMapExportField,
   lookupApi,
   profileApi
 } from "./api";
-import { loginRequest } from "./authConfig";
+import { claimMatchesExtension, loginRequest } from "./authConfig";
 import knecoLogoBlue from "./assets/kneco-logo-blue.png";
 import pfohFooterLogo from "./assets/pfoh-footer-logo.png";
 
 const RETURN_INTENT_KEY = "pfoh-return-intent";
 
+const legacySubmitHonoreeAction = "submit-veteran" as const;
+
 type ReturnIntent =
-  | { action: "submit-veteran" }
+  | { action: "submit-honoree" | typeof legacySubmitHonoreeAction }
   | { action: "suggest-change"; honoreeId: number };
 
+function isSubmitHonoreeIntent(intent: { action: string }) {
+  return intent.action === "submit-honoree" || intent.action === legacySubmitHonoreeAction;
+}
+
 const publicCopy = {
-  title: "HONOR A VETERAN",
-  subtitle: "Find a veteran or submit a tribute. No cost to look or submit a hero.",
+  title: "HONOR AN HONOREE",
+  subtitle: "Find an honoree or submit a tribute. No cost to look or submit a hero.",
   intro:
-    "Search our veteran records—no account needed. To submit a new veteran record or suggest changes to an existing record, log in or create an account. All submissions and changes require administrator approval before they appear publicly.",
-  searchHeading: "Search veteran records",
+    "Search our honoree records—no account needed. To submit a new honoree record or suggest changes to an existing record, log in or create an account. All submissions and changes require administrator approval before they appear publicly.",
+  searchHeading: "Search honoree records",
   searchHelp:
     "Search by name, military branch, rank, submitter’s name, or flag grid location. A flag grid location is the spot on the field, such as AA-10.",
   searchPlaceholder: "Enter a name, submitter, branch, rank, or flag grid (such as AA-10)",
-  missingLead: "Can’t find your veteran?",
-  submitVeteran: "Submit a veteran",
+  missingLead: "Can’t find your honoree?",
+  submitHonoree: "Submit an honoree",
   suggestChange: "Suggest a change",
   loginRequired: "Login required to submit.",
   loginPrompt:
-    "Log in or create an account to submit a veteran record or suggest a change. You can search and view records without an account.",
+    "Log in or create an account to submit an honoree record or suggest a change. You can search and view records without an account.",
   aboveSubmit: "Your submission will be reviewed by an administrator before it appears publicly.",
   newRecordConfirmation:
-    "Your veteran record has been submitted for review. It will appear publicly after administrator approval.",
+    "Your honoree record has been submitted for review. It will appear publicly after administrator approval.",
   editConfirmation:
     "Your suggested changes have been submitted for review. The current record will remain visible until your changes are approved.",
   pendingReview: "Pending review",
   mySubmissions: "My submissions",
   stepSearchTitle: "Search first",
-  stepSearchBody: "Look for an existing record for the veteran you want to honor.",
+  stepSearchBody: "Look for an existing record for the honoree you want to honor.",
   stepSubmitTitle: "Submit a record or suggest a change",
   stepSubmitBody:
-    "If you find the veteran, open their record (login required) and select “Suggest a change.” If no record exists, select “Submit a veteran.” You’ll need to log in or create an account.",
+    "If you find the honoree, open their record (login required) and select “Suggest a change.” If no record exists, select “Submit an honoree.” You’ll need to log in or create an account.",
   stepReviewTitle: "Administrator review",
   stepReviewBody:
     "An administrator reviews all new records and suggested changes. They appear publicly only after approval."
@@ -141,6 +149,40 @@ function ownershipStatusLabel(claim: FlagClaim) {
   return "In progress";
 }
 
+function isPhoneClaim(key: string) {
+  const slash = key.lastIndexOf("/");
+  const name = (slash >= 0 ? key.slice(slash + 1) : key).toLowerCase();
+  return (
+    claimMatchesExtension(key, "Phone") ||
+    name === "phone_number" ||
+    name === "phonenumber" ||
+    name === "phone" ||
+    name === "mobile_phone" ||
+    name === "mobilephone" ||
+    name === "telephonenumber" ||
+    name === "signinames.phonenumber" ||
+    name === "strongauthenticationphonenumber"
+  );
+}
+
+function idTokenExtensionValue(
+  account: { idTokenClaims?: Record<string, unknown> } | null | undefined,
+  attribute: "Phone" | "Organization"
+) {
+  const claims = account?.idTokenClaims;
+  if (!claims) return "";
+
+  for (const key of Object.keys(claims)) {
+    if (!claimMatchesExtension(key, attribute)) continue;
+    const value = claims[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+
+  return "";
+}
+
 function profileClaimString(claims: Record<string, unknown> | undefined, keys: string[]) {
   if (!claims) return "";
 
@@ -180,19 +222,7 @@ function getAccountSubmitterContact(
       ]) ||
       account?.username ||
       "",
-    phone: profileClaimString(claims, [
-      "phone_number",
-      "phone",
-      "phoneNumber",
-      "mobile_phone",
-      "mobilePhone",
-      "telephoneNumber",
-      "signInNames.phoneNumber",
-      "extension_phoneNumber",
-      "extension_PhoneNumber",
-      "extension_mobilePhone",
-      "extension_MobilePhone"
-    ])
+    phone: profileClaimString(claims, Object.keys(claims ?? {}).filter(isPhoneClaim))
   };
 }
 
@@ -334,6 +364,8 @@ export default function App() {
   const [profileNotice, setProfileNotice] = useState("");
   const [profileDisplayName, setProfileDisplayName] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profileOrganization, setProfileOrganization] = useState("");
   const accountKey = account?.homeAccountId ?? "";
 
   const displayName = useMemo(() => {
@@ -626,6 +658,8 @@ export default function App() {
       const profile = await profileApi.get(instance, account);
       setProfileDisplayName(profile.displayName);
       setProfileEmail(profile.email);
+      setProfilePhone(profile.phone || normalizeE164Phone(idTokenExtensionValue(account, "Phone")));
+      setProfileOrganization(profile.organization || idTokenExtensionValue(account, "Organization"));
       setSavedDisplayName(profile.hasSavedDisplayName ? profile.displayName : "");
     } catch (err) {
       setProfileError(reportableErrorMessage(err, "Unable to load your profile."));
@@ -639,14 +673,34 @@ export default function App() {
     if (!account) return;
 
     const trimmed = profileDisplayName.trim();
+    const phone = normalizeE164Phone(profilePhone);
+    const organization = profileOrganization.trim();
     if (!trimmed) {
-      setProfileError("Display name is required.");
+      setProfileError("Name is required.");
       setProfileNotice("");
       return;
     }
 
     if (trimmed.length > displayNameMaxLength) {
-      setProfileError(`Display name must be ${displayNameMaxLength} characters or fewer.`);
+      setProfileError(`Name must be ${displayNameMaxLength} characters or fewer.`);
+      setProfileNotice("");
+      return;
+    }
+
+    if (!profileEmail.trim()) {
+      setProfileError("Email is required.");
+      setProfileNotice("");
+      return;
+    }
+
+    if (!phone) {
+      setProfileError("Phone is required and must be an E.164 number, such as +1 2145551234.");
+      setProfileNotice("");
+      return;
+    }
+
+    if (organization.length > organizationMaxLength) {
+      setProfileError(`Organization must be ${organizationMaxLength} characters or fewer.`);
       setProfileNotice("");
       return;
     }
@@ -656,10 +710,16 @@ export default function App() {
     setProfileNotice("");
 
     try {
-      const profile = await profileApi.update(instance, account, trimmed);
+      const profile = await profileApi.update(instance, account, {
+        displayName: trimmed,
+        phone,
+        organization
+      });
       setSavedDisplayName(profile.displayName);
       setProfileDisplayName(profile.displayName);
       setProfileEmail(profile.email);
+      setProfilePhone(profile.phone);
+      setProfileOrganization(profile.organization);
       setProfileNotice("Profile saved. The header name is updated.");
     } catch (err) {
       setProfileError(reportableErrorMessage(err, "Unable to save your profile."));
@@ -800,7 +860,7 @@ export default function App() {
         return;
       }
 
-      if (intent.action === "submit-veteran") {
+      if (isSubmitHonoreeIntent(intent)) {
         beginNomination();
         return;
       }
@@ -1029,7 +1089,7 @@ export default function App() {
 
   function beginNomination() {
     if (!account) {
-      setAuthPrompt({ action: "submit-veteran" });
+      setAuthPrompt({ action: "submit-honoree" });
       return;
     }
 
@@ -1071,7 +1131,7 @@ export default function App() {
     if (!account) return;
 
     const ok = await requestConfirmation(
-      `Withdraw your submission for ${claim.honoreeName || "this veteran"}? It will be removed from My submissions.`,
+      `Withdraw your submission for ${claim.honoreeName || "this honoree"}? It will be removed from My submissions.`,
       { title: "Withdraw submission", confirmText: "Withdraw", tone: "danger" }
     );
 
@@ -2062,7 +2122,7 @@ export default function App() {
               href="/honor-a-hero"
               onClick={(event) => handleRouteLink(event, "/honor-a-hero")}
             >
-              {publicCopy.submitVeteran}
+              {publicCopy.submitHonoree}
             </a>
             <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer">
               PlanoFlagsOfHonor.com
@@ -2107,7 +2167,7 @@ export default function App() {
                     href="/honor-a-hero"
                     onClick={(event) => handleRouteLink(event, "/honor-a-hero")}
                   >
-                    {publicCopy.submitVeteran}
+                    {publicCopy.submitHonoree}
                   </a>
                   <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer" onClick={() => setMobileNavOpen(false)}>
                     PlanoFlagsOfHonor.com
@@ -2237,16 +2297,16 @@ export default function App() {
                   <p className="eyebrow">Your account</p>
                   <h2 id="profile-dialog-title">Profile</h2>
                   <p className="helperText">
-                    This display name is shown in the header. Your sign-in email comes from your account and stays read-only.
+                    Name, email, and phone are required. Organization is optional. Your name is shown in the header. Email comes from your sign-in account and stays read-only.
                   </p>
                 </div>
 
                 <form className="profileForm" onSubmit={(event) => void saveProfile(event)}>
                   <label>
-                    Display name
+                    Name
                     <input
                       type="text"
-                      name="displayName"
+                      name="name"
                       autoComplete="name"
                       maxLength={displayNameMaxLength}
                       value={profileDisplayName}
@@ -2260,13 +2320,47 @@ export default function App() {
                     />
                   </label>
                   <label>
-                    Sign-in email
+                    Email
                     <input
                       type="email"
                       name="email"
                       value={profileEmail}
                       readOnly
                       aria-readonly="true"
+                      required
+                    />
+                  </label>
+                  <label>
+                    Phone
+                    <input
+                      type="tel"
+                      name="phone"
+                      autoComplete="tel"
+                      inputMode="tel"
+                      placeholder="+1 2145551234"
+                      value={profilePhone}
+                      disabled={profileLoading || profileSaving}
+                      onChange={(event) => {
+                        setProfilePhone(event.target.value);
+                        setProfileNotice("");
+                      }}
+                      required
+                    />
+                  </label>
+                  <p className="helperText">Use international format, such as +1 2145551234. The app checks that this is an E.164 number.</p>
+                  <label>
+                    Organization <span className="helperText">(optional)</span>
+                    <input
+                      type="text"
+                      name="organization"
+                      autoComplete="organization"
+                      maxLength={organizationMaxLength}
+                      value={profileOrganization}
+                      disabled={profileLoading || profileSaving}
+                      onChange={(event) => {
+                        setProfileOrganization(event.target.value);
+                        setProfileNotice("");
+                      }}
                     />
                   </label>
 
@@ -2711,7 +2805,7 @@ export default function App() {
             {honoreeSearchPerformed ? (
               honoreeResults.length === 0 ? (
                 <p className="emptyState">
-                  No matching veteran records found. Try a different spelling or fewer search details. If the veteran isn’t listed, <a className="emptyStateSubmitLink" href="/honor-a-hero" onClick={(event) => { event.preventDefault(); if (!saving) beginNomination(); }}>submit a new record</a>.
+                  No matching honoree records found. Try a different spelling or fewer search details. If the honoree isn’t listed, <a className="emptyStateSubmitLink" href="/honor-a-hero" onClick={(event) => { event.preventDefault(); if (!saving) beginNomination(); }}>submit a new record</a>.
                 </p>
               ) : (
                 <div className="honoreeResults">
@@ -2862,6 +2956,10 @@ export default function App() {
                                   <li key={claimant.claimId}>
                                     <span>{claimant.claimantName || claimant.claimantEmail}</span>
                                     <small>
+                                      {claimant.claimantEmail}
+                                      {claimant.claimantPhone ? ` • ${claimant.claimantPhone}` : ""}
+                                      {claimant.claimantOrganization ? ` • ${claimant.claimantOrganization}` : ""}
+                                      {" • "}
                                       {claimant.claimStatus}
                                       {claimant.latestRequestStatus ? ` • ${claimant.latestRequestStatus}` : ""}
                                       {" • "}
@@ -2881,11 +2979,11 @@ export default function App() {
             ) : null}
 
             {honoreeSearchPerformed && !searchLoading ? (
-              <div className="missingVeteranPrompt">
+              <div className="missingHonoreePrompt">
                 <p>
                   {publicCopy.missingLead}{" "}
                   <button type="button" onClick={beginNomination} disabled={saving}>
-                    {publicCopy.submitVeteran}
+                    {publicCopy.submitHonoree}
                   </button>
                 </p>
                 <p className="helperText">{publicCopy.loginRequired}</p>
@@ -2902,7 +3000,7 @@ export default function App() {
                 <p className="eyebrow">Your account</p>
                 <h2>{publicCopy.mySubmissions}</h2>
                 <p className="helperText">
-                  Check veteran records you submitted and changes you suggested. A suggested change does not replace the public record until an administrator approves it.
+                  Check honoree records you submitted and changes you suggested. A suggested change does not replace the public record until an administrator approves it.
                 </p>
               </div>
               <button type="button" className="secondary subtleRefreshButton" onClick={loadData} disabled={loading}>
@@ -2998,13 +3096,13 @@ export default function App() {
 
           {isHonorHeroRoute && !isAuthenticated ? (
             <section className="card guestNotice">
-              <h2>{publicCopy.submitVeteran}</h2>
+              <h2>{publicCopy.submitHonoree}</h2>
               <p>{publicCopy.loginPrompt}</p>
               <div className="authChoiceButtons">
-                <button type="button" onClick={() => void signIn("login", { action: "submit-veteran" })}>
+                <button type="button" onClick={() => void signIn("login", { action: "submit-honoree" })}>
                   Log in
                 </button>
-                <button type="button" className="secondary" onClick={() => void signIn("create", { action: "submit-veteran" })}>
+                <button type="button" className="secondary" onClick={() => void signIn("create", { action: "submit-honoree" })}>
                   Create an account
                 </button>
               </div>
@@ -3088,6 +3186,18 @@ export default function App() {
                             {item.claimantName || item.claimantEmail}
                             <br />
                             <span>{item.claimantEmail}</span>
+                            {item.claimantPhone ? (
+                              <>
+                                <br />
+                                <span>{item.claimantPhone}</span>
+                              </>
+                            ) : null}
+                            {item.claimantOrganization ? (
+                              <>
+                                <br />
+                                <span>{item.claimantOrganization}</span>
+                              </>
+                            ) : null}
                           </td>
                           <td data-label="Submitted">{formatDate(item.submittedUtc)}</td>
                           <td data-label="Actions" className="rowActions">
@@ -3485,14 +3595,14 @@ export default function App() {
                 <div>
                   <p className="eyebrow">
                     {isNominating
-                      ? publicCopy.submitVeteran
+                      ? publicCopy.submitHonoree
                       : selectedClaim?.claimStatus === "AdminDirectEdit"
                         ? "Administrator edit"
                         : publicCopy.suggestChange}
                   </p>
                   <h2>
                     {isNominating
-                      ? publicCopy.submitVeteran
+                      ? publicCopy.submitHonoree
                       : selectedClaim?.claimStatus === "AdminDirectEdit"
                         ? `Directly edit ${selectedClaim?.honoreeName || "honoree record"}`
                         : `${publicCopy.suggestChange}${selectedClaim?.honoreeName ? ` for ${selectedClaim.honoreeName}` : ""}`}
@@ -3796,7 +3906,7 @@ export default function App() {
                 beginNomination();
               }}
             >
-              {publicCopy.submitVeteran}
+              {publicCopy.submitHonoree}
             </a>
             <a href="https://planoflagsofhonor.com/become-a-sponsor/" target="_blank" rel="noreferrer">
               Become a Sponsor
