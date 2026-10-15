@@ -250,6 +250,33 @@ public class HonoreeFileStorage(IConfiguration configuration)
         return null;
     }
 
+    public async Task<HonoreeImageContent?> OpenHonoreeImageAsync(string? photoFileName, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(photoFileName))
+        {
+            return null;
+        }
+
+        var container = await GetContainerAsync(ImageContainerName, ct);
+        var blob = container.GetBlobClient(photoFileName);
+
+        if (!await blob.ExistsAsync(ct))
+        {
+            return null;
+        }
+
+        var properties = await blob.GetPropertiesAsync(cancellationToken: ct);
+        var contentType = properties.Value.ContentType;
+        if (string.IsNullOrWhiteSpace(contentType) ||
+            contentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase))
+        {
+            contentType = GuessContentType(photoFileName);
+        }
+
+        var stream = await blob.OpenReadAsync(cancellationToken: ct);
+        return new HonoreeImageContent(stream, contentType);
+    }
+
     public async Task<byte[]?> DownloadImageAsync(string? photoFileName, string? fallbackImageUrl, CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(photoFileName))
@@ -500,3 +527,5 @@ public class HonoreeFileStorage(IConfiguration configuration)
         };
     }
 }
+
+public sealed record HonoreeImageContent(Stream Stream, string ContentType);

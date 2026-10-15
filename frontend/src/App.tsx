@@ -17,8 +17,11 @@ import {
   flagClaimApi,
   flagMapExportFields,
   honoreeApi,
+  changeRequestPhotoUrl,
+  fetchAuthorizedBlob,
   honoreePdfUrl,
   honoreePhotoUrl,
+  isPendingHonoreePhoto,
   displayNameMaxLength,
   displayUsPhone,
   formatUsPhone,
@@ -283,6 +286,8 @@ export default function App() {
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [pendingReviews, setPendingReviews] = useState<AdminReviewItem[]>([]);
+  const [reviewPhotoUrls, setReviewPhotoUrls] = useState<Record<number, string>>({});
+  const [pendingPhotoObjectUrl, setPendingPhotoObjectUrl] = useState("");
   const [printQueue, setPrintQueue] = useState<AdminPrintQueueItem[]>([]);
   const [selectedPrintIds, setSelectedPrintIds] = useState<number[]>([]);
   const [adminBusyId, setAdminBusyId] = useState<number | null>(null);
@@ -966,6 +971,96 @@ export default function App() {
     return () => URL.revokeObjectURL(previewUrl);
   }, [selectedPhoto]);
 
+  const pendingReviewPhotoKey = pendingReviews
+    .filter((item) => isPendingHonoreePhoto(item.photoFileName))
+    .map((item) => `${item.changeRequestId}:${item.photoFileName}`)
+    .join("|");
+
+  useEffect(() => {
+    if (!account || !pendingReviewPhotoKey) {
+      setReviewPhotoUrls({});
+      return;
+    }
+
+    const items = pendingReviews.filter((item) => isPendingHonoreePhoto(item.photoFileName));
+    let cancelled = false;
+    const created: string[] = [];
+
+    void (async () => {
+      const next: Record<number, string> = {};
+
+      await Promise.all(items.map(async (item) => {
+        try {
+          const blob = await fetchAuthorizedBlob(instance, account, changeRequestPhotoUrl(item.changeRequestId));
+          if (cancelled) {
+            return;
+          }
+
+          const url = URL.createObjectURL(blob);
+          created.push(url);
+          next[item.changeRequestId] = url;
+        } catch {
+          // A missing pending honoree photo should not block the rest of the review list.
+        }
+      }));
+
+      if (cancelled) {
+        created.forEach((url) => URL.revokeObjectURL(url));
+        return;
+      }
+
+      setReviewPhotoUrls(next);
+    })();
+
+    return () => {
+      cancelled = true;
+      created.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [account, instance, pendingReviewPhotoKey, pendingReviews]);
+
+  const pendingChangeRequestPhotoId =
+    !isNominating && isPendingHonoreePhoto(selectedClaim?.latestChangeRequest?.photoFileName)
+      ? selectedClaim?.latestChangeRequest?.id ?? null
+      : null;
+
+  useEffect(() => {
+    if (!account || pendingChangeRequestPhotoId === null) {
+      setPendingPhotoObjectUrl("");
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl = "";
+    setPendingPhotoObjectUrl("");
+
+    void (async () => {
+      try {
+        const blob = await fetchAuthorizedBlob(
+          instance,
+          account,
+          changeRequestPhotoUrl(pendingChangeRequestPhotoId)
+        );
+        if (cancelled) {
+          return;
+        }
+
+        objectUrl = URL.createObjectURL(blob);
+        setPendingPhotoObjectUrl(objectUrl);
+      } catch {
+        if (!cancelled) {
+          setPendingPhotoObjectUrl("");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [account, instance, pendingChangeRequestPhotoId]);
+
   async function searchHonorees(event: React.FormEvent) {
     event.preventDefault();
 
@@ -1295,6 +1390,11 @@ export default function App() {
       return "";
     }
 
+    const request = selectedClaim?.latestChangeRequest;
+    if (request && isPendingHonoreePhoto(request.photoFileName)) {
+      return changeRequestPhotoUrl(request.id);
+    }
+
     if (selectedClaim?.honoreeId) {
       return honoreePhotoUrl(selectedClaim.honoreeId);
     }
@@ -1341,13 +1441,22 @@ export default function App() {
       return null;
     }
 
-    const response = await fetch(sourceUrl, { cache: "no-store" });
+    let blob: Blob;
+    if (sourceUrl.includes("/api/flagclaims/change-requests/")) {
+      if (!account) {
+        return null;
+      }
 
-    if (!response.ok) {
-      throw new Error("Unable to load the current photo for rotation.");
+      blob = await fetchAuthorizedBlob(instance, account, sourceUrl);
+    } else {
+      const response = await fetch(sourceUrl, { cache: "no-store" });
+
+      if (!response.ok) {
+        throw new Error("Unable to load the current photo for rotation.");
+      }
+
+      blob = await response.blob();
     }
-
-    const blob = await response.blob();
     const contentType = blob.type || "image/jpeg";
     const extension = contentType.includes("png") ? "png" : "jpg";
 
@@ -3163,9 +3272,37 @@ export default function App() {
                       {pendingReviews.map((item) => (
                         <tr key={item.changeRequestId}>
                           <td data-label="Honoree">
-                            <strong>{item.honoreeName}</strong>
-                            <br />
-                            <span>{[item.rank, item.serviceBranchName].filter(Boolean).join(" • ")}</span>
+                            <div className="reviewHonoreeCell">
+                              {isPendingHonoreePhoto(item.photoFileName) && reviewPhotoUrls[item.changeRequestId] ? (
+                                <img
+                                  className="reviewPendingPhoto"
+                                  src={reviewPhotoUrls[item.changeRequestId]}
+                                  alt={`${item.honoreeName} pending honoree photo`}
+                                />
+                              ) : null}
+                              <div>
+                                <strong>{item.honoreeName}</strong>
+                                <br />
+                                <span>{[item.rank, item.serviceBranchName].filter(Boolean).join(" • ")}</span>
+                                <details className="reviewDetails">
+                                  <summary>View details</summary>
+                                  <dl>
+                                    <div>
+                                      <dt>Description</dt>
+                                      <dd>{item.description?.trim() || "Not provided"}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>Awards</dt>
+                                      <dd>{item.awards?.trim() || "Not provided"}</dd>
+                                    </div>
+                                    <div>
+                                      <dt>Conflicts served</dt>
+                                      <dd>{item.conflictsServed?.trim() || "Not provided"}</dd>
+                                    </div>
+                                  </dl>
+                                </details>
+                              </div>
+                            </div>
                           </td>
                           <td data-label="Flag grid">{item.flagGridName || item.flagGridId}</td>
                           <td data-label="Submitted by">
@@ -3774,13 +3911,12 @@ export default function App() {
                 <label className="wide">
                   Honoree photo
                   {(selectedPhotoPreviewUrl ||
-                    (!isNominating && selectedClaim?.honoreeId
-                      ? honoreePhotoUrl(selectedClaim.honoreeId)
-                      : selectedClaim?.honoreeImageUrl)) ? (
+                    pendingPhotoObjectUrl ||
+                    (!isPendingHonoreePhoto(selectedClaim?.latestChangeRequest?.photoFileName) && currentPhotoSourceUrl())) ? (
                     <img
                       className="honoreePhotoPreview"
-                      src={selectedPhotoPreviewUrl || currentPhotoSourceUrl()}
-                      alt={`${selectedClaim?.honoreeName || "Current honoree"} photo`}
+                      src={selectedPhotoPreviewUrl || pendingPhotoObjectUrl || currentPhotoSourceUrl()}
+                      alt={`${selectedClaim?.honoreeName || "Honoree"} photo`}
                       style={
                         selectedPhotoPreviewUrl
                           ? { transform: `rotate(${selectedPhotoRotation}deg)` }
@@ -3790,6 +3926,9 @@ export default function App() {
                         event.currentTarget.style.display = "none";
                       }}
                     />
+                  ) : null}
+                  {!selectedPhoto && isPendingHonoreePhoto(selectedClaim?.latestChangeRequest?.photoFileName) ? (
+                    <span className="pendingPhotoLabel">Photo received, pending review</span>
                   ) : null}
                   <input
                     type="file"
@@ -3817,9 +3956,11 @@ export default function App() {
                   <span className="helperText">
                     {selectedPhoto
                       ? `Selected: ${selectedPhoto.name}${selectedPhotoRotation ? ` • Rotated ${selectedPhotoRotation}°` : ""}`
-                      : !isNominating && (selectedClaim?.honoreeId || selectedClaim?.honoreeImageUrl)
-                        ? "Current photo is shown above. Use Rotate left/right to correct it, then save or submit to apply the rotation."
-                        : "Optional. JPG or PNG is best for the printed honoree card."}
+                      : !selectedPhoto && isPendingHonoreePhoto(selectedClaim?.latestChangeRequest?.photoFileName)
+                        ? "Use Rotate left/right to correct it, then save or submit to apply the rotation."
+                        : !isNominating && (selectedClaim?.honoreeId || selectedClaim?.honoreeImageUrl)
+                          ? "Current photo is shown above. Use Rotate left/right to correct it, then save or submit to apply the rotation."
+                          : "Optional. JPG or PNG is best for the printed honoree card."}
                   </span>
                 </label>
 
