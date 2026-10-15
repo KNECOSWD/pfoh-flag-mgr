@@ -22,7 +22,7 @@ public class VersionApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
 
         var payload = await response.Content.ReadFromJsonAsync<VersionPayload>(new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.NotNull(payload);
-        Assert.Equal("1.3.0", payload.Version);
+        Assert.Equal("1.4.0", payload.Version);
         Assert.False(string.IsNullOrWhiteSpace(payload.Commit));
         Assert.True(DateTime.TryParse(payload.BuiltAt, out _));
     }

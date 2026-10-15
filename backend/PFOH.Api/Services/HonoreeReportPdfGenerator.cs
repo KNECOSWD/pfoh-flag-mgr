@@ -1,5 +1,6 @@
 using PdfSharpCore.Drawing;
 using PdfSharpCore.Drawing.Layout;
+using PdfSharpCore.Drawing.Layout.enums;
 using PdfSharpCore.Pdf;
 using PFOH.Api.Models;
 
@@ -274,12 +275,19 @@ public static class HonoreeReportPdfGenerator
         };
 
         var rect = new XRect(40, y, 214, 345);
-        var formatter = new XTextFormatter(gfx)
-        {
-            Alignment = XParagraphAlignment.Center
-        };
-
-        formatter.DrawString(description, Font(fontSize, false), XBrushes.Black, rect);
+        var formatter = new XTextFormatter(gfx);
+        // The short DrawString overload full-justifies every line and ignores Alignment,
+        // which stretches a short bio such as "Our Hero!" across the card.
+        formatter.DrawString(
+            description,
+            Font(fontSize, false),
+            XBrushes.Black,
+            rect,
+            new TextFormatAlignment
+            {
+                Horizontal = XParagraphAlignment.Left,
+                Vertical = XVerticalAlignment.Top
+            });
     }
 
     private static void DrawRotaryLogo(XGraphics gfx, IWebHostEnvironment environment, byte[]? rotaryImage)
