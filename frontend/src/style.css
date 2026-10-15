@@ -9308,6 +9308,14 @@ img.ownedFlagImage {
   display: block;
 }
 
+.appVersionStamp {
+  margin: 0.15rem 0 0.85rem;
+  padding: 0 1.25rem;
+  color: #8b97a8;
+  font-size: 0.75rem;
+  line-height: 1.2;
+}
+
 @media (max-width: 760px) {
   .appFooter {
     margin-top: 1.5rem;

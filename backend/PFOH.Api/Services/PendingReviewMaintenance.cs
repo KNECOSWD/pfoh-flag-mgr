@@ -117,7 +117,10 @@ public class PendingReviewMaintenance(PfohDbContext db, HonoreeFileStorage fileS
             .Include(request => request.FlagClaim)
             .Where(request =>
                 (request.HonoreeId == null || request.HonoreeId <= 0) &&
-                (request.RequestStatus == "Submitted" || request.RequestStatus == Superseded) &&
+                (request.RequestStatus == "Submitted" ||
+                 request.RequestStatus == Superseded ||
+                 request.RequestStatus == "Rejected" ||
+                 request.RequestStatus == "Draft") &&
                 (request.FlagGridId != null ||
                  (request.FlagClaim != null &&
                   request.FlagClaim.HonoreeId == null &&

@@ -1,4 +1,5 @@
 import { type FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import packageInfo from "../package.json";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
@@ -18,6 +19,7 @@ import {
   flagMapExportFields,
   honoreeApi,
   adminCardPreviewUrl,
+  mySubmissionCardUrl,
   changeRequestPhotoUrl,
   fetchAuthorizedBlob,
   honoreePdfUrl,
@@ -2158,6 +2160,23 @@ export default function App() {
     });
   }
 
+  async function openSubmissionCard(claim: FlagClaim) {
+    if (!account) return;
+
+    setError("");
+    try {
+      const blob = await fetchAuthorizedBlob(instance, account, mySubmissionCardUrl(claim.id));
+      const url = URL.createObjectURL(blob);
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      if (!opened) {
+        setError("The browser blocked the honoree card. Allow pop-ups and try Download / Print Honoree PDF again.");
+      }
+    } catch (err) {
+      setError(reportableErrorMessage(err, "Unable to open the honoree card."));
+    }
+  }
+
   async function previewHonoreeCard(item: AdminReviewItem) {
     if (!account) return;
 
@@ -3398,6 +3417,13 @@ export default function App() {
                         <button
                           type="button"
                           className="secondary"
+                          onClick={() => void openSubmissionCard(claim)}
+                        >
+                          Download / Print Honoree PDF
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary"
                           onClick={() => unclaimFlag(claim)}
                           disabled={saving}
                         >
@@ -4362,6 +4388,7 @@ export default function App() {
             </a>
           </div>
         </div>
+        <p className="appVersionStamp">Version {packageInfo.version}</p>
       </footer>
     </main>
   );

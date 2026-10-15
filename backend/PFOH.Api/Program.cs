@@ -125,13 +125,37 @@ try
 {
     await using var scope = app.Services.CreateAsyncScope();
     var startupDb = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
-    await PendingSubmissionGridSchema.EnsureAsync(startupDb, CancellationToken.None);
-    var startupMaintenance = scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>();
-    await startupMaintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
+    try
+    {
+        await PendingSubmissionGridSchema.EnsureAsync(startupDb, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(
+            ex,
+            "STARTUP CLEANUP FAILED while ensuring nullable flag spots and UX_FlagClaims_ActiveFlagGrid. {Failure}",
+            ex.ToString());
+    }
+
+    try
+    {
+        var startupMaintenance = scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>();
+        await startupMaintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(
+            ex,
+            "STARTUP CLEANUP FAILED while superseding duplicate pending requests and releasing pending spots. The site will keep running. {Failure}",
+            ex.ToString());
+    }
 }
 catch (Exception ex)
 {
-    app.Logger.LogError(ex, "Pending submission cleanup did not finish. The site will keep running.");
+    app.Logger.LogError(
+        ex,
+        "STARTUP CLEANUP FAILED before pending submission cleanup could start. The site will keep running. {Failure}",
+        ex.ToString());
 }
 
 app.Run();

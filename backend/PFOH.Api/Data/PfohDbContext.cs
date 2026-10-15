@@ -157,6 +157,10 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
 
             entity.HasIndex(e => e.ExternalUserObjectId);
             entity.HasIndex(e => e.FlagGridId);
+            entity.HasIndex(e => e.FlagGridId)
+                .HasDatabaseName("UX_FlagClaims_ActiveFlagGrid")
+                .IsUnique()
+                .HasFilter("[ClaimStatus] IN ('Claimed', 'Submitted', 'Approved') AND [FlagGridId] IS NOT NULL");
 
             entity.HasOne(e => e.FlagGrid)
                 .WithMany(e => e.FlagClaims)

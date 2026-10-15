@@ -317,6 +317,10 @@ export function adminCardPreviewUrl(changeRequestId: number) {
   return `${apiBase}/api/admin/review/${changeRequestId}/card-preview`;
 }
 
+export function mySubmissionCardUrl(claimId: number) {
+  return `${apiBase}/api/flag-claims/${claimId}/card`;
+}
+
 const requestTimeoutMs = 60_000;
 
 function requestTimeoutSignal(existing?: AbortSignal | null) {

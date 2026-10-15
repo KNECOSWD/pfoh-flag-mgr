@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 using PFOH.Api.Data;
 using PFOH.Api.Models;
@@ -368,13 +369,18 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
     }
 
     [Fact]
-    public async Task Cleanup_releases_spots_held_by_pending_new_submissions_and_keeps_claimed_drafts()
+    public async Task Cleanup_releases_spots_held_by_submitted_rejected_and_draft_new_submissions()
     {
         await ResetAsync();
         await SeedGridAsync(88, "D-01");
         await SeedGridAsync(77, "D-02");
+        await SeedGridAsync(66, "D-03");
+        await SeedGridAsync(55, "D-04");
+        await SeedHonoreeAsync(5, "Private");
         await SeedSubmittedAsync(81, 91, 88, DateTime.UtcNow, photo: null, honoreeId: null);
         await SeedDraftAsync(82, 92, 77, DateTime.UtcNow, honoreeId: null, claimStatus: "Claimed");
+        await SeedRequestAsync(83, 93, 66, DateTime.UtcNow, photo: null, honoreeId: null, owner: "owner-photo", requestStatus: "Rejected", claimStatus: "Rejected", rank: null);
+        await SeedRequestAsync(84, 94, 55, DateTime.UtcNow, photo: null, honoreeId: 5, owner: "owner-photo", requestStatus: "Draft", claimStatus: "Claimed", rank: null);
 
         await using (var scope = factory.Services.CreateAsyncScope())
         {
@@ -386,7 +392,98 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         var db = check.ServiceProvider.GetRequiredService<PfohDbContext>();
         Assert.Null(await db.HonoreeChangeRequests.Where(request => request.Id == 81).Select(request => request.FlagGridId).SingleAsync());
         Assert.Null(await db.FlagClaims.Where(claim => claim.Id == 91).Select(claim => claim.FlagGridId).SingleAsync());
-        Assert.Equal(77, await db.FlagClaims.Where(claim => claim.Id == 92).Select(claim => claim.FlagGridId).SingleAsync());
+        Assert.Null(await db.HonoreeChangeRequests.Where(request => request.Id == 82).Select(request => request.FlagGridId).SingleAsync());
+        Assert.Null(await db.FlagClaims.Where(claim => claim.Id == 92).Select(claim => claim.FlagGridId).SingleAsync());
+        Assert.Null(await db.HonoreeChangeRequests.Where(request => request.Id == 83).Select(request => request.FlagGridId).SingleAsync());
+        Assert.Null(await db.FlagClaims.Where(claim => claim.Id == 93).Select(claim => claim.FlagGridId).SingleAsync());
+        Assert.Equal(55, await db.HonoreeChangeRequests.Where(request => request.Id == 84).Select(request => request.FlagGridId).SingleAsync());
+        Assert.Equal(55, await db.FlagClaims.Where(claim => claim.Id == 94).Select(claim => claim.FlagGridId).SingleAsync());
+    }
+
+    [Fact]
+    public async Task Two_submitted_claims_without_a_spot_can_coexist()
+    {
+        await ResetAsync();
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var index = db.Model.FindEntityType(typeof(FlagClaim))!
+            .GetIndexes()
+            .Single(item => item.GetDatabaseName() == "UX_FlagClaims_ActiveFlagGrid");
+        var filter = index.GetFilter();
+        Assert.NotNull(filter);
+        Assert.True(index.IsUnique);
+        Assert.Contains("[FlagGridId] IS NOT NULL", filter, StringComparison.Ordinal);
+        Assert.Contains("Claimed", filter, StringComparison.Ordinal);
+        Assert.Contains("Submitted", filter, StringComparison.Ordinal);
+        Assert.Contains("Approved", filter, StringComparison.Ordinal);
+        Assert.Contains("UX_FlagClaims_ActiveFlagGrid", PendingSubmissionGridSchema.ActiveFlagGridIndexSql, StringComparison.Ordinal);
+        Assert.Contains("[[]FlagGridId] IS NOT NULL", PendingSubmissionGridSchema.ActiveFlagGridIndexSql, StringComparison.Ordinal);
+        Assert.Contains("[FlagGridId] IS NOT NULL", PendingSubmissionGridSchema.ActiveFlagGridIndexSql, StringComparison.Ordinal);
+
+        var now = DateTime.UtcNow;
+        db.FlagClaims.Add(new FlagClaim
+        {
+            FlagGridId = null,
+            ClaimStatus = "Submitted",
+            ExternalUserObjectId = "spotless-a",
+            ExternalUserEmail = "a@example.com",
+            CreatedUtc = now
+        });
+        db.FlagClaims.Add(new FlagClaim
+        {
+            FlagGridId = null,
+            ClaimStatus = "Submitted",
+            ExternalUserObjectId = "spotless-b",
+            ExternalUserEmail = "b@example.com",
+            CreatedUtc = now
+        });
+        await db.SaveChangesAsync();
+
+        Assert.Equal(2, await db.FlagClaims.CountAsync(claim => claim.FlagGridId == null && claim.ClaimStatus == "Submitted"));
+    }
+
+    [Fact]
+    public async Task Rejected_and_unclaimed_claims_do_not_block_the_next_spot()
+    {
+        await ResetAsync();
+        await SeedGridAsync(1, "A-01");
+        await SeedGridAsync(2, "C-28");
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var now = DateTime.UtcNow;
+            db.FlagClaims.Add(new FlagClaim
+            {
+                FlagGridId = 1,
+                ClaimStatus = "Rejected",
+                ExternalUserObjectId = "rejected",
+                ExternalUserEmail = "rejected@example.com",
+                CreatedUtc = now
+            });
+            db.FlagClaims.Add(new FlagClaim
+            {
+                FlagGridId = 1,
+                ClaimStatus = "Unclaimed",
+                ExternalUserObjectId = "unclaimed",
+                ExternalUserEmail = "unclaimed@example.com",
+                CreatedUtc = now
+            });
+            db.FlagClaims.Add(new FlagClaim
+            {
+                FlagGridId = 2,
+                ClaimStatus = "Claimed",
+                ExternalUserObjectId = "claimed",
+                ExternalUserEmail = "claimed@example.com",
+                CreatedUtc = now
+            });
+            await db.SaveChangesAsync();
+        }
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var assignment = check.ServiceProvider.GetRequiredService<FlagGridAssignment>();
+        var next = await assignment.NextAvailableAsync(CancellationToken.None);
+        Assert.NotNull(next);
+        Assert.Equal("A-01", next.FlagGridName);
     }
 
     private async Task ResetAsync()
