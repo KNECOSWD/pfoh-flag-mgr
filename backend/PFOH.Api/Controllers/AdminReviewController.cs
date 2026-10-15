@@ -44,15 +44,16 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
     [HttpGet("pending")]
     public async Task<ActionResult<IReadOnlyList<AdminReviewItemDto>>> GetPending(CancellationToken ct)
     {
-        var submitted = await db.HonoreeChangeRequests
+        var submittedRequests = await db.HonoreeChangeRequests
             .AsNoTracking()
             .Include(r => r.FlagClaim)
             .Include(r => r.FlagGrid)
             .Include(r => r.ServiceBranch)
             .Where(r => r.RequestStatus == "Submitted")
             .OrderBy(r => r.SubmittedUtc ?? r.CreatedUtc)
-            .Select(r => ToReviewDto(r))
             .ToListAsync(ct);
+
+        var submitted = submittedRequests.Select(ToReviewDto).ToList();
 
         return Ok(await AttachClaimantAccountsAsync(submitted, ct));
     }
@@ -733,6 +734,16 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
 
             return Ok(ToReviewDto(change));
         }
+        catch (HonoreePhotoMoveException ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = ex.Message,
+                    detail = ex.Message
+                });
+        }
         catch (DbUpdateException ex)
         {
             return StatusCode(
@@ -985,20 +996,29 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         {
             if (change.PhotoFileName.StartsWith("pending/", StringComparison.OrdinalIgnoreCase))
             {
+                string? finalPhotoFileName = null;
+                Exception? moveError = null;
+
                 try
                 {
-                    var finalPhotoFileName = await fileStorage.PromoteImageAsync(change.PhotoFileName, honoree.Id, ct);
-                    if (!string.IsNullOrWhiteSpace(finalPhotoFileName))
-                    {
-                        honoree.PhotoFileName = finalPhotoFileName;
-                        change.PhotoFileName = finalPhotoFileName;
-                    }
+                    finalPhotoFileName = await fileStorage.PromoteImageAsync(change.PhotoFileName, honoree.Id, ct);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Do not block admin approval because a pending photo could not be promoted.
-                    // The honoree record remains approved and the photo can be corrected/re-uploaded later.
+                    moveError = ex;
                 }
+
+                if (moveError is not null || string.IsNullOrWhiteSpace(finalPhotoFileName))
+                {
+                    var detail = moveError?.Message
+                        ?? $"The pending honoree photo '{change.PhotoFileName}' was not found in honoreeimages.";
+
+                    throw new HonoreePhotoMoveException(
+                        $"The pending honoree photo could not be moved from honoreeimages. The honoree change was not approved. {detail}");
+                }
+
+                honoree.PhotoFileName = finalPhotoFileName;
+                change.PhotoFileName = finalPhotoFileName;
             }
             else
             {
@@ -1280,7 +1300,11 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         r.SubmittedUtc,
         r.RequiresCardReprint,
         r.CardPrintedUtc,
-        r.ReviewNotes);
+        r.ReviewNotes,
+        r.PhotoFileName,
+        r.Description,
+        r.Awards,
+        r.ConflictsServed);
 
     private async Task<IReadOnlyList<AdminFlagPositionDto>> BuildFlagPositionsAsync(CancellationToken ct)
     {
@@ -1513,4 +1537,6 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         string.IsNullOrWhiteSpace(value)
             ? null
             : value.Replace("\r", "").Replace("\n", "").Trim();
+
+    private sealed class HonoreePhotoMoveException(string message) : Exception(message);
 }

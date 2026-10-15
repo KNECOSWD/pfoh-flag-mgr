@@ -9004,6 +9004,60 @@ img.ownedFlagImage {
   color: #ffffff;
 }
 
+.reviewHonoreeCell {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.reviewPendingPhoto {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid #dbe5f2;
+  background: #f3f6fb;
+  flex: 0 0 auto;
+}
+
+.reviewDetails {
+  margin-top: 0.45rem;
+}
+
+.reviewDetails summary {
+  cursor: pointer;
+  color: #173b73;
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+
+.reviewDetails dl {
+  margin: 0.45rem 0 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.reviewDetails dt {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #53627a;
+}
+
+.reviewDetails dd {
+  margin: 0.1rem 0 0;
+  white-space: pre-wrap;
+}
+
+.pendingPhotoLabel {
+  display: block;
+  margin-top: 0.35rem;
+  color: #173b73;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
 .reviewTable .rowActions {
   overflow: visible;
 }

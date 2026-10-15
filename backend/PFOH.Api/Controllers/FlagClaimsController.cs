@@ -23,6 +23,57 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
     // These statuses mean there is a submitted or in-progress change cycle.
     private static readonly string[] OpenChangeStatuses = ["Submitted"];
 
+    [HttpGet("/api/flagclaims/change-requests/{id:int}/photo")]
+    public async Task<IActionResult> GetChangeRequestPhoto(int id, CancellationToken ct)
+    {
+        var change = await db.HonoreeChangeRequests
+            .AsNoTracking()
+            .Include(r => r.FlagClaim)
+            .FirstOrDefaultAsync(r => r.Id == id, ct);
+
+        if (change is null)
+        {
+            return NotFound("Honoree change request was not found.");
+        }
+
+        var isAdmin = User.IsInRole("PFOH.Admin") || User.IsInRole("Admin");
+        var isOwner = change.FlagClaim is not null &&
+            string.Equals(change.FlagClaim.ExternalUserObjectId, User.GetExternalObjectId(), StringComparison.Ordinal);
+
+        if (!isAdmin && !isOwner)
+        {
+            return Forbid();
+        }
+
+        if (!IsPendingHonoreePhoto(change.PhotoFileName))
+        {
+            return NotFound("Pending honoree photo was not found.");
+        }
+
+        try
+        {
+            var photoFileName = change.PhotoFileName!.Trim().Replace('\\', '/');
+            var image = await fileStorage.OpenHonoreeImageAsync(photoFileName, ct);
+            if (image is null)
+            {
+                return NotFound("Pending honoree photo was not found.");
+            }
+
+            Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+            return File(image.Stream, image.ContentType);
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = "The pending honoree photo could not be read from honoreeimages.",
+                    detail = ex.Message
+                });
+        }
+    }
+
     [HttpGet("my")]
     public async Task<ActionResult<IReadOnlyList<FlagClaimDto>>> GetMyClaims(CancellationToken ct)
     {
@@ -960,6 +1011,18 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
         return cleanName.EndsWith($"({cleanNickname})", StringComparison.OrdinalIgnoreCase)
             ? cleanName
             : $"{cleanName} ({cleanNickname})";
+    }
+
+    private static bool IsPendingHonoreePhoto(string? photoFileName)
+    {
+        if (string.IsNullOrWhiteSpace(photoFileName))
+        {
+            return false;
+        }
+
+        var name = photoFileName.Trim().Replace('\\', '/');
+        return name.StartsWith("pending/", StringComparison.OrdinalIgnoreCase) &&
+            !name.Contains("..", StringComparison.Ordinal);
     }
 
     private static HonoreeChangeRequestDto ToDto(HonoreeChangeRequest request) => new(

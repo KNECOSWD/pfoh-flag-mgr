@@ -19,6 +19,10 @@ public record AdminReviewItemDto(
     bool RequiresCardReprint,
     DateTime? CardPrintedUtc,
     string? ReviewNotes,
+    string? PhotoFileName,
+    string? Description,
+    string? Awards,
+    string? ConflictsServed,
     string? ClaimantPhone = null,
     string? ClaimantOrganization = null);
 

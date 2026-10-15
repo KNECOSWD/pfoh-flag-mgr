@@ -243,6 +243,10 @@ export type AdminReviewItem = {
   requiresCardReprint: boolean;
   cardPrintedUtc?: string | null;
   reviewNotes?: string | null;
+  photoFileName?: string | null;
+  description?: string | null;
+  awards?: string | null;
+  conflictsServed?: string | null;
 };
 
 
@@ -297,6 +301,32 @@ export function honoreePdfUrl(honoreeId: number) {
 
 export function honoreePhotoUrl(honoreeId: number) {
   return `${apiBase}/api/honorees/${honoreeId}/photo`;
+}
+
+export function changeRequestPhotoUrl(changeRequestId: number) {
+  return `${apiBase}/api/flagclaims/change-requests/${changeRequestId}/photo`;
+}
+
+export function isPendingHonoreePhoto(photoFileName?: string | null) {
+  return !!photoFileName && photoFileName.trim().toLowerCase().startsWith("pending/") && !photoFileName.includes("..");
+}
+
+export async function fetchAuthorizedBlob(
+  instance: IPublicClientApplication,
+  account: AccountInfo,
+  url: string
+) {
+  const token = await getToken(instance, account);
+  const response = await fetch(url, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  if (!response.ok) {
+    throw await buildApiError(response, "GET", url);
+  }
+
+  return response.blob();
 }
 
 
