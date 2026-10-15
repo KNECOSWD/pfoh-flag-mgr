@@ -255,10 +255,10 @@ public static class HonoreeReportPdfGenerator
             y += 10;
         }
 
-        DrawDescription(gfx, Clean(honoree.Description), y);
+        DrawDescription(gfx, Clean(honoree.Description), y, honoree);
     }
 
-    private static void DrawDescription(XGraphics gfx, string description, double y)
+    private static void DrawDescription(XGraphics gfx, string description, double y, Honoree honoree)
     {
         if (string.IsNullOrWhiteSpace(description))
         {
@@ -274,13 +274,14 @@ public static class HonoreeReportPdfGenerator
             _ => 12.0
         };
 
-        var rect = new XRect(40, y, 214, 345);
+        var font = Font(fontSize, false);
+        var rect = new XRect(ContentLeft, y, ContentWidth, BioBoxHeight);
         var formatter = new XTextFormatter(gfx);
         // The short DrawString overload full-justifies every line and ignores Alignment,
         // which stretches a short bio such as "Our Hero!" across the card.
         formatter.DrawString(
             description,
-            Font(fontSize, false),
+            font,
             XBrushes.Black,
             rect,
             new TextFormatAlignment
@@ -288,6 +289,131 @@ public static class HonoreeReportPdfGenerator
                 Horizontal = XParagraphAlignment.Left,
                 Vertical = XVerticalAlignment.Top
             });
+
+        var bioHeight = Math.Min(MeasureLeftBlock(gfx, description, font, ContentWidth), BioBoxHeight);
+        DrawHonors(gfx, honoree, y + bioHeight + 10, fontSize);
+    }
+
+    private const double ContentLeft = 40;
+    private const double ContentWidth = 214;
+    private const double BioBoxHeight = 345;
+    // Stay above the Rotary mark drawn at y=596.
+    private const double ContentBottom = 578;
+
+    private static void DrawHonors(XGraphics gfx, Honoree honoree, double top, double bioSize)
+    {
+        var conflicts = Clean(honoree.ConflictsServed);
+        var awards = Clean(honoree.Awards);
+        if (string.IsNullOrWhiteSpace(conflicts) && string.IsNullOrWhiteSpace(awards))
+        {
+            return;
+        }
+
+        var detailSize = Math.Min(9, bioSize - 1.5);
+        if (detailSize >= bioSize)
+        {
+            detailSize = bioSize - 0.5;
+        }
+
+        var bodyFont = Font(detailSize, false);
+        var labelFont = Font(detailSize, true);
+        var available = ContentBottom - top;
+        if (available <= 0)
+        {
+            return;
+        }
+
+        const double sectionGap = 8;
+        var conflictsHeight = SectionHeight(gfx, conflicts, "Conflicts served", labelFont, bodyFont);
+        var awardsHeight = SectionHeight(gfx, awards, "Awards", labelFont, bodyFont);
+
+        var showConflicts = false;
+        var showAwards = false;
+        if (conflictsHeight is double conflictsBlock && awardsHeight is double awardsBlock)
+        {
+            if (conflictsBlock + sectionGap + awardsBlock <= available)
+            {
+                showConflicts = true;
+                showAwards = true;
+            }
+            else if (conflictsBlock <= available)
+            {
+                showConflicts = true;
+            }
+            else if (awardsBlock <= available)
+            {
+                showAwards = true;
+            }
+        }
+        else if (conflictsHeight is double onlyConflicts && onlyConflicts <= available)
+        {
+            showConflicts = true;
+        }
+        else if (awardsHeight is double onlyAwards && onlyAwards <= available)
+        {
+            showAwards = true;
+        }
+
+        var y = top;
+        if (showConflicts && conflictsHeight is double drawnConflicts)
+        {
+            DrawHonorSection(gfx, "Conflicts served", conflicts, y, labelFont, bodyFont);
+            y += drawnConflicts + sectionGap;
+        }
+
+        if (showAwards && awardsHeight is double)
+        {
+            DrawHonorSection(gfx, "Awards", awards, y, labelFont, bodyFont);
+        }
+    }
+
+    private static double? SectionHeight(XGraphics gfx, string value, string label, XFont labelFont, XFont bodyFont)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return labelFont.GetHeight() + 2 + MeasureLeftBlock(gfx, value, bodyFont, ContentWidth);
+    }
+
+    private static void DrawHonorSection(
+        XGraphics gfx,
+        string label,
+        string value,
+        double y,
+        XFont labelFont,
+        XFont bodyFont)
+    {
+        var labelHeight = labelFont.GetHeight();
+        gfx.DrawString(
+            label,
+            labelFont,
+            XBrushes.Black,
+            new XRect(ContentLeft, y, ContentWidth, labelHeight + 1),
+            XStringFormats.TopLeft);
+        var valueHeight = MeasureLeftBlock(gfx, value, bodyFont, ContentWidth);
+        new XTextFormatter(gfx).DrawString(
+            value,
+            bodyFont,
+            XBrushes.Black,
+            new XRect(ContentLeft, y + labelHeight + 2, ContentWidth, valueHeight + bodyFont.GetHeight()),
+            new TextFormatAlignment
+            {
+                Horizontal = XParagraphAlignment.Left,
+                Vertical = XVerticalAlignment.Top
+            });
+    }
+
+    private static double MeasureLeftBlock(XGraphics gfx, string text, XFont font, double width)
+    {
+        var formatter = new XTextFormatter(gfx)
+        {
+            AllowVerticalOverflow = true,
+            Alignment = XParagraphAlignment.Left
+        };
+        var layout = formatter.GetLayout(text, font, XBrushes.Black, new XRect(0, 0, width, 100000));
+        return Math.Max(layout.Height, font.GetHeight());
     }
 
     private static void DrawRotaryLogo(XGraphics gfx, IWebHostEnvironment environment, byte[]? rotaryImage)

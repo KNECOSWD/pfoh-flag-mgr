@@ -48,6 +48,60 @@ public class HonoreeCardPdfLayoutTests
         AssertHeaderStaysCentered(runs, bio[0].X);
     }
 
+    [Fact]
+    public void Short_bio_shows_conflicts_and_awards_left_aligned_under_the_bio()
+    {
+        const string tribute = "Our Hero!";
+        var runs = Render(tribute, conflicts: "World War II", awards: "Silver Star");
+        var bio = Assert.Single(BioRuns(runs, tribute));
+
+        var conflictsLabel = Assert.Single(runs, run => run.Text == "Conflicts served");
+        var conflictsValue = Assert.Single(runs, run => run.Text == "World War II");
+        var awardsLabel = Assert.Single(runs, run => run.Text == "Awards");
+        var awardsValue = Assert.Single(runs, run => run.Text == "Silver Star");
+
+        Assert.All(
+            new[] { conflictsLabel, conflictsValue, awardsLabel, awardsValue },
+            run => Assert.Equal(BioLeft, run.X, 1));
+        Assert.True(conflictsLabel.Y < bio.Y, Dump(runs));
+        Assert.True(conflictsValue.Y < conflictsLabel.Y, Dump(runs));
+        Assert.True(awardsLabel.Y < conflictsValue.Y, Dump(runs));
+        Assert.True(awardsValue.Y < awardsLabel.Y, Dump(runs));
+        AssertHeaderStaysCentered(runs, bio.X);
+    }
+
+    [Fact]
+    public void Long_bio_omits_conflicts_and_awards_instead_of_crowding_the_card()
+    {
+        var tribute = string.Join(" ", Enumerable.Repeat(
+            "The family kept every letter from the field and read them on the porch.",
+            40));
+        var runs = Render(tribute, conflicts: "Operation Overlord", awards: "Medal of Honor");
+
+        Assert.True(BioRuns(runs, tribute).Count >= 3, Dump(runs));
+        Assert.DoesNotContain(runs, run => run.Text.Contains("Conflicts served", StringComparison.Ordinal));
+        Assert.DoesNotContain(runs, run => run.Text.Contains("Operation Overlord", StringComparison.Ordinal));
+        Assert.DoesNotContain(runs, run => run.Text.Contains("Awards", StringComparison.Ordinal));
+        Assert.DoesNotContain(runs, run => run.Text.Contains("Medal of Honor", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_section_that_cannot_fit_whole_is_omitted_and_conflicts_are_preferred()
+    {
+        var huge = string.Join(", ", Enumerable.Repeat("Distinguished Service Cross", 80));
+        var conflictsOnly = Render("Our Hero!", conflicts: "Korea", awards: huge);
+        Assert.Contains(conflictsOnly, run => run.Text == "Conflicts served");
+        Assert.Contains(conflictsOnly, run => run.Text == "Korea");
+        Assert.DoesNotContain(conflictsOnly, run => run.Text.Contains("Awards", StringComparison.Ordinal));
+        Assert.DoesNotContain(conflictsOnly, run => run.Text.Contains("Distinguished Service Cross", StringComparison.Ordinal));
+
+        var awardsOnly = Render("Our Hero!", conflicts: huge, awards: "Purple Heart");
+        Assert.Contains(awardsOnly, run => run.Text == "Awards");
+        Assert.Contains(awardsOnly, run => run.Text == "Purple Heart");
+        Assert.DoesNotContain(awardsOnly, run => run.Text.Contains("Conflicts served", StringComparison.Ordinal));
+        Assert.DoesNotContain(awardsOnly, run => run.Text.Contains("Distinguished Service Cross", StringComparison.Ordinal));
+    }
+
     private static void AssertHeaderStaysCentered(IReadOnlyList<TextRun> runs, double bioLeft)
     {
         foreach (var header in new[] { Name, Years, Branch })
@@ -64,7 +118,7 @@ public class HonoreeCardPdfLayoutTests
         return bio;
     }
 
-    private static List<TextRun> Render(string tribute)
+    private static List<TextRun> Render(string tribute, string? conflicts = null, string? awards = null)
     {
         var pdf = HonoreeReportPdfGenerator.Create(
             new EmptyHost(),
@@ -75,6 +129,8 @@ public class HonoreeCardPdfLayoutTests
                 StartYear = 1942,
                 EndYear = 1945,
                 Description = tribute,
+                ConflictsServed = conflicts ?? string.Empty,
+                Awards = awards ?? string.Empty,
                 Rank = "Private",
                 ServiceBranch = new ServiceBranch { ServiceBranchName = Branch },
                 FlagGrid = new FlagGrid { FlagGridName = "V-12" }
