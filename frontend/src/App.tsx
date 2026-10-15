@@ -32,6 +32,7 @@ import {
   lookupApi,
   profileApi
 } from "./api";
+import { decideAdminLoad } from "./adminAccess.js";
 import { loginRequest, readMappedAccountClaim } from "./authConfig";
 import { publishSignInError, subscribeSignInError } from "./signInError";
 import knecoLogoBlue from "./assets/kneco-logo-blue.png";
@@ -285,6 +286,9 @@ export default function App() {
   const [searchLoading, setSearchLoading] = useState(false);
 
   const [isAdmin, setIsAdmin] = useState(false);
+  const [reviewLoadError, setReviewLoadError] = useState("");
+  const [printLoadError, setPrintLoadError] = useState("");
+  const [flagMapLoadError, setFlagMapLoadError] = useState("");
   const [pendingReviews, setPendingReviews] = useState<AdminReviewItem[]>([]);
   const [reviewPhotoUrls, setReviewPhotoUrls] = useState<Record<number, string>>({});
   const [pendingPhotoObjectUrl, setPendingPhotoObjectUrl] = useState("");
@@ -869,33 +873,68 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, account?.homeAccountId]);
 
+  async function loadAdminPanel<T>(name: string, fallback: string, load: () => Promise<T>) {
+    try {
+      const value = await load();
+      return { name, ok: true as const, status: 200, message: "", value };
+    } catch (err) {
+      return {
+        name,
+        ok: false as const,
+        status: err instanceof ApiError ? err.status : 0,
+        message: reportableErrorMessage(err, fallback),
+        value: null
+      };
+    }
+  }
+
   async function loadAdminData() {
     if (!account) return;
 
-    try {
-      const [pending, queue, positions] = await Promise.all([
-        adminApi.pending(instance, account),
-        adminApi.printQueue(instance, account),
-        adminApi.flagPositions(instance, account)
-      ]);
+    const [pendingResult, queueResult, positionsResult] = await Promise.all([
+      loadAdminPanel("review", "Pending honoree reviews could not be loaded.", () => adminApi.pending(instance, account)),
+      loadAdminPanel("printing", "The honoree print queue could not be loaded.", () => adminApi.printQueue(instance, account)),
+      loadAdminPanel("flagMap", "The flag map could not be loaded.", () => adminApi.flagPositions(instance, account))
+    ]);
 
-      setIsAdmin(true);
-      setPendingReviews(pending);
-      setPrintQueue(queue);
-      setFlagPositions(positions);
+    const decision = decideAdminLoad([pendingResult, queueResult, positionsResult]);
+    if (!decision.isAdmin) {
+      setIsAdmin(false);
+      setPendingReviews([]);
+      setPrintQueue([]);
+      setFlagPositions([]);
+      setSelectedPrintIds([]);
+      setReviewLoadError("");
+      setPrintLoadError("");
+      setFlagMapLoadError("");
+      return;
+    }
+
+    setIsAdmin(true);
+    setReviewLoadError(decision.errors.review ?? "");
+    setPrintLoadError(decision.errors.printing ?? "");
+    setFlagMapLoadError(decision.errors.flagMap ?? "");
+
+    if (pendingResult.ok) {
+      setPendingReviews(pendingResult.value);
+    } else {
+      setPendingReviews([]);
+    }
+
+    if (queueResult.ok) {
+      setPrintQueue(queueResult.value);
       setSelectedPrintIds((current) =>
-        current.filter((id) => queue.some((item) => item.changeRequestId === id))
+        current.filter((id) => queueResult.value.some((item) => item.changeRequestId === id))
       );
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 403) {
-        setIsAdmin(false);
-        setPendingReviews([]);
-        setPrintQueue([]);
-        setFlagPositions([]);
-        return;
-      }
+    } else {
+      setPrintQueue([]);
+      setSelectedPrintIds([]);
+    }
 
-      throw err;
+    if (positionsResult.ok) {
+      setFlagPositions(positionsResult.value);
+    } else {
+      setFlagPositions([]);
     }
   }
 
@@ -3254,7 +3293,9 @@ export default function App() {
                   </div>
                 ) : null}
 
-              {pendingReviews.length === 0 ? (
+              {reviewLoadError ? (
+                <p className="message error" role="alert">{reviewLoadError}</p>
+              ) : pendingReviews.length === 0 ? (
                 <p>No submitted changes are waiting for review.</p>
               ) : (
                 <div className="tableWrap">
@@ -3479,6 +3520,10 @@ export default function App() {
                     </div>
                   ) : null}
 
+                  {flagMapLoadError ? (
+                    <p className="message error" role="alert">{flagMapLoadError}</p>
+                  ) : null}
+
                   <p className="helperText flagAssignmentHelp">
                     Click a flag grid to view details, assign open grids, or clear occupied grids.
                   </p>
@@ -3554,7 +3599,7 @@ export default function App() {
                   </div>
 
                   <div className="flagSeatMap" role="grid" aria-label="Flag grid seat map">
-                    {flagPositionRows.length === 0 ? (
+                    {flagMapLoadError ? null : flagPositionRows.length === 0 ? (
                       <p className="emptyState">No flag grids match the current filters.</p>
                     ) : (
                       flagPositionRows.map((row) => (
@@ -3608,7 +3653,9 @@ export default function App() {
                       <span className="countBadge">{printQueue.length}</span>
                     </h2>
                     <p className="helperText">
-                      {printQueue.length === 0
+                      {printLoadError
+                        ? "The honoree print queue could not be loaded."
+                        : printQueue.length === 0
                         ? "No approved cards are waiting for reprint."
                         : `${printQueue.length} card${printQueue.length === 1 ? "" : "s"} ready to print.`}
                     </p>
@@ -3636,7 +3683,9 @@ export default function App() {
                   </div>
                 </div>
 
-              {printQueue.length === 0 ? (
+              {printLoadError ? (
+                <p id="reprint-queue" className="message error" role="alert">{printLoadError}</p>
+              ) : printQueue.length === 0 ? (
                 <p id="reprint-queue" className="compactEmptyState">No approved cards are waiting for reprint.</p>
               ) : (
                 <section id="reprint-queue" className="reprintQueuePanel compactReprintQueuePanel">

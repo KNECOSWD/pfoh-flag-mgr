@@ -5,6 +5,14 @@ using PFOH.Api.Models;
 
 namespace PFOH.Api.Services;
 
+public enum HonoreeImageProbeResult
+{
+    NoPhoto,
+    Found,
+    Missing,
+    Failed
+}
+
 public class HonoreeFileStorage(IConfiguration configuration)
 {
     public const string ImageContainerName = "honoreeimages";
@@ -248,6 +256,33 @@ public class HonoreeFileStorage(IConfiguration configuration)
         }
 
         return null;
+    }
+
+    public virtual async Task<HonoreeImageProbeResult> ProbeHonoreeImageAsync(string? photoFileName, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(photoFileName))
+        {
+            return HonoreeImageProbeResult.NoPhoto;
+        }
+
+        try
+        {
+            var connectionString = GetConnectionString();
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                return HonoreeImageProbeResult.Failed;
+            }
+
+            var container = new BlobContainerClient(connectionString, ImageContainerName);
+            var blob = container.GetBlobClient(photoFileName);
+            return await blob.ExistsAsync(ct)
+                ? HonoreeImageProbeResult.Found
+                : HonoreeImageProbeResult.Missing;
+        }
+        catch (Exception)
+        {
+            return HonoreeImageProbeResult.Failed;
+        }
     }
 
     public async Task<HonoreeImageContent?> OpenHonoreeImageAsync(string? photoFileName, CancellationToken ct)

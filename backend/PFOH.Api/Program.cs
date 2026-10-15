@@ -80,6 +80,7 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddHttpClient();
+builder.Services.AddSingleton<HonoreeFileStorage>();
 builder.Services.AddScoped<UserProfileService>();
 
 var app = builder.Build();

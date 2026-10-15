@@ -37,25 +37,79 @@ public record AdminUnassignedHonoreeDto(
 [ApiController]
 [Route("api/admin/review")]
 [Authorize(Policy = "AdminOnly")]
-public class AdminReviewController(PfohDbContext db, IConfiguration configuration, IWebHostEnvironment environment, UserProfileService profiles) : ControllerBase
+public class AdminReviewController(
+    PfohDbContext db,
+    IWebHostEnvironment environment,
+    UserProfileService profiles,
+    HonoreeFileStorage fileStorage,
+    ILogger<AdminReviewController> logger) : ControllerBase
 {
-    private readonly HonoreeFileStorage fileStorage = new(configuration);
-
     [HttpGet("pending")]
     public async Task<ActionResult<IReadOnlyList<AdminReviewItemDto>>> GetPending(CancellationToken ct)
     {
+        // Project nullable columns so a NULL photo, name, or detail on one honoree
+        // cannot abort the SQL reader for the other submitted reviews.
         var submittedRequests = await db.HonoreeChangeRequests
             .AsNoTracking()
-            .Include(r => r.FlagClaim)
-            .Include(r => r.FlagGrid)
-            .Include(r => r.ServiceBranch)
             .Where(r => r.RequestStatus == "Submitted")
             .OrderBy(r => r.SubmittedUtc ?? r.CreatedUtc)
+            .Select(r => new PendingReviewSource
+            {
+                Id = r.Id,
+                FlagClaimId = r.FlagClaimId,
+                FlagGridId = r.FlagGridId,
+                FlagGridName = r.FlagGrid == null ? null : r.FlagGrid.FlagGridName ?? "",
+                HonoreeId = r.HonoreeId,
+                FirstName = r.FirstName ?? "",
+                MiddleName = r.MiddleName,
+                LastName = r.LastName ?? "",
+                Suffix = r.Suffix,
+                Nickname = r.Nickname,
+                Rank = r.Rank,
+                ServiceBranchName = r.ServiceBranch == null ? null : r.ServiceBranch.ServiceBranchName ?? "",
+                ClaimantEmail = r.FlagClaim == null ? null : r.FlagClaim.ExternalUserEmail ?? "",
+                ClaimantName = r.FlagClaim == null ? null : r.FlagClaim.ExternalUserName,
+                RequestStatus = r.RequestStatus ?? "",
+                CreatedUtc = r.CreatedUtc,
+                SubmittedUtc = r.SubmittedUtc,
+                RequiresCardReprint = r.RequiresCardReprint,
+                CardPrintedUtc = r.CardPrintedUtc,
+                ReviewNotes = r.ReviewNotes,
+                PhotoFileName = r.PhotoFileName,
+                Description = r.Description,
+                Awards = r.Awards,
+                ConflictsServed = r.ConflictsServed
+            })
             .ToListAsync(ct);
 
-        var submitted = submittedRequests.Select(ToReviewDto).ToList();
+        var submitted = new List<AdminReviewItemDto>(submittedRequests.Count);
+        foreach (var request in submittedRequests)
+        {
+            try
+            {
+                submitted.Add(await WithPhotoProbeAsync(ToReviewDto(request), ct));
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    ex,
+                    "Pending honoree review {ChangeRequestId} could not be loaded. Returning a degraded item so the rest of the list can load.",
+                    request.Id);
+                submitted.Add(DegradedReviewDto(request));
+            }
+        }
 
-        return Ok(await AttachClaimantAccountsAsync(submitted, ct));
+        try
+        {
+            return Ok(await AttachClaimantAccountsAsync(submitted, ct));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Claimant phone and organization could not be attached to pending honoree reviews. Returning the review list without them.");
+            return Ok(submitted);
+        }
     }
 
     [HttpGet("approved-reprint-queue")]
@@ -1284,27 +1338,161 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         }).ToList();
     }
 
-    private static AdminReviewItemDto ToReviewDto(HonoreeChangeRequest r) => new(
-        r.Id,
-        r.FlagClaimId,
-        r.FlagGridId,
-        r.FlagGrid?.FlagGridName ?? string.Empty,
-        r.HonoreeId,
-        BuildHonoreeName(r),
-        r.Rank,
-        r.ServiceBranch?.ServiceBranchName,
-        r.FlagClaim?.ExternalUserEmail ?? string.Empty,
-        r.FlagClaim?.ExternalUserName,
-        r.RequestStatus,
-        r.CreatedUtc,
-        r.SubmittedUtc,
-        r.RequiresCardReprint,
-        r.CardPrintedUtc,
-        r.ReviewNotes,
-        r.PhotoFileName,
-        r.Description,
-        r.Awards,
-        r.ConflictsServed);
+    private async Task<AdminReviewItemDto> WithPhotoProbeAsync(AdminReviewItemDto dto, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(dto.PhotoFileName))
+        {
+            return dto;
+        }
+
+        var probe = await fileStorage.ProbeHonoreeImageAsync(dto.PhotoFileName, ct);
+        if (probe == HonoreeImageProbeResult.Missing)
+        {
+            logger.LogWarning(
+                "Pending honoree photo {PhotoFileName} for change request {ChangeRequestId} is missing from honoreeimages. The honoree stays in the review list without that photo.",
+                dto.PhotoFileName,
+                dto.ChangeRequestId);
+            return dto with
+            {
+                PhotoFileName = null,
+                ReviewNotes = AppendReviewNote(dto.ReviewNotes, "The pending honoree photo was not found in honoreeimages.")
+            };
+        }
+
+        if (probe == HonoreeImageProbeResult.Failed)
+        {
+            logger.LogWarning(
+                "Pending honoree photo {PhotoFileName} for change request {ChangeRequestId} could not be checked in honoreeimages. The honoree stays in the review list.",
+                dto.PhotoFileName,
+                dto.ChangeRequestId);
+        }
+
+        return dto;
+    }
+
+    private static AdminReviewItemDto ToReviewDto(HonoreeChangeRequest r) =>
+        ToReviewDto(new PendingReviewSource
+        {
+            Id = r.Id,
+            FlagClaimId = r.FlagClaimId,
+            FlagGridId = r.FlagGridId,
+            FlagGridName = r.FlagGrid?.FlagGridName,
+            HonoreeId = r.HonoreeId,
+            FirstName = r.FirstName,
+            MiddleName = r.MiddleName,
+            LastName = r.LastName,
+            Suffix = r.Suffix,
+            Nickname = r.Nickname,
+            Rank = r.Rank,
+            ServiceBranchName = r.ServiceBranch?.ServiceBranchName,
+            ClaimantEmail = r.FlagClaim?.ExternalUserEmail,
+            ClaimantName = r.FlagClaim?.ExternalUserName,
+            RequestStatus = r.RequestStatus,
+            CreatedUtc = r.CreatedUtc,
+            SubmittedUtc = r.SubmittedUtc,
+            RequiresCardReprint = r.RequiresCardReprint,
+            CardPrintedUtc = r.CardPrintedUtc,
+            ReviewNotes = r.ReviewNotes,
+            PhotoFileName = r.PhotoFileName,
+            Description = r.Description,
+            Awards = r.Awards,
+            ConflictsServed = r.ConflictsServed
+        });
+
+    private static AdminReviewItemDto ToReviewDto(PendingReviewSource r)
+    {
+        var honoreeName = BuildHonoreeName(r.FirstName, r.MiddleName, r.LastName, r.Suffix, r.Nickname);
+        return new AdminReviewItemDto(
+            r.Id,
+            r.FlagClaimId,
+            r.FlagGridId,
+            r.FlagGridName ?? string.Empty,
+            r.HonoreeId,
+            string.IsNullOrWhiteSpace(honoreeName) ? "Honoree" : honoreeName,
+            BlankToNull(r.Rank),
+            BlankToNull(r.ServiceBranchName),
+            r.ClaimantEmail ?? string.Empty,
+            BlankToNull(r.ClaimantName),
+            string.IsNullOrWhiteSpace(r.RequestStatus) ? "Submitted" : r.RequestStatus,
+            r.CreatedUtc ?? DateTime.UtcNow,
+            r.SubmittedUtc,
+            r.RequiresCardReprint,
+            r.CardPrintedUtc,
+            r.ReviewNotes,
+            BlankToNull(r.PhotoFileName),
+            r.Description,
+            r.Awards,
+            r.ConflictsServed);
+    }
+
+    private static AdminReviewItemDto DegradedReviewDto(PendingReviewSource r)
+    {
+        var honoreeName = BuildHonoreeName(r.FirstName, r.MiddleName, r.LastName, r.Suffix, r.Nickname);
+        return new AdminReviewItemDto(
+            r.Id,
+            r.FlagClaimId,
+            r.FlagGridId,
+            r.FlagGridName ?? string.Empty,
+            r.HonoreeId,
+            string.IsNullOrWhiteSpace(honoreeName) ? "Honoree" : honoreeName,
+            null,
+            null,
+            r.ClaimantEmail ?? string.Empty,
+            BlankToNull(r.ClaimantName),
+            string.IsNullOrWhiteSpace(r.RequestStatus) ? "Submitted" : r.RequestStatus,
+            r.CreatedUtc ?? DateTime.UtcNow,
+            r.SubmittedUtc,
+            r.RequiresCardReprint,
+            r.CardPrintedUtc,
+            "This honoree submission could not be fully loaded. The other pending reviews are still listed.",
+            null,
+            null,
+            null,
+            null);
+    }
+
+    private static string? AppendReviewNote(string? notes, string addition)
+    {
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            return addition;
+        }
+
+        return notes.Contains(addition, StringComparison.Ordinal)
+            ? notes
+            : $"{notes.Trim()}\n{addition}";
+    }
+
+    private static string? BlankToNull(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private sealed class PendingReviewSource
+    {
+        public int Id { get; set; }
+        public int FlagClaimId { get; set; }
+        public int FlagGridId { get; set; }
+        public string? FlagGridName { get; set; }
+        public int? HonoreeId { get; set; }
+        public string? FirstName { get; set; }
+        public string? MiddleName { get; set; }
+        public string? LastName { get; set; }
+        public string? Suffix { get; set; }
+        public string? Nickname { get; set; }
+        public string? Rank { get; set; }
+        public string? ServiceBranchName { get; set; }
+        public string? ClaimantEmail { get; set; }
+        public string? ClaimantName { get; set; }
+        public string? RequestStatus { get; set; }
+        public DateTime? CreatedUtc { get; set; }
+        public DateTime? SubmittedUtc { get; set; }
+        public bool RequiresCardReprint { get; set; }
+        public DateTime? CardPrintedUtc { get; set; }
+        public string? ReviewNotes { get; set; }
+        public string? PhotoFileName { get; set; }
+        public string? Description { get; set; }
+        public string? Awards { get; set; }
+        public string? ConflictsServed { get; set; }
+    }
 
     private async Task<IReadOnlyList<AdminFlagPositionDto>> BuildFlagPositionsAsync(CancellationToken ct)
     {
@@ -1465,14 +1653,22 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         return int.TryParse(digits, out var parsed) ? parsed : null;
     }
 
-    private static string BuildHonoreeName(HonoreeChangeRequest r)
+    private static string BuildHonoreeName(HonoreeChangeRequest r) =>
+        BuildHonoreeName(r.FirstName, r.MiddleName, r.LastName, r.Suffix, r.Nickname);
+
+    private static string BuildHonoreeName(
+        string? firstName,
+        string? middleName,
+        string? lastName,
+        string? suffix,
+        string? nickname)
     {
         return AddNickname(
             string.Join(
                 " ",
-                new[] { r.FirstName, r.MiddleName, r.LastName, r.Suffix }
+                new[] { firstName, middleName, lastName, suffix }
                     .Where(v => !string.IsNullOrWhiteSpace(v))),
-            r.Nickname);
+            nickname);
     }
 
     private static string BuildHonoreeName(Honoree h)

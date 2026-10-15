@@ -150,10 +150,16 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
             .Select(profile => new { profile.OwnerObjectId, profile.Phone, profile.Organization })
             .ToListAsync(ct);
 
-        return profiles.ToDictionary(
-            profile => profile.OwnerObjectId,
-            profile => new UserAccountContact(BlankToNull(profile.Phone), BlankToNull(profile.Organization)),
-            StringComparer.OrdinalIgnoreCase);
+        return profiles
+            .GroupBy(profile => profile.OwnerObjectId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    var profile = group.First();
+                    return new UserAccountContact(BlankToNull(profile.Phone), BlankToNull(profile.Organization));
+                },
+                StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>

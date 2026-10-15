@@ -10,6 +10,8 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PFOH.Api.Data;
@@ -633,6 +635,9 @@ public sealed class PfohApiFactory : WebApplicationFactory<Program>
                 .UseInMemoryDatabase(databaseName)
                 .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning)));
 
+            services.RemoveAll<HonoreeFileStorage>();
+            services.AddSingleton<HonoreeFileStorage, PendingReviewTestFileStorage>();
+
             services.AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
@@ -645,6 +650,29 @@ public sealed class PfohApiFactory : WebApplicationFactory<Program>
                 options.DefaultChallengeScheme = TestAuthHandler.SchemeName;
             });
         });
+    }
+
+    private sealed class PendingReviewTestFileStorage(IConfiguration configuration) : HonoreeFileStorage(configuration)
+    {
+        public override Task<HonoreeImageProbeResult> ProbeHonoreeImageAsync(string? photoFileName, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(photoFileName))
+            {
+                return Task.FromResult(HonoreeImageProbeResult.NoPhoto);
+            }
+
+            if (photoFileName.Contains("missing-blob", StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(HonoreeImageProbeResult.Missing);
+            }
+
+            if (photoFileName.Contains("explode-blob", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("The honoree image blob could not be read.");
+            }
+
+            return Task.FromResult(HonoreeImageProbeResult.Found);
+        }
     }
 
     protected override void ConfigureClient(HttpClient client)

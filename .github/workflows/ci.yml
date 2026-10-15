@@ -29,6 +29,9 @@ jobs:
       - name: Check US phone formats
         run: node --test frontend/scripts/check-us-phone.mjs
 
+      - name: Check administrator tab errors
+        run: node --test frontend/scripts/check-admin-access.mjs
+
       - name: Typecheck frontend
         working-directory: frontend
         run: |
