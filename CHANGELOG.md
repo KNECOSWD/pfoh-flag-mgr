@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0
+
+- **Download / Print Honoree PDF** on a honoree record and on My submissions opens the honoree card viewer. The same viewer is used from the review queue. The title is Honoree Card, the subtitle is the honoree name, and the viewer can show, download, or print the card.
+- The red Administrator label is gone from that viewer, including for administrators. The review queue button is labeled Honoree Card.
+
 ## 1.1.0
 
 - My submissions can open **Download / Print Honoree PDF**. Pending cards use the submitter's pending details and pending photo. Approved cards use the current honoree. Only the submitter and an administrator can open it.

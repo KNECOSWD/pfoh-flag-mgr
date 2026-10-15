@@ -9050,6 +9050,10 @@ img.ownedFlagImage {
   margin-top: 0.35rem;
 }
 
+.cardPreviewModal {
+  width: min(100% - 1.5rem, 42rem);
+}
+
 .cardPreviewFrame {
   width: 100%;
   height: min(70vh, 720px);
