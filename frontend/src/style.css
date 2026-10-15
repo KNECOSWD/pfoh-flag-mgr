@@ -9050,13 +9050,7 @@ img.ownedFlagImage {
   margin-top: 0.35rem;
 }
 
-.cardPreviewModal {
-  width: min(100% - 1.5rem, 42rem);
-}
-
 .cardPreviewFrame {
-  width: 100%;
-  height: min(70vh, 720px);
   border: 1px solid #dbe5f2;
   border-radius: 0.6rem;
   background: #f4f7fb;
@@ -10938,5 +10932,83 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
 
   .guestNotice {
     flex-wrap: wrap;
+  }
+}
+
+.appConfirmOverlay.cardPreviewOverlay {
+  padding: 1.25vh 2vw;
+  align-items: center;
+  place-items: center;
+}
+
+.appConfirmModal.cardPreviewModal {
+  display: flex;
+  flex-direction: column;
+  width: 94vw !important;
+  max-width: 94vw !important;
+  height: 94vh !important;
+  max-height: 94vh !important;
+  overflow: hidden;
+}
+
+.cardPreviewModal h2,
+.cardPreviewModal .helperText,
+.cardPreviewModal .modalActions {
+  flex: 0 0 auto;
+}
+
+.cardPreviewModal .cardPreviewFrame {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+.cardPreviewModal .modalActions {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.cardPreviewModal .modalActions button {
+  width: auto !important;
+}
+
+@media (max-width: 760px) {
+  .appConfirmOverlay.cardPreviewOverlay {
+    padding: 0 !important;
+    align-items: stretch !important;
+    place-items: stretch !important;
+  }
+
+  .appConfirmModal.cardPreviewModal {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    max-height: 100% !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+  }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .appConfirmOverlay.cardPreviewOverlay {
+    padding: 0 !important;
+    align-items: stretch !important;
+    place-items: stretch !important;
+  }
+
+  .appConfirmModal.cardPreviewModal {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    height: 100dvh !important;
+    max-height: 100% !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
   }
 }

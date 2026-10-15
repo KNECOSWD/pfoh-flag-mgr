@@ -323,6 +323,11 @@ function reportableErrorMessage(error: unknown, fallback: string) {
   return `${fallback} Please share this message with the developer if the issue continues.`;
 }
 
+function honoreeCardViewUrl(url: string) {
+  const [base] = url.split("#");
+  return `${base}#view=Fit&zoom=page-fit`;
+}
+
 function compareFlagSections(left: string, right: string) {
   const normalize = (value: string) => value.trim().toUpperCase();
   const leftValue = normalize(left);
@@ -2638,7 +2643,7 @@ export default function App() {
 
           {cardPreview ? (
             <div
-              className="modalOverlay appConfirmOverlay"
+              className="modalOverlay appConfirmOverlay cardPreviewOverlay"
               role="dialog"
               aria-modal="true"
               aria-labelledby="card-preview-title"
@@ -2651,7 +2656,7 @@ export default function App() {
                   ref={cardPreviewFrameRef}
                   className="cardPreviewFrame"
                   title={`Honoree card for ${cardPreview.title}`}
-                  src={cardPreview.url}
+                  src={honoreeCardViewUrl(cardPreview.url)}
                 />
                 <div className="modalActions">
                   <button type="button" onClick={downloadCardPreview}>
