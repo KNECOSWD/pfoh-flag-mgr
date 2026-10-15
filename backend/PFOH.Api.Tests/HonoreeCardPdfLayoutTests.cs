@@ -102,6 +102,49 @@ public class HonoreeCardPdfLayoutTests
         Assert.DoesNotContain(awardsOnly, run => run.Text.Contains("Distinguished Service Cross", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void Newline_separated_conflicts_and_awards_each_stay_on_their_own_line()
+    {
+        const string conflicts =
+            "2001-2008 War in Afghanistan\r\n2003-2008 Iraq War\n2007 Intervention in Somalia";
+        const string awards =
+            "3 Navy Commendation Medals\r5 Navy Achievement Medals; Navy Unit Commendation, Good Conduct Medal";
+        var runs = Render("Our Hero!", conflicts, awards);
+
+        foreach (var item in new[]
+        {
+            "2001-2008 War in Afghanistan",
+            "2003-2008 Iraq War",
+            "2007 Intervention in Somalia",
+            "3 Navy Commendation Medals",
+            "5 Navy Achievement Medals",
+            "Navy Unit Commendation",
+            "Good Conduct Medal"
+        })
+        {
+            var line = Assert.Single(runs, run => run.Text == item);
+            Assert.Equal(BioLeft, line.X, 1);
+        }
+
+        var joined = string.Join("\n", runs.Select(run => run.Text));
+        Assert.DoesNotContain("Afghanistan2003", joined, StringComparison.Ordinal);
+        Assert.DoesNotContain("Medals5", joined, StringComparison.Ordinal);
+        Assert.DoesNotContain("; ", joined, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Honors_fall_back_to_semicolons_when_one_line_per_item_does_not_fit()
+    {
+        var items = Enumerable.Range(1, 36).Select(number => $"Campaign {number:00}").ToArray();
+        var runs = Render("Our Hero!", string.Join("\n", items), awards: null);
+        var body = string.Join(" ", runs.Select(run => run.Text));
+
+        Assert.Contains("Conflicts served", body, StringComparison.Ordinal);
+        Assert.Contains("Campaign 01; Campaign 02", body, StringComparison.Ordinal);
+        Assert.Contains("Campaign 36", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(runs, run => run.Text == "Campaign 01");
+    }
+
     private static void AssertHeaderStaysCentered(IReadOnlyList<TextRun> runs, double bioLeft)
     {
         foreach (var header in new[] { Name, Years, Branch })

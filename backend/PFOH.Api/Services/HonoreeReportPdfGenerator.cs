@@ -300,15 +300,10 @@ public static class HonoreeReportPdfGenerator
     // Stay above the Rotary mark drawn at y=596.
     private const double ContentBottom = 578;
 
+    private readonly record struct HonorBlock(string Text, double Height);
+
     private static void DrawHonors(XGraphics gfx, Honoree honoree, double top, double bioSize)
     {
-        var conflicts = Clean(honoree.ConflictsServed);
-        var awards = Clean(honoree.Awards);
-        if (string.IsNullOrWhiteSpace(conflicts) && string.IsNullOrWhiteSpace(awards))
-        {
-            return;
-        }
-
         var detailSize = Math.Min(9, bioSize - 1.5);
         if (detailSize >= bioSize)
         {
@@ -324,57 +319,116 @@ public static class HonoreeReportPdfGenerator
         }
 
         const double sectionGap = 8;
-        var conflictsHeight = SectionHeight(gfx, conflicts, "Conflicts served", labelFont, bodyFont);
-        var awardsHeight = SectionHeight(gfx, awards, "Awards", labelFont, bodyFont);
-
-        var showConflicts = false;
-        var showAwards = false;
-        if (conflictsHeight is double conflictsBlock && awardsHeight is double awardsBlock)
+        var conflicts = HonorForms(gfx, honoree.ConflictsServed, labelFont, bodyFont);
+        var awards = HonorForms(gfx, honoree.Awards, labelFont, bodyFont);
+        var choice = ChooseHonors(conflicts, awards, available, sectionGap);
+        if (choice is null)
         {
-            if (conflictsBlock + sectionGap + awardsBlock <= available)
-            {
-                showConflicts = true;
-                showAwards = true;
-            }
-            else if (conflictsBlock <= available)
-            {
-                showConflicts = true;
-            }
-            else if (awardsBlock <= available)
-            {
-                showAwards = true;
-            }
-        }
-        else if (conflictsHeight is double onlyConflicts && onlyConflicts <= available)
-        {
-            showConflicts = true;
-        }
-        else if (awardsHeight is double onlyAwards && onlyAwards <= available)
-        {
-            showAwards = true;
+            return;
         }
 
         var y = top;
-        if (showConflicts && conflictsHeight is double drawnConflicts)
+        if (choice.Value.Conflicts is HonorBlock conflictsBlock)
         {
-            DrawHonorSection(gfx, "Conflicts served", conflicts, y, labelFont, bodyFont);
-            y += drawnConflicts + sectionGap;
+            DrawHonorSection(gfx, "Conflicts served", conflictsBlock.Text, y, labelFont, bodyFont);
+            y += conflictsBlock.Height + sectionGap;
         }
 
-        if (showAwards && awardsHeight is double)
+        if (choice.Value.Awards is HonorBlock awardsBlock)
         {
-            DrawHonorSection(gfx, "Awards", awards, y, labelFont, bodyFont);
+            DrawHonorSection(gfx, "Awards", awardsBlock.Text, y, labelFont, bodyFont);
         }
     }
 
-    private static double? SectionHeight(XGraphics gfx, string value, string label, XFont labelFont, XFont bodyFont)
+    private readonly record struct HonorChoice(HonorBlock? Conflicts, HonorBlock? Awards);
+
+    private static List<HonorBlock> HonorForms(XGraphics gfx, string? raw, XFont labelFont, XFont bodyFont)
     {
-        if (string.IsNullOrWhiteSpace(value))
+        var items = SplitHonorItems(raw);
+        if (items.Count == 0)
         {
-            return null;
+            return [];
         }
 
-        return labelFont.GetHeight() + 2 + MeasureLeftBlock(gfx, value, bodyFont, ContentWidth);
+        var forms = new List<HonorBlock>
+        {
+            new(string.Join("\n", items), SectionHeight(gfx, string.Join("\n", items), labelFont, bodyFont))
+        };
+        if (items.Count > 1)
+        {
+            var compact = string.Join("; ", items);
+            forms.Add(new HonorBlock(compact, SectionHeight(gfx, compact, labelFont, bodyFont)));
+        }
+
+        return forms;
+    }
+
+    private static HonorChoice? ChooseHonors(
+        IReadOnlyList<HonorBlock> conflicts,
+        IReadOnlyList<HonorBlock> awards,
+        double available,
+        double sectionGap)
+    {
+        if (conflicts.Count > 0 && awards.Count > 0)
+        {
+            foreach (var conflictsBlock in conflicts)
+            {
+                foreach (var awardsBlock in awards)
+                {
+                    if (conflictsBlock.Height + sectionGap + awardsBlock.Height <= available)
+                    {
+                        return new HonorChoice(conflictsBlock, awardsBlock);
+                    }
+                }
+            }
+        }
+
+        foreach (var conflictsBlock in conflicts)
+        {
+            if (conflictsBlock.Height <= available)
+            {
+                return new HonorChoice(conflictsBlock, null);
+            }
+        }
+
+        foreach (var awardsBlock in awards)
+        {
+            if (awardsBlock.Height <= available)
+            {
+                return new HonorChoice(null, awardsBlock);
+            }
+        }
+
+        return null;
+    }
+
+    private static List<string> SplitHonorItems(string? value)
+    {
+        var items = new List<string>();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return items;
+        }
+
+        var text = value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        foreach (var line in text.Split('\n'))
+        {
+            foreach (var piece in line.Split([';', ','], StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (piece.Length > 0)
+                {
+                    items.Add(piece);
+                }
+            }
+        }
+
+        return items;
+    }
+
+    private static double SectionHeight(XGraphics gfx, string value, XFont labelFont, XFont bodyFont)
+    {
+        var bodyHeight = value.Split('\n').Sum(line => MeasureLeftBlock(gfx, line, bodyFont, ContentWidth));
+        return labelFont.GetHeight() + 2 + bodyHeight;
     }
 
     private static void DrawHonorSection(
@@ -392,17 +446,22 @@ public static class HonoreeReportPdfGenerator
             XBrushes.Black,
             new XRect(ContentLeft, y, ContentWidth, labelHeight + 1),
             XStringFormats.TopLeft);
-        var valueHeight = MeasureLeftBlock(gfx, value, bodyFont, ContentWidth);
-        new XTextFormatter(gfx).DrawString(
-            value,
-            bodyFont,
-            XBrushes.Black,
-            new XRect(ContentLeft, y + labelHeight + 2, ContentWidth, valueHeight + bodyFont.GetHeight()),
-            new TextFormatAlignment
-            {
-                Horizontal = XParagraphAlignment.Left,
-                Vertical = XVerticalAlignment.Top
-            });
+        var lineY = y + labelHeight + 2;
+        foreach (var line in value.Split('\n'))
+        {
+            var lineHeight = MeasureLeftBlock(gfx, line, bodyFont, ContentWidth);
+            new XTextFormatter(gfx).DrawString(
+                line,
+                bodyFont,
+                XBrushes.Black,
+                new XRect(ContentLeft, lineY, ContentWidth, lineHeight + bodyFont.GetHeight()),
+                new TextFormatAlignment
+                {
+                    Horizontal = XParagraphAlignment.Left,
+                    Vertical = XVerticalAlignment.Top
+                });
+            lineY += lineHeight;
+        }
     }
 
     private static double MeasureLeftBlock(XGraphics gfx, string text, XFont font, double width)
