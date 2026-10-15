@@ -53,6 +53,32 @@ public static class PendingSubmissionGridSchema
         END
         """;
 
+    internal const string ActiveFlagGridIndexSql = """
+        IF OBJECT_ID(N'dbo.FlagClaims', N'U') IS NOT NULL
+        BEGIN
+            DECLARE @activeFlagGridFilter nvarchar(max) = NULL;
+            SELECT @activeFlagGridFilter = filter_definition
+            FROM sys.indexes
+            WHERE object_id = OBJECT_ID(N'dbo.FlagClaims')
+              AND name = N'UX_FlagClaims_ActiveFlagGrid';
+
+            IF @activeFlagGridFilter IS NULL OR @activeFlagGridFilter NOT LIKE N'%[[]FlagGridId] IS NOT NULL%'
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM sys.indexes
+                    WHERE object_id = OBJECT_ID(N'dbo.FlagClaims')
+                      AND name = N'UX_FlagClaims_ActiveFlagGrid')
+                    DROP INDEX [UX_FlagClaims_ActiveFlagGrid] ON [dbo].[FlagClaims];
+
+                CREATE UNIQUE INDEX [UX_FlagClaims_ActiveFlagGrid]
+                    ON [dbo].[FlagClaims]([FlagGridId])
+                    WHERE [ClaimStatus] IN (N'Claimed', N'Submitted', N'Approved')
+                      AND [FlagGridId] IS NOT NULL;
+            END
+        END
+        """;
+
     public static async Task EnsureAsync(PfohDbContext db, CancellationToken ct)
     {
         if (ready || !db.Database.IsRelational())
@@ -75,6 +101,7 @@ public static class PendingSubmissionGridSchema
             }
 
             await db.Database.ExecuteSqlRawAsync(MakeFlagGridOptionalSql, ct);
+            await db.Database.ExecuteSqlRawAsync(ActiveFlagGridIndexSql, ct);
             ready = true;
         }
         finally

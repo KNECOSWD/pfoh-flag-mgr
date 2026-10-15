@@ -6,6 +6,8 @@ namespace PFOH.Api.Services;
 
 public class FlagGridAssignment(PfohDbContext db)
 {
+    public static readonly string[] SpotHoldingStatuses = ["Claimed", "Submitted", "Approved"];
+
     public const string NoSpotNotice =
         "This honoree was approved and added, but no flag spot is available. Free a spot and assign the honoree manually in the Flag Map.";
 
@@ -22,8 +24,7 @@ public class FlagGridAssignment(PfohDbContext db)
                     h.FlagGridId == flagGrid.Id) &&
                 !db.FlagClaims.Any(claim =>
                     claim.FlagGridId == flagGrid.Id &&
-                    claim.ClaimStatus != "Cancelled" &&
-                    claim.ClaimStatus != "AdminDirectEditCompleted"))
+                    SpotHoldingStatuses.Contains(claim.ClaimStatus)))
             .OrderBy(flagGrid => flagGrid.FlagGridName)
             .FirstOrDefaultAsync(ct);
     }

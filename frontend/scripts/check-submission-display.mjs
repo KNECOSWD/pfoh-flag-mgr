@@ -48,6 +48,16 @@ test("withdrawing a submission drops it from the visible lists", () => {
   assert.deepEqual(next.reviews.map((item) => item.claimId), [9]);
 });
 
+test("my submissions open the honoree card for that claim", () => {
+  const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const start = source.indexOf('className="ownedFlagActions"');
+  const slice = source.slice(start, start + 900);
+  assert.ok(start >= 0);
+  assert.match(slice, /Download \/ Print Honoree PDF/);
+  assert.match(slice, /openSubmissionCard\(claim\)/);
+  assert.match(source, /fetchAuthorizedBlob\(instance, account, mySubmissionCardUrl\(claim\.id\)\)/);
+});
+
 test("the review list shows a badge, field diff, and card preview", () => {
   const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(source, /submissionKindLabel\(item\.submissionKind\)/);

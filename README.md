@@ -9,6 +9,7 @@ A starter Azure web app for Plano Flags of Honor-style public users. It lets ext
 - `backend/PFOH.Api/Data/` - Entity Framework Core SQL Server context
 - `.github/workflows/azure-app-service.yml` - GitHub Actions deployment to Azure App Service using OIDC
 - `infra/azure-cli-setup.sh` - starter Azure resource creation script
+- `VERSION` - the single app version, shared by the API assembly and `frontend/package.json`
 
 ## Architecture
 
@@ -381,6 +382,12 @@ Then test:
 - Add rate limiting and audit logs.
 - Add file upload support to Azure Blob Storage if users will attach honoree photos or documents.
 - Add data export/backups before the event.
+
+## Version
+
+`VERSION` at the repo root is the only version number. `frontend/package.json` must use that same value, and `backend/Directory.Build.props` reads `VERSION` into the API assembly version. CI checks that they match. The site footer shows it, and `GET /api/version` returns `{version, commit, builtAt}`.
+
+Every future pull request bumps `VERSION`, `frontend/package.json`, and `CHANGELOG.md` together. Tag the release after that pull request merges. This change ships as 1.1.0 and is tagged `v1.1.0` after merge. `v1.0.0` is the live release that merged pull requests #10 and #11.
 
 ## Important implementation notes
 

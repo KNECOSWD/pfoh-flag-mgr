@@ -663,10 +663,13 @@ public sealed class PfohApiFactory : WebApplicationFactory<Program>
 
         public List<string> DeletedPendingPhotos { get; } = new();
 
+        public List<string?> DownloadedImages { get; } = new();
+
         public void Reset()
         {
             Photos.Clear();
             DeletedPendingPhotos.Clear();
+            DownloadedImages.Clear();
         }
 
         public override async Task<string?> UploadPendingImageAsync(IFormFile? photo, int changeRequestId, CancellationToken ct)
@@ -718,6 +721,7 @@ public sealed class PfohApiFactory : WebApplicationFactory<Program>
 
         public override Task<byte[]?> DownloadImageAsync(string? photoFileName, string? fallbackImageUrl, CancellationToken ct)
         {
+            DownloadedImages.Add(photoFileName);
             if (!string.IsNullOrWhiteSpace(photoFileName) && Photos.TryGetValue(photoFileName, out var bytes))
             {
                 return Task.FromResult<byte[]?>(bytes);

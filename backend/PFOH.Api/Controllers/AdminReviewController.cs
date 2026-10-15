@@ -171,53 +171,18 @@ public class AdminReviewController(
             return Conflict(new { message = "Only a submitted honoree can be previewed." });
         }
 
-        var honoree = new Honoree
-        {
-            FirstName = change.FirstName,
-            MiddleName = change.MiddleName,
-            LastName = change.LastName,
-            Suffix = change.Suffix,
-            Nickname = change.Nickname,
-            Rank = change.Rank ?? string.Empty,
-            ServiceBranchId = change.ServiceBranchId,
-            ServiceBranchCategoryId = change.ServiceBranchCategoryId,
-            ServiceBranch = change.ServiceBranch,
-            StartYear = change.StartYear,
-            EndYear = change.EndYear,
-            DatesUserEntry = change.DatesUserEntry ?? string.Empty,
-            ConflictsServed = change.ConflictsServed ?? string.Empty,
-            Awards = change.Awards ?? string.Empty,
-            Description = change.Description ?? string.Empty,
-            KIA = change.KIA,
-            PhotoFileName = change.PhotoFileName ?? string.Empty,
-            FlagGridId = change.FlagGridId,
-            FlagGrid = change.FlagGrid,
-            IsActive = true
-        };
-
-        byte[]? photoBytes = null;
-        try
-        {
-            photoBytes = await fileStorage.DownloadImageAsync(change.PhotoFileName, null, ct);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Card preview for change request {ChangeRequestId} will omit the photo.", id);
-        }
-
-        HonoreeReportAssets? assets = null;
-        try
-        {
-            assets = await fileStorage.LoadReportAssetsAsync(honoree, null, ct);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Card preview for change request {ChangeRequestId} will omit report artwork.", id);
-        }
+        var honoree = HonoreeCardPdf.FromChangeRequest(change);
 
         try
         {
-            var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, null, photoBytes, assets);
+            var pdf = await HonoreeCardPdf.RenderAsync(
+                environment,
+                fileStorage,
+                honoree,
+                null,
+                change.PhotoFileName,
+                null,
+                ct);
             return File(pdf, "application/pdf", $"honoree-card-{id}.pdf");
         }
         catch (Exception ex)

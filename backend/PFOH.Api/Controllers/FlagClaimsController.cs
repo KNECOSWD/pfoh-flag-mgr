@@ -79,6 +79,83 @@ public class FlagClaimsController(
         }
     }
 
+    [HttpGet("{claimId:int}/card")]
+    public async Task<IActionResult> DownloadHonoreeCard(int claimId, CancellationToken ct)
+    {
+        var claim = await db.FlagClaims
+            .AsNoTracking()
+            .Include(item => item.Honoree)!.ThenInclude(honoree => honoree!.FlagGrid)
+            .Include(item => item.Honoree)!.ThenInclude(honoree => honoree!.ServiceBranch)
+            .Include(item => item.HonoreeChangeRequests).ThenInclude(request => request.FlagGrid)
+            .Include(item => item.HonoreeChangeRequests).ThenInclude(request => request.ServiceBranch)
+            .FirstOrDefaultAsync(item => item.Id == claimId, ct);
+
+        if (claim is null)
+        {
+            return NotFound("Flag claim was not found.");
+        }
+
+        var isAdmin = User.IsInRole("PFOH.Admin") || User.IsInRole("Admin");
+        var isOwner = string.Equals(claim.ExternalUserObjectId, User.GetExternalObjectId(), StringComparison.Ordinal);
+        if (!isAdmin && !isOwner)
+        {
+            return Forbid();
+        }
+
+        var latest = claim.HonoreeChangeRequests
+            .OrderByDescending(request => request.CreatedUtc)
+            .ThenByDescending(request => request.Id)
+            .FirstOrDefault();
+        var usePendingData = latest is not null &&
+            !string.Equals(latest.RequestStatus, "Approved", StringComparison.OrdinalIgnoreCase);
+
+        try
+        {
+            byte[] pdf;
+            if (usePendingData)
+            {
+                pdf = await HonoreeCardPdf.RenderAsync(
+                    environment,
+                    fileStorage,
+                    HonoreeCardPdf.FromChangeRequest(latest!),
+                    null,
+                    latest!.PhotoFileName,
+                    null,
+                    ct);
+            }
+            else if (claim.Honoree is { DeletedDate: null })
+            {
+                var searchResult = await db.HonoreeSearchResults
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(honoree => honoree.Id == claim.Honoree.Id && honoree.IsActive, ct);
+                pdf = await HonoreeCardPdf.RenderAsync(
+                    environment,
+                    fileStorage,
+                    claim.Honoree,
+                    searchResult,
+                    claim.Honoree.PhotoFileName,
+                    searchResult?.ImageUrl,
+                    ct);
+            }
+            else
+            {
+                return NotFound("Honoree card was not found.");
+            }
+
+            return File(pdf, "application/pdf", $"honoree-card-{claimId}.pdf");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = "The honoree card could not be created.",
+                    detail = ex.Message
+                });
+        }
+    }
+
     [HttpGet("my")]
     public async Task<ActionResult<IReadOnlyList<FlagClaimDto>>> GetMyClaims(CancellationToken ct)
     {

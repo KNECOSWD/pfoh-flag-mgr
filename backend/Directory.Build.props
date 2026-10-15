@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup>
+    <Version>$([System.IO.File]::ReadAllText($([System.IO.Path]::Combine('$(MSBuildThisFileDirectory)', '..', 'VERSION'))).Trim())</Version>
+    <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
+    <PfohBuildTime>$([System.DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"))</PfohBuildTime>
+  </PropertyGroup>
+  <Target Name="SetPfohSourceRevision" BeforeTargets="GetAssemblyVersion">
+    <Exec Command="git rev-parse HEAD" ConsoleToMSBuild="true" IgnoreExitCode="true" WorkingDirectory="$(MSBuildThisFileDirectory)..">
+      <Output TaskParameter="ConsoleOutput" PropertyName="PfohGitCommit" />
+    </Exec>
+    <PropertyGroup>
+      <SourceRevisionId Condition="'$(SourceRevisionId)' == '' and '$(PfohGitCommit)' != ''">$(PfohGitCommit.Trim())</SourceRevisionId>
+    </PropertyGroup>
+  </Target>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildTime</_Parameter1>
+      <_Parameter2>$(PfohBuildTime)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>
