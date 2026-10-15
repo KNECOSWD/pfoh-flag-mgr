@@ -5,7 +5,7 @@ import {
 } from "@azure/msal-browser";
 import { loginRequest } from "./authConfig";
 import { isPublicApiPath } from "./publicApi.js";
-import { sharedTokenRequest } from "./tokenRequest.js";
+import { sharedTokenRequest, withNetworkRetry } from "./tokenRequest.js";
 
 export class ApiError extends Error {
   status: number;
@@ -313,6 +313,21 @@ export function changeRequestPhotoUrl(changeRequestId: number) {
   return `${apiBase}/api/flagclaims/change-requests/${changeRequestId}/photo`;
 }
 
+export function adminCardPreviewUrl(changeRequestId: number) {
+  return `${apiBase}/api/admin/review/${changeRequestId}/card-preview`;
+}
+
+const requestTimeoutMs = 60_000;
+
+function requestTimeoutSignal(existing?: AbortSignal | null) {
+  if (existing) return existing;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
+  controller.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+  return controller.signal;
+}
+
 export function isPendingHonoreePhoto(photoFileName?: string | null) {
   return !!photoFileName && photoFileName.trim().toLowerCase().startsWith("pending/") && !photoFileName.includes("..");
 }
@@ -323,9 +338,16 @@ export async function fetchAuthorizedBlob(
   url: string
 ) {
   const token = await getToken(instance, account);
-  const response = await fetch(url, {
-    cache: "no-store",
-    headers: { Authorization: `Bearer ${token}` }
+  const response = await withNetworkRetry(async () => {
+    try {
+      return await fetch(url, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+        signal: requestTimeoutSignal(undefined)
+      });
+    } catch (error) {
+      throw buildNetworkError(error, "GET", url);
+    }
   });
 
   if (!response.ok) {
@@ -431,19 +453,21 @@ async function request<T>(
 
   const isFormData = options.body instanceof FormData;
 
-  let response: Response;
-  try {
-    response = await fetch(`${apiBase}${url}`, {
-      ...options,
-      headers: {
-        ...(isFormData ? {} : { "Content-Type": "application/json" }),
-        Authorization: `Bearer ${token}`,
-        ...(options.headers ?? {})
-      }
-    });
-  } catch (error) {
-    throw buildNetworkError(error, method, url);
-  }
+  const response = await withNetworkRetry(async () => {
+    try {
+      return await fetch(`${apiBase}${url}`, {
+        ...options,
+        signal: requestTimeoutSignal(options.signal),
+        headers: {
+          ...(isFormData ? {} : { "Content-Type": "application/json" }),
+          Authorization: `Bearer ${token}`,
+          ...(options.headers ?? {})
+        }
+      });
+    } catch (error) {
+      throw buildNetworkError(error, method, url);
+    }
+  });
 
   if (!response.ok) {
     throw await buildApiError(response, method, url);

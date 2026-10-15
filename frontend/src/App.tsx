@@ -17,6 +17,7 @@ import {
   flagClaimApi,
   flagMapExportFields,
   honoreeApi,
+  adminCardPreviewUrl,
   changeRequestPhotoUrl,
   fetchAuthorizedBlob,
   honoreePdfUrl,
@@ -33,13 +34,85 @@ import {
   profileApi
 } from "./api";
 import { decideAdminLoad } from "./adminAccess.js";
+import { createBlobUrlCache } from "./blobUrlCache.js";
+import { shouldCompressHonoreePhoto, withDeadline } from "./prepareHonoreePhoto.js";
 import { createProfileLoadGate } from "./profileLoad.js";
+import {
+  dropWithdrawnSubmission,
+  fieldChangeText,
+  flagSpotLabel,
+  submissionKindLabel,
+  submissionPhotoKind
+} from "./submissionDisplay.js";
 import { loginRequest, readMappedAccountClaim } from "./authConfig";
 import { publishSignInError, subscribeSignInError } from "./signInError";
 import knecoLogoBlue from "./assets/kneco-logo-blue.png";
 import pfohFooterLogo from "./assets/pfoh-footer-logo.png";
 
 const RETURN_INTENT_KEY = "pfoh-return-intent";
+
+const thumbnailUrls = createBlobUrlCache({
+  createObjectURL: (blob) => URL.createObjectURL(blob),
+  revokeObjectURL: (url) => URL.revokeObjectURL(url)
+});
+
+function AuthorizedThumbnail({
+  instance,
+  account,
+  url,
+  photoKey,
+  alt,
+  className,
+  emptyLabel
+}: {
+  instance: Parameters<typeof fetchAuthorizedBlob>[0];
+  account: Parameters<typeof fetchAuthorizedBlob>[1];
+  url: string;
+  photoKey: string;
+  alt: string;
+  className: string;
+  emptyLabel: string | null;
+}) {
+  const [src, setSrc] = useState("");
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let held = false;
+    setFailed(false);
+    setSrc("");
+
+    void (async () => {
+      try {
+        const blob = await fetchAuthorizedBlob(instance, account, url);
+        if (!active) return;
+        held = true;
+        setSrc(thumbnailUrls.hold(photoKey, blob));
+      } catch {
+        if (active) setFailed(true);
+      }
+    })();
+
+    return () => {
+      active = false;
+      if (held) {
+        thumbnailUrls.release(photoKey);
+        held = false;
+      }
+    };
+  }, [account, instance, photoKey, url]);
+
+  if (!src && !failed) {
+    return <span className={className} aria-busy="true" />;
+  }
+
+  if (!src || failed) {
+    if (!emptyLabel) return null;
+    return <div className={`${className} ownedFlagImagePlaceholder`}>{emptyLabel}</div>;
+  }
+
+  return <img className={className} src={src} alt={alt} />;
+}
 
 const legacySubmitHonoreeAction = "submit-veteran" as const;
 
@@ -145,13 +218,6 @@ function statusClass(status: string) {
 
 function latestRequestStatus(claim: FlagClaim) {
   return claim.latestChangeRequest?.requestStatus ?? claim.claimStatus;
-}
-
-function flagSpotLabel(flagGridName?: string | null, flagGridId?: number | null) {
-  const name = flagGridName?.trim();
-  if (name) return name;
-  if (flagGridId) return `Grid ${flagGridId}`;
-  return "Not assigned";
 }
 
 function ownershipStatusLabel(claim: FlagClaim) {
@@ -298,8 +364,9 @@ export default function App() {
   const [printLoadError, setPrintLoadError] = useState("");
   const [flagMapLoadError, setFlagMapLoadError] = useState("");
   const [pendingReviews, setPendingReviews] = useState<AdminReviewItem[]>([]);
-  const [reviewPhotoUrls, setReviewPhotoUrls] = useState<Record<number, string>>({});
   const [pendingPhotoObjectUrl, setPendingPhotoObjectUrl] = useState("");
+  const [submitPhase, setSubmitPhase] = useState("");
+  const [cardPreview, setCardPreview] = useState<{ url: string; title: string } | null>(null);
   const [printQueue, setPrintQueue] = useState<AdminPrintQueueItem[]>([]);
   const [selectedPrintIds, setSelectedPrintIds] = useState<number[]>([]);
   const [adminBusyId, setAdminBusyId] = useState<number | null>(null);
@@ -973,22 +1040,26 @@ export default function App() {
     setError("");
 
     try {
-      const [claims, branches, categories] = await Promise.all([
-        flagClaimApi.mine(instance, account),
-        lookupApi.serviceBranches(),
-        lookupApi.serviceBranchCategories()
-      ]);
+      const [claims, branches, categories] = await withDeadline(
+        () => Promise.all([
+          flagClaimApi.mine(instance, account),
+          lookupApi.serviceBranches(),
+          lookupApi.serviceBranchCategories()
+        ]),
+        20000,
+        "Loading your submissions timed out."
+      );
 
       setMyClaims(claims);
       setServiceBranches(branches);
       setServiceBranchCategories(categories);
-
-      await loadAdminData();
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to load flag data."));
     } finally {
       setLoading(false);
     }
+
+    void loadAdminData();
   }
 
   useEffect(() => {
@@ -1037,53 +1108,6 @@ export default function App() {
 
     return () => URL.revokeObjectURL(previewUrl);
   }, [selectedPhoto]);
-
-  const pendingReviewPhotoKey = pendingReviews
-    .filter((item) => isPendingHonoreePhoto(item.photoFileName))
-    .map((item) => `${item.changeRequestId}:${item.photoFileName}`)
-    .join("|");
-
-  useEffect(() => {
-    if (!account || !pendingReviewPhotoKey) {
-      setReviewPhotoUrls({});
-      return;
-    }
-
-    const items = pendingReviews.filter((item) => isPendingHonoreePhoto(item.photoFileName));
-    let cancelled = false;
-    const created: string[] = [];
-
-    void (async () => {
-      const next: Record<number, string> = {};
-
-      await Promise.all(items.map(async (item) => {
-        try {
-          const blob = await fetchAuthorizedBlob(instance, account, changeRequestPhotoUrl(item.changeRequestId));
-          if (cancelled) {
-            return;
-          }
-
-          const url = URL.createObjectURL(blob);
-          created.push(url);
-          next[item.changeRequestId] = url;
-        } catch {
-          // A missing pending honoree photo should not block the rest of the review list.
-        }
-      }));
-
-      if (cancelled) {
-        created.forEach((url) => URL.revokeObjectURL(url));
-        return;
-      }
-
-      setReviewPhotoUrls(next);
-    })();
-
-    return () => {
-      cancelled = true;
-      created.forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, [accountKey, instance, pendingReviewPhotoKey]);
 
   const pendingChangeRequestPhotoId =
     !isNominating && isPendingHonoreePhoto(selectedClaim?.latestChangeRequest?.photoFileName)
@@ -1292,6 +1316,10 @@ export default function App() {
     try {
       await flagClaimApi.unclaim(instance, account, claim.id);
 
+      const remaining = dropWithdrawnSubmission(myClaims, pendingReviews, claim.id);
+      setMyClaims(remaining.claims);
+      setPendingReviews(remaining.reviews);
+
       if (selectedClaim?.id === claim.id) {
         setSelectedClaim(null);
         setForm(blankForm);
@@ -1299,7 +1327,7 @@ export default function App() {
         setSelectedPhotoRotation(0);
       }
 
-      await loadData();
+      void loadData();
       setNotice(`${claim.honoreeName || "This submission"} was withdrawn.`);
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to withdraw this submission."));
@@ -1541,6 +1569,54 @@ export default function App() {
     return rotateImageFile(selectedPhoto, selectedPhotoRotation);
   }
 
+  async function resizeHonoreePhoto(file: File, image: HTMLImageElement) {
+    const longest = Math.max(image.naturalWidth, image.naturalHeight);
+    const scale = longest > 1600 ? 1600 / longest : 1;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Unable to prepare the photo.");
+    }
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (createdBlob) => {
+          if (createdBlob) {
+            resolve(createdBlob);
+          } else {
+            reject(new Error("Unable to prepare the photo."));
+          }
+        },
+        "image/jpeg",
+        0.82
+      );
+    });
+    const name = file.name.replace(/\.\w+$/, "") || "honoree-photo";
+    return new File([blob], `${name}.jpg`, { type: "image/jpeg", lastModified: Date.now() });
+  }
+
+  async function prepareSubmissionPhoto() {
+    setSubmitPhase("Preparing photo...");
+    return withDeadline(async () => {
+      const file = await getSelectedPhotoForUpload();
+      if (!file) return null;
+
+      const image = await loadImageFromFile(file);
+      if (!shouldCompressHonoreePhoto(file, image.naturalWidth, image.naturalHeight)) {
+        return file;
+      }
+
+      return resizeHonoreePhoto(file, image);
+    }, 20000, "Preparing the photo took too long. Try a smaller photo.");
+  }
+
+  function rememberSubmission(claim: FlagClaim) {
+    setMyClaims((current) => [claim, ...current.filter((item) => item.id !== claim.id)]);
+  }
+
   async function rotateImageFile(file: File, rotationDegrees: number): Promise<File> {
     const image = await loadImageFromFile(file);
     const normalizedRotation = ((rotationDegrees % 360) + 360) % 360;
@@ -1620,25 +1696,34 @@ export default function App() {
     if (!account) return;
 
     setSaving(true);
+    setSubmitPhase("Preparing photo...");
     setError("");
     setNotice("");
 
     try {
       const formToSubmit = applySubmitterProfileDefaults(form);
-      const photoForUpload = await getSelectedPhotoForUpload();
+      const photoForUpload = await prepareSubmissionPhoto();
       setForm(formToSubmit);
-      await flagClaimApi.nominate(instance, account, formToSubmit, photoForUpload);
-      await loadData();
+      setSubmitPhase("Uploading submission...");
+      const claim = await withDeadline(
+        () => flagClaimApi.nominate(instance, account, formToSubmit, photoForUpload),
+        75000,
+        "Uploading the submission took too long."
+      );
+      rememberSubmission(claim);
+      setSubmitPhase("Finishing submission...");
       setIsNominating(false);
       setSelectedPhoto(null);
       setSelectedPhotoRotation(0);
       setForm(blankForm);
       setNotice(publicCopy.newRecordConfirmation);
       navigateToRoute("/my-flags");
+      void loadData();
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to submit nomination."));
     } finally {
       setSaving(false);
+      setSubmitPhase("");
     }
   }
 
@@ -1671,22 +1756,38 @@ export default function App() {
     const isAdminDirectEdit = selectedClaim.claimStatus === "AdminDirectEdit";
 
     setSaving(true);
+    setSubmitPhase("Preparing photo...");
     setError("");
     setNotice("");
 
     try {
       const formToSubmit = applySubmitterProfileDefaults(form);
-      const photoForUpload = await getSelectedPhotoForUpload();
+      const photoForUpload = await prepareSubmissionPhoto();
       setForm(formToSubmit);
-      await flagClaimApi.saveDraft(instance, account, selectedClaim.id, formToSubmit, photoForUpload);
+      setSubmitPhase("Uploading submission...");
+      await withDeadline(
+        () => flagClaimApi.saveDraft(instance, account, selectedClaim.id, formToSubmit, photoForUpload),
+        75000,
+        "Uploading the submission took too long."
+      );
 
       if (isAdminDirectEdit) {
-        await flagClaimApi.applyAdminEditReprint(instance, account, selectedClaim.id);
-        await loadData();
+        const claim = await withDeadline(
+          () => flagClaimApi.applyAdminEditReprint(instance, account, selectedClaim.id),
+          75000,
+          "Uploading the submission took too long."
+        );
+        rememberSubmission(claim);
+        setSubmitPhase("Finishing submission...");
         setNotice("Admin edit applied and added to the reprint queue.");
       } else {
-        await flagClaimApi.submit(instance, account, selectedClaim.id);
-        await loadData();
+        const claim = await withDeadline(
+          () => flagClaimApi.submit(instance, account, selectedClaim.id),
+          75000,
+          "Uploading the submission took too long."
+        );
+        rememberSubmission(claim);
+        setSubmitPhase("Finishing submission...");
         setNotice(publicCopy.editConfirmation);
       }
 
@@ -1698,10 +1799,13 @@ export default function App() {
       if (!isAdminDirectEdit) {
         navigateToRoute("/my-flags");
       }
+
+      void loadData();
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to submit changes."));
     } finally {
       setSaving(false);
+      setSubmitPhase("");
     }
   }
 
@@ -2044,6 +2148,29 @@ export default function App() {
       setNotice("Honoree export downloaded.");
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to export honorees."));
+    }
+  }
+
+  function closeCardPreview() {
+    setCardPreview((current) => {
+      if (current?.url) URL.revokeObjectURL(current.url);
+      return null;
+    });
+  }
+
+  async function previewHonoreeCard(item: AdminReviewItem) {
+    if (!account) return;
+
+    setError("");
+    try {
+      const blob = await fetchAuthorizedBlob(instance, account, adminCardPreviewUrl(item.changeRequestId));
+      const url = URL.createObjectURL(blob);
+      setCardPreview((current) => {
+        if (current?.url) URL.revokeObjectURL(current.url);
+        return { url, title: item.honoreeName };
+      });
+    } catch (err) {
+      setError(reportableErrorMessage(err, "Unable to preview the honoree card."));
     }
   }
 
@@ -2434,6 +2561,28 @@ export default function App() {
                     Open Flag Map
                   </button>
                   <button type="button" className="secondary" onClick={() => setFlagSpotNotice("")}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {cardPreview ? (
+            <div
+              className="modalOverlay appConfirmOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="card-preview-title"
+              onClick={closeCardPreview}
+            >
+              <div className="modalCard appConfirmModal" onClick={(event) => event.stopPropagation()}>
+                <p className="eyebrow">Administrator</p>
+                <h2 id="card-preview-title">Preview card</h2>
+                <p className="helperText">{cardPreview.title}</p>
+                <iframe className="cardPreviewFrame" title={`Honoree card for ${cardPreview.title}`} src={cardPreview.url} />
+                <div className="modalActions">
+                  <button type="button" className="secondary" onClick={closeCardPreview}>
                     Close
                   </button>
                 </div>
@@ -3208,7 +3357,17 @@ export default function App() {
 
                   return (
                     <article key={claim.id} className="ownedFlagCard">
-                      {claim.honoreeImageUrl ? (
+                      {submissionPhotoKind(claim) === "pending" && account && claim.latestChangeRequest ? (
+                        <AuthorizedThumbnail
+                          instance={instance}
+                          account={account}
+                          url={changeRequestPhotoUrl(claim.latestChangeRequest.id)}
+                          photoKey={`${claim.latestChangeRequest.id}:${claim.latestChangeRequest.photoFileName}`}
+                          alt={`${claim.honoreeName || "Honoree"} photo`}
+                          className="ownedFlagImage"
+                          emptyLabel="No photo"
+                        />
+                      ) : claim.honoreeImageUrl ? (
                         <img
                           className="ownedFlagImage"
                           src={claim.honoreeImageUrl}
@@ -3371,15 +3530,22 @@ export default function App() {
                         <tr key={item.changeRequestId}>
                           <td data-label="Honoree">
                             <div className="reviewHonoreeCell">
-                              {isPendingHonoreePhoto(item.photoFileName) && reviewPhotoUrls[item.changeRequestId] ? (
-                                <img
-                                  className="reviewPendingPhoto"
-                                  src={reviewPhotoUrls[item.changeRequestId]}
+                              {isPendingHonoreePhoto(item.photoFileName) && account ? (
+                                <AuthorizedThumbnail
+                                  instance={instance}
+                                  account={account}
+                                  url={changeRequestPhotoUrl(item.changeRequestId)}
+                                  photoKey={`${item.changeRequestId}:${item.photoFileName}`}
                                   alt={`${item.honoreeName} pending honoree photo`}
+                                  className="reviewPendingPhoto"
+                                  emptyLabel={null}
                                 />
                               ) : null}
                               <div>
-                                <strong>{item.honoreeName}</strong>
+                                <strong>{item.honoreeName}</strong>{" "}
+                                <span className={`reviewKindBadge ${item.submissionKind === "Change" ? "isChange" : "isNew"}`}>
+                                  {submissionKindLabel(item.submissionKind)}
+                                </span>
                                 <br />
                                 <span>{[item.rank, item.serviceBranchName].filter(Boolean).join(" • ")}</span>
                                 <details className="reviewDetails">
@@ -3397,6 +3563,20 @@ export default function App() {
                                       <dt>Conflicts served</dt>
                                       <dd>{item.conflictsServed?.trim() || "Not provided"}</dd>
                                     </div>
+                                    {item.submissionKind === "Change" && item.fieldChanges && item.fieldChanges.length > 0 ? (
+                                      <div>
+                                        <dt>Changes</dt>
+                                        <dd>
+                                          <ul className="reviewFieldChanges">
+                                            {item.fieldChanges.map((change) => (
+                                              <li key={change.label}>
+                                                <strong>{change.label}</strong> {fieldChangeText(change)}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </dd>
+                                      </div>
+                                    ) : null}
                                   </dl>
                                 </details>
                               </div>
@@ -3455,6 +3635,13 @@ export default function App() {
                               <option value="approve-only">Approve only</option>
                               <option value="reject">Reject</option>
                             </select>
+                            <button
+                              type="button"
+                              className="secondary compactButton reviewPreviewButton"
+                              onClick={() => void previewHonoreeCard(item)}
+                            >
+                              Preview card
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -4115,7 +4302,7 @@ export default function App() {
                   ) : null}
                   <button type="submit" disabled={saving}>
                     {saving
-                      ? "Submitting..."
+                      ? submitPhase || "Submitting..."
                       : selectedClaim?.claimStatus === "AdminDirectEdit"
                         ? "Save and queue reprint"
                         : "Submit for review"}

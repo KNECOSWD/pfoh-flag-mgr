@@ -35,6 +35,18 @@ jobs:
       - name: Check profile load and public requests
         run: node --test frontend/scripts/check-profile-load.mjs
 
+      - name: Check thumbnail blob url lifetime
+        run: node --test frontend/scripts/check-blob-url.mjs
+
+      - name: Check submission display
+        run: node --test frontend/scripts/check-submission-display.mjs
+
+      - name: Check network retry
+        run: node --test frontend/scripts/check-token-retry.mjs
+
+      - name: Check submit photo preparation
+        run: node --test frontend/scripts/check-submit-photo.mjs
+
       - name: Typecheck frontend
         working-directory: frontend
         run: |
@@ -45,6 +57,9 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+
+      - name: Install honoree card fonts
+        run: sudo apt-get update && sudo apt-get install -y fonts-dejavu-core
 
       - name: Test API
         run: dotnet test backend/PFOH.Api.Tests/PFOH.Api.Tests.csproj --configuration Release

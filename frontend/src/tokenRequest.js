@@ -33,3 +33,29 @@ export function createTokenCoordinator() {
 }
 
 export const sharedTokenRequest = createTokenCoordinator();
+
+export function isRetryableNetworkError(error) {
+  const message = `${error?.message ?? ""} ${error?.name ?? ""}`.toLowerCase();
+  if (message.includes("authentication failed")) return false;
+
+  const status = Number(error?.status);
+  if (status === 401 || status === 403 || status === 500) return false;
+  if (Number.isFinite(status) && status !== 0) return false;
+
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("network") ||
+    message.includes("abort") ||
+    message.includes("cancel") ||
+    message.includes("timeout")
+  );
+}
+
+export async function withNetworkRetry(work) {
+  try {
+    return await work();
+  } catch (error) {
+    if (!isRetryableNetworkError(error)) throw error;
+    return work();
+  }
+}

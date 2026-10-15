@@ -1,0 +1,59 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import {
+  dropWithdrawnSubmission,
+  fieldChangeText,
+  flagSpotLabel,
+  submissionKindLabel,
+  submissionPhotoKind
+} from "../src/submissionDisplay.js";
+
+test("my submissions prefer the pending photo over a missing public image", () => {
+  assert.equal(submissionPhotoKind({
+    honoreeImageUrl: null,
+    latestChangeRequest: { photoFileName: "pending/66.png" }
+  }), "pending");
+  assert.equal(submissionPhotoKind({
+    honoreeImageUrl: "https://example.test/photo.jpg",
+    latestChangeRequest: { photoFileName: "photos/66.jpg" }
+  }), "public");
+  assert.equal(submissionPhotoKind({
+    honoreeImageUrl: null,
+    latestChangeRequest: { photoFileName: null }
+  }), "none");
+  assert.equal(submissionPhotoKind({
+    latestChangeRequest: { photoFileName: "pending/../secret.jpg" }
+  }), "none");
+});
+
+test("review badges and field diffs use the submission kind", () => {
+  assert.equal(submissionKindLabel("New"), "New submission");
+  assert.equal(submissionKindLabel(null), "New submission");
+  assert.equal(submissionKindLabel("Change"), "Change");
+  assert.equal(fieldChangeText({ previous: "Private", proposed: "Sergeant" }), "Private → Sergeant");
+  assert.equal(fieldChangeText({ previous: "  ", proposed: "" }), "(blank) → (blank)");
+  assert.equal(flagSpotLabel("", null), "Not assigned");
+  assert.equal(flagSpotLabel("A-01", 1), "A-01");
+});
+
+test("withdrawing a submission drops it from the visible lists", () => {
+  const next = dropWithdrawnSubmission(
+    [{ id: 4, honoreeName: "Ada" }, { id: 5, honoreeName: "Grace" }],
+    [{ claimId: 4, changeRequestId: 15 }, { claimId: 9, changeRequestId: 20 }],
+    4
+  );
+
+  assert.deepEqual(next.claims.map((claim) => claim.id), [5]);
+  assert.deepEqual(next.reviews.map((item) => item.claimId), [9]);
+});
+
+test("the review list shows a badge, field diff, and card preview", () => {
+  const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  assert.match(source, /submissionKindLabel\(item\.submissionKind\)/);
+  assert.match(source, /fieldChangeText\(change\)/);
+  assert.match(source, /Preview card/);
+  assert.match(source, /adminCardPreviewUrl\(item\.changeRequestId\)/);
+  assert.match(source, /dropWithdrawnSubmission\(myClaims, pendingReviews, claim\.id\)/);
+  assert.match(source, /submissionPhotoKind\(claim\) === "pending"/);
+});

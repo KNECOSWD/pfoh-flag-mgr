@@ -9020,6 +9020,44 @@ img.ownedFlagImage {
   flex: 0 0 auto;
 }
 
+.reviewKindBadge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+
+.reviewKindBadge.isNew {
+  background: #e7f6ec;
+  color: #146c36;
+}
+
+.reviewKindBadge.isChange {
+  background: #e8f0fb;
+  color: #173b73;
+}
+
+.reviewFieldChanges {
+  margin: 0.2rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.reviewPreviewButton {
+  margin-top: 0.35rem;
+}
+
+.cardPreviewFrame {
+  width: 100%;
+  height: min(70vh, 720px);
+  border: 1px solid #dbe5f2;
+  border-radius: 0.6rem;
+  background: #f4f7fb;
+}
+
 .reviewDetails {
   margin-top: 0.45rem;
 }
