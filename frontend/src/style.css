@@ -9041,6 +9041,11 @@ img.ownedFlagImage {
   color: #173b73;
 }
 
+.reviewKindBadge.isWithdrawal {
+  background: #fff4d8;
+  color: #8a5a00;
+}
+
 .reviewFieldChanges {
   margin: 0.2rem 0 0;
   padding-left: 1.1rem;

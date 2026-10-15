@@ -8,6 +8,8 @@ public class PendingReviewMaintenance(PfohDbContext db, HonoreeFileStorage fileS
 {
     public const string Withdrawn = "Withdrawn";
     public const string Superseded = "Superseded";
+    public const string Withdrawal = "Withdrawal";
+    public const string Removed = "Removed";
 
     public readonly record struct CardRef(
         int Id,

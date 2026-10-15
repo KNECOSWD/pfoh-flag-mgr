@@ -289,6 +289,155 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         Assert.Null(change.PhotoFileName);
         Assert.Null(change.FlagGridId);
         Assert.Contains("pending/15.jpg", factory.Files.DeletedPendingPhotos);
+        Assert.DoesNotContain(await db.HonoreeChangeRequests.Select(request => request.RequestStatus).ToListAsync(), status => status == "Withdrawal");
+    }
+
+    [Fact]
+    public async Task Approved_withdraw_queues_a_withdrawal_and_keeps_the_spot_until_an_admin_confirms()
+    {
+        await ResetAsync();
+        var now = DateTime.UtcNow;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            db.FlagGrids.Add(new FlagGrid
+            {
+                Id = 33,
+                FlagGridName = "V-33",
+                HonoreeId = 8,
+                Notes = string.Empty,
+                CreatedBy = "seed",
+                ModifiedBy = "seed",
+                CreatedDate = now,
+                ModifiedDate = now
+            });
+            db.Honorees.Add(new Honoree
+            {
+                Id = 8,
+                FlagGridId = 33,
+                FirstName = "Hulett",
+                MiddleName = "H.",
+                LastName = "Abbott",
+                Suffix = "V",
+                Rank = "Sergeant",
+                Description = "A tribute",
+                Salutation = string.Empty,
+                NameUserEntry = string.Empty,
+                PhotoFileName = string.Empty,
+                PhoneNumber = string.Empty,
+                EmailAddress = string.Empty,
+                Awards = string.Empty,
+                ConflictsServed = string.Empty,
+                DatesUserEntry = string.Empty,
+                IsActive = true,
+                CreatedBy = "seed",
+                ModifiedBy = "seed",
+                CreatedDate = now,
+                ModifiedDate = now
+            });
+            db.FlagClaims.Add(new FlagClaim
+            {
+                Id = 11,
+                FlagGridId = 33,
+                HonoreeId = 8,
+                ExternalUserObjectId = "submitter",
+                ExternalUserEmail = "submitter@example.com",
+                ExternalUserName = "Hulett Submitter",
+                ClaimStatus = "Claimed",
+                CreatedUtc = now,
+                SubmittedUtc = now,
+                ApprovedUtc = now
+            });
+            db.HonoreeChangeRequests.Add(new HonoreeChangeRequest
+            {
+                Id = 41,
+                FlagClaimId = 11,
+                FlagGridId = 33,
+                HonoreeId = 8,
+                FirstName = "Hulett",
+                LastName = "Abbott",
+                Description = "A tribute",
+                RequestStatus = "Approved",
+                CreatedUtc = now,
+                SubmittedUtc = now,
+                ReviewedUtc = now
+            });
+            db.FlagClaims.Add(new FlagClaim
+            {
+                Id = 90,
+                FlagGridId = null,
+                ClaimStatus = "Submitted",
+                ExternalUserObjectId = "spotless",
+                ExternalUserEmail = "spotless@example.com",
+                CreatedUtc = now
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient();
+        var withdraw = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/flag-claims/11/unclaim",
+            "submitter",
+            "submitter@example.com",
+            "Hulett Submitter"));
+        Assert.Equal(HttpStatusCode.OK, withdraw.StatusCode);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var maintenance = scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>();
+            await maintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
+        }
+
+        var pending = await PendingAsync(client);
+        var item = Assert.Single(pending);
+        Assert.Equal("Withdrawal", item.SubmissionKind);
+        Assert.Equal("Withdrawal", item.RequestStatus);
+        Assert.Equal(33, item.FlagGridId);
+        Assert.Equal("V-33", item.FlagGridName);
+        Assert.Equal(8, item.HonoreeId);
+        Assert.Contains("Hulett", item.HonoreeName);
+        Assert.Equal("Hulett Submitter", item.ClaimantName);
+        Assert.NotNull(item.SubmittedUtc);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var honoree = await db.Honorees.SingleAsync(record => record.Id == 8);
+            Assert.True(honoree.IsActive);
+            Assert.Null(honoree.DeletedDate);
+            Assert.Equal(33, honoree.FlagGridId);
+            Assert.Equal(33, await db.FlagClaims.Where(claim => claim.Id == 11).Select(claim => claim.FlagGridId).SingleAsync());
+            Assert.Equal(2, await db.FlagClaims.CountAsync(claim => claim.Id == 11 || claim.Id == 90));
+        }
+
+        var forbidden = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            $"/api/admin/review/{item.ChangeRequestId}/removed-from-field",
+            "someone-else",
+            "else@example.com",
+            "Someone Else"));
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+
+        var confirmed = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            $"/api/admin/review/{item.ChangeRequestId}/removed-from-field",
+            "admin-user",
+            "admin@example.com",
+            "Admin",
+            roles: "PFOH.Admin"));
+        Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
+        Assert.Empty(await PendingAsync(client));
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var saved = check.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var removed = await saved.Honorees.SingleAsync(record => record.Id == 8);
+        Assert.False(removed.IsActive);
+        Assert.NotNull(removed.DeletedDate);
+        Assert.Null(removed.FlagGridId);
+        Assert.Null(await saved.FlagGrids.Where(grid => grid.Id == 33).Select(grid => grid.HonoreeId).SingleAsync());
+        Assert.Null(await saved.FlagClaims.Where(claim => claim.Id == 11).Select(claim => claim.FlagGridId).SingleAsync());
+        Assert.Equal("Removed", await saved.HonoreeChangeRequests.Where(request => request.RequestStatus == "Removed").Select(request => request.RequestStatus).SingleAsync());
     }
 
     [Fact]
@@ -804,7 +953,11 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         string? PhotoFileName,
         string? SubmissionKind,
         string? Rank,
-        List<FieldChange>? FieldChanges);
+        List<FieldChange>? FieldChanges,
+        string? HonoreeName = null,
+        string? RequestStatus = null,
+        string? ClaimantName = null,
+        DateTime? SubmittedUtc = null);
 
     private sealed record FieldChange(string Label, string Previous, string Proposed);
 

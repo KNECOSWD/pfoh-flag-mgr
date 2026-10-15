@@ -31,6 +31,7 @@ test("review badges and field diffs use the submission kind", () => {
   assert.equal(submissionKindLabel("New"), "New submission");
   assert.equal(submissionKindLabel(null), "New submission");
   assert.equal(submissionKindLabel("Change"), "Change");
+  assert.equal(submissionKindLabel("Withdrawal"), "Withdrawal");
   assert.equal(fieldChangeText({ previous: "Private", proposed: "Sergeant" }), "Private → Sergeant");
   assert.equal(fieldChangeText({ previous: "  ", proposed: "" }), "(blank) → (blank)");
   assert.equal(flagSpotLabel("", null), "Not assigned");
@@ -105,6 +106,8 @@ test("the honoree card viewer fits the whole page", () => {
 test("the review list shows a badge, field diff, and card preview", () => {
   const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(source, /submissionKindLabel\(item\.submissionKind\)/);
+  assert.match(source, /Removed from field/);
+  assert.match(source, /item\.submissionKind === "Withdrawal"/);
   assert.match(source, /fieldChangeText\(change\)/);
   assert.match(source, /adminCardPreviewUrl\(item\.changeRequestId\)/);
   assert.match(source, /dropWithdrawnSubmission\(myClaims, pendingReviews, claim\.id\)/);

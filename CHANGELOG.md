@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0
+
+- Withdrawing an approved honoree adds a **Withdrawal** item to the review queue, next to New submission and Change. The item shows the honoree, flag spot, submitter, and withdrawn date. The spot stays assigned until an administrator confirms **Removed from field**, which releases the spot and deactivates the record without deleting it.
+- Withdrawing a pending submission that is not yet approved still leaves the queue immediately.
+
 ## 1.2.0
 
 - **Download / Print Honoree PDF** on a honoree record and on My submissions opens the honoree card viewer. The same viewer is used from the review queue. The title is Honoree Card, the subtitle is the honoree name, and the viewer can show, download, or print the card.

@@ -19,7 +19,9 @@ export function submissionPhotoKind(claim) {
  * @param {string | null | undefined} kind
  */
 export function submissionKindLabel(kind) {
-  return kind === "Change" ? "Change" : "New submission";
+  if (kind === "Change") return "Change";
+  if (kind === "Withdrawal") return "Withdrawal";
+  return "New submission";
 }
 
 /**

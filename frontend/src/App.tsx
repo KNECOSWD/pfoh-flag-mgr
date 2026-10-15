@@ -2247,6 +2247,36 @@ export default function App() {
     }
   }
 
+  async function confirmRemovedFromField(item: AdminReviewItem) {
+    if (!account) {
+      setError("You must be signed in as an administrator to remove a flag from the field.");
+      return;
+    }
+
+    const ok = await requestConfirmation(
+      `Confirm that ${item.honoreeName}'s flag was removed from ${flagSpotLabel(item.flagGridName, item.flagGridId)}? The spot will be released and the record will stay on file.`,
+      { title: "Removed from field", confirmText: "Removed from field", tone: "danger" }
+    );
+    if (!ok) return;
+
+    setAdminBusyId(item.changeRequestId);
+    setAdminBusyAction("approve");
+    setError("");
+    setNotice(`Removing ${item.honoreeName} from the field...`);
+
+    try {
+      await adminApi.removedFromField(instance, account, item.changeRequestId);
+      await loadData();
+      setNotice(`${item.honoreeName} was removed from the field. The record stays on file.`);
+    } catch (err) {
+      setError(reportableErrorMessage(err, "Unable to confirm this flag was removed from the field."));
+      setNotice("");
+    } finally {
+      setAdminBusyId(null);
+      setAdminBusyAction(null);
+    }
+  }
+
   async function approveReview(item: AdminReviewItem, requiresCardReprint: boolean) {
     if (!account) {
       setError("You must be signed in as an administrator to approve review items.");
@@ -3643,7 +3673,7 @@ export default function App() {
                               ) : null}
                               <div>
                                 <strong>{item.honoreeName}</strong>{" "}
-                                <span className={`reviewKindBadge ${item.submissionKind === "Change" ? "isChange" : "isNew"}`}>
+                                <span className={`reviewKindBadge ${item.submissionKind === "Change" ? "isChange" : item.submissionKind === "Withdrawal" ? "isWithdrawal" : "isNew"}`}>
                                   {submissionKindLabel(item.submissionKind)}
                                 </span>
                                 <br />
@@ -3700,8 +3730,23 @@ export default function App() {
                               </>
                             ) : null}
                           </td>
-                          <td data-label="Submitted">{formatDate(item.submittedUtc)}</td>
+                          <td data-label="Submitted">
+                            {item.submissionKind === "Withdrawal"
+                              ? `Withdrawn ${formatDate(item.submittedUtc)}`
+                              : formatDate(item.submittedUtc)}
+                          </td>
                           <td data-label="Actions" className="rowActions">
+                            {item.submissionKind === "Withdrawal" ? (
+                              <button
+                                type="button"
+                                className="secondary compactButton"
+                                disabled={adminBusyId === item.changeRequestId}
+                                onClick={() => void confirmRemovedFromField(item)}
+                              >
+                                {adminBusyId === item.changeRequestId ? "Saving..." : "Removed from field"}
+                              </button>
+                            ) : (
+                            <>
                             <select
                               className="reviewActionSelect"
                               aria-label={`Review actions for ${item.honoreeName}`}
@@ -3742,6 +3787,8 @@ export default function App() {
                             >
                               Honoree Card
                             </button>
+                            </>
+                            )}
                           </td>
                         </tr>
                       ))}

@@ -30,7 +30,7 @@ public class HonoreeChangeRequest
     public string? SubmitterPhoneNumber { get; set; }
     public string? SubmitterEmailAddress { get; set; }
 
-    // Draft, Submitted, Approved, Rejected, Withdrawn, Superseded.
+    // Draft, Submitted, Approved, Rejected, Withdrawn, Superseded, Withdrawal, Removed.
     public string RequestStatus { get; set; } = "Draft";
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;

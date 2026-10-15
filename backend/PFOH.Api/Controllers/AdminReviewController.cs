@@ -54,7 +54,7 @@ public class AdminReviewController(
         // cannot abort the SQL reader for the other submitted reviews.
         var submittedRequests = await db.HonoreeChangeRequests
             .AsNoTracking()
-            .Where(r => r.RequestStatus == "Submitted")
+            .Where(r => r.RequestStatus == "Submitted" || r.RequestStatus == PendingReviewMaintenance.Withdrawal)
             .OrderBy(r => r.SubmittedUtc ?? r.CreatedUtc)
             .Select(r => new PendingReviewSource
             {
@@ -88,14 +88,19 @@ public class AdminReviewController(
             })
             .ToListAsync(ct);
 
+        var withdrawalRequests = submittedRequests
+            .Where(request => request.RequestStatus == PendingReviewMaintenance.Withdrawal)
+            .ToList();
         var newestRequests = PendingReviewMaintenance.KeepNewest(
-            submittedRequests,
+            submittedRequests.Where(request => request.RequestStatus != PendingReviewMaintenance.Withdrawal).ToList(),
             request => new PendingReviewMaintenance.CardRef(
                 request.Id,
                 request.FlagGridId,
                 request.HonoreeId,
                 request.SubmittedUtc,
-                request.CreatedUtc ?? DateTime.UtcNow));
+                request.CreatedUtc ?? DateTime.UtcNow))
+            .Concat(withdrawalRequests)
+            .ToList();
 
         var honoreeIds = newestRequests
             .Where(request => request.HonoreeId is > 0)
@@ -123,9 +128,12 @@ public class AdminReviewController(
                     current = ReviewSubmissionDiff.FromHonoree(honoree);
                 }
 
+                var isWithdrawal = request.RequestStatus == PendingReviewMaintenance.Withdrawal;
                 dto = dto with
                 {
-                    FieldChanges = ReviewSubmissionDiff.Compare(PendingSnapshot(request), current)
+                    FieldChanges = isWithdrawal
+                        ? Array.Empty<ReviewFieldChangeDto>()
+                        : ReviewSubmissionDiff.Compare(PendingSnapshot(request), current)
                 };
                 submitted.Add(await WithPhotoProbeAsync(dto, ct));
             }
@@ -1028,6 +1036,79 @@ public class AdminReviewController(
         }
     }
 
+    [HttpPost("{id:int}/removed-from-field")]
+    public async Task<IActionResult> RemovedFromField(int id, CancellationToken ct)
+    {
+        var adminName = User.GetEmail();
+        if (string.IsNullOrWhiteSpace(adminName))
+        {
+            adminName = User.GetDisplayName() ?? "PFOH.Admin";
+        }
+
+        var change = await db.HonoreeChangeRequests
+            .Include(request => request.FlagClaim)
+            .Include(request => request.Honoree)
+            .ThenInclude(honoree => honoree!.FlagGrid)
+            .FirstOrDefaultAsync(request => request.Id == id, ct);
+
+        if (change is null)
+        {
+            return NotFound("Change request was not found.");
+        }
+
+        if (change.RequestStatus != PendingReviewMaintenance.Withdrawal)
+        {
+            return Conflict(new
+            {
+                message = "Only a withdrawal can be confirmed as removed from the field.",
+                currentStatus = change.RequestStatus
+            });
+        }
+
+        var now = DateTime.UtcNow;
+        if (change.Honoree is { } honoree)
+        {
+            if (honoree.FlagGrid is { } linkedGrid && linkedGrid.HonoreeId == honoree.Id)
+            {
+                linkedGrid.HonoreeId = null;
+                linkedGrid.ModifiedBy = adminName;
+                linkedGrid.ModifiedDate = now;
+            }
+            else if (honoree.FlagGridId is int gridId)
+            {
+                var grid = await db.FlagGrids.FirstOrDefaultAsync(item => item.Id == gridId, ct);
+                if (grid is not null && grid.HonoreeId == honoree.Id)
+                {
+                    grid.HonoreeId = null;
+                    grid.ModifiedBy = adminName;
+                    grid.ModifiedDate = now;
+                }
+            }
+
+            honoree.FlagGridId = null;
+            honoree.IsActive = false;
+            honoree.DeletedDate ??= now;
+            honoree.DeletedBy = string.IsNullOrWhiteSpace(honoree.DeletedBy) ? adminName : honoree.DeletedBy;
+            honoree.ModifiedBy = adminName;
+            honoree.ModifiedDate = now;
+        }
+
+        if (change.FlagClaim is not null)
+        {
+            change.FlagClaim.FlagGridId = null;
+        }
+
+        change.RequestStatus = PendingReviewMaintenance.Removed;
+        change.ReviewedUtc = now;
+        change.ReviewedBy = adminName;
+        change.ReviewNotes = AppendReviewNote(
+            change.ReviewNotes,
+            "Removed from the field. The flag spot was released and the honoree record was deactivated.");
+
+        await db.SaveChangesAsync(ct);
+        return Ok(new { message = "Honoree removed from the field." });
+    }
+
     private async Task<Sponsor?> GetOrCreateSubmitterSponsorAsync(
         string email,
         string? displayName,
@@ -1478,7 +1559,7 @@ public class AdminReviewController(
             r.Description,
             r.Awards,
             r.ConflictsServed,
-            SubmissionKind: ReviewSubmissionDiff.Kind(r.HonoreeId));
+            SubmissionKind: ReviewSubmissionDiff.Kind(r.RequestStatus, r.HonoreeId));
     }
 
     private static AdminReviewItemDto DegradedReviewDto(PendingReviewSource r)
@@ -1505,7 +1586,7 @@ public class AdminReviewController(
             null,
             null,
             null,
-            SubmissionKind: ReviewSubmissionDiff.Kind(r.HonoreeId));
+            SubmissionKind: ReviewSubmissionDiff.Kind(r.RequestStatus, r.HonoreeId));
     }
 
     private static ReviewSnapshot PendingSnapshot(PendingReviewSource request) => new(
