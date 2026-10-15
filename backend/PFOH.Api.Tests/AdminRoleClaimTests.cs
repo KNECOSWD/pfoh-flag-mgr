@@ -53,7 +53,18 @@ public class AdminRoleClaimTests
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
-    private static async Task<WebApplication> StartAsync()
+    [Fact]
+    public async Task Raw_roles_claim_type_hides_a_role_that_was_already_mapped()
+    {
+        await using var host = await StartAsync(roleClaimType: "roles");
+        var client = host.GetTestClient();
+
+        var response = await client.SendAsync(Request(Token(ApiClientId, new Claim("roles", "PFOH.Admin"))));
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    private static async Task<WebApplication> StartAsync(string? roleClaimType = null)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("test-signing-key-at-least-32-bytes-long"));
         var builder = WebApplication.CreateBuilder();
@@ -70,7 +81,7 @@ public class AdminRoleClaimTests
                     ValidAudiences = [ApiClientId, $"api://{ApiClientId}"],
                     ValidateIssuerSigningKey = true,
                     IssuerSigningKey = key,
-                    RoleClaimType = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
+                    RoleClaimType = roleClaimType ?? "http://schemas.microsoft.com/ws/2008/06/identity/claims/role",
                     NameClaimType = "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"
                 };
             });
