@@ -33,6 +33,7 @@ import {
   profileApi
 } from "./api";
 import { decideAdminLoad } from "./adminAccess.js";
+import { createProfileLoadGate } from "./profileLoad.js";
 import { loginRequest, readMappedAccountClaim } from "./authConfig";
 import { publishSignInError, subscribeSignInError } from "./signInError";
 import knecoLogoBlue from "./assets/kneco-logo-blue.png";
@@ -144,6 +145,13 @@ function statusClass(status: string) {
 
 function latestRequestStatus(claim: FlagClaim) {
   return claim.latestChangeRequest?.requestStatus ?? claim.claimStatus;
+}
+
+function flagSpotLabel(flagGridName?: string | null, flagGridId?: number | null) {
+  const name = flagGridName?.trim();
+  if (name) return name;
+  if (flagGridId) return `Grid ${flagGridId}`;
+  return "Not assigned";
 }
 
 function ownershipStatusLabel(claim: FlagClaim) {
@@ -328,6 +336,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [flagSpotNotice, setFlagSpotNotice] = useState("");
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [activeRoute, setActiveRoute] = useState<AppRoute>(() => normalizeAppRoute(window.location.pathname));
@@ -601,18 +610,36 @@ export default function App() {
     if (message) setError(message);
   }), []);
 
+  const profileLoadGate = useRef(createProfileLoadGate());
+  const profileAccountRef = useRef(account);
+  const profileInstanceRef = useRef(instance);
+  profileAccountRef.current = account;
+  profileInstanceRef.current = instance;
+
   useEffect(() => {
-    if (!isAuthenticated || !account) {
+    if (!isAuthenticated || !accountKey) {
+      profileLoadGate.current.reset();
       setSavedDisplayName("");
+      return;
+    }
+
+    if (!profileLoadGate.current.claim(accountKey)) {
+      return;
+    }
+
+    const currentAccount = profileAccountRef.current;
+    if (!currentAccount) {
+      profileLoadGate.current.release(accountKey);
       return;
     }
 
     let cancelled = false;
 
-    profileApi.get(instance, account)
+    profileApi.get(profileInstanceRef.current, currentAccount)
       .then((profile) => {
         if (cancelled) return;
 
+        profileLoadGate.current.settle(accountKey);
         setSavedDisplayName((current) => {
           if (current.trim()) return current;
           return profile.hasSavedDisplayName ? profile.displayName : "";
@@ -622,15 +649,16 @@ export default function App() {
         }
       })
       .catch(() => {
-        if (!cancelled) {
-          setSavedDisplayName("");
-        }
+        if (cancelled) return;
+        profileLoadGate.current.settle(accountKey);
+        setSavedDisplayName("");
       });
 
     return () => {
       cancelled = true;
+      profileLoadGate.current.release(accountKey);
     };
-  }, [isAuthenticated, account, accountKey, instance]);
+  }, [isAuthenticated, accountKey]);
 
   async function openProfile() {
     if (!account) return;
@@ -947,8 +975,8 @@ export default function App() {
     try {
       const [claims, branches, categories] = await Promise.all([
         flagClaimApi.mine(instance, account),
-        lookupApi.serviceBranches(instance, account),
-        lookupApi.serviceBranchCategories(instance, account)
+        lookupApi.serviceBranches(),
+        lookupApi.serviceBranchCategories()
       ]);
 
       setMyClaims(claims);
@@ -1055,7 +1083,7 @@ export default function App() {
       cancelled = true;
       created.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [account, instance, pendingReviewPhotoKey, pendingReviews]);
+  }, [accountKey, instance, pendingReviewPhotoKey]);
 
   const pendingChangeRequestPhotoId =
     !isNominating && isPendingHonoreePhoto(selectedClaim?.latestChangeRequest?.photoFileName)
@@ -1098,7 +1126,7 @@ export default function App() {
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [account, instance, pendingChangeRequestPhotoId]);
+  }, [accountKey, instance, pendingChangeRequestPhotoId]);
 
   async function searchHonorees(event: React.FormEvent) {
     event.preventDefault();
@@ -1112,7 +1140,7 @@ export default function App() {
       setHonoreeResults(results);
       setHonoreeSearchPerformed(true);
       setClaimantsByHonoreeId({});
-      await loadClaimantsForSearchResults(results);
+      void loadClaimantsForSearchResults(results);
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to search honorees."));
     } finally {
@@ -2036,8 +2064,14 @@ export default function App() {
     setNotice(`${requiresCardReprint ? "Approving and queuing reprint" : "Approving"} ${item.honoreeName}...`);
 
     try {
-      await adminApi.approve(instance, account, item.changeRequestId, requiresCardReprint);
+      const approved = await adminApi.approve(instance, account, item.changeRequestId, requiresCardReprint);
       await loadData();
+      if (approved.flagSpotAssigned === false) {
+        setFlagSpotNotice(
+          approved.flagSpotNotice ||
+            "This honoree was approved and added, but no flag spot is available. Free a spot and assign the honoree manually in the Flag Map."
+        );
+      }
       setNotice(`${item.honoreeName} approved${requiresCardReprint ? " and added to the card reprint queue" : ""}.`);
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to approve item."));
@@ -2382,6 +2416,29 @@ export default function App() {
                 ))}
               </div>
             </section>
+          ) : null}
+
+          {flagSpotNotice ? (
+            <div
+              className="modalOverlay appConfirmOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="flag-spot-notice-title"
+            >
+              <div className="modalCard appConfirmModal" onClick={(event) => event.stopPropagation()}>
+                <p className="eyebrow">Flag Map</p>
+                <h2 id="flag-spot-notice-title">No flag spot is available</h2>
+                <p className="helperText">{flagSpotNotice}</p>
+                <div className="modalActions">
+                  <button type="button" onClick={() => { setFlagSpotNotice(""); navigateToRoute("/admin/flag-map"); }}>
+                    Open Flag Map
+                  </button>
+                  <button type="button" className="secondary" onClick={() => setFlagSpotNotice("")}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : null}
 
           {(error || notice) && (
@@ -3165,7 +3222,7 @@ export default function App() {
                         <p className="eyebrow">Honoree</p>
                         <h3>{claim.honoreeName || "Honoree details pending"}</h3>
                         <p>
-                          Flag grid {claim.flagGridName || `Grid ${claim.flagGridId}`} • Submission #{claim.id}
+                          Flag grid {flagSpotLabel(claim.flagGridName, claim.flagGridId)} • Submission #{claim.id}
                         </p>
                       </div>
 
@@ -3345,7 +3402,7 @@ export default function App() {
                               </div>
                             </div>
                           </td>
-                          <td data-label="Flag grid">{item.flagGridName || item.flagGridId}</td>
+                          <td data-label="Flag grid">{flagSpotLabel(item.flagGridName, item.flagGridId)}</td>
                           <td data-label="Submitted by">
                             {item.claimantName || item.claimantEmail}
                             <br />

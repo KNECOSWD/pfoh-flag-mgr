@@ -42,7 +42,10 @@ public class AdminReviewController(
     IWebHostEnvironment environment,
     UserProfileService profiles,
     HonoreeFileStorage fileStorage,
-    ILogger<AdminReviewController> logger) : ControllerBase
+    ILogger<AdminReviewController> logger,
+    PendingReviewMaintenance pendingReviews,
+    FlagGridAssignment flagGrids,
+    ReprintQueueMaintenance reprintQueue) : ControllerBase
 {
     [HttpGet("pending")]
     public async Task<ActionResult<IReadOnlyList<AdminReviewItemDto>>> GetPending(CancellationToken ct)
@@ -78,16 +81,53 @@ public class AdminReviewController(
                 PhotoFileName = r.PhotoFileName,
                 Description = r.Description,
                 Awards = r.Awards,
-                ConflictsServed = r.ConflictsServed
+                ConflictsServed = r.ConflictsServed,
+                StartYear = r.StartYear,
+                EndYear = r.EndYear,
+                Kia = r.KIA
             })
             .ToListAsync(ct);
 
-        var submitted = new List<AdminReviewItemDto>(submittedRequests.Count);
-        foreach (var request in submittedRequests)
+        var newestRequests = PendingReviewMaintenance.KeepNewest(
+            submittedRequests,
+            request => new PendingReviewMaintenance.CardRef(
+                request.Id,
+                request.FlagGridId,
+                request.HonoreeId,
+                request.SubmittedUtc,
+                request.CreatedUtc ?? DateTime.UtcNow));
+
+        var honoreeIds = newestRequests
+            .Where(request => request.HonoreeId is > 0)
+            .Select(request => request.HonoreeId!.Value)
+            .Distinct()
+            .ToList();
+        var currentHonorees = honoreeIds.Count == 0
+            ? new List<Honoree>()
+            : await db.Honorees
+                .AsNoTracking()
+                .Include(honoree => honoree.ServiceBranch)
+                .Where(honoree => honoreeIds.Contains(honoree.Id))
+                .ToListAsync(ct);
+        var honoreeById = currentHonorees.ToDictionary(honoree => honoree.Id);
+
+        var submitted = new List<AdminReviewItemDto>(newestRequests.Count);
+        foreach (var request in newestRequests)
         {
             try
             {
-                submitted.Add(await WithPhotoProbeAsync(ToReviewDto(request), ct));
+                var dto = ToReviewDto(request);
+                ReviewSnapshot? current = null;
+                if (request.HonoreeId is int honoreeId && honoreeById.TryGetValue(honoreeId, out var honoree))
+                {
+                    current = ReviewSubmissionDiff.FromHonoree(honoree);
+                }
+
+                dto = dto with
+                {
+                    FieldChanges = ReviewSubmissionDiff.Compare(PendingSnapshot(request), current)
+                };
+                submitted.Add(await WithPhotoProbeAsync(dto, ct));
             }
             catch (Exception ex)
             {
@@ -112,17 +152,90 @@ public class AdminReviewController(
         }
     }
 
+    [HttpGet("{id:int}/card-preview")]
+    public async Task<IActionResult> CardPreview(int id, CancellationToken ct)
+    {
+        var change = await db.HonoreeChangeRequests
+            .AsNoTracking()
+            .Include(request => request.FlagGrid)
+            .Include(request => request.ServiceBranch)
+            .FirstOrDefaultAsync(request => request.Id == id, ct);
+
+        if (change is null)
+        {
+            return NotFound("Change request was not found.");
+        }
+
+        if (!string.Equals(change.RequestStatus, "Submitted", StringComparison.OrdinalIgnoreCase))
+        {
+            return Conflict(new { message = "Only a submitted honoree can be previewed." });
+        }
+
+        var honoree = new Honoree
+        {
+            FirstName = change.FirstName,
+            MiddleName = change.MiddleName,
+            LastName = change.LastName,
+            Suffix = change.Suffix,
+            Nickname = change.Nickname,
+            Rank = change.Rank ?? string.Empty,
+            ServiceBranchId = change.ServiceBranchId,
+            ServiceBranchCategoryId = change.ServiceBranchCategoryId,
+            ServiceBranch = change.ServiceBranch,
+            StartYear = change.StartYear,
+            EndYear = change.EndYear,
+            DatesUserEntry = change.DatesUserEntry ?? string.Empty,
+            ConflictsServed = change.ConflictsServed ?? string.Empty,
+            Awards = change.Awards ?? string.Empty,
+            Description = change.Description ?? string.Empty,
+            KIA = change.KIA,
+            PhotoFileName = change.PhotoFileName ?? string.Empty,
+            FlagGridId = change.FlagGridId,
+            FlagGrid = change.FlagGrid,
+            IsActive = true
+        };
+
+        byte[]? photoBytes = null;
+        try
+        {
+            photoBytes = await fileStorage.DownloadImageAsync(change.PhotoFileName, null, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Card preview for change request {ChangeRequestId} will omit the photo.", id);
+        }
+
+        HonoreeReportAssets? assets = null;
+        try
+        {
+            assets = await fileStorage.LoadReportAssetsAsync(honoree, null, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Card preview for change request {ChangeRequestId} will omit report artwork.", id);
+        }
+
+        try
+        {
+            var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, null, photoBytes, assets);
+            return File(pdf, "application/pdf", $"honoree-card-{id}.pdf");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Card preview for change request {ChangeRequestId} could not be created.", id);
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = "The honoree card preview could not be created.",
+                    detail = ex.Message
+                });
+        }
+    }
+
     [HttpGet("approved-reprint-queue")]
     public async Task<ActionResult<IReadOnlyList<AdminPrintQueueItemDto>>> GetApprovedReprintQueue(CancellationToken ct)
     {
-        var adminName = User.GetEmail();
-        if (string.IsNullOrWhiteSpace(adminName))
-        {
-            adminName = User.GetDisplayName() ?? "PFOH.Admin";
-        }
-
-        await DeactivateDuplicateActiveReprintQueueItemsAsync(adminName, ct);
-
         var approved = await db.HonoreeChangeRequests
             .AsNoTracking()
             .Include(r => r.FlagClaim)
@@ -563,7 +676,7 @@ public class AdminReviewController(
                 return BadRequest(new { message = "This honoree is not assigned to a flag grid yet." });
             }
 
-            await DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, keepChangeRequestId: null, adminName, ct);
+            await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, keepChangeRequestId: null, adminName, ct);
 
             var existingQueueItem = await db.HonoreeChangeRequests
                 .AsNoTracking()
@@ -719,7 +832,7 @@ public class AdminReviewController(
                     change.ReviewedUtc = DateTime.UtcNow;
 
                     await db.SaveChangesAsync(ct);
-                    await DeactivateOtherActiveReprintItemsForHonoreeAsync(change.HonoreeId.Value, change.Id, adminName, ct);
+                    await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(change.HonoreeId.Value, change.Id, adminName, ct);
 
                     try
                     {
@@ -745,7 +858,48 @@ public class AdminReviewController(
                 });
             }
 
+            var isNewSubmission = change.HonoreeId is not > 0;
+            bool? flagSpotAssigned = null;
+            string? flagSpotNotice = null;
+            string? assignedGridName = null;
+            if (isNewSubmission)
+            {
+                await PendingSubmissionGridSchema.EnsureAsync(db, ct);
+                await pendingReviews.ReleasePendingSubmissionSpotsAsync(ct);
+            }
+
             var honoree = await ApplyApprovedChanges(change, adminName, ct);
+
+            if (isNewSubmission)
+            {
+                var grid = await flagGrids.NextAvailableAsync(ct);
+                if (grid is null)
+                {
+                    flagSpotAssigned = false;
+                    flagSpotNotice = FlagGridAssignment.NoSpotNotice;
+                    honoree.FlagGridId = null;
+                    change.FlagGridId = null;
+                    if (change.FlagClaim is { HonoreeId: null })
+                    {
+                        change.FlagClaim.FlagGridId = null;
+                    }
+                }
+                else
+                {
+                    honoree.FlagGridId = grid.Id;
+                    change.FlagGridId = grid.Id;
+                    if (change.FlagClaim is not null)
+                    {
+                        change.FlagClaim.FlagGridId = grid.Id;
+                    }
+
+                    grid.HonoreeId = honoree.Id;
+                    grid.ModifiedBy = adminName;
+                    grid.ModifiedDate = DateTime.UtcNow;
+                    flagSpotAssigned = true;
+                    assignedGridName = grid.FlagGridName;
+                }
+            }
 
             change.HonoreeId = honoree.Id;
             change.RequestStatus = "Approved";
@@ -767,7 +921,7 @@ public class AdminReviewController(
 
             if (request.RequiresCardReprint)
             {
-                await DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, change.Id, adminName, ct);
+                await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, change.Id, adminName, ct);
 
                 try
                 {
@@ -786,7 +940,20 @@ public class AdminReviewController(
 
             await transaction.CommitAsync(ct);
 
-            return Ok(ToReviewDto(change));
+            var approved = ToReviewDto(change);
+            if (isNewSubmission)
+            {
+                approved = approved with
+                {
+                    FlagGridId = change.FlagGridId,
+                    FlagGridName = assignedGridName ?? string.Empty,
+                    FlagSpotAssigned = flagSpotAssigned,
+                    FlagSpotNotice = flagSpotNotice,
+                    SubmissionKind = ReviewSubmissionDiff.NewSubmission
+                };
+            }
+
+            return Ok(approved);
         }
         catch (HonoreePhotoMoveException ex)
         {
@@ -1124,7 +1291,7 @@ public class AdminReviewController(
         string reviewNotes,
         CancellationToken ct)
     {
-        await DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, keepChangeRequestId: null, adminName, ct);
+        await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, keepChangeRequestId: null, adminName, ct);
 
         var existingQueueItem = await db.HonoreeChangeRequests
             .AsNoTracking()
@@ -1199,83 +1366,6 @@ public class AdminReviewController(
         await db.SaveChangesAsync(ct);
 
         return await ToPrintQueueDto(queueRequest, ct);
-    }
-
-    private async Task DeactivateDuplicateActiveReprintQueueItemsAsync(string adminName, CancellationToken ct)
-    {
-        var duplicateHonoreeIds = await db.HonoreeChangeRequests
-            .AsNoTracking()
-            .Where(r =>
-                r.HonoreeId.HasValue &&
-                r.RequestStatus == "Approved" &&
-                r.RequiresCardReprint &&
-                r.CardPrintedUtc == null)
-            .GroupBy(r => r.HonoreeId!.Value)
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToListAsync(ct);
-
-        foreach (var honoreeId in duplicateHonoreeIds)
-        {
-            await DeactivateOtherActiveReprintItemsForHonoreeAsync(honoreeId, keepChangeRequestId: null, adminName, ct);
-        }
-    }
-
-    private async Task DeactivateOtherActiveReprintItemsForHonoreeAsync(
-        int honoreeId,
-        int? keepChangeRequestId,
-        string adminName,
-        CancellationToken ct)
-    {
-        var activeItems = await db.HonoreeChangeRequests
-            .Include(r => r.FlagClaim)
-            .Where(r =>
-                r.HonoreeId == honoreeId &&
-                r.RequestStatus == "Approved" &&
-                r.RequiresCardReprint &&
-                r.CardPrintedUtc == null)
-            .OrderByDescending(r => r.ReviewedUtc ?? r.SubmittedUtc ?? r.CreatedUtc)
-            .ThenByDescending(r => r.Id)
-            .ToListAsync(ct);
-
-        if (activeItems.Count <= 1)
-        {
-            return;
-        }
-
-        var keepItem = keepChangeRequestId.HasValue
-            ? activeItems.FirstOrDefault(r => r.Id == keepChangeRequestId.Value)
-            : activeItems.FirstOrDefault();
-
-        if (keepItem is null)
-        {
-            keepItem = activeItems.First();
-        }
-
-        var now = DateTime.UtcNow;
-        var duplicates = activeItems
-            .Where(r => r.Id != keepItem.Id)
-            .ToList();
-
-        foreach (var duplicate in duplicates)
-        {
-            duplicate.RequiresCardReprint = false;
-            duplicate.ReviewedBy = adminName;
-            duplicate.ReviewedUtc = now;
-            duplicate.ReviewNotes = string.IsNullOrWhiteSpace(duplicate.ReviewNotes)
-                ? $"Removed duplicate reprint queue item. Active queue item #{keepItem.Id} remains for this honoree."
-                : $"{duplicate.ReviewNotes}\nRemoved duplicate reprint queue item. Active queue item #{keepItem.Id} remains for this honoree.";
-
-            if (duplicate.FlagClaim?.ClaimStatus == "AdminReprintQueued")
-            {
-                duplicate.FlagClaim.ClaimStatus = "AdminReprintDuplicateRemoved";
-                duplicate.FlagClaim.AdminNotes = string.IsNullOrWhiteSpace(duplicate.FlagClaim.AdminNotes)
-                    ? $"Removed duplicate reprint queue item. Active queue item #{keepItem.Id} remains for this honoree."
-                    : $"{duplicate.FlagClaim.AdminNotes}\nRemoved duplicate reprint queue item. Active queue item #{keepItem.Id} remains for this honoree.";
-            }
-        }
-
-        await db.SaveChangesAsync(ct);
     }
 
     private async Task<AdminPrintQueueItemDto> ToPrintQueueDto(HonoreeChangeRequest r, CancellationToken ct)
@@ -1422,7 +1512,8 @@ public class AdminReviewController(
             BlankToNull(r.PhotoFileName),
             r.Description,
             r.Awards,
-            r.ConflictsServed);
+            r.ConflictsServed,
+            SubmissionKind: ReviewSubmissionDiff.Kind(r.HonoreeId));
     }
 
     private static AdminReviewItemDto DegradedReviewDto(PendingReviewSource r)
@@ -1448,8 +1539,26 @@ public class AdminReviewController(
             null,
             null,
             null,
-            null);
+            null,
+            SubmissionKind: ReviewSubmissionDiff.Kind(r.HonoreeId));
     }
+
+    private static ReviewSnapshot PendingSnapshot(PendingReviewSource request) => new(
+        request.HonoreeId,
+        request.FirstName,
+        request.MiddleName,
+        request.LastName,
+        request.Suffix,
+        request.Nickname,
+        request.Rank,
+        request.ServiceBranchName,
+        request.StartYear,
+        request.EndYear,
+        request.ConflictsServed,
+        request.Awards,
+        request.Description,
+        request.Kia,
+        request.PhotoFileName);
 
     private static string? AppendReviewNote(string? notes, string addition)
     {
@@ -1470,7 +1579,7 @@ public class AdminReviewController(
     {
         public int Id { get; set; }
         public int FlagClaimId { get; set; }
-        public int FlagGridId { get; set; }
+        public int? FlagGridId { get; set; }
         public string? FlagGridName { get; set; }
         public int? HonoreeId { get; set; }
         public string? FirstName { get; set; }
@@ -1492,6 +1601,9 @@ public class AdminReviewController(
         public string? Description { get; set; }
         public string? Awards { get; set; }
         public string? ConflictsServed { get; set; }
+        public int? StartYear { get; set; }
+        public int? EndYear { get; set; }
+        public bool Kia { get; set; }
     }
 
     private async Task<IReadOnlyList<AdminFlagPositionDto>> BuildFlagPositionsAsync(CancellationToken ct)

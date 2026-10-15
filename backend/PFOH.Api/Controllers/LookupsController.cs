@@ -8,7 +8,7 @@ namespace PFOH.Api.Controllers;
 
 [ApiController]
 [Route("api/lookups")]
-[Authorize]
+[AllowAnonymous]
 public class LookupsController(PfohDbContext db) : ControllerBase
 {
     [HttpGet("service-branches")]

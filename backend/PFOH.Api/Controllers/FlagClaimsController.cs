@@ -12,9 +12,14 @@ namespace PFOH.Api.Controllers;
 [ApiController]
 [Route("api/flag-claims")]
 [Authorize]
-public class FlagClaimsController(PfohDbContext db, IConfiguration configuration, IWebHostEnvironment environment, UserProfileService profiles) : ControllerBase
+public class FlagClaimsController(
+    PfohDbContext db,
+    IWebHostEnvironment environment,
+    UserProfileService profiles,
+    HonoreeFileStorage fileStorage,
+    PendingReviewMaintenance pendingReviews,
+    ReprintQueueMaintenance reprintQueue) : ControllerBase
 {
-    private readonly HonoreeFileStorage fileStorage = new(configuration);
 
     // A flag claim represents semi-ownership by a user.
     // These statuses keep the flag associated with the claimant.
@@ -194,29 +199,34 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
             return BadRequest(new { message = "Admin direct-edit claims cannot be unclaimed from My claimed flags." });
         }
 
-        var submittedRequestExists = claim.HonoreeChangeRequests
-            .Any(r => r.RequestStatus == "Submitted");
-
-        if (submittedRequestExists && !isAdmin)
-        {
-            return Conflict(new
-            {
-                message = "This flag has submitted changes waiting for admin review. Contact the Plano Flags of Honor administrator if you need it unclaimed."
-            });
-        }
-
         var now = DateTime.UtcNow;
         claim.ClaimStatus = "Unclaimed";
         claim.AdminNotes = string.IsNullOrWhiteSpace(claim.AdminNotes)
-            ? $"Unclaimed on {now:u}."
-            : $"{claim.AdminNotes}\nUnclaimed on {now:u}.";
+            ? $"Withdrawn on {now:u}."
+            : $"{claim.AdminNotes}\nWithdrawn on {now:u}.";
 
-        foreach (var draft in claim.HonoreeChangeRequests.Where(r => r.RequestStatus == "Draft"))
+        if (claim.HonoreeId is not > 0)
         {
-            draft.RequestStatus = "Cancelled";
-            draft.ReviewNotes = string.IsNullOrWhiteSpace(draft.ReviewNotes)
-                ? "Cancelled because the flag was unclaimed."
-                : $"{draft.ReviewNotes}\nCancelled because the flag was unclaimed.";
+            claim.FlagGridId = null;
+        }
+
+        foreach (var request in claim.HonoreeChangeRequests.Where(r => r.RequestStatus is "Submitted" or "Draft"))
+        {
+            request.RequestStatus = PendingReviewMaintenance.Withdrawn;
+            request.ReviewNotes = string.IsNullOrWhiteSpace(request.ReviewNotes)
+                ? "Withdrawn by the submitter."
+                : $"{request.ReviewNotes}\nWithdrawn by the submitter.";
+
+            if (request.HonoreeId is not > 0)
+            {
+                request.FlagGridId = null;
+            }
+
+            await fileStorage.DeletePendingImageAsync(request.PhotoFileName, ct);
+            if (HonoreeFileStorage.IsPendingPhotoName(request.PhotoFileName))
+            {
+                request.PhotoFileName = null;
+            }
         }
 
         await db.SaveChangesAsync(ct);
@@ -400,6 +410,8 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
             return BadRequest("Your signed-in account must have an email address before you can nominate an honoree.");
         }
 
+        await PendingSubmissionGridSchema.EnsureAsync(db, ct);
+
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         var submitter = await GetOrCreateSubmitterSponsorAsync(email, name, ct);
@@ -408,28 +420,21 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
             return Conflict("No sponsor category exists for creating the submitter record.");
         }
 
-        var flagGrid = await GetNextAvailableFlagGridAsync(ct);
-        if (flagGrid is null)
-        {
-            return Conflict("No available flag grid was found for this nomination.");
-        }
-
         var claim = new FlagClaim
         {
-            FlagGridId = flagGrid.Id,
+            FlagGridId = null,
             HonoreeId = null,
             ExternalUserObjectId = userObjectId,
             ExternalUserEmail = email,
             ExternalUserName = name,
             ClaimStatus = "Submitted",
             CreatedUtc = DateTime.UtcNow,
-            SubmittedUtc = DateTime.UtcNow,
-            FlagGrid = flagGrid
+            SubmittedUtc = DateTime.UtcNow
         };
 
         var change = new HonoreeChangeRequest
         {
-            FlagGridId = flagGrid.Id,
+            FlagGridId = null,
             HonoreeId = null,
             RequestStatus = "Submitted",
             CreatedUtc = DateTime.UtcNow,
@@ -457,6 +462,7 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
             await db.SaveChangesAsync(ct);
         }
 
+        await pendingReviews.SupersedeOlderPendingAsync(change, ct);
         await transaction.CommitAsync(ct);
 
         return Ok(ToDto(claim, null));
@@ -618,6 +624,7 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
         claim.SubmittedUtc = DateTime.UtcNow;
 
         await db.SaveChangesAsync(ct);
+        await pendingReviews.SupersedeOlderPendingAsync(latestDraft, ct);
 
         return Ok(ToDto(claim, null));
     }
@@ -672,6 +679,7 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
         claim.AdminNotes = "Direct administrator edit queued for reprint.";
 
         await db.SaveChangesAsync(ct);
+        await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, latestDraft.Id, adminName, ct);
         await transaction.CommitAsync(ct);
 
         var imageUrl = await db.HonoreeSearchResults
@@ -782,25 +790,6 @@ public class FlagClaimsController(PfohDbContext db, IConfiguration configuration
         var reportAssets = await fileStorage.LoadReportAssetsAsync(honoree, searchResult, ct);
         var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes, reportAssets);
         await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
-    }
-
-    private async Task<FlagGrid?> GetNextAvailableFlagGridAsync(CancellationToken ct)
-    {
-        return await db.FlagGrids
-            .Where(flagGrid =>
-                !flagGrid.Reserved &&
-                flagGrid.DeletedDate == null &&
-                flagGrid.HonoreeId == null &&
-                !db.Honorees.Any(h =>
-                    h.IsActive &&
-                    h.DeletedDate == null &&
-                    h.FlagGridId == flagGrid.Id) &&
-                !db.FlagClaims.Any(claim =>
-                    claim.FlagGridId == flagGrid.Id &&
-                    claim.ClaimStatus != "Cancelled" &&
-                    claim.ClaimStatus != "AdminDirectEditCompleted"))
-            .OrderBy(flagGrid => flagGrid.FlagGridName)
-            .FirstOrDefaultAsync(ct);
     }
 
     private async Task<Sponsor?> GetOrCreateSubmitterSponsorAsync(

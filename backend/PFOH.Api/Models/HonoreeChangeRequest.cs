@@ -5,7 +5,7 @@ public class HonoreeChangeRequest
     public int Id { get; set; }
 
     public int FlagClaimId { get; set; }
-    public int FlagGridId { get; set; }
+    public int? FlagGridId { get; set; }
     public int? HonoreeId { get; set; }
 
     public string FirstName { get; set; } = string.Empty;
@@ -30,7 +30,7 @@ public class HonoreeChangeRequest
     public string? SubmitterPhoneNumber { get; set; }
     public string? SubmitterEmailAddress { get; set; }
 
-    // Draft, Submitted, Approved, Rejected.
+    // Draft, Submitted, Approved, Rejected, Withdrawn, Superseded.
     public string RequestStatus { get; set; } = "Draft";
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;

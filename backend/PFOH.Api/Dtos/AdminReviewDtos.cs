@@ -5,7 +5,7 @@ namespace PFOH.Api.Dtos;
 public record AdminReviewItemDto(
     int ChangeRequestId,
     int ClaimId,
-    int FlagGridId,
+    int? FlagGridId,
     string FlagGridName,
     int? HonoreeId,
     string HonoreeName,
@@ -24,7 +24,13 @@ public record AdminReviewItemDto(
     string? Awards,
     string? ConflictsServed,
     string? ClaimantPhone = null,
-    string? ClaimantOrganization = null);
+    string? ClaimantOrganization = null,
+    string SubmissionKind = "New",
+    IReadOnlyList<ReviewFieldChangeDto>? FieldChanges = null,
+    bool? FlagSpotAssigned = null,
+    string? FlagSpotNotice = null);
+
+public record ReviewFieldChangeDto(string Label, string Previous, string Proposed);
 
 public record AdminPrintQueueItemDto(
     int ChangeRequestId,

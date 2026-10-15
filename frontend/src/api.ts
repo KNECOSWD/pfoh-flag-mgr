@@ -4,6 +4,8 @@ import {
   InteractionRequiredAuthError
 } from "@azure/msal-browser";
 import { loginRequest } from "./authConfig";
+import { isPublicApiPath } from "./publicApi.js";
+import { sharedTokenRequest } from "./tokenRequest.js";
 
 export class ApiError extends Error {
   status: number;
@@ -187,7 +189,7 @@ export type AdminClaimantSummary = {
 
 export type FlagClaim = {
   id: number;
-  flagGridId: number;
+  flagGridId?: number | null;
   flagGridName: string;
   honoreeId?: number | null;
   honoreeName: string;
@@ -227,7 +229,7 @@ export type SaveHonoreeChangeRequest = {
 export type AdminReviewItem = {
   changeRequestId: number;
   claimId: number;
-  flagGridId: number;
+  flagGridId?: number | null;
   flagGridName: string;
   honoreeId?: number | null;
   honoreeName: string;
@@ -247,6 +249,10 @@ export type AdminReviewItem = {
   description?: string | null;
   awards?: string | null;
   conflictsServed?: string | null;
+  submissionKind?: string | null;
+  fieldChanges?: { label: string; previous: string; proposed: string }[] | null;
+  flagSpotAssigned?: boolean | null;
+  flagSpotNotice?: string | null;
 };
 
 
@@ -385,13 +391,15 @@ function honoreeChangeFormData(requestBody: SaveHonoreeChangeRequest, photo?: Fi
 
 async function getToken(instance: IPublicClientApplication, account: AccountInfo) {
   try {
-    const response = await instance.acquireTokenSilent({ ...loginRequest, account });
-    return response.accessToken;
+    return await sharedTokenRequest.acquire({
+      silent: async () => {
+        const response = await instance.acquireTokenSilent({ ...loginRequest, account });
+        return response.accessToken;
+      },
+      redirect: () => instance.acquireTokenRedirect({ ...loginRequest, account }),
+      isInteractionRequired: (error: unknown) => error instanceof InteractionRequiredAuthError
+    });
   } catch (error) {
-    if (error instanceof InteractionRequiredAuthError) {
-      await instance.acquireTokenRedirect({ ...loginRequest, account });
-    }
-
     const requestId = supportCode();
     throw new ApiError(
       [
@@ -415,6 +423,10 @@ async function request<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const method = options.method ?? "GET";
+  if (isPublicApiPath(url)) {
+    return publicRequest<T>(url, options);
+  }
+
   const token = await getToken(instance, account);
 
   const isFormData = options.body instanceof FormData;
@@ -565,15 +577,10 @@ export const flagClaimApi = {
 };
 
 export const lookupApi = {
-  serviceBranches: (instance: IPublicClientApplication, account: AccountInfo) =>
-    request<ServiceBranch[]>(instance, account, "/api/lookups/service-branches"),
+  serviceBranches: () => publicRequest<ServiceBranch[]>("/api/lookups/service-branches"),
 
-  serviceBranchCategories: (instance: IPublicClientApplication, account: AccountInfo) =>
-    request<ServiceBranchCategory[]>(
-      instance,
-      account,
-      "/api/lookups/service-branch-categories"
-    )
+  serviceBranchCategories: () =>
+    publicRequest<ServiceBranchCategory[]>("/api/lookups/service-branch-categories")
 };
 
 export const adminApi = {

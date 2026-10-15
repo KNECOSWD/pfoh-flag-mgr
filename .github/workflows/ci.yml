@@ -32,6 +32,9 @@ jobs:
       - name: Check administrator tab errors
         run: node --test frontend/scripts/check-admin-access.mjs
 
+      - name: Check profile load and public requests
+        run: node --test frontend/scripts/check-profile-load.mjs
+
       - name: Typecheck frontend
         working-directory: frontend
         run: |
