@@ -323,6 +323,11 @@ function reportableErrorMessage(error: unknown, fallback: string) {
   return `${fallback} Please share this message with the developer if the issue continues.`;
 }
 
+function honoreeCardViewUrl(url: string) {
+  const [base] = url.split("#");
+  return `${base}#view=Fit&zoom=page-fit`;
+}
+
 function compareFlagSections(left: string, right: string) {
   const normalize = (value: string) => value.trim().toUpperCase();
   const leftValue = normalize(left);
@@ -368,7 +373,8 @@ export default function App() {
   const [pendingReviews, setPendingReviews] = useState<AdminReviewItem[]>([]);
   const [pendingPhotoObjectUrl, setPendingPhotoObjectUrl] = useState("");
   const [submitPhase, setSubmitPhase] = useState("");
-  const [cardPreview, setCardPreview] = useState<{ url: string; title: string } | null>(null);
+  const [cardPreview, setCardPreview] = useState<{ url: string; title: string; revoke: boolean } | null>(null);
+  const cardPreviewFrameRef = useRef<HTMLIFrameElement | null>(null);
   const [printQueue, setPrintQueue] = useState<AdminPrintQueueItem[]>([]);
   const [selectedPrintIds, setSelectedPrintIds] = useState<number[]>([]);
   const [adminBusyId, setAdminBusyId] = useState<number | null>(null);
@@ -2155,24 +2161,57 @@ export default function App() {
 
   function closeCardPreview() {
     setCardPreview((current) => {
-      if (current?.url) URL.revokeObjectURL(current.url);
+      if (current?.revoke) URL.revokeObjectURL(current.url);
       return null;
     });
+  }
+
+  function showCardPreview(title: string, url: string, revoke: boolean) {
+    setCardPreview((current) => {
+      if (current?.revoke) URL.revokeObjectURL(current.url);
+      return { url, title, revoke };
+    });
+  }
+
+  async function openCardBlob(title: string, load: () => Promise<Blob>) {
+    setError("");
+    try {
+      const blob = await load();
+      showCardPreview(title, URL.createObjectURL(blob), true);
+    } catch (err) {
+      setError(reportableErrorMessage(err, "Unable to open the honoree card."));
+    }
   }
 
   async function openSubmissionCard(claim: FlagClaim) {
     if (!account) return;
 
+    await openCardBlob(claim.honoreeName || "Honoree", () =>
+      fetchAuthorizedBlob(instance, account, mySubmissionCardUrl(claim.id)));
+  }
+
+  async function openPublicHonoreeCard(honoreeId: number, title: string) {
     setError("");
+    const url = honoreePdfUrl(honoreeId);
     try {
-      const blob = await fetchAuthorizedBlob(instance, account, mySubmissionCardUrl(claim.id));
-      const url = URL.createObjectURL(blob);
-      const opened = window.open(url, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      if (!opened) {
-        setError("The browser blocked the honoree card. Allow pop-ups and try Download / Print Honoree PDF again.");
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Unable to open the honoree card.");
       }
+
+      const type = response.headers.get("content-type") ?? "";
+      if (type.includes("pdf") || type.includes("octet-stream") || type.trim() === "") {
+        showCardPreview(title, URL.createObjectURL(await response.blob()), true);
+        return;
+      }
+
+      showCardPreview(title, response.url || url, false);
     } catch (err) {
+      if (err instanceof TypeError) {
+        showCardPreview(title, url, false);
+        return;
+      }
+
       setError(reportableErrorMessage(err, "Unable to open the honoree card."));
     }
   }
@@ -2180,16 +2219,31 @@ export default function App() {
   async function previewHonoreeCard(item: AdminReviewItem) {
     if (!account) return;
 
-    setError("");
+    await openCardBlob(item.honoreeName, () =>
+      fetchAuthorizedBlob(instance, account, adminCardPreviewUrl(item.changeRequestId)));
+  }
+
+  function downloadCardPreview() {
+    if (!cardPreview) return;
+
+    const anchor = document.createElement("a");
+    anchor.href = cardPreview.url;
+    anchor.download = "honoree-card.pdf";
+    anchor.rel = "noopener";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  }
+
+  function printCardPreview() {
+    const frameWindow = cardPreviewFrameRef.current?.contentWindow;
+    if (!frameWindow) return;
+
     try {
-      const blob = await fetchAuthorizedBlob(instance, account, adminCardPreviewUrl(item.changeRequestId));
-      const url = URL.createObjectURL(blob);
-      setCardPreview((current) => {
-        if (current?.url) URL.revokeObjectURL(current.url);
-        return { url, title: item.honoreeName };
-      });
-    } catch (err) {
-      setError(reportableErrorMessage(err, "Unable to preview the honoree card."));
+      frameWindow.focus();
+      frameWindow.print();
+    } catch {
+      setError("The browser could not print this honoree card from the viewer. Use Download, then print the file.");
     }
   }
 
@@ -2589,18 +2643,28 @@ export default function App() {
 
           {cardPreview ? (
             <div
-              className="modalOverlay appConfirmOverlay"
+              className="modalOverlay appConfirmOverlay cardPreviewOverlay"
               role="dialog"
               aria-modal="true"
               aria-labelledby="card-preview-title"
               onClick={closeCardPreview}
             >
-              <div className="modalCard appConfirmModal" onClick={(event) => event.stopPropagation()}>
-                <p className="eyebrow">Administrator</p>
-                <h2 id="card-preview-title">Preview card</h2>
+              <div className="modalCard appConfirmModal cardPreviewModal" onClick={(event) => event.stopPropagation()}>
+                <h2 id="card-preview-title">Honoree Card</h2>
                 <p className="helperText">{cardPreview.title}</p>
-                <iframe className="cardPreviewFrame" title={`Honoree card for ${cardPreview.title}`} src={cardPreview.url} />
+                <iframe
+                  ref={cardPreviewFrameRef}
+                  className="cardPreviewFrame"
+                  title={`Honoree card for ${cardPreview.title}`}
+                  src={honoreeCardViewUrl(cardPreview.url)}
+                />
                 <div className="modalActions">
+                  <button type="button" onClick={downloadCardPreview}>
+                    Download
+                  </button>
+                  <button type="button" className="secondary" onClick={printCardPreview}>
+                    Print
+                  </button>
                   <button type="button" className="secondary" onClick={closeCardPreview}>
                     Close
                   </button>
@@ -3201,7 +3265,17 @@ export default function App() {
                         </dl>
 
                         <div className="cardActions">
-                          <a className="textLink" href={honoreePdfUrl(honoree.id)} target="_blank" rel="noreferrer">
+                          <a
+                            className="textLink"
+                            href={honoreePdfUrl(honoree.id)}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              void openPublicHonoreeCard(
+                                honoree.id,
+                                displayNameWithNickname(honoree.fullName, honoree.nickname)
+                              );
+                            }}
+                          >
                             Download / Print Honoree PDF
                           </a>
 
@@ -3666,7 +3740,7 @@ export default function App() {
                               className="secondary compactButton reviewPreviewButton"
                               onClick={() => void previewHonoreeCard(item)}
                             >
-                              Preview card
+                              Honoree Card
                             </button>
                           </td>
                         </tr>

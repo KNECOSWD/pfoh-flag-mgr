@@ -56,13 +56,56 @@ test("my submissions open the honoree card for that claim", () => {
   assert.match(slice, /Download \/ Print Honoree PDF/);
   assert.match(slice, /openSubmissionCard\(claim\)/);
   assert.match(source, /fetchAuthorizedBlob\(instance, account, mySubmissionCardUrl\(claim\.id\)\)/);
+  assert.doesNotMatch(source, /window\.open/);
+});
+
+test("honoree records and the review queue share the Honoree Card viewer", () => {
+  const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const modalStart = source.indexOf("{cardPreview ? (");
+  const modal = source.slice(modalStart, modalStart + 2200);
+  assert.ok(modalStart >= 0);
+  assert.match(modal, /<h2 id="card-preview-title">Honoree Card<\/h2>/);
+  assert.match(modal, /\{cardPreview\.title\}/);
+  assert.match(modal, />\s*Download\s*</);
+  assert.match(modal, />\s*Print\s*</);
+  assert.doesNotMatch(modal, /Administrator/);
+  assert.doesNotMatch(modal, /className="eyebrow"/);
+
+  const recordStart = source.indexOf('className="honoreeResults"');
+  const recordEnd = source.indexOf('className="honoreeActionArea"', recordStart);
+  const record = source.slice(recordStart, recordEnd);
+  assert.match(record, /Download \/ Print Honoree PDF/);
+  assert.match(record, /event\.preventDefault\(\)/);
+  assert.match(record, /openPublicHonoreeCard\(/);
+  assert.doesNotMatch(record, /target="_blank"/);
+
+  const reviewStart = source.indexOf('className="secondary compactButton reviewPreviewButton"');
+  const review = source.slice(reviewStart, reviewStart + 400);
+  assert.match(review, /previewHonoreeCard\(item\)/);
+  assert.match(review, />\s*Honoree Card\s*</);
+  assert.doesNotMatch(source, /Preview card/);
+});
+
+test("the honoree card viewer fits the whole page", () => {
+  const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  assert.match(app, /function honoreeCardViewUrl\(url: string\)/);
+  assert.match(app, /#view=Fit&zoom=page-fit/);
+  assert.match(app, /src=\{honoreeCardViewUrl\(cardPreview\.url\)\}/);
+  assert.match(app, /className="modalOverlay appConfirmOverlay cardPreviewOverlay"/);
+
+  const layout = css.slice(css.indexOf(".appConfirmOverlay.cardPreviewOverlay"));
+  assert.ok(layout.length > 0);
+  assert.match(layout, /\.appConfirmModal\.cardPreviewModal[\s\S]*width:\s*94vw !important/);
+  assert.match(layout, /\.appConfirmModal\.cardPreviewModal[\s\S]*height:\s*94vh !important/);
+  assert.match(layout, /@media \(max-width: 760px\)[\s\S]*\.appConfirmModal\.cardPreviewModal[\s\S]*width:\s*100% !important/);
+  assert.match(layout, /@media \(max-width: 760px\)[\s\S]*height:\s*100dvh !important/);
 });
 
 test("the review list shows a badge, field diff, and card preview", () => {
   const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.match(source, /submissionKindLabel\(item\.submissionKind\)/);
   assert.match(source, /fieldChangeText\(change\)/);
-  assert.match(source, /Preview card/);
   assert.match(source, /adminCardPreviewUrl\(item\.changeRequestId\)/);
   assert.match(source, /dropWithdrawnSubmission\(myClaims, pendingReviews, claim\.id\)/);
   assert.match(source, /submissionPhotoKind\(claim\) === "pending"/);
