@@ -641,6 +641,11 @@ export const adminApi = {
       body: JSON.stringify({ reviewNotes })
     }),
 
+  removedFromField: (instance: IPublicClientApplication, account: AccountInfo, changeRequestId: number) =>
+    request<{ message: string }>(instance, account, `/api/admin/review/${changeRequestId}/removed-from-field`, {
+      method: "POST"
+    }),
+
   downloadMergedPrintPdf: (
     instance: IPublicClientApplication,
     account: AccountInfo,

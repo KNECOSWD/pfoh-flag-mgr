@@ -7,8 +7,14 @@ public static class ReviewSubmissionDiff
 {
     public const string NewSubmission = "New";
     public const string Change = "Change";
+    public const string Withdrawal = "Withdrawal";
 
     public static string Kind(int? honoreeId) => honoreeId is > 0 ? Change : NewSubmission;
+
+    public static string Kind(string? requestStatus, int? honoreeId) =>
+        string.Equals(requestStatus, PendingReviewMaintenance.Withdrawal, StringComparison.OrdinalIgnoreCase)
+            ? Withdrawal
+            : Kind(honoreeId);
 
     public static ReviewSnapshot FromHonoree(Honoree honoree) => new(
         honoree.Id,

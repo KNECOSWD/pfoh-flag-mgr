@@ -259,6 +259,7 @@ public class FlagClaimsController(
 
         var claim = await db.FlagClaims
             .Include(c => c.HonoreeChangeRequests)
+            .Include(c => c.Honoree)
             .FirstOrDefaultAsync(c => c.Id == claimId, ct);
 
         if (claim is null)
@@ -277,12 +278,14 @@ public class FlagClaimsController(
         }
 
         var now = DateTime.UtcNow;
+        var honoree = claim.Honoree;
+        var approvedOnField = honoree is { IsActive: true, DeletedDate: null } && claim.HonoreeId is > 0;
         claim.ClaimStatus = "Unclaimed";
         claim.AdminNotes = string.IsNullOrWhiteSpace(claim.AdminNotes)
             ? $"Withdrawn on {now:u}."
             : $"{claim.AdminNotes}\nWithdrawn on {now:u}.";
 
-        if (claim.HonoreeId is not > 0)
+        if (!approvedOnField)
         {
             claim.FlagGridId = null;
         }
@@ -294,7 +297,7 @@ public class FlagClaimsController(
                 ? "Withdrawn by the submitter."
                 : $"{request.ReviewNotes}\nWithdrawn by the submitter.";
 
-            if (request.HonoreeId is not > 0)
+            if (!approvedOnField || request.HonoreeId is not > 0)
             {
                 request.FlagGridId = null;
             }
@@ -303,6 +306,50 @@ public class FlagClaimsController(
             if (HonoreeFileStorage.IsPendingPhotoName(request.PhotoFileName))
             {
                 request.PhotoFileName = null;
+            }
+        }
+
+        if (approvedOnField && honoree is not null)
+        {
+            var spotId = honoree.FlagGridId ?? claim.FlagGridId;
+            if (honoree.FlagGridId is null && spotId is not null)
+            {
+                honoree.FlagGridId = spotId;
+            }
+
+            if (claim.FlagGridId is null && spotId is not null)
+            {
+                claim.FlagGridId = spotId;
+            }
+
+            var alreadyQueued = claim.HonoreeChangeRequests.Any(request =>
+                request.RequestStatus == PendingReviewMaintenance.Withdrawal);
+            if (!alreadyQueued)
+            {
+                claim.HonoreeChangeRequests.Add(new HonoreeChangeRequest
+                {
+                    FlagClaimId = claim.Id,
+                    FlagGridId = spotId,
+                    HonoreeId = honoree.Id,
+                    FirstName = honoree.FirstName,
+                    MiddleName = honoree.MiddleName,
+                    LastName = honoree.LastName,
+                    Suffix = honoree.Suffix,
+                    Nickname = honoree.Nickname,
+                    Rank = honoree.Rank,
+                    ServiceBranchId = honoree.ServiceBranchId,
+                    ServiceBranchCategoryId = honoree.ServiceBranchCategoryId,
+                    StartYear = honoree.StartYear,
+                    EndYear = honoree.EndYear,
+                    ConflictsServed = honoree.ConflictsServed,
+                    Awards = honoree.Awards,
+                    Description = honoree.Description,
+                    KIA = honoree.KIA,
+                    RequestStatus = PendingReviewMaintenance.Withdrawal,
+                    CreatedUtc = now,
+                    SubmittedUtc = now,
+                    ReviewNotes = "Withdrawn by the submitter. The flag spot stays assigned until an administrator confirms it was removed from the field."
+                });
             }
         }
 
