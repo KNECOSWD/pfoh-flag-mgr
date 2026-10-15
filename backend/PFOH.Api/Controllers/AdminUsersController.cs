@@ -147,6 +147,9 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
         var tenantId = configuration["GraphAdmin:TenantId"] ?? configuration["AzureAd:TenantId"];
         var clientId = configuration["GraphAdmin:ClientId"] ?? configuration["AzureAd:ClientId"];
         var clientSecret = configuration["GraphAdmin:ClientSecret"] ?? configuration["AzureAd:ClientSecret"];
+        // App-role assignment target. This is not read while validating a token.
+        // It must be the API app the SPA requests (live id c9004926-396b-47e0-93e7-57f19504185e),
+        // because only that app's access token carries the PFOH.Admin role.
         var resourceAppClientId = configuration["GraphAdmin:ResourceAppClientId"] ?? configuration["AzureAd:ClientId"];
         var resourceServicePrincipalObjectId = configuration["GraphAdmin:ResourceServicePrincipalObjectId"];
         var adminAppRoleValue = configuration["GraphAdmin:AdminAppRoleValue"] ?? "PFOH.Admin";

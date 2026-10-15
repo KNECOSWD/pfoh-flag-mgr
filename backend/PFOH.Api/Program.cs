@@ -53,6 +53,9 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddAuthorization(options =>
 {
+    // Entra emits the app role as the "roles" claim on the access token.
+    // MapInboundClaims stays on, so JwtBearer renames "roles" to ClaimTypes.Role
+    // before RequireRole runs. A token for this API with no role claim is 403.
     options.AddPolicy("AdminOnly", policy =>
     {
         policy.RequireRole("PFOH.Admin", "Admin");
