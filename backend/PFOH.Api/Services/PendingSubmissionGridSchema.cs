@@ -1,0 +1,85 @@
+using Microsoft.EntityFrameworkCore;
+using PFOH.Api.Data;
+
+namespace PFOH.Api.Services;
+
+/// <summary>
+/// Lets a pending new submission exist without a flag grid.
+/// Production has no EF migration history, so this alters the two claim
+/// columns in place and does not rebuild the honoree tables.
+/// </summary>
+public static class PendingSubmissionGridSchema
+{
+    private static readonly SemaphoreSlim Gate = new(1, 1);
+    private static bool ready;
+
+    internal const string MakeFlagGridOptionalSql = """
+        IF OBJECT_ID(N'dbo.FlagClaims', N'U') IS NOT NULL
+           AND COLUMNPROPERTY(OBJECT_ID(N'dbo.FlagClaims'), N'FlagGridId', 'AllowsNull') = 0
+        BEGIN
+            DECLARE @dropClaimFk nvarchar(max) = N'';
+            SELECT @dropClaimFk = @dropClaimFk + N'ALTER TABLE [dbo].[FlagClaims] DROP CONSTRAINT ' + QUOTENAME(fk.name) + N';'
+            FROM sys.foreign_keys fk
+            INNER JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+            INNER JOIN sys.columns c ON c.object_id = fkc.parent_object_id AND c.column_id = fkc.parent_column_id
+            WHERE fk.parent_object_id = OBJECT_ID(N'dbo.FlagClaims')
+              AND c.name = N'FlagGridId';
+            IF LEN(@dropClaimFk) > 0 EXEC sp_executesql @dropClaimFk;
+
+            ALTER TABLE [dbo].[FlagClaims] ALTER COLUMN [FlagGridId] int NULL;
+
+            IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_FlagClaims_FlagGrids_FlagGridId')
+                ALTER TABLE [dbo].[FlagClaims] ADD CONSTRAINT [FK_FlagClaims_FlagGrids_FlagGridId]
+                    FOREIGN KEY ([FlagGridId]) REFERENCES [dbo].[FlagGrids] ([Id]);
+        END
+
+        IF OBJECT_ID(N'dbo.HonoreeChangeRequests', N'U') IS NOT NULL
+           AND COLUMNPROPERTY(OBJECT_ID(N'dbo.HonoreeChangeRequests'), N'FlagGridId', 'AllowsNull') = 0
+        BEGIN
+            DECLARE @dropRequestFk nvarchar(max) = N'';
+            SELECT @dropRequestFk = @dropRequestFk + N'ALTER TABLE [dbo].[HonoreeChangeRequests] DROP CONSTRAINT ' + QUOTENAME(fk.name) + N';'
+            FROM sys.foreign_keys fk
+            INNER JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+            INNER JOIN sys.columns c ON c.object_id = fkc.parent_object_id AND c.column_id = fkc.parent_column_id
+            WHERE fk.parent_object_id = OBJECT_ID(N'dbo.HonoreeChangeRequests')
+              AND c.name = N'FlagGridId';
+            IF LEN(@dropRequestFk) > 0 EXEC sp_executesql @dropRequestFk;
+
+            ALTER TABLE [dbo].[HonoreeChangeRequests] ALTER COLUMN [FlagGridId] int NULL;
+
+            IF NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_HonoreeChangeRequests_FlagGrids_FlagGridId')
+                ALTER TABLE [dbo].[HonoreeChangeRequests] ADD CONSTRAINT [FK_HonoreeChangeRequests_FlagGrids_FlagGridId]
+                    FOREIGN KEY ([FlagGridId]) REFERENCES [dbo].[FlagGrids] ([Id]);
+        END
+        """;
+
+    public static async Task EnsureAsync(PfohDbContext db, CancellationToken ct)
+    {
+        if (ready || !db.Database.IsRelational())
+        {
+            return;
+        }
+
+        var provider = db.Database.ProviderName ?? string.Empty;
+        if (!provider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        await Gate.WaitAsync(ct);
+        try
+        {
+            if (ready)
+            {
+                return;
+            }
+
+            await db.Database.ExecuteSqlRawAsync(MakeFlagGridOptionalSql, ct);
+            ready = true;
+        }
+        finally
+        {
+            Gate.Release();
+        }
+    }
+}

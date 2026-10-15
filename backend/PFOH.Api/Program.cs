@@ -53,6 +53,10 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddAuthorization(options =>
 {
+    // Entra emits the app role as the "roles" claim on the access token.
+    // AddMicrosoftIdentityWebApi leaves MapInboundClaims on and RoleClaimType at
+    // ClaimTypes.Role, so JwtBearer renames "roles" before RequireRole runs.
+    // Setting RoleClaimType to "roles" hides a role that is already in the token.
     options.AddPolicy("AdminOnly", policy =>
     {
         policy.RequireRole("PFOH.Admin", "Admin");
@@ -80,7 +84,15 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddHttpClient();
+builder.Services.AddApplicationInsightsTelemetry(options =>
+{
+    options.EnableAdaptiveSampling = false;
+});
+builder.Services.AddSingleton<HonoreeFileStorage>();
 builder.Services.AddScoped<UserProfileService>();
+builder.Services.AddScoped<FlagGridAssignment>();
+builder.Services.AddScoped<PendingReviewMaintenance>();
+builder.Services.AddScoped<ReprintQueueMaintenance>();
 
 var app = builder.Build();
 
@@ -108,6 +120,20 @@ app.UseAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "PFOH.Api" })).AllowAnonymous();
 app.MapControllers();
 app.MapFallbackToFile("index.html");
+
+try
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var startupDb = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+    await PendingSubmissionGridSchema.EnsureAsync(startupDb, CancellationToken.None);
+    var startupMaintenance = scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>();
+    await startupMaintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
+}
+catch (Exception ex)
+{
+    app.Logger.LogError(ex, "Pending submission cleanup did not finish. The site will keep running.");
+}
+
 app.Run();
 
 public partial class Program

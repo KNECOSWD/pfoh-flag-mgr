@@ -17,6 +17,7 @@ import {
   flagClaimApi,
   flagMapExportFields,
   honoreeApi,
+  adminCardPreviewUrl,
   changeRequestPhotoUrl,
   fetchAuthorizedBlob,
   honoreePdfUrl,
@@ -32,12 +33,86 @@ import {
   lookupApi,
   profileApi
 } from "./api";
+import { decideAdminLoad } from "./adminAccess.js";
+import { createBlobUrlCache } from "./blobUrlCache.js";
+import { shouldCompressHonoreePhoto, withDeadline } from "./prepareHonoreePhoto.js";
+import { createProfileLoadGate } from "./profileLoad.js";
+import {
+  dropWithdrawnSubmission,
+  fieldChangeText,
+  flagSpotLabel,
+  submissionKindLabel,
+  submissionPhotoKind
+} from "./submissionDisplay.js";
 import { loginRequest, readMappedAccountClaim } from "./authConfig";
 import { publishSignInError, subscribeSignInError } from "./signInError";
 import knecoLogoBlue from "./assets/kneco-logo-blue.png";
 import pfohFooterLogo from "./assets/pfoh-footer-logo.png";
 
 const RETURN_INTENT_KEY = "pfoh-return-intent";
+
+const thumbnailUrls = createBlobUrlCache({
+  createObjectURL: (blob) => URL.createObjectURL(blob),
+  revokeObjectURL: (url) => URL.revokeObjectURL(url)
+});
+
+function AuthorizedThumbnail({
+  instance,
+  account,
+  url,
+  photoKey,
+  alt,
+  className,
+  emptyLabel
+}: {
+  instance: Parameters<typeof fetchAuthorizedBlob>[0];
+  account: Parameters<typeof fetchAuthorizedBlob>[1];
+  url: string;
+  photoKey: string;
+  alt: string;
+  className: string;
+  emptyLabel: string | null;
+}) {
+  const [src, setSrc] = useState("");
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    let held = false;
+    setFailed(false);
+    setSrc("");
+
+    void (async () => {
+      try {
+        const blob = await fetchAuthorizedBlob(instance, account, url);
+        if (!active) return;
+        held = true;
+        setSrc(thumbnailUrls.hold(photoKey, blob));
+      } catch {
+        if (active) setFailed(true);
+      }
+    })();
+
+    return () => {
+      active = false;
+      if (held) {
+        thumbnailUrls.release(photoKey);
+        held = false;
+      }
+    };
+  }, [account, instance, photoKey, url]);
+
+  if (!src && !failed) {
+    return <span className={className} aria-busy="true" />;
+  }
+
+  if (!src || failed) {
+    if (!emptyLabel) return null;
+    return <div className={`${className} ownedFlagImagePlaceholder`}>{emptyLabel}</div>;
+  }
+
+  return <img className={className} src={src} alt={alt} />;
+}
 
 const legacySubmitHonoreeAction = "submit-veteran" as const;
 
@@ -285,9 +360,13 @@ export default function App() {
   const [searchLoading, setSearchLoading] = useState(false);
 
   const [isAdmin, setIsAdmin] = useState(false);
+  const [reviewLoadError, setReviewLoadError] = useState("");
+  const [printLoadError, setPrintLoadError] = useState("");
+  const [flagMapLoadError, setFlagMapLoadError] = useState("");
   const [pendingReviews, setPendingReviews] = useState<AdminReviewItem[]>([]);
-  const [reviewPhotoUrls, setReviewPhotoUrls] = useState<Record<number, string>>({});
   const [pendingPhotoObjectUrl, setPendingPhotoObjectUrl] = useState("");
+  const [submitPhase, setSubmitPhase] = useState("");
+  const [cardPreview, setCardPreview] = useState<{ url: string; title: string } | null>(null);
   const [printQueue, setPrintQueue] = useState<AdminPrintQueueItem[]>([]);
   const [selectedPrintIds, setSelectedPrintIds] = useState<number[]>([]);
   const [adminBusyId, setAdminBusyId] = useState<number | null>(null);
@@ -324,6 +403,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [flagSpotNotice, setFlagSpotNotice] = useState("");
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [activeRoute, setActiveRoute] = useState<AppRoute>(() => normalizeAppRoute(window.location.pathname));
@@ -597,18 +677,36 @@ export default function App() {
     if (message) setError(message);
   }), []);
 
+  const profileLoadGate = useRef(createProfileLoadGate());
+  const profileAccountRef = useRef(account);
+  const profileInstanceRef = useRef(instance);
+  profileAccountRef.current = account;
+  profileInstanceRef.current = instance;
+
   useEffect(() => {
-    if (!isAuthenticated || !account) {
+    if (!isAuthenticated || !accountKey) {
+      profileLoadGate.current.reset();
       setSavedDisplayName("");
+      return;
+    }
+
+    if (!profileLoadGate.current.claim(accountKey)) {
+      return;
+    }
+
+    const currentAccount = profileAccountRef.current;
+    if (!currentAccount) {
+      profileLoadGate.current.release(accountKey);
       return;
     }
 
     let cancelled = false;
 
-    profileApi.get(instance, account)
+    profileApi.get(profileInstanceRef.current, currentAccount)
       .then((profile) => {
         if (cancelled) return;
 
+        profileLoadGate.current.settle(accountKey);
         setSavedDisplayName((current) => {
           if (current.trim()) return current;
           return profile.hasSavedDisplayName ? profile.displayName : "";
@@ -618,15 +716,16 @@ export default function App() {
         }
       })
       .catch(() => {
-        if (!cancelled) {
-          setSavedDisplayName("");
-        }
+        if (cancelled) return;
+        profileLoadGate.current.settle(accountKey);
+        setSavedDisplayName("");
       });
 
     return () => {
       cancelled = true;
+      profileLoadGate.current.release(accountKey);
     };
-  }, [isAuthenticated, account, accountKey, instance]);
+  }, [isAuthenticated, accountKey]);
 
   async function openProfile() {
     if (!account) return;
@@ -869,33 +968,68 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, account?.homeAccountId]);
 
+  async function loadAdminPanel<T>(name: string, fallback: string, load: () => Promise<T>) {
+    try {
+      const value = await load();
+      return { name, ok: true as const, status: 200, message: "", value };
+    } catch (err) {
+      return {
+        name,
+        ok: false as const,
+        status: err instanceof ApiError ? err.status : 0,
+        message: reportableErrorMessage(err, fallback),
+        value: null
+      };
+    }
+  }
+
   async function loadAdminData() {
     if (!account) return;
 
-    try {
-      const [pending, queue, positions] = await Promise.all([
-        adminApi.pending(instance, account),
-        adminApi.printQueue(instance, account),
-        adminApi.flagPositions(instance, account)
-      ]);
+    const [pendingResult, queueResult, positionsResult] = await Promise.all([
+      loadAdminPanel("review", "Pending honoree reviews could not be loaded.", () => adminApi.pending(instance, account)),
+      loadAdminPanel("printing", "The honoree print queue could not be loaded.", () => adminApi.printQueue(instance, account)),
+      loadAdminPanel("flagMap", "The flag map could not be loaded.", () => adminApi.flagPositions(instance, account))
+    ]);
 
-      setIsAdmin(true);
-      setPendingReviews(pending);
-      setPrintQueue(queue);
-      setFlagPositions(positions);
+    const decision = decideAdminLoad([pendingResult, queueResult, positionsResult]);
+    if (!decision.isAdmin) {
+      setIsAdmin(false);
+      setPendingReviews([]);
+      setPrintQueue([]);
+      setFlagPositions([]);
+      setSelectedPrintIds([]);
+      setReviewLoadError("");
+      setPrintLoadError("");
+      setFlagMapLoadError("");
+      return;
+    }
+
+    setIsAdmin(true);
+    setReviewLoadError(decision.errors.review ?? "");
+    setPrintLoadError(decision.errors.printing ?? "");
+    setFlagMapLoadError(decision.errors.flagMap ?? "");
+
+    if (pendingResult.ok) {
+      setPendingReviews(pendingResult.value);
+    } else {
+      setPendingReviews([]);
+    }
+
+    if (queueResult.ok) {
+      setPrintQueue(queueResult.value);
       setSelectedPrintIds((current) =>
-        current.filter((id) => queue.some((item) => item.changeRequestId === id))
+        current.filter((id) => queueResult.value.some((item) => item.changeRequestId === id))
       );
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 403) {
-        setIsAdmin(false);
-        setPendingReviews([]);
-        setPrintQueue([]);
-        setFlagPositions([]);
-        return;
-      }
+    } else {
+      setPrintQueue([]);
+      setSelectedPrintIds([]);
+    }
 
-      throw err;
+    if (positionsResult.ok) {
+      setFlagPositions(positionsResult.value);
+    } else {
+      setFlagPositions([]);
     }
   }
 
@@ -906,22 +1040,26 @@ export default function App() {
     setError("");
 
     try {
-      const [claims, branches, categories] = await Promise.all([
-        flagClaimApi.mine(instance, account),
-        lookupApi.serviceBranches(instance, account),
-        lookupApi.serviceBranchCategories(instance, account)
-      ]);
+      const [claims, branches, categories] = await withDeadline(
+        () => Promise.all([
+          flagClaimApi.mine(instance, account),
+          lookupApi.serviceBranches(),
+          lookupApi.serviceBranchCategories()
+        ]),
+        20000,
+        "Loading your submissions timed out."
+      );
 
       setMyClaims(claims);
       setServiceBranches(branches);
       setServiceBranchCategories(categories);
-
-      await loadAdminData();
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to load flag data."));
     } finally {
       setLoading(false);
     }
+
+    void loadAdminData();
   }
 
   useEffect(() => {
@@ -971,53 +1109,6 @@ export default function App() {
     return () => URL.revokeObjectURL(previewUrl);
   }, [selectedPhoto]);
 
-  const pendingReviewPhotoKey = pendingReviews
-    .filter((item) => isPendingHonoreePhoto(item.photoFileName))
-    .map((item) => `${item.changeRequestId}:${item.photoFileName}`)
-    .join("|");
-
-  useEffect(() => {
-    if (!account || !pendingReviewPhotoKey) {
-      setReviewPhotoUrls({});
-      return;
-    }
-
-    const items = pendingReviews.filter((item) => isPendingHonoreePhoto(item.photoFileName));
-    let cancelled = false;
-    const created: string[] = [];
-
-    void (async () => {
-      const next: Record<number, string> = {};
-
-      await Promise.all(items.map(async (item) => {
-        try {
-          const blob = await fetchAuthorizedBlob(instance, account, changeRequestPhotoUrl(item.changeRequestId));
-          if (cancelled) {
-            return;
-          }
-
-          const url = URL.createObjectURL(blob);
-          created.push(url);
-          next[item.changeRequestId] = url;
-        } catch {
-          // A missing pending honoree photo should not block the rest of the review list.
-        }
-      }));
-
-      if (cancelled) {
-        created.forEach((url) => URL.revokeObjectURL(url));
-        return;
-      }
-
-      setReviewPhotoUrls(next);
-    })();
-
-    return () => {
-      cancelled = true;
-      created.forEach((url) => URL.revokeObjectURL(url));
-    };
-  }, [account, instance, pendingReviewPhotoKey, pendingReviews]);
-
   const pendingChangeRequestPhotoId =
     !isNominating && isPendingHonoreePhoto(selectedClaim?.latestChangeRequest?.photoFileName)
       ? selectedClaim?.latestChangeRequest?.id ?? null
@@ -1059,7 +1150,7 @@ export default function App() {
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [account, instance, pendingChangeRequestPhotoId]);
+  }, [accountKey, instance, pendingChangeRequestPhotoId]);
 
   async function searchHonorees(event: React.FormEvent) {
     event.preventDefault();
@@ -1073,7 +1164,7 @@ export default function App() {
       setHonoreeResults(results);
       setHonoreeSearchPerformed(true);
       setClaimantsByHonoreeId({});
-      await loadClaimantsForSearchResults(results);
+      void loadClaimantsForSearchResults(results);
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to search honorees."));
     } finally {
@@ -1225,6 +1316,10 @@ export default function App() {
     try {
       await flagClaimApi.unclaim(instance, account, claim.id);
 
+      const remaining = dropWithdrawnSubmission(myClaims, pendingReviews, claim.id);
+      setMyClaims(remaining.claims);
+      setPendingReviews(remaining.reviews);
+
       if (selectedClaim?.id === claim.id) {
         setSelectedClaim(null);
         setForm(blankForm);
@@ -1232,7 +1327,7 @@ export default function App() {
         setSelectedPhotoRotation(0);
       }
 
-      await loadData();
+      void loadData();
       setNotice(`${claim.honoreeName || "This submission"} was withdrawn.`);
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to withdraw this submission."));
@@ -1474,6 +1569,54 @@ export default function App() {
     return rotateImageFile(selectedPhoto, selectedPhotoRotation);
   }
 
+  async function resizeHonoreePhoto(file: File, image: HTMLImageElement) {
+    const longest = Math.max(image.naturalWidth, image.naturalHeight);
+    const scale = longest > 1600 ? 1600 / longest : 1;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) {
+      throw new Error("Unable to prepare the photo.");
+    }
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (createdBlob) => {
+          if (createdBlob) {
+            resolve(createdBlob);
+          } else {
+            reject(new Error("Unable to prepare the photo."));
+          }
+        },
+        "image/jpeg",
+        0.82
+      );
+    });
+    const name = file.name.replace(/\.\w+$/, "") || "honoree-photo";
+    return new File([blob], `${name}.jpg`, { type: "image/jpeg", lastModified: Date.now() });
+  }
+
+  async function prepareSubmissionPhoto() {
+    setSubmitPhase("Preparing photo...");
+    return withDeadline(async () => {
+      const file = await getSelectedPhotoForUpload();
+      if (!file) return null;
+
+      const image = await loadImageFromFile(file);
+      if (!shouldCompressHonoreePhoto(file, image.naturalWidth, image.naturalHeight)) {
+        return file;
+      }
+
+      return resizeHonoreePhoto(file, image);
+    }, 20000, "Preparing the photo took too long. Try a smaller photo.");
+  }
+
+  function rememberSubmission(claim: FlagClaim) {
+    setMyClaims((current) => [claim, ...current.filter((item) => item.id !== claim.id)]);
+  }
+
   async function rotateImageFile(file: File, rotationDegrees: number): Promise<File> {
     const image = await loadImageFromFile(file);
     const normalizedRotation = ((rotationDegrees % 360) + 360) % 360;
@@ -1553,25 +1696,34 @@ export default function App() {
     if (!account) return;
 
     setSaving(true);
+    setSubmitPhase("Preparing photo...");
     setError("");
     setNotice("");
 
     try {
       const formToSubmit = applySubmitterProfileDefaults(form);
-      const photoForUpload = await getSelectedPhotoForUpload();
+      const photoForUpload = await prepareSubmissionPhoto();
       setForm(formToSubmit);
-      await flagClaimApi.nominate(instance, account, formToSubmit, photoForUpload);
-      await loadData();
+      setSubmitPhase("Uploading submission...");
+      const claim = await withDeadline(
+        () => flagClaimApi.nominate(instance, account, formToSubmit, photoForUpload),
+        75000,
+        "Uploading the submission took too long."
+      );
+      rememberSubmission(claim);
+      setSubmitPhase("Finishing submission...");
       setIsNominating(false);
       setSelectedPhoto(null);
       setSelectedPhotoRotation(0);
       setForm(blankForm);
       setNotice(publicCopy.newRecordConfirmation);
       navigateToRoute("/my-flags");
+      void loadData();
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to submit nomination."));
     } finally {
       setSaving(false);
+      setSubmitPhase("");
     }
   }
 
@@ -1604,22 +1756,38 @@ export default function App() {
     const isAdminDirectEdit = selectedClaim.claimStatus === "AdminDirectEdit";
 
     setSaving(true);
+    setSubmitPhase("Preparing photo...");
     setError("");
     setNotice("");
 
     try {
       const formToSubmit = applySubmitterProfileDefaults(form);
-      const photoForUpload = await getSelectedPhotoForUpload();
+      const photoForUpload = await prepareSubmissionPhoto();
       setForm(formToSubmit);
-      await flagClaimApi.saveDraft(instance, account, selectedClaim.id, formToSubmit, photoForUpload);
+      setSubmitPhase("Uploading submission...");
+      await withDeadline(
+        () => flagClaimApi.saveDraft(instance, account, selectedClaim.id, formToSubmit, photoForUpload),
+        75000,
+        "Uploading the submission took too long."
+      );
 
       if (isAdminDirectEdit) {
-        await flagClaimApi.applyAdminEditReprint(instance, account, selectedClaim.id);
-        await loadData();
+        const claim = await withDeadline(
+          () => flagClaimApi.applyAdminEditReprint(instance, account, selectedClaim.id),
+          75000,
+          "Uploading the submission took too long."
+        );
+        rememberSubmission(claim);
+        setSubmitPhase("Finishing submission...");
         setNotice("Admin edit applied and added to the reprint queue.");
       } else {
-        await flagClaimApi.submit(instance, account, selectedClaim.id);
-        await loadData();
+        const claim = await withDeadline(
+          () => flagClaimApi.submit(instance, account, selectedClaim.id),
+          75000,
+          "Uploading the submission took too long."
+        );
+        rememberSubmission(claim);
+        setSubmitPhase("Finishing submission...");
         setNotice(publicCopy.editConfirmation);
       }
 
@@ -1631,10 +1799,13 @@ export default function App() {
       if (!isAdminDirectEdit) {
         navigateToRoute("/my-flags");
       }
+
+      void loadData();
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to submit changes."));
     } finally {
       setSaving(false);
+      setSubmitPhase("");
     }
   }
 
@@ -1980,6 +2151,29 @@ export default function App() {
     }
   }
 
+  function closeCardPreview() {
+    setCardPreview((current) => {
+      if (current?.url) URL.revokeObjectURL(current.url);
+      return null;
+    });
+  }
+
+  async function previewHonoreeCard(item: AdminReviewItem) {
+    if (!account) return;
+
+    setError("");
+    try {
+      const blob = await fetchAuthorizedBlob(instance, account, adminCardPreviewUrl(item.changeRequestId));
+      const url = URL.createObjectURL(blob);
+      setCardPreview((current) => {
+        if (current?.url) URL.revokeObjectURL(current.url);
+        return { url, title: item.honoreeName };
+      });
+    } catch (err) {
+      setError(reportableErrorMessage(err, "Unable to preview the honoree card."));
+    }
+  }
+
   async function approveReview(item: AdminReviewItem, requiresCardReprint: boolean) {
     if (!account) {
       setError("You must be signed in as an administrator to approve review items.");
@@ -1997,8 +2191,14 @@ export default function App() {
     setNotice(`${requiresCardReprint ? "Approving and queuing reprint" : "Approving"} ${item.honoreeName}...`);
 
     try {
-      await adminApi.approve(instance, account, item.changeRequestId, requiresCardReprint);
+      const approved = await adminApi.approve(instance, account, item.changeRequestId, requiresCardReprint);
       await loadData();
+      if (approved.flagSpotAssigned === false) {
+        setFlagSpotNotice(
+          approved.flagSpotNotice ||
+            "This honoree was approved and added, but no flag spot is available. Free a spot and assign the honoree manually in the Flag Map."
+        );
+      }
       setNotice(`${item.honoreeName} approved${requiresCardReprint ? " and added to the card reprint queue" : ""}.`);
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to approve item."));
@@ -2343,6 +2543,51 @@ export default function App() {
                 ))}
               </div>
             </section>
+          ) : null}
+
+          {flagSpotNotice ? (
+            <div
+              className="modalOverlay appConfirmOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="flag-spot-notice-title"
+            >
+              <div className="modalCard appConfirmModal" onClick={(event) => event.stopPropagation()}>
+                <p className="eyebrow">Flag Map</p>
+                <h2 id="flag-spot-notice-title">No flag spot is available</h2>
+                <p className="helperText">{flagSpotNotice}</p>
+                <div className="modalActions">
+                  <button type="button" onClick={() => { setFlagSpotNotice(""); navigateToRoute("/admin/flag-map"); }}>
+                    Open Flag Map
+                  </button>
+                  <button type="button" className="secondary" onClick={() => setFlagSpotNotice("")}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {cardPreview ? (
+            <div
+              className="modalOverlay appConfirmOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="card-preview-title"
+              onClick={closeCardPreview}
+            >
+              <div className="modalCard appConfirmModal" onClick={(event) => event.stopPropagation()}>
+                <p className="eyebrow">Administrator</p>
+                <h2 id="card-preview-title">Preview card</h2>
+                <p className="helperText">{cardPreview.title}</p>
+                <iframe className="cardPreviewFrame" title={`Honoree card for ${cardPreview.title}`} src={cardPreview.url} />
+                <div className="modalActions">
+                  <button type="button" className="secondary" onClick={closeCardPreview}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
           ) : null}
 
           {(error || notice) && (
@@ -3112,7 +3357,17 @@ export default function App() {
 
                   return (
                     <article key={claim.id} className="ownedFlagCard">
-                      {claim.honoreeImageUrl ? (
+                      {submissionPhotoKind(claim) === "pending" && account && claim.latestChangeRequest ? (
+                        <AuthorizedThumbnail
+                          instance={instance}
+                          account={account}
+                          url={changeRequestPhotoUrl(claim.latestChangeRequest.id)}
+                          photoKey={`${claim.latestChangeRequest.id}:${claim.latestChangeRequest.photoFileName}`}
+                          alt={`${claim.honoreeName || "Honoree"} photo`}
+                          className="ownedFlagImage"
+                          emptyLabel="No photo"
+                        />
+                      ) : claim.honoreeImageUrl ? (
                         <img
                           className="ownedFlagImage"
                           src={claim.honoreeImageUrl}
@@ -3126,7 +3381,7 @@ export default function App() {
                         <p className="eyebrow">Honoree</p>
                         <h3>{claim.honoreeName || "Honoree details pending"}</h3>
                         <p>
-                          Flag grid {claim.flagGridName || `Grid ${claim.flagGridId}`} • Submission #{claim.id}
+                          Flag grid {flagSpotLabel(claim.flagGridName, claim.flagGridId)} • Submission #{claim.id}
                         </p>
                       </div>
 
@@ -3254,7 +3509,9 @@ export default function App() {
                   </div>
                 ) : null}
 
-              {pendingReviews.length === 0 ? (
+              {reviewLoadError ? (
+                <p className="message error" role="alert">{reviewLoadError}</p>
+              ) : pendingReviews.length === 0 ? (
                 <p>No submitted changes are waiting for review.</p>
               ) : (
                 <div className="tableWrap">
@@ -3273,15 +3530,22 @@ export default function App() {
                         <tr key={item.changeRequestId}>
                           <td data-label="Honoree">
                             <div className="reviewHonoreeCell">
-                              {isPendingHonoreePhoto(item.photoFileName) && reviewPhotoUrls[item.changeRequestId] ? (
-                                <img
-                                  className="reviewPendingPhoto"
-                                  src={reviewPhotoUrls[item.changeRequestId]}
+                              {isPendingHonoreePhoto(item.photoFileName) && account ? (
+                                <AuthorizedThumbnail
+                                  instance={instance}
+                                  account={account}
+                                  url={changeRequestPhotoUrl(item.changeRequestId)}
+                                  photoKey={`${item.changeRequestId}:${item.photoFileName}`}
                                   alt={`${item.honoreeName} pending honoree photo`}
+                                  className="reviewPendingPhoto"
+                                  emptyLabel={null}
                                 />
                               ) : null}
                               <div>
-                                <strong>{item.honoreeName}</strong>
+                                <strong>{item.honoreeName}</strong>{" "}
+                                <span className={`reviewKindBadge ${item.submissionKind === "Change" ? "isChange" : "isNew"}`}>
+                                  {submissionKindLabel(item.submissionKind)}
+                                </span>
                                 <br />
                                 <span>{[item.rank, item.serviceBranchName].filter(Boolean).join(" • ")}</span>
                                 <details className="reviewDetails">
@@ -3299,12 +3563,26 @@ export default function App() {
                                       <dt>Conflicts served</dt>
                                       <dd>{item.conflictsServed?.trim() || "Not provided"}</dd>
                                     </div>
+                                    {item.submissionKind === "Change" && item.fieldChanges && item.fieldChanges.length > 0 ? (
+                                      <div>
+                                        <dt>Changes</dt>
+                                        <dd>
+                                          <ul className="reviewFieldChanges">
+                                            {item.fieldChanges.map((change) => (
+                                              <li key={change.label}>
+                                                <strong>{change.label}</strong> {fieldChangeText(change)}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </dd>
+                                      </div>
+                                    ) : null}
                                   </dl>
                                 </details>
                               </div>
                             </div>
                           </td>
-                          <td data-label="Flag grid">{item.flagGridName || item.flagGridId}</td>
+                          <td data-label="Flag grid">{flagSpotLabel(item.flagGridName, item.flagGridId)}</td>
                           <td data-label="Submitted by">
                             {item.claimantName || item.claimantEmail}
                             <br />
@@ -3357,6 +3635,13 @@ export default function App() {
                               <option value="approve-only">Approve only</option>
                               <option value="reject">Reject</option>
                             </select>
+                            <button
+                              type="button"
+                              className="secondary compactButton reviewPreviewButton"
+                              onClick={() => void previewHonoreeCard(item)}
+                            >
+                              Preview card
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -3479,6 +3764,10 @@ export default function App() {
                     </div>
                   ) : null}
 
+                  {flagMapLoadError ? (
+                    <p className="message error" role="alert">{flagMapLoadError}</p>
+                  ) : null}
+
                   <p className="helperText flagAssignmentHelp">
                     Click a flag grid to view details, assign open grids, or clear occupied grids.
                   </p>
@@ -3554,7 +3843,7 @@ export default function App() {
                   </div>
 
                   <div className="flagSeatMap" role="grid" aria-label="Flag grid seat map">
-                    {flagPositionRows.length === 0 ? (
+                    {flagMapLoadError ? null : flagPositionRows.length === 0 ? (
                       <p className="emptyState">No flag grids match the current filters.</p>
                     ) : (
                       flagPositionRows.map((row) => (
@@ -3608,7 +3897,9 @@ export default function App() {
                       <span className="countBadge">{printQueue.length}</span>
                     </h2>
                     <p className="helperText">
-                      {printQueue.length === 0
+                      {printLoadError
+                        ? "The honoree print queue could not be loaded."
+                        : printQueue.length === 0
                         ? "No approved cards are waiting for reprint."
                         : `${printQueue.length} card${printQueue.length === 1 ? "" : "s"} ready to print.`}
                     </p>
@@ -3636,7 +3927,9 @@ export default function App() {
                   </div>
                 </div>
 
-              {printQueue.length === 0 ? (
+              {printLoadError ? (
+                <p id="reprint-queue" className="message error" role="alert">{printLoadError}</p>
+              ) : printQueue.length === 0 ? (
                 <p id="reprint-queue" className="compactEmptyState">No approved cards are waiting for reprint.</p>
               ) : (
                 <section id="reprint-queue" className="reprintQueuePanel compactReprintQueuePanel">
@@ -4009,7 +4302,7 @@ export default function App() {
                   ) : null}
                   <button type="submit" disabled={saving}>
                     {saving
-                      ? "Submitting..."
+                      ? submitPhase || "Submitting..."
                       : selectedClaim?.claimStatus === "AdminDirectEdit"
                         ? "Save and queue reprint"
                         : "Submit for review"}

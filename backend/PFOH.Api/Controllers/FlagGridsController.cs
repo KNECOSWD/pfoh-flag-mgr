@@ -17,8 +17,8 @@ public class FlagGridsController(PfohDbContext db) : ControllerBase
         var activeClaimStatuses = new[] { "Claimed", "Submitted", "Approved" };
 
         var claimedGridIds = db.FlagClaims
-            .Where(c => activeClaimStatuses.Contains(c.ClaimStatus))
-            .Select(c => c.FlagGridId);
+            .Where(c => c.FlagGridId.HasValue && activeClaimStatuses.Contains(c.ClaimStatus))
+            .Select(c => c.FlagGridId!.Value);
 
         var flags = await db.AvailableFlagGrids
             .Where(f => !claimedGridIds.Contains(f.Id))

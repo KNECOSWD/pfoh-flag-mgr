@@ -4,7 +4,7 @@ public class FlagClaim
 {
     public int Id { get; set; }
 
-    public int FlagGridId { get; set; }
+    public int? FlagGridId { get; set; }
     public int? HonoreeId { get; set; }
 
     // Object ID from the External ID / Entra token.

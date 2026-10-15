@@ -5,6 +5,14 @@ using PFOH.Api.Models;
 
 namespace PFOH.Api.Services;
 
+public enum HonoreeImageProbeResult
+{
+    NoPhoto,
+    Found,
+    Missing,
+    Failed
+}
+
 public class HonoreeFileStorage(IConfiguration configuration)
 {
     public const string ImageContainerName = "honoreeimages";
@@ -45,7 +53,7 @@ public class HonoreeFileStorage(IConfiguration configuration)
         return "configured storage account";
     }
 
-    public async Task<string?> UploadPendingImageAsync(IFormFile? photo, int changeRequestId, CancellationToken ct)
+    public virtual async Task<string?> UploadPendingImageAsync(IFormFile? photo, int changeRequestId, CancellationToken ct)
     {
         if (photo is null || photo.Length == 0)
         {
@@ -58,7 +66,51 @@ public class HonoreeFileStorage(IConfiguration configuration)
         return fileName;
     }
 
-    public async Task<string?> PromoteImageAsync(string? sourceFileName, int honoreeId, CancellationToken ct)
+    public virtual async Task DeletePendingImageAsync(string? photoFileName, CancellationToken ct)
+    {
+        var name = NormalizePendingName(photoFileName);
+        if (name is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var container = await GetExistingContainerAsync(ImageContainerName, ct);
+            if (container is null)
+            {
+                return;
+            }
+
+            await container.GetBlobClient(name).DeleteIfExistsAsync(cancellationToken: ct);
+        }
+        catch
+        {
+            // Withdrawing or superseding a submission still commits when storage is down.
+        }
+    }
+
+    public static bool IsPendingPhotoName(string? photoFileName) =>
+        NormalizePendingName(photoFileName) is not null;
+
+    public static string? NormalizePendingName(string? photoFileName)
+    {
+        if (string.IsNullOrWhiteSpace(photoFileName))
+        {
+            return null;
+        }
+
+        var name = photoFileName.Trim().Replace('\\', '/');
+        if (!name.StartsWith("pending/", StringComparison.OrdinalIgnoreCase) ||
+            name.Contains("..", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return name;
+    }
+
+    public virtual async Task<string?> PromoteImageAsync(string? sourceFileName, int honoreeId, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(sourceFileName))
         {
@@ -250,14 +302,41 @@ public class HonoreeFileStorage(IConfiguration configuration)
         return null;
     }
 
-    public async Task<HonoreeImageContent?> OpenHonoreeImageAsync(string? photoFileName, CancellationToken ct)
+    public virtual async Task<HonoreeImageProbeResult> ProbeHonoreeImageAsync(string? photoFileName, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(photoFileName))
+        {
+            return HonoreeImageProbeResult.NoPhoto;
+        }
+
+        try
+        {
+            var connectionString = GetConnectionString();
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                return HonoreeImageProbeResult.Failed;
+            }
+
+            var container = new BlobContainerClient(connectionString, ImageContainerName);
+            var blob = container.GetBlobClient(photoFileName);
+            return await blob.ExistsAsync(ct)
+                ? HonoreeImageProbeResult.Found
+                : HonoreeImageProbeResult.Missing;
+        }
+        catch (Exception)
+        {
+            return HonoreeImageProbeResult.Failed;
+        }
+    }
+
+    public virtual async Task<HonoreeImageContent?> OpenHonoreeImageAsync(string? photoFileName, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(photoFileName))
         {
             return null;
         }
 
-        var container = await GetContainerAsync(ImageContainerName, ct);
+        var container = GetReadContainer(ImageContainerName);
         var blob = container.GetBlobClient(photoFileName);
 
         if (!await blob.ExistsAsync(ct))
@@ -277,11 +356,11 @@ public class HonoreeFileStorage(IConfiguration configuration)
         return new HonoreeImageContent(stream, contentType);
     }
 
-    public async Task<byte[]?> DownloadImageAsync(string? photoFileName, string? fallbackImageUrl, CancellationToken ct)
+    public virtual async Task<byte[]?> DownloadImageAsync(string? photoFileName, string? fallbackImageUrl, CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(photoFileName))
         {
-            var container = await GetContainerAsync(ImageContainerName, ct);
+            var container = GetReadContainer(ImageContainerName);
             var blob = container.GetBlobClient(photoFileName);
 
             if (await blob.ExistsAsync(ct))
@@ -352,8 +431,6 @@ public class HonoreeFileStorage(IConfiguration configuration)
         var container = await GetContainerAsync(ImageContainerName, ct);
         var blob = container.GetBlobClient(fileName);
 
-        await blob.DeleteIfExistsAsync(cancellationToken: ct);
-
         await using var stream = photo.OpenReadStream();
         await blob.UploadAsync(
             stream,
@@ -414,7 +491,7 @@ public class HonoreeFileStorage(IConfiguration configuration)
         return container;
     }
 
-    private async Task<BlobContainerClient> GetContainerAsync(string containerName, CancellationToken ct)
+    private BlobContainerClient GetReadContainer(string containerName)
     {
         var connectionString = GetConnectionString();
 
@@ -423,7 +500,14 @@ public class HonoreeFileStorage(IConfiguration configuration)
             throw new InvalidOperationException("Missing BlobStorage__ConnectionString. Set this App Service environment variable to the connection string for the storage account that contains honoreepdfs, honoreeimages, and servicelogos.");
         }
 
-        var container = new BlobContainerClient(connectionString, containerName);
+        // Reads must not call CreateIfNotExists. That PUT returns 409 for a
+        // container that already exists and was showing up on every photo request.
+        return new BlobContainerClient(connectionString, containerName);
+    }
+
+    private async Task<BlobContainerClient> GetContainerAsync(string containerName, CancellationToken ct)
+    {
+        var container = GetReadContainer(containerName);
         await container.CreateIfNotExistsAsync(cancellationToken: ct);
         return container;
     }

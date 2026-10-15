@@ -5,11 +5,14 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PFOH.Api.Data;
@@ -633,6 +636,9 @@ public sealed class PfohApiFactory : WebApplicationFactory<Program>
                 .UseInMemoryDatabase(databaseName)
                 .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning)));
 
+            services.RemoveAll<HonoreeFileStorage>();
+            services.AddSingleton<HonoreeFileStorage, PendingReviewTestFileStorage>();
+
             services.AddAuthentication(options =>
             {
                 options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
@@ -645,6 +651,128 @@ public sealed class PfohApiFactory : WebApplicationFactory<Program>
                 options.DefaultChallengeScheme = TestAuthHandler.SchemeName;
             });
         });
+    }
+
+    public PendingReviewTestFileStorage Files =>
+        Services.GetRequiredService<HonoreeFileStorage>() as PendingReviewTestFileStorage
+        ?? throw new InvalidOperationException("Test file storage was not registered.");
+
+    public sealed class PendingReviewTestFileStorage(IConfiguration configuration) : HonoreeFileStorage(configuration)
+    {
+        public Dictionary<string, byte[]> Photos { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public List<string> DeletedPendingPhotos { get; } = new();
+
+        public void Reset()
+        {
+            Photos.Clear();
+            DeletedPendingPhotos.Clear();
+        }
+
+        public override async Task<string?> UploadPendingImageAsync(IFormFile? photo, int changeRequestId, CancellationToken ct)
+        {
+            if (photo is null || photo.Length == 0)
+            {
+                return null;
+            }
+
+            var extension = Path.GetExtension(photo.FileName);
+            if (string.IsNullOrWhiteSpace(extension))
+            {
+                extension = ".jpg";
+            }
+
+            var fileName = $"pending/{changeRequestId}{extension.ToLowerInvariant()}";
+            await using var stream = photo.OpenReadStream();
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory, ct);
+            Photos[fileName] = memory.ToArray();
+            return fileName;
+        }
+
+        public override Task DeletePendingImageAsync(string? photoFileName, CancellationToken ct)
+        {
+            var name = HonoreeFileStorage.NormalizePendingName(photoFileName);
+            if (name is null)
+            {
+                return Task.CompletedTask;
+            }
+
+            DeletedPendingPhotos.Add(name);
+            Photos.Remove(name);
+            return Task.CompletedTask;
+        }
+
+        public override Task<HonoreeImageContent?> OpenHonoreeImageAsync(string? photoFileName, CancellationToken ct)
+        {
+            if (!string.IsNullOrWhiteSpace(photoFileName) && Photos.TryGetValue(photoFileName, out var bytes))
+            {
+                var contentType = photoFileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+                    ? "image/png"
+                    : "image/jpeg";
+                return Task.FromResult<HonoreeImageContent?>(new HonoreeImageContent(new MemoryStream(bytes), contentType));
+            }
+
+            return base.OpenHonoreeImageAsync(photoFileName, ct);
+        }
+
+        public override Task<byte[]?> DownloadImageAsync(string? photoFileName, string? fallbackImageUrl, CancellationToken ct)
+        {
+            if (!string.IsNullOrWhiteSpace(photoFileName) && Photos.TryGetValue(photoFileName, out var bytes))
+            {
+                return Task.FromResult<byte[]?>(bytes);
+            }
+
+            return base.DownloadImageAsync(photoFileName, fallbackImageUrl, ct);
+        }
+
+        public override Task<string?> PromoteImageAsync(string? sourceFileName, int honoreeId, CancellationToken ct)
+        {
+            if (!string.IsNullOrWhiteSpace(sourceFileName) && Photos.TryGetValue(sourceFileName, out var bytes))
+            {
+                var extension = Path.GetExtension(sourceFileName);
+                if (string.IsNullOrWhiteSpace(extension))
+                {
+                    extension = ".jpg";
+                }
+
+                var finalFileName = $"{honoreeId}{extension.ToLowerInvariant()}";
+                Photos[finalFileName] = bytes;
+                if (HonoreeFileStorage.IsPendingPhotoName(sourceFileName))
+                {
+                    Photos.Remove(sourceFileName);
+                }
+
+                return Task.FromResult<string?>(finalFileName);
+            }
+
+            return base.PromoteImageAsync(sourceFileName, honoreeId, ct);
+        }
+
+        public override Task<HonoreeImageProbeResult> ProbeHonoreeImageAsync(string? photoFileName, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(photoFileName))
+            {
+                return Task.FromResult(HonoreeImageProbeResult.NoPhoto);
+            }
+
+            if (Photos.ContainsKey(photoFileName))
+            {
+                return Task.FromResult(HonoreeImageProbeResult.Found);
+            }
+
+            if (photoFileName.Contains("missing-blob", StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(HonoreeImageProbeResult.Missing);
+            }
+
+            if (photoFileName.Contains("explode-blob", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("The honoree image blob could not be read.");
+            }
+
+            return Task.FromResult(HonoreeImageProbeResult.Found);
+        }
     }
 
     protected override void ConfigureClient(HttpClient client)

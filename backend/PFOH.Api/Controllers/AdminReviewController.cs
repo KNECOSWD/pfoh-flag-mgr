@@ -37,38 +37,205 @@ public record AdminUnassignedHonoreeDto(
 [ApiController]
 [Route("api/admin/review")]
 [Authorize(Policy = "AdminOnly")]
-public class AdminReviewController(PfohDbContext db, IConfiguration configuration, IWebHostEnvironment environment, UserProfileService profiles) : ControllerBase
+public class AdminReviewController(
+    PfohDbContext db,
+    IWebHostEnvironment environment,
+    UserProfileService profiles,
+    HonoreeFileStorage fileStorage,
+    ILogger<AdminReviewController> logger,
+    PendingReviewMaintenance pendingReviews,
+    FlagGridAssignment flagGrids,
+    ReprintQueueMaintenance reprintQueue) : ControllerBase
 {
-    private readonly HonoreeFileStorage fileStorage = new(configuration);
-
     [HttpGet("pending")]
     public async Task<ActionResult<IReadOnlyList<AdminReviewItemDto>>> GetPending(CancellationToken ct)
     {
+        // Project nullable columns so a NULL photo, name, or detail on one honoree
+        // cannot abort the SQL reader for the other submitted reviews.
         var submittedRequests = await db.HonoreeChangeRequests
             .AsNoTracking()
-            .Include(r => r.FlagClaim)
-            .Include(r => r.FlagGrid)
-            .Include(r => r.ServiceBranch)
             .Where(r => r.RequestStatus == "Submitted")
             .OrderBy(r => r.SubmittedUtc ?? r.CreatedUtc)
+            .Select(r => new PendingReviewSource
+            {
+                Id = r.Id,
+                FlagClaimId = r.FlagClaimId,
+                FlagGridId = r.FlagGridId,
+                FlagGridName = r.FlagGrid == null ? null : r.FlagGrid.FlagGridName ?? "",
+                HonoreeId = r.HonoreeId,
+                FirstName = r.FirstName ?? "",
+                MiddleName = r.MiddleName,
+                LastName = r.LastName ?? "",
+                Suffix = r.Suffix,
+                Nickname = r.Nickname,
+                Rank = r.Rank,
+                ServiceBranchName = r.ServiceBranch == null ? null : r.ServiceBranch.ServiceBranchName ?? "",
+                ClaimantEmail = r.FlagClaim == null ? null : r.FlagClaim.ExternalUserEmail ?? "",
+                ClaimantName = r.FlagClaim == null ? null : r.FlagClaim.ExternalUserName,
+                RequestStatus = r.RequestStatus ?? "",
+                CreatedUtc = r.CreatedUtc,
+                SubmittedUtc = r.SubmittedUtc,
+                RequiresCardReprint = r.RequiresCardReprint,
+                CardPrintedUtc = r.CardPrintedUtc,
+                ReviewNotes = r.ReviewNotes,
+                PhotoFileName = r.PhotoFileName,
+                Description = r.Description,
+                Awards = r.Awards,
+                ConflictsServed = r.ConflictsServed,
+                StartYear = r.StartYear,
+                EndYear = r.EndYear,
+                Kia = r.KIA
+            })
             .ToListAsync(ct);
 
-        var submitted = submittedRequests.Select(ToReviewDto).ToList();
+        var newestRequests = PendingReviewMaintenance.KeepNewest(
+            submittedRequests,
+            request => new PendingReviewMaintenance.CardRef(
+                request.Id,
+                request.FlagGridId,
+                request.HonoreeId,
+                request.SubmittedUtc,
+                request.CreatedUtc ?? DateTime.UtcNow));
 
-        return Ok(await AttachClaimantAccountsAsync(submitted, ct));
+        var honoreeIds = newestRequests
+            .Where(request => request.HonoreeId is > 0)
+            .Select(request => request.HonoreeId!.Value)
+            .Distinct()
+            .ToList();
+        var currentHonorees = honoreeIds.Count == 0
+            ? new List<Honoree>()
+            : await db.Honorees
+                .AsNoTracking()
+                .Include(honoree => honoree.ServiceBranch)
+                .Where(honoree => honoreeIds.Contains(honoree.Id))
+                .ToListAsync(ct);
+        var honoreeById = currentHonorees.ToDictionary(honoree => honoree.Id);
+
+        var submitted = new List<AdminReviewItemDto>(newestRequests.Count);
+        foreach (var request in newestRequests)
+        {
+            try
+            {
+                var dto = ToReviewDto(request);
+                ReviewSnapshot? current = null;
+                if (request.HonoreeId is int honoreeId && honoreeById.TryGetValue(honoreeId, out var honoree))
+                {
+                    current = ReviewSubmissionDiff.FromHonoree(honoree);
+                }
+
+                dto = dto with
+                {
+                    FieldChanges = ReviewSubmissionDiff.Compare(PendingSnapshot(request), current)
+                };
+                submitted.Add(await WithPhotoProbeAsync(dto, ct));
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    ex,
+                    "Pending honoree review {ChangeRequestId} could not be loaded. Returning a degraded item so the rest of the list can load.",
+                    request.Id);
+                submitted.Add(DegradedReviewDto(request));
+            }
+        }
+
+        try
+        {
+            return Ok(await AttachClaimantAccountsAsync(submitted, ct));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Claimant phone and organization could not be attached to pending honoree reviews. Returning the review list without them.");
+            return Ok(submitted);
+        }
+    }
+
+    [HttpGet("{id:int}/card-preview")]
+    public async Task<IActionResult> CardPreview(int id, CancellationToken ct)
+    {
+        var change = await db.HonoreeChangeRequests
+            .AsNoTracking()
+            .Include(request => request.FlagGrid)
+            .Include(request => request.ServiceBranch)
+            .FirstOrDefaultAsync(request => request.Id == id, ct);
+
+        if (change is null)
+        {
+            return NotFound("Change request was not found.");
+        }
+
+        if (!string.Equals(change.RequestStatus, "Submitted", StringComparison.OrdinalIgnoreCase))
+        {
+            return Conflict(new { message = "Only a submitted honoree can be previewed." });
+        }
+
+        var honoree = new Honoree
+        {
+            FirstName = change.FirstName,
+            MiddleName = change.MiddleName,
+            LastName = change.LastName,
+            Suffix = change.Suffix,
+            Nickname = change.Nickname,
+            Rank = change.Rank ?? string.Empty,
+            ServiceBranchId = change.ServiceBranchId,
+            ServiceBranchCategoryId = change.ServiceBranchCategoryId,
+            ServiceBranch = change.ServiceBranch,
+            StartYear = change.StartYear,
+            EndYear = change.EndYear,
+            DatesUserEntry = change.DatesUserEntry ?? string.Empty,
+            ConflictsServed = change.ConflictsServed ?? string.Empty,
+            Awards = change.Awards ?? string.Empty,
+            Description = change.Description ?? string.Empty,
+            KIA = change.KIA,
+            PhotoFileName = change.PhotoFileName ?? string.Empty,
+            FlagGridId = change.FlagGridId,
+            FlagGrid = change.FlagGrid,
+            IsActive = true
+        };
+
+        byte[]? photoBytes = null;
+        try
+        {
+            photoBytes = await fileStorage.DownloadImageAsync(change.PhotoFileName, null, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Card preview for change request {ChangeRequestId} will omit the photo.", id);
+        }
+
+        HonoreeReportAssets? assets = null;
+        try
+        {
+            assets = await fileStorage.LoadReportAssetsAsync(honoree, null, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Card preview for change request {ChangeRequestId} will omit report artwork.", id);
+        }
+
+        try
+        {
+            var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, null, photoBytes, assets);
+            return File(pdf, "application/pdf", $"honoree-card-{id}.pdf");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Card preview for change request {ChangeRequestId} could not be created.", id);
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new
+                {
+                    message = "The honoree card preview could not be created.",
+                    detail = ex.Message
+                });
+        }
     }
 
     [HttpGet("approved-reprint-queue")]
     public async Task<ActionResult<IReadOnlyList<AdminPrintQueueItemDto>>> GetApprovedReprintQueue(CancellationToken ct)
     {
-        var adminName = User.GetEmail();
-        if (string.IsNullOrWhiteSpace(adminName))
-        {
-            adminName = User.GetDisplayName() ?? "PFOH.Admin";
-        }
-
-        await DeactivateDuplicateActiveReprintQueueItemsAsync(adminName, ct);
-
         var approved = await db.HonoreeChangeRequests
             .AsNoTracking()
             .Include(r => r.FlagClaim)
@@ -509,7 +676,7 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
                 return BadRequest(new { message = "This honoree is not assigned to a flag grid yet." });
             }
 
-            await DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, keepChangeRequestId: null, adminName, ct);
+            await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, keepChangeRequestId: null, adminName, ct);
 
             var existingQueueItem = await db.HonoreeChangeRequests
                 .AsNoTracking()
@@ -665,7 +832,7 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
                     change.ReviewedUtc = DateTime.UtcNow;
 
                     await db.SaveChangesAsync(ct);
-                    await DeactivateOtherActiveReprintItemsForHonoreeAsync(change.HonoreeId.Value, change.Id, adminName, ct);
+                    await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(change.HonoreeId.Value, change.Id, adminName, ct);
 
                     try
                     {
@@ -691,7 +858,48 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
                 });
             }
 
+            var isNewSubmission = change.HonoreeId is not > 0;
+            bool? flagSpotAssigned = null;
+            string? flagSpotNotice = null;
+            string? assignedGridName = null;
+            if (isNewSubmission)
+            {
+                await PendingSubmissionGridSchema.EnsureAsync(db, ct);
+                await pendingReviews.ReleasePendingSubmissionSpotsAsync(ct);
+            }
+
             var honoree = await ApplyApprovedChanges(change, adminName, ct);
+
+            if (isNewSubmission)
+            {
+                var grid = await flagGrids.NextAvailableAsync(ct);
+                if (grid is null)
+                {
+                    flagSpotAssigned = false;
+                    flagSpotNotice = FlagGridAssignment.NoSpotNotice;
+                    honoree.FlagGridId = null;
+                    change.FlagGridId = null;
+                    if (change.FlagClaim is { HonoreeId: null })
+                    {
+                        change.FlagClaim.FlagGridId = null;
+                    }
+                }
+                else
+                {
+                    honoree.FlagGridId = grid.Id;
+                    change.FlagGridId = grid.Id;
+                    if (change.FlagClaim is not null)
+                    {
+                        change.FlagClaim.FlagGridId = grid.Id;
+                    }
+
+                    grid.HonoreeId = honoree.Id;
+                    grid.ModifiedBy = adminName;
+                    grid.ModifiedDate = DateTime.UtcNow;
+                    flagSpotAssigned = true;
+                    assignedGridName = grid.FlagGridName;
+                }
+            }
 
             change.HonoreeId = honoree.Id;
             change.RequestStatus = "Approved";
@@ -713,7 +921,7 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
 
             if (request.RequiresCardReprint)
             {
-                await DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, change.Id, adminName, ct);
+                await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, change.Id, adminName, ct);
 
                 try
                 {
@@ -732,7 +940,20 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
 
             await transaction.CommitAsync(ct);
 
-            return Ok(ToReviewDto(change));
+            var approved = ToReviewDto(change);
+            if (isNewSubmission)
+            {
+                approved = approved with
+                {
+                    FlagGridId = change.FlagGridId,
+                    FlagGridName = assignedGridName ?? string.Empty,
+                    FlagSpotAssigned = flagSpotAssigned,
+                    FlagSpotNotice = flagSpotNotice,
+                    SubmissionKind = ReviewSubmissionDiff.NewSubmission
+                };
+            }
+
+            return Ok(approved);
         }
         catch (HonoreePhotoMoveException ex)
         {
@@ -1070,7 +1291,7 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         string reviewNotes,
         CancellationToken ct)
     {
-        await DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, keepChangeRequestId: null, adminName, ct);
+        await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, keepChangeRequestId: null, adminName, ct);
 
         var existingQueueItem = await db.HonoreeChangeRequests
             .AsNoTracking()
@@ -1147,83 +1368,6 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         return await ToPrintQueueDto(queueRequest, ct);
     }
 
-    private async Task DeactivateDuplicateActiveReprintQueueItemsAsync(string adminName, CancellationToken ct)
-    {
-        var duplicateHonoreeIds = await db.HonoreeChangeRequests
-            .AsNoTracking()
-            .Where(r =>
-                r.HonoreeId.HasValue &&
-                r.RequestStatus == "Approved" &&
-                r.RequiresCardReprint &&
-                r.CardPrintedUtc == null)
-            .GroupBy(r => r.HonoreeId!.Value)
-            .Where(g => g.Count() > 1)
-            .Select(g => g.Key)
-            .ToListAsync(ct);
-
-        foreach (var honoreeId in duplicateHonoreeIds)
-        {
-            await DeactivateOtherActiveReprintItemsForHonoreeAsync(honoreeId, keepChangeRequestId: null, adminName, ct);
-        }
-    }
-
-    private async Task DeactivateOtherActiveReprintItemsForHonoreeAsync(
-        int honoreeId,
-        int? keepChangeRequestId,
-        string adminName,
-        CancellationToken ct)
-    {
-        var activeItems = await db.HonoreeChangeRequests
-            .Include(r => r.FlagClaim)
-            .Where(r =>
-                r.HonoreeId == honoreeId &&
-                r.RequestStatus == "Approved" &&
-                r.RequiresCardReprint &&
-                r.CardPrintedUtc == null)
-            .OrderByDescending(r => r.ReviewedUtc ?? r.SubmittedUtc ?? r.CreatedUtc)
-            .ThenByDescending(r => r.Id)
-            .ToListAsync(ct);
-
-        if (activeItems.Count <= 1)
-        {
-            return;
-        }
-
-        var keepItem = keepChangeRequestId.HasValue
-            ? activeItems.FirstOrDefault(r => r.Id == keepChangeRequestId.Value)
-            : activeItems.FirstOrDefault();
-
-        if (keepItem is null)
-        {
-            keepItem = activeItems.First();
-        }
-
-        var now = DateTime.UtcNow;
-        var duplicates = activeItems
-            .Where(r => r.Id != keepItem.Id)
-            .ToList();
-
-        foreach (var duplicate in duplicates)
-        {
-            duplicate.RequiresCardReprint = false;
-            duplicate.ReviewedBy = adminName;
-            duplicate.ReviewedUtc = now;
-            duplicate.ReviewNotes = string.IsNullOrWhiteSpace(duplicate.ReviewNotes)
-                ? $"Removed duplicate reprint queue item. Active queue item #{keepItem.Id} remains for this honoree."
-                : $"{duplicate.ReviewNotes}\nRemoved duplicate reprint queue item. Active queue item #{keepItem.Id} remains for this honoree.";
-
-            if (duplicate.FlagClaim?.ClaimStatus == "AdminReprintQueued")
-            {
-                duplicate.FlagClaim.ClaimStatus = "AdminReprintDuplicateRemoved";
-                duplicate.FlagClaim.AdminNotes = string.IsNullOrWhiteSpace(duplicate.FlagClaim.AdminNotes)
-                    ? $"Removed duplicate reprint queue item. Active queue item #{keepItem.Id} remains for this honoree."
-                    : $"{duplicate.FlagClaim.AdminNotes}\nRemoved duplicate reprint queue item. Active queue item #{keepItem.Id} remains for this honoree.";
-            }
-        }
-
-        await db.SaveChangesAsync(ct);
-    }
-
     private async Task<AdminPrintQueueItemDto> ToPrintQueueDto(HonoreeChangeRequest r, CancellationToken ct)
     {
         string? pdfUrl = null;
@@ -1284,27 +1428,183 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         }).ToList();
     }
 
-    private static AdminReviewItemDto ToReviewDto(HonoreeChangeRequest r) => new(
-        r.Id,
-        r.FlagClaimId,
-        r.FlagGridId,
-        r.FlagGrid?.FlagGridName ?? string.Empty,
-        r.HonoreeId,
-        BuildHonoreeName(r),
-        r.Rank,
-        r.ServiceBranch?.ServiceBranchName,
-        r.FlagClaim?.ExternalUserEmail ?? string.Empty,
-        r.FlagClaim?.ExternalUserName,
-        r.RequestStatus,
-        r.CreatedUtc,
-        r.SubmittedUtc,
-        r.RequiresCardReprint,
-        r.CardPrintedUtc,
-        r.ReviewNotes,
-        r.PhotoFileName,
-        r.Description,
-        r.Awards,
-        r.ConflictsServed);
+    private async Task<AdminReviewItemDto> WithPhotoProbeAsync(AdminReviewItemDto dto, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(dto.PhotoFileName))
+        {
+            return dto;
+        }
+
+        var probe = await fileStorage.ProbeHonoreeImageAsync(dto.PhotoFileName, ct);
+        if (probe == HonoreeImageProbeResult.Missing)
+        {
+            logger.LogWarning(
+                "Pending honoree photo {PhotoFileName} for change request {ChangeRequestId} is missing from honoreeimages. The honoree stays in the review list without that photo.",
+                dto.PhotoFileName,
+                dto.ChangeRequestId);
+            return dto with
+            {
+                PhotoFileName = null,
+                ReviewNotes = AppendReviewNote(dto.ReviewNotes, "The pending honoree photo was not found in honoreeimages.")
+            };
+        }
+
+        if (probe == HonoreeImageProbeResult.Failed)
+        {
+            logger.LogWarning(
+                "Pending honoree photo {PhotoFileName} for change request {ChangeRequestId} could not be checked in honoreeimages. The honoree stays in the review list.",
+                dto.PhotoFileName,
+                dto.ChangeRequestId);
+        }
+
+        return dto;
+    }
+
+    private static AdminReviewItemDto ToReviewDto(HonoreeChangeRequest r) =>
+        ToReviewDto(new PendingReviewSource
+        {
+            Id = r.Id,
+            FlagClaimId = r.FlagClaimId,
+            FlagGridId = r.FlagGridId,
+            FlagGridName = r.FlagGrid?.FlagGridName,
+            HonoreeId = r.HonoreeId,
+            FirstName = r.FirstName,
+            MiddleName = r.MiddleName,
+            LastName = r.LastName,
+            Suffix = r.Suffix,
+            Nickname = r.Nickname,
+            Rank = r.Rank,
+            ServiceBranchName = r.ServiceBranch?.ServiceBranchName,
+            ClaimantEmail = r.FlagClaim?.ExternalUserEmail,
+            ClaimantName = r.FlagClaim?.ExternalUserName,
+            RequestStatus = r.RequestStatus,
+            CreatedUtc = r.CreatedUtc,
+            SubmittedUtc = r.SubmittedUtc,
+            RequiresCardReprint = r.RequiresCardReprint,
+            CardPrintedUtc = r.CardPrintedUtc,
+            ReviewNotes = r.ReviewNotes,
+            PhotoFileName = r.PhotoFileName,
+            Description = r.Description,
+            Awards = r.Awards,
+            ConflictsServed = r.ConflictsServed
+        });
+
+    private static AdminReviewItemDto ToReviewDto(PendingReviewSource r)
+    {
+        var honoreeName = BuildHonoreeName(r.FirstName, r.MiddleName, r.LastName, r.Suffix, r.Nickname);
+        return new AdminReviewItemDto(
+            r.Id,
+            r.FlagClaimId,
+            r.FlagGridId,
+            r.FlagGridName ?? string.Empty,
+            r.HonoreeId,
+            string.IsNullOrWhiteSpace(honoreeName) ? "Honoree" : honoreeName,
+            BlankToNull(r.Rank),
+            BlankToNull(r.ServiceBranchName),
+            r.ClaimantEmail ?? string.Empty,
+            BlankToNull(r.ClaimantName),
+            string.IsNullOrWhiteSpace(r.RequestStatus) ? "Submitted" : r.RequestStatus,
+            r.CreatedUtc ?? DateTime.UtcNow,
+            r.SubmittedUtc,
+            r.RequiresCardReprint,
+            r.CardPrintedUtc,
+            r.ReviewNotes,
+            BlankToNull(r.PhotoFileName),
+            r.Description,
+            r.Awards,
+            r.ConflictsServed,
+            SubmissionKind: ReviewSubmissionDiff.Kind(r.HonoreeId));
+    }
+
+    private static AdminReviewItemDto DegradedReviewDto(PendingReviewSource r)
+    {
+        var honoreeName = BuildHonoreeName(r.FirstName, r.MiddleName, r.LastName, r.Suffix, r.Nickname);
+        return new AdminReviewItemDto(
+            r.Id,
+            r.FlagClaimId,
+            r.FlagGridId,
+            r.FlagGridName ?? string.Empty,
+            r.HonoreeId,
+            string.IsNullOrWhiteSpace(honoreeName) ? "Honoree" : honoreeName,
+            null,
+            null,
+            r.ClaimantEmail ?? string.Empty,
+            BlankToNull(r.ClaimantName),
+            string.IsNullOrWhiteSpace(r.RequestStatus) ? "Submitted" : r.RequestStatus,
+            r.CreatedUtc ?? DateTime.UtcNow,
+            r.SubmittedUtc,
+            r.RequiresCardReprint,
+            r.CardPrintedUtc,
+            "This honoree submission could not be fully loaded. The other pending reviews are still listed.",
+            null,
+            null,
+            null,
+            null,
+            SubmissionKind: ReviewSubmissionDiff.Kind(r.HonoreeId));
+    }
+
+    private static ReviewSnapshot PendingSnapshot(PendingReviewSource request) => new(
+        request.HonoreeId,
+        request.FirstName,
+        request.MiddleName,
+        request.LastName,
+        request.Suffix,
+        request.Nickname,
+        request.Rank,
+        request.ServiceBranchName,
+        request.StartYear,
+        request.EndYear,
+        request.ConflictsServed,
+        request.Awards,
+        request.Description,
+        request.Kia,
+        request.PhotoFileName);
+
+    private static string? AppendReviewNote(string? notes, string addition)
+    {
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            return addition;
+        }
+
+        return notes.Contains(addition, StringComparison.Ordinal)
+            ? notes
+            : $"{notes.Trim()}\n{addition}";
+    }
+
+    private static string? BlankToNull(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private sealed class PendingReviewSource
+    {
+        public int Id { get; set; }
+        public int FlagClaimId { get; set; }
+        public int? FlagGridId { get; set; }
+        public string? FlagGridName { get; set; }
+        public int? HonoreeId { get; set; }
+        public string? FirstName { get; set; }
+        public string? MiddleName { get; set; }
+        public string? LastName { get; set; }
+        public string? Suffix { get; set; }
+        public string? Nickname { get; set; }
+        public string? Rank { get; set; }
+        public string? ServiceBranchName { get; set; }
+        public string? ClaimantEmail { get; set; }
+        public string? ClaimantName { get; set; }
+        public string? RequestStatus { get; set; }
+        public DateTime? CreatedUtc { get; set; }
+        public DateTime? SubmittedUtc { get; set; }
+        public bool RequiresCardReprint { get; set; }
+        public DateTime? CardPrintedUtc { get; set; }
+        public string? ReviewNotes { get; set; }
+        public string? PhotoFileName { get; set; }
+        public string? Description { get; set; }
+        public string? Awards { get; set; }
+        public string? ConflictsServed { get; set; }
+        public int? StartYear { get; set; }
+        public int? EndYear { get; set; }
+        public bool Kia { get; set; }
+    }
 
     private async Task<IReadOnlyList<AdminFlagPositionDto>> BuildFlagPositionsAsync(CancellationToken ct)
     {
@@ -1465,14 +1765,22 @@ public class AdminReviewController(PfohDbContext db, IConfiguration configuratio
         return int.TryParse(digits, out var parsed) ? parsed : null;
     }
 
-    private static string BuildHonoreeName(HonoreeChangeRequest r)
+    private static string BuildHonoreeName(HonoreeChangeRequest r) =>
+        BuildHonoreeName(r.FirstName, r.MiddleName, r.LastName, r.Suffix, r.Nickname);
+
+    private static string BuildHonoreeName(
+        string? firstName,
+        string? middleName,
+        string? lastName,
+        string? suffix,
+        string? nickname)
     {
         return AddNickname(
             string.Join(
                 " ",
-                new[] { r.FirstName, r.MiddleName, r.LastName, r.Suffix }
+                new[] { firstName, middleName, lastName, suffix }
                     .Where(v => !string.IsNullOrWhiteSpace(v))),
-            r.Nickname);
+            nickname);
     }
 
     private static string BuildHonoreeName(Honoree h)

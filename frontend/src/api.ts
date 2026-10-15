@@ -4,6 +4,8 @@ import {
   InteractionRequiredAuthError
 } from "@azure/msal-browser";
 import { loginRequest } from "./authConfig";
+import { isPublicApiPath } from "./publicApi.js";
+import { sharedTokenRequest, withNetworkRetry } from "./tokenRequest.js";
 
 export class ApiError extends Error {
   status: number;
@@ -187,7 +189,7 @@ export type AdminClaimantSummary = {
 
 export type FlagClaim = {
   id: number;
-  flagGridId: number;
+  flagGridId?: number | null;
   flagGridName: string;
   honoreeId?: number | null;
   honoreeName: string;
@@ -227,7 +229,7 @@ export type SaveHonoreeChangeRequest = {
 export type AdminReviewItem = {
   changeRequestId: number;
   claimId: number;
-  flagGridId: number;
+  flagGridId?: number | null;
   flagGridName: string;
   honoreeId?: number | null;
   honoreeName: string;
@@ -247,6 +249,10 @@ export type AdminReviewItem = {
   description?: string | null;
   awards?: string | null;
   conflictsServed?: string | null;
+  submissionKind?: string | null;
+  fieldChanges?: { label: string; previous: string; proposed: string }[] | null;
+  flagSpotAssigned?: boolean | null;
+  flagSpotNotice?: string | null;
 };
 
 
@@ -307,6 +313,21 @@ export function changeRequestPhotoUrl(changeRequestId: number) {
   return `${apiBase}/api/flagclaims/change-requests/${changeRequestId}/photo`;
 }
 
+export function adminCardPreviewUrl(changeRequestId: number) {
+  return `${apiBase}/api/admin/review/${changeRequestId}/card-preview`;
+}
+
+const requestTimeoutMs = 60_000;
+
+function requestTimeoutSignal(existing?: AbortSignal | null) {
+  if (existing) return existing;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
+  controller.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+  return controller.signal;
+}
+
 export function isPendingHonoreePhoto(photoFileName?: string | null) {
   return !!photoFileName && photoFileName.trim().toLowerCase().startsWith("pending/") && !photoFileName.includes("..");
 }
@@ -317,9 +338,16 @@ export async function fetchAuthorizedBlob(
   url: string
 ) {
   const token = await getToken(instance, account);
-  const response = await fetch(url, {
-    cache: "no-store",
-    headers: { Authorization: `Bearer ${token}` }
+  const response = await withNetworkRetry(async () => {
+    try {
+      return await fetch(url, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+        signal: requestTimeoutSignal(undefined)
+      });
+    } catch (error) {
+      throw buildNetworkError(error, "GET", url);
+    }
   });
 
   if (!response.ok) {
@@ -385,13 +413,15 @@ function honoreeChangeFormData(requestBody: SaveHonoreeChangeRequest, photo?: Fi
 
 async function getToken(instance: IPublicClientApplication, account: AccountInfo) {
   try {
-    const response = await instance.acquireTokenSilent({ ...loginRequest, account });
-    return response.accessToken;
+    return await sharedTokenRequest.acquire({
+      silent: async () => {
+        const response = await instance.acquireTokenSilent({ ...loginRequest, account });
+        return response.accessToken;
+      },
+      redirect: () => instance.acquireTokenRedirect({ ...loginRequest, account }),
+      isInteractionRequired: (error: unknown) => error instanceof InteractionRequiredAuthError
+    });
   } catch (error) {
-    if (error instanceof InteractionRequiredAuthError) {
-      await instance.acquireTokenRedirect({ ...loginRequest, account });
-    }
-
     const requestId = supportCode();
     throw new ApiError(
       [
@@ -415,23 +445,29 @@ async function request<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const method = options.method ?? "GET";
+  if (isPublicApiPath(url)) {
+    return publicRequest<T>(url, options);
+  }
+
   const token = await getToken(instance, account);
 
   const isFormData = options.body instanceof FormData;
 
-  let response: Response;
-  try {
-    response = await fetch(`${apiBase}${url}`, {
-      ...options,
-      headers: {
-        ...(isFormData ? {} : { "Content-Type": "application/json" }),
-        Authorization: `Bearer ${token}`,
-        ...(options.headers ?? {})
-      }
-    });
-  } catch (error) {
-    throw buildNetworkError(error, method, url);
-  }
+  const response = await withNetworkRetry(async () => {
+    try {
+      return await fetch(`${apiBase}${url}`, {
+        ...options,
+        signal: requestTimeoutSignal(options.signal),
+        headers: {
+          ...(isFormData ? {} : { "Content-Type": "application/json" }),
+          Authorization: `Bearer ${token}`,
+          ...(options.headers ?? {})
+        }
+      });
+    } catch (error) {
+      throw buildNetworkError(error, method, url);
+    }
+  });
 
   if (!response.ok) {
     throw await buildApiError(response, method, url);
@@ -565,15 +601,10 @@ export const flagClaimApi = {
 };
 
 export const lookupApi = {
-  serviceBranches: (instance: IPublicClientApplication, account: AccountInfo) =>
-    request<ServiceBranch[]>(instance, account, "/api/lookups/service-branches"),
+  serviceBranches: () => publicRequest<ServiceBranch[]>("/api/lookups/service-branches"),
 
-  serviceBranchCategories: (instance: IPublicClientApplication, account: AccountInfo) =>
-    request<ServiceBranchCategory[]>(
-      instance,
-      account,
-      "/api/lookups/service-branch-categories"
-    )
+  serviceBranchCategories: () =>
+    publicRequest<ServiceBranchCategory[]>("/api/lookups/service-branch-categories")
 };
 
 export const adminApi = {

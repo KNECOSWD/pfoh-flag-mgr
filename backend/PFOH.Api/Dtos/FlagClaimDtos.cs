@@ -5,7 +5,7 @@ namespace PFOH.Api.Dtos;
 
 public record FlagClaimDto(
     int Id,
-    int FlagGridId,
+    int? FlagGridId,
     string FlagGridName,
     int? HonoreeId,
     string HonoreeName,
@@ -23,7 +23,7 @@ public record FlagClaimDto(
 public record HonoreeChangeRequestDto(
     int Id,
     int FlagClaimId,
-    int FlagGridId,
+    int? FlagGridId,
     int? HonoreeId,
     string FirstName,
     string? MiddleName,
