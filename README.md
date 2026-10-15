@@ -387,7 +387,7 @@ Then test:
 
 `VERSION` at the repo root is the only version number. `frontend/package.json` must use that same value, and `backend/Directory.Build.props` reads `VERSION` into the API assembly version. CI checks that they match. The site footer shows it, and `GET /api/version` returns `{version, commit, builtAt}`.
 
-Every future pull request bumps `VERSION`, `frontend/package.json`, and `CHANGELOG.md` together. Tag the release after that pull request merges. This change ships as 1.4.0 and is tagged `v1.4.0` after merge. `v1.3.0` is the release that queues an approved withdrawal until the flag is removed from the field. `v1.2.0` is the release that opened honoree cards in one viewer. `v1.1.0` is the release that added My submissions honoree cards. `v1.0.0` is the live release that merged pull requests #10 and #11.
+Every future pull request bumps `VERSION`, `frontend/package.json`, and `CHANGELOG.md` together. Tag the release after that pull request merges. This change ships as 1.5.1 and is tagged `v1.5.1` after merge. `v1.4.0` is the release that left-aligned the honoree card bio. `v1.3.0` is the release that queues an approved withdrawal until the flag is removed from the field. `v1.2.0` is the release that opened honoree cards in one viewer. `v1.1.0` is the release that added My submissions honoree cards. `v1.0.0` is the live release that merged pull requests #10 and #11.
 
 ## Important implementation notes
 

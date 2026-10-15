@@ -311,6 +311,14 @@ type ConfirmDialogState = {
   tone?: "default" | "danger";
 };
 
+type CardPreviewState = {
+  title: string;
+  phase: "loading" | "ready" | "error";
+  url?: string;
+  revoke?: boolean;
+  message?: string;
+};
+
 function reportableErrorMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError) {
     return error.message;
@@ -373,8 +381,9 @@ export default function App() {
   const [pendingReviews, setPendingReviews] = useState<AdminReviewItem[]>([]);
   const [pendingPhotoObjectUrl, setPendingPhotoObjectUrl] = useState("");
   const [submitPhase, setSubmitPhase] = useState("");
-  const [cardPreview, setCardPreview] = useState<{ url: string; title: string; revoke: boolean } | null>(null);
+  const [cardPreview, setCardPreview] = useState<CardPreviewState | null>(null);
   const cardPreviewFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const cardPreviewRequest = useRef(0);
   const [printQueue, setPrintQueue] = useState<AdminPrintQueueItem[]>([]);
   const [selectedPrintIds, setSelectedPrintIds] = useState<number[]>([]);
   const [adminBusyId, setAdminBusyId] = useState<number | null>(null);
@@ -2160,38 +2169,58 @@ export default function App() {
   }
 
   function closeCardPreview() {
+    cardPreviewRequest.current += 1;
     setCardPreview((current) => {
-      if (current?.revoke) URL.revokeObjectURL(current.url);
+      if (current?.revoke && current.url) URL.revokeObjectURL(current.url);
       return null;
     });
   }
 
-  function showCardPreview(title: string, url: string, revoke: boolean) {
+  function beginCardPreview(title: string) {
+    const requestId = ++cardPreviewRequest.current;
     setCardPreview((current) => {
-      if (current?.revoke) URL.revokeObjectURL(current.url);
-      return { url, title, revoke };
+      if (current?.revoke && current.url) URL.revokeObjectURL(current.url);
+      return { title, phase: "loading" };
+    });
+    return requestId;
+  }
+
+  function finishCardPreview(requestId: number, title: string, url: string, revoke: boolean) {
+    if (cardPreviewRequest.current !== requestId) {
+      if (revoke) URL.revokeObjectURL(url);
+      return;
+    }
+
+    setCardPreview({ title, phase: "ready", url, revoke });
+  }
+
+  function failCardPreview(requestId: number, title: string, message: string) {
+    if (cardPreviewRequest.current !== requestId) return;
+
+    setCardPreview((current) => {
+      if (current?.revoke && current.url) URL.revokeObjectURL(current.url);
+      return { title, phase: "error", message };
     });
   }
 
-  async function openCardBlob(title: string, load: () => Promise<Blob>) {
+  function openCardBlob(title: string, load: () => Promise<Blob>) {
     setError("");
-    try {
-      const blob = await load();
-      showCardPreview(title, URL.createObjectURL(blob), true);
-    } catch (err) {
-      setError(reportableErrorMessage(err, "Unable to open the honoree card."));
-    }
+    const requestId = beginCardPreview(title);
+    void load()
+      .then((blob) => finishCardPreview(requestId, title, URL.createObjectURL(blob), true))
+      .catch((err) => failCardPreview(requestId, title, reportableErrorMessage(err, "Unable to open the honoree card.")));
   }
 
-  async function openSubmissionCard(claim: FlagClaim) {
+  function openSubmissionCard(claim: FlagClaim) {
     if (!account) return;
 
-    await openCardBlob(claim.honoreeName || "Honoree", () =>
+    openCardBlob(claim.honoreeName || "Honoree", () =>
       fetchAuthorizedBlob(instance, account, mySubmissionCardUrl(claim.id)));
   }
 
   async function openPublicHonoreeCard(honoreeId: number, title: string) {
     setError("");
+    const requestId = beginCardPreview(title);
     const url = honoreePdfUrl(honoreeId);
     try {
       const response = await fetch(url, { cache: "no-store" });
@@ -2201,30 +2230,30 @@ export default function App() {
 
       const type = response.headers.get("content-type") ?? "";
       if (type.includes("pdf") || type.includes("octet-stream") || type.trim() === "") {
-        showCardPreview(title, URL.createObjectURL(await response.blob()), true);
+        finishCardPreview(requestId, title, URL.createObjectURL(await response.blob()), true);
         return;
       }
 
-      showCardPreview(title, response.url || url, false);
+      finishCardPreview(requestId, title, response.url || url, false);
     } catch (err) {
       if (err instanceof TypeError) {
-        showCardPreview(title, url, false);
+        finishCardPreview(requestId, title, url, false);
         return;
       }
 
-      setError(reportableErrorMessage(err, "Unable to open the honoree card."));
+      failCardPreview(requestId, title, reportableErrorMessage(err, "Unable to open the honoree card."));
     }
   }
 
-  async function previewHonoreeCard(item: AdminReviewItem) {
+  function previewHonoreeCard(item: AdminReviewItem) {
     if (!account) return;
 
-    await openCardBlob(item.honoreeName, () =>
+    openCardBlob(item.honoreeName, () =>
       fetchAuthorizedBlob(instance, account, adminCardPreviewUrl(item.changeRequestId)));
   }
 
   function downloadCardPreview() {
-    if (!cardPreview) return;
+    if (!cardPreview?.url) return;
 
     const anchor = document.createElement("a");
     anchor.href = cardPreview.url;
@@ -2679,20 +2708,26 @@ export default function App() {
               aria-labelledby="card-preview-title"
               onClick={closeCardPreview}
             >
-              <div className="modalCard appConfirmModal cardPreviewModal" onClick={(event) => event.stopPropagation()}>
+              <div className="modalCard appConfirmModal cardPreviewModal" onClick={(event) => event.stopPropagation()} aria-busy={cardPreview.phase === "loading"}>
                 <h2 id="card-preview-title">Honoree Card</h2>
                 <p className="helperText">{cardPreview.title}</p>
-                <iframe
-                  ref={cardPreviewFrameRef}
-                  className="cardPreviewFrame"
-                  title={`Honoree card for ${cardPreview.title}`}
-                  src={honoreeCardViewUrl(cardPreview.url)}
-                />
+                {cardPreview.phase === "ready" && cardPreview.url ? (
+                  <iframe
+                    ref={cardPreviewFrameRef}
+                    className="cardPreviewFrame"
+                    title={`Honoree card for ${cardPreview.title}`}
+                    src={honoreeCardViewUrl(cardPreview.url)}
+                  />
+                ) : (
+                  <p className={`cardPreviewStatus${cardPreview.phase === "error" ? " error" : ""}`} role={cardPreview.phase === "error" ? "alert" : "status"}>
+                    {cardPreview.phase === "error" ? cardPreview.message : "Loading the honoree card…"}
+                  </p>
+                )}
                 <div className="modalActions">
-                  <button type="button" onClick={downloadCardPreview}>
+                  <button type="button" onClick={downloadCardPreview} disabled={cardPreview.phase !== "ready"}>
                     Download
                   </button>
-                  <button type="button" className="secondary" onClick={printCardPreview}>
+                  <button type="button" className="secondary" onClick={printCardPreview} disabled={cardPreview.phase !== "ready"}>
                     Print
                   </button>
                   <button type="button" className="secondary" onClick={closeCardPreview}>

@@ -63,7 +63,7 @@ test("my submissions open the honoree card for that claim", () => {
 test("honoree records and the review queue share the Honoree Card viewer", () => {
   const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const modalStart = source.indexOf("{cardPreview ? (");
-  const modal = source.slice(modalStart, modalStart + 2200);
+  const modal = source.slice(modalStart, modalStart + 3200);
   assert.ok(modalStart >= 0);
   assert.match(modal, /<h2 id="card-preview-title">Honoree Card<\/h2>/);
   assert.match(modal, /\{cardPreview\.title\}/);
@@ -93,6 +93,10 @@ test("the honoree card viewer fits the whole page", () => {
   assert.match(app, /function honoreeCardViewUrl\(url: string\)/);
   assert.match(app, /#view=Fit&zoom=page-fit/);
   assert.match(app, /src=\{honoreeCardViewUrl\(cardPreview\.url\)\}/);
+  assert.match(app, /Loading the honoree card/);
+  const opener = app.slice(app.indexOf("function openCardBlob"), app.indexOf("function openSubmissionCard"));
+  assert.ok(opener.indexOf('phase: "loading"') >= 0 || opener.includes("beginCardPreview"));
+  assert.ok(opener.indexOf("beginCardPreview") < opener.indexOf("load()"));
   assert.match(app, /className="modalOverlay appConfirmOverlay cardPreviewOverlay"/);
 
   const layout = css.slice(css.indexOf(".appConfirmOverlay.cardPreviewOverlay"));

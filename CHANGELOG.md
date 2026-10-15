@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.1
+
+- The Honoree Card window opens as soon as you click. It shows a loading message until the card is ready, then shows the card in that same window. If the card cannot be opened, the message stays in the window.
+
 ## 1.4.0
 
 - The honoree card bio, the block under the name, dates, and branch, is left-aligned on every line. A short line such as "Our Hero!" stays together. The name, dates, and branch stay centered.

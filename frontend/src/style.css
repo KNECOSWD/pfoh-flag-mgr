@@ -9061,6 +9061,20 @@ img.ownedFlagImage {
   background: #f4f7fb;
 }
 
+.cardPreviewStatus {
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  margin: 0;
+  padding: 1.5rem;
+  border: 1px solid #dbe5f2;
+  border-radius: 0.6rem;
+  background: #f4f7fb;
+  text-align: center;
+  font-weight: 700;
+}
+
 .reviewDetails {
   margin-top: 0.45rem;
 }
