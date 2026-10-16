@@ -122,6 +122,7 @@ builder.Services.AddScoped<FlagGridAssignment>();
 builder.Services.AddScoped<PendingReviewMaintenance>();
 builder.Services.AddScoped<ReprintQueueMaintenance>();
 builder.Services.AddScoped<PublicFlagMap>();
+builder.Services.AddSingleton<SubmitterSuggestionTokens>();
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -151,6 +152,18 @@ builder.Services.AddRateLimiter(options =>
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+    });
+    options.AddPolicy("PublicFlagMapSubmitterSearch", httpContext =>
+    {
+        var ip = PublicFlagMapClientIp.Resolve(httpContext);
+        return RateLimitPartition.GetFixedWindowLimiter(
+            ip,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0
             });

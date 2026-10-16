@@ -5,7 +5,9 @@ export function publicFlagMapUrls(apiBase = "") {
     field: `${base}/api/public/flag-map/field`,
     section: (section) => `${base}/api/public/flag-map/sections/${encodeURIComponent(section)}`,
     searchIndex: `${base}/api/public/flag-map/search-index`,
-    bySubmitter: () => `${base}/api/public/flag-map/by-submitter`
+    bySubmitter: () => `${base}/api/public/flag-map/by-submitter`,
+    submitterSuggestions: () => `${base}/api/public/flag-map/submitter-suggestions`,
+    submitterFlags: () => `${base}/api/public/flag-map/submitter-flags`
   };
 }
 
@@ -27,6 +29,34 @@ export async function lookupSubmittedFlags(first, last, fetchImpl, apiBase = "")
     body = null;
   }
   return { status: response.status, body };
+}
+
+async function postFlagMapJson(url, payload, fetchImpl) {
+  const send = fetchImpl ?? ((target, init) => fetch(target, init));
+  const response = await send(url, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  let body = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  return { status: response.status, body };
+}
+
+export function lookupSubmitterSuggestions(query, fetchImpl, apiBase = "") {
+  return postFlagMapJson(publicFlagMapUrls(apiBase).submitterSuggestions(), { query: query ?? "" }, fetchImpl);
+}
+
+export function resolveSubmitterFlags(token, fetchImpl, apiBase = "") {
+  return postFlagMapJson(publicFlagMapUrls(apiBase).submitterFlags(), { token: token ?? "" }, fetchImpl);
 }
 
 export function withApiBase(apiBase, path) {
@@ -286,16 +316,6 @@ function mergeStadiumSections(sections) {
     occupiedCount: bucket.seats.filter((seat) => seat.status === "Occupied").length,
     seats: bucket.seats
   }));
-}
-
-export function currentSubmitterReady(name) {
-  const trimmed = String(name || "").trim().replace(/\s+/g, " ");
-  if (!trimmed) return false;
-  const normalized = trimmed.toLowerCase();
-  if (normalized === "unknown" || normalized === "unknown unknown" || normalized === "supporter") return false;
-  const parts = trimmed.split(" ").filter((part) => part && !/[0-9@_]/.test(part) && !(part.includes(".") && part.indexOf(".") < part.length - 1));
-  if (parts.length < 2) return false;
-  return parts[0].length >= 2 && parts[parts.length - 1].length >= 3;
 }
 
 export function boundsOf(items) {

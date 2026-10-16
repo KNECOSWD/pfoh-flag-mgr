@@ -17,7 +17,6 @@ import {
   flagMapDetailGates,
   flagMapLayerOpacities,
   boundsOf,
-  currentSubmitterReady,
   FIELD_MAP_ROWS,
   FIELD_MAP_Z_ROWS,
   layoutFlagField,
@@ -29,6 +28,8 @@ import {
   pinchView,
   pointerShouldOpen,
   lookupSubmittedFlags,
+  lookupSubmitterSuggestions,
+  resolveSubmitterFlags,
   publicFlagMapUrls,
   readFlagMapLocation,
   springEase,
@@ -234,28 +235,26 @@ test("the field is laid out as seen from the pavilion", () => {
   assert.equal(empty.cells.some((cell) => cell.flagGridName === "Z-10"), false);
 });
 
-test("flags I submitted waits for a current submitter", () => {
-  assert.equal(currentSubmitterReady("Ada Lovelace"), true);
-  assert.equal(currentSubmitterReady("Supporter"), false);
-  assert.equal(currentSubmitterReady("unknown"), false);
-  assert.equal(currentSubmitterReady("unknown unknown"), false);
-  assert.equal(currentSubmitterReady("Ada"), false);
-  assert.equal(currentSubmitterReady("user_42 Claimer"), false);
+test("submitter suggestions share the honoree search and wave every match", () => {
   assert.equal(boundsOf([{ x: 2, y: 4, width: 10, height: 6 }, { x: 20, y: 1, width: 4, height: 3 }]).width, 22);
-  assert.match(page, /submittedFlagsEnabled \?/);
-  assert.match(page, /void showMyFlags\(\)/);
+  assert.match(page, /lookupSubmitterSuggestions\(/);
+  assert.match(page, /resolveSubmitterFlags\(/);
+  assert.match(page, /void waveSubmitter\(/);
   assert.match(page, /boundsOf\(matched\)/);
   assert.match(page, /setWaveIds\(matched\.map/);
+  assert.match(page, /trimmed\.length < 3/);
+  assert.doesNotMatch(page, /Flags I submitted/);
+  assert.doesNotMatch(page, /flag-map\/mine/);
+  assert.doesNotMatch(page, /submittedFlagsEnabled/);
+  assert.doesNotMatch(app, /loadMySubmittedFlags/);
+  assert.doesNotMatch(app, /currentSubmitterReady/);
   assert.match(page, /publicFlagSeat/);
   assert.match(page, /isReserved/);
   assert.match(page, /publicFlagRowLabel/);
   assert.match(page, /publicFlagColumnLabel/);
   assert.match(page, /publicFlagAisle/);
   assert.match(page, /publicFlagPavilion/);
-  assert.match(page, /Flags I submitted/);
   assert.doesNotMatch(page, /submitter-first/);
-  assert.match(app, /currentSubmitterReady\(/);
-  assert.match(app, /loadMySubmittedFlags/);
   assert.match(css, /\.publicFlagSeat\.isReserved/);
   assert.match(css, /\.publicFlagPavilion/);
 });
@@ -555,7 +554,8 @@ test("a kiosk attract loop does not request the flag map again", async () => {
   assert.equal(cleared.submitterNote, "");
   assert.deepEqual(cleared.submitterHits, []);
   assert.equal(cleared.view.scale, 0.4);
-  assert.match(attract, /setSubmitterFirst\(cleared\.submitterFirst\)/);
+  assert.match(attract, /setSubmitterSuggestions\(\[\]\)/);
+  assert.match(attract, /setWaveIds\(\[\]\)/);
   assert.match(attract, /setQuery\(cleared\.query\)/);
   assert.match(attract, /setSelected\(cleared\.selected\)/);
   assert.ok(attract.indexOf("applyKioskIdleReset") < attract.indexOf("attractView"));
@@ -653,7 +653,9 @@ test("kiosk mode stays on the flag map and hides admin chrome", () => {
   assert.doesNotMatch(shell, /adminAlertBanner|authBox|heroNav|appFooter|\/admin\/review|loginRedirect|Sign out|Log in/);
   assert.match(app, /if \(kioskLockedRef\.current\) return/);
   assert.match(app, /Your name can be used to look up flags you submitted at the event kiosk\./);
-  assert.match(page, /Flags I submitted/);
+  assert.match(page, /lookupSubmitterSuggestions/);
+  assert.doesNotMatch(page, /Flags I submitted/);
+  assert.doesNotMatch(page, /flag-map\/mine/);
   assert.doesNotMatch(page, /loginRedirect/);
   const setup = readFileSync(new URL("../../docs/kiosk-setup.md", import.meta.url), "utf8");
   assert.match(setup, /signed out/i);
@@ -679,6 +681,24 @@ test("the submitted-flag lookup does not send a sign-in token", async () => {
     return { status: 401 };
   });
   assert.equal(exitStatus, 401);
+
+  let suggestionHeaders = null;
+  const suggestions = await lookupSubmitterSuggestions("Ada", async (url, init) => {
+    suggestionHeaders = init.headers;
+    assert.equal(url, "/api/public/flag-map/submitter-suggestions");
+    assert.equal(init.method, "POST");
+    assert.equal(init.body, JSON.stringify({ query: "Ada" }));
+    return { status: 200, json: async () => ({ suggestions: [{ label: "All flags submitted by Ada Lovelace", token: "abc" }] }) };
+  });
+  assert.equal(suggestionHeaders.Authorization, undefined);
+  assert.equal(suggestions.body.suggestions[0].label, "All flags submitted by Ada Lovelace");
+  const resolved = await resolveSubmitterFlags("abc", async (url, init) => {
+    assert.equal(init.headers.Authorization, undefined);
+    assert.equal(url, "/api/public/flag-map/submitter-flags");
+    assert.equal(init.body, JSON.stringify({ token: "abc" }));
+    return { status: 200, json: async () => ({ flags: [{ flagGridId: 2 }] }) };
+  });
+  assert.equal(resolved.body.flags[0].flagGridId, 2);
 });
 
 function memoryStorage() {

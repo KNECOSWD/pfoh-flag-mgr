@@ -256,20 +256,84 @@ public class PublicFlagMap(PfohDbContext db)
         return new SubmitterLookupResult("ok", matches.Count, matches);
     }
 
-    public async Task<IReadOnlyList<PublicFlagSearchDto>> ForCurrentSubmitterAsync(
-        string objectId,
-        string? displayName,
+    public const int SubmitterSuggestionLimit = 8;
+
+    public async Task<SubmitterSuggestionResult> SuggestSubmittersAsync(string? query, CancellationToken ct)
+    {
+        var trimmed = (query ?? string.Empty).Trim();
+        if (trimmed.Length < 3)
+        {
+            return new SubmitterSuggestionResult("rejected", []);
+        }
+
+        if (IsPrivateNameToken(trimmed))
+        {
+            return new SubmitterSuggestionResult("none", []);
+        }
+
+        var named = await LoadNamedFlagsAsync(ct);
+        var names = named
+            .Where(row => SuggestionMatches(row.NormalizedFirst, row.NormalizedLast, trimmed))
+            .GroupBy(row => row.NormalizedFirst + "\n" + row.NormalizedLast, StringComparer.Ordinal)
+            .Select(group => group.First())
+            .OrderBy(row => row.Display, StringComparer.OrdinalIgnoreCase)
+            .Take(SubmitterSuggestionLimit)
+            .Select(row => new SubmitterIdentity(row.NormalizedFirst, row.NormalizedLast, row.Display))
+            .ToList();
+        return new SubmitterSuggestionResult(names.Count == 0 ? "none" : "ok", names);
+    }
+
+    public async Task<IReadOnlyList<PublicFlagSearchDto>> FlagsForExactSubmitterAsync(
+        string normalizedFirst,
+        string normalizedLast,
         CancellationToken ct)
     {
-        var (nameFirst, nameLast) = SplitDisplayName(displayName);
-        var firstQuery = NormalizeName(nameFirst);
-        var lastQuery = NormalizeName(nameLast);
-        var nameUsable = !UserProfileService.IsPlaceholderDisplayName(displayName)
-            && firstQuery.Length >= 2
-            && lastQuery.Length >= 3
-            && !IsPrivateNameToken(nameFirst)
-            && !IsPrivateNameToken(nameLast);
+        if (string.IsNullOrWhiteSpace(normalizedFirst) || string.IsNullOrWhiteSpace(normalizedLast))
+        {
+            return [];
+        }
 
+        var named = await LoadNamedFlagsAsync(ct);
+        return named
+            .Where(row => row.NormalizedFirst == normalizedFirst && row.NormalizedLast == normalizedLast)
+            .GroupBy(row => row.Honoree.Id)
+            .Select(group => group.First().Honoree)
+            .Select(ToSearch)
+            .OrderBy(hit => hit.FlagGridName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    internal static bool SuggestionMatches(string normalizedFirst, string normalizedLast, string? query)
+    {
+        var raw = (query ?? string.Empty).Trim();
+        if (raw.Length < 3 || IsPrivateNameToken(raw) || IsPrivateNameToken(normalizedFirst) || IsPrivateNameToken(normalizedLast))
+        {
+            return false;
+        }
+
+        var needle = NormalizeName(raw);
+        if (needle.Length < 3 || normalizedFirst.Length == 0 || normalizedLast.Length == 0)
+        {
+            return false;
+        }
+
+        var full = normalizedFirst + " " + normalizedLast;
+        if (full.StartsWith(needle, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (needle.Contains(' '))
+        {
+            return false;
+        }
+
+        return normalizedFirst.StartsWith(needle, StringComparison.Ordinal)
+            || normalizedLast.StartsWith(needle, StringComparison.Ordinal);
+    }
+
+    private async Task<List<NamedFlag>> LoadNamedFlagsAsync(CancellationToken ct)
+    {
         var honorees = await db.Honorees
             .AsNoTracking()
             .Include(honoree => honoree.FlagGrid)
@@ -283,75 +347,78 @@ public class PublicFlagMap(PfohDbContext db)
                 honoree.FlagGrid.DeletedDate == null)
             .ToListAsync(ct);
 
-        var matchedIds = new HashSet<int>();
-        if (nameUsable)
+        var sponsorIds = honorees
+            .Where(honoree => honoree.SponsorId.HasValue)
+            .Select(honoree => honoree.SponsorId!.Value)
+            .Distinct()
+            .ToList();
+        var sponsorNames = new Dictionary<int, (string FirstName, string LastName)>();
+        if (sponsorIds.Count > 0)
         {
-            var sponsorIds = honorees
-                .Where(honoree => honoree.SponsorId.HasValue)
-                .Select(honoree => honoree.SponsorId!.Value)
-                .Distinct()
-                .ToList();
-            var sponsorNames = new Dictionary<int, (string FirstName, string LastName)>();
-            if (sponsorIds.Count > 0)
+            var sponsorRows = await db.Sponsors
+                .AsNoTracking()
+                .Where(sponsor => sponsorIds.Contains(sponsor.Id))
+                .Select(sponsor => new { sponsor.Id, sponsor.FirstName, sponsor.LastName })
+                .ToListAsync(ct);
+            foreach (var row in sponsorRows)
             {
-                var sponsorRows = await db.Sponsors
-                    .AsNoTracking()
-                    .Where(sponsor => sponsorIds.Contains(sponsor.Id))
-                    .Select(sponsor => new { sponsor.Id, sponsor.FirstName, sponsor.LastName })
-                    .ToListAsync(ct);
-                foreach (var row in sponsorRows)
-                {
-                    sponsorNames[row.Id] = (row.FirstName, row.LastName);
-                }
+                sponsorNames[row.Id] = (row.FirstName, row.LastName);
             }
+        }
 
-            var claimNames = await db.FlagClaims
+        var honoreeIds = honorees.Select(honoree => honoree.Id).ToList();
+        var claimNames = honoreeIds.Count == 0
+            ? []
+            : await db.FlagClaims
                 .AsNoTracking()
                 .Where(claim =>
                     claim.HonoreeId != null &&
+                    honoreeIds.Contains(claim.HonoreeId.Value) &&
                     (claim.ClaimStatus == "Claimed" || claim.ClaimStatus == "Submitted" || claim.ClaimStatus == "Approved"))
                 .Select(claim => new { claim.HonoreeId, claim.ExternalUserName })
                 .ToListAsync(ct);
-            var claimersByHonoree = claimNames
-                .Where(claim => claim.HonoreeId.HasValue)
-                .GroupBy(claim => claim.HonoreeId!.Value)
-                .ToDictionary(group => group.Key, group => group.Select(claim => SplitDisplayName(claim.ExternalUserName)).ToList());
+        var claimersByHonoree = claimNames
+            .Where(claim => claim.HonoreeId.HasValue)
+            .GroupBy(claim => claim.HonoreeId!.Value)
+            .ToDictionary(group => group.Key, group => group.Select(claim => SplitDisplayName(claim.ExternalUserName)).ToList());
 
-            foreach (var honoree in honorees)
+        var named = new List<NamedFlag>();
+        foreach (var honoree in honorees)
+        {
+            if (honoree.SponsorId is int sponsorId && sponsorNames.TryGetValue(sponsorId, out var sponsorName))
             {
-                var sponsorHit = honoree.SponsorId is int sponsorId &&
-                    sponsorNames.TryGetValue(sponsorId, out var sponsorName) &&
-                    NameMatches(sponsorName.FirstName, sponsorName.LastName, firstQuery, lastQuery);
-                var claimHit = claimersByHonoree.TryGetValue(honoree.Id, out var claimers) &&
-                    claimers.Any(name => NameMatches(name.First, name.Last, firstQuery, lastQuery));
-                if (sponsorHit || claimHit)
+                AddNamedFlag(named, honoree, sponsorName.FirstName, sponsorName.LastName);
+            }
+
+            if (claimersByHonoree.TryGetValue(honoree.Id, out var claimers))
+            {
+                foreach (var claimer in claimers)
                 {
-                    matchedIds.Add(honoree.Id);
+                    AddNamedFlag(named, honoree, claimer.First, claimer.Last);
                 }
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(objectId))
+        return named;
+    }
+
+    private static void AddNamedFlag(List<NamedFlag> named, Honoree honoree, string? first, string? last)
+    {
+        if (IsPrivateNameToken(first) || IsPrivateNameToken(last))
         {
-            var ownedIds = await db.FlagClaims
-                .AsNoTracking()
-                .Where(claim =>
-                    claim.ExternalUserObjectId == objectId &&
-                    claim.HonoreeId != null &&
-                    (claim.ClaimStatus == "Claimed" || claim.ClaimStatus == "Submitted" || claim.ClaimStatus == "Approved"))
-                .Select(claim => claim.HonoreeId!.Value)
-                .ToListAsync(ct);
-            foreach (var id in ownedIds)
-            {
-                matchedIds.Add(id);
-            }
+            return;
         }
 
-        return honorees
-            .Where(honoree => matchedIds.Contains(honoree.Id))
-            .Select(ToSearch)
-            .OrderBy(hit => hit.FlagGridName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var normalizedFirst = NormalizeName(first);
+        var normalizedLast = NormalizeName(last);
+        if (normalizedFirst.Length == 0 || normalizedLast.Length == 0)
+        {
+            return;
+        }
+
+        var displayFirst = (first ?? string.Empty).Trim();
+        var displayLast = (last ?? string.Empty).Trim();
+        named.Add(new NamedFlag(honoree, normalizedFirst, normalizedLast, displayFirst + " " + displayLast));
     }
 
     internal static bool IsPrivateNameToken(string? value)
@@ -608,6 +675,12 @@ public class PublicFlagMap(PfohDbContext db)
     }
 
     public sealed record SubmitterLookupResult(string Outcome, int Count, IReadOnlyList<PublicFlagSearchDto> Flags);
+
+    public sealed record SubmitterIdentity(string NormalizedFirst, string NormalizedLast, string Display);
+
+    public sealed record SubmitterSuggestionResult(string Outcome, IReadOnlyList<SubmitterIdentity> Names);
+
+    private sealed record NamedFlag(Honoree Honoree, string NormalizedFirst, string NormalizedLast, string Display);
 
     private sealed class SectionComparer : IComparer<string>
     {

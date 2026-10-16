@@ -8,10 +8,15 @@ namespace PFOH.Api.Services;
 public static class SubmitterLookupPrivacy
 {
     public const string Path = "/api/public/flag-map/by-submitter";
+    public const string SuggestionsPath = "/api/public/flag-map/submitter-suggestions";
+    public const string FlagsPath = "/api/public/flag-map/submitter-flags";
 
     public static bool IsLookupPath(PathString path)
     {
-        return string.Equals(path.Value, Path, StringComparison.OrdinalIgnoreCase);
+        var value = path.Value ?? string.Empty;
+        return string.Equals(value, Path, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, SuggestionsPath, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, FlagsPath, StringComparison.OrdinalIgnoreCase);
     }
 
     public static void RedactRequestTarget(HttpContext context)
@@ -55,8 +60,9 @@ public sealed class SubmitterLookupTelemetryInitializer : ITelemetryInitializer
 
         var path = request.Url?.AbsolutePath ?? string.Empty;
         var name = request.Name ?? string.Empty;
-        if (!path.Contains(SubmitterLookupPrivacy.Path, StringComparison.OrdinalIgnoreCase) &&
-            !name.Contains(SubmitterLookupPrivacy.Path, StringComparison.OrdinalIgnoreCase))
+        var namedPath = (name.Split(' ').LastOrDefault() ?? string.Empty).Split('?')[0];
+        if (!SubmitterLookupPrivacy.IsLookupPath(new PathString(path)) &&
+            !SubmitterLookupPrivacy.IsLookupPath(new PathString(namedPath)))
         {
             return;
         }

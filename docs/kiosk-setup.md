@@ -20,7 +20,7 @@ Use a fresh browser profile that is signed out.
 
 Check that the window does not show Log in, and that it does not redirect to a Microsoft sign-in page.
 
-The Flags I submitted tab is shown only when a visitor is signed in and a usable name is saved for that sign-in. The event kiosk stays signed out, so that tab is not on the kiosk. Visitors at the kiosk look up a honoree by name instead.
+Visitors search from the same name box used for honorees. After 3 letters, a suggestion can read "All flags submitted by First Last". Choosing it fits that person's flags. The search works while the kiosk is signed out and does not ask anyone to sign in.
 
 ## Leaving the page
 

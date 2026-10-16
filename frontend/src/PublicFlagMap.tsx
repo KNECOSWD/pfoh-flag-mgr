@@ -18,6 +18,8 @@ import {
   flagDeepLink,
   flagMapDetailGates,
   flagMapLayerOpacities,
+  lookupSubmitterSuggestions,
+  resolveSubmitterFlags,
   flagYears,
   gestureTransform,
   layoutFlagField,
@@ -207,18 +209,19 @@ function FlagDetail({
   );
 }
 
+type SubmitterSuggestion = { label: string; token: string };
+type SearchRow =
+  | { kind: "honoree"; hit: SearchHit }
+  | { kind: "submitter"; label: string; token: string };
+
 export default function PublicFlagMap({
   onPreviewCard,
   kiosk: kioskLocked = false,
-  onExitKiosk,
-  submittedFlagsEnabled = false,
-  loadSubmittedFlags
+  onExitKiosk
 }: {
   onPreviewCard: (honoreeId: number, title: string) => void;
   kiosk?: boolean;
   onExitKiosk?: () => void;
-  submittedFlagsEnabled?: boolean;
-  loadSubmittedFlags?: () => Promise<ReadonlyArray<Record<string, unknown>>>;
 }) {
   const listId = useId();
   const helpId = useId();
@@ -257,12 +260,8 @@ export default function PublicFlagMap({
   const [field, setField] = useState<ReturnType<typeof layoutFlagField> | null>(null);
   const [index, setIndex] = useState<SearchHit[]>([]);
   const [query, setQuery] = useState("");
-  const [searchTab, setSearchTab] = useState<"honoree" | "submitted">("honoree");
-  const [submitterFirst, setSubmitterFirst] = useState("");
-  const [submitterLast, setSubmitterLast] = useState("");
   const [submitterNote, setSubmitterNote] = useState("");
-  const [submitterHits, setSubmitterHits] = useState<SearchHit[]>([]);
-  const [submitterBusy, setSubmitterBusy] = useState(false);
+  const [submitterSuggestions, setSubmitterSuggestions] = useState<SubmitterSuggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [error, setError] = useState(location.flagRejected ? "That flag is not on the map." : "");
@@ -282,6 +281,16 @@ export default function PublicFlagMap({
   const [pinMessage, setPinMessage] = useState("");
   const [pinBusy, setPinBusy] = useState(false);
   const suggestions = filterFlagMapSuggestions(index, query) as SearchHit[];
+  const searchRows: SearchRow[] = [
+    ...suggestions.map((hit) => ({ kind: "honoree" as const, hit })),
+    ...submitterSuggestions.map((item) => ({ kind: "submitter" as const, label: item.label, token: item.token }))
+  ];
+  const activeRow = searchRows[active];
+  const activeDescendant = !open || !activeRow
+    ? undefined
+    : activeRow.kind === "honoree"
+      ? `${listId}-${activeRow.hit.honoreeId}`
+      : `${listId}-submitter-${activeRow.token}`;
   const shareUrl = selected ? flagDeepLink(window.location.href, selected.flagGridId) : "";
 
   const visibleSections = useMemo(() => {
@@ -536,11 +545,8 @@ export default function PublicFlagMap({
     setQuery(cleared.query);
     setOpen(cleared.open);
     setActive(cleared.active);
-    setSearchTab(cleared.searchTab === "submitted" ? "submitted" : "honoree");
-    setSubmitterFirst(cleared.submitterFirst);
-    setSubmitterLast(cleared.submitterLast);
-    setSubmitterNote(cleared.submitterNote);
-    setSubmitterHits(cleared.submitterHits);
+    setSubmitterNote("");
+    setSubmitterSuggestions([]);
     historyRef.current = cleared.history;
     writeFlagParam(null);
     userAdjustedRef.current = true;
@@ -679,8 +685,37 @@ export default function PublicFlagMap({
   }, [waveIds]);
 
   useEffect(() => {
-    if (!submittedFlagsEnabled && searchTab === "submitted") setSearchTab("honoree");
-  }, [submittedFlagsEnabled, searchTab]);
+    const trimmed = query.trim();
+    if (trimmed.length < 3) {
+      setSubmitterSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void lookupSubmitterSuggestions(trimmed, undefined, apiBase)
+        .then((result) => {
+          if (cancelled) return;
+          if (result.status === 429) {
+            setSubmitterNote("Too many lookups. Wait a minute and try again.");
+            setSubmitterSuggestions([]);
+            return;
+          }
+          const body = result.body as { suggestions?: SubmitterSuggestion[] } | null;
+          const next = Array.isArray(body?.suggestions)
+            ? body.suggestions.filter((item) => item && typeof item.label === "string" && typeof item.token === "string" && item.token.length > 0)
+            : [];
+          setSubmitterNote("");
+          setSubmitterSuggestions(next);
+        })
+        .catch(() => {
+          if (!cancelled) setSubmitterSuggestions([]);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query]);
 
   useLayoutEffect(() => {
     const root = document.documentElement;
@@ -958,24 +993,69 @@ export default function PublicFlagMap({
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setOpen(true);
-      setActive((current) => Math.min(current + 1, Math.max(suggestions.length - 1, 0)));
+      setActive((current) => Math.min(current + 1, Math.max(searchRows.length - 1, 0)));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setOpen(true);
       setActive((current) => Math.max(current - 1, 0));
-    } else if (event.key === "Enter" && open && suggestions[active]) {
+    } else if (event.key === "Enter" && open && searchRows[active]) {
       event.preventDefault();
-      pickSuggestion(suggestions[active]);
+      pickSuggestion(searchRows[active]);
     } else if (event.key === "Escape") {
       setOpen(false);
     }
   }
 
-  function pickSuggestion(hit: SearchHit) {
+  function pickSuggestion(row: SearchRow) {
+    if (row.kind === "submitter") {
+      void waveSubmitter(row.token);
+      return;
+    }
+    const hit = row.hit;
     setQuery(hit.displayName);
     setOpen(false);
     const flag = (layoutRef.current?.flags as FlagBox[] | undefined)?.find((item) => item.flagGridId === hit.flagGridId);
     if (flag) openFlag(flag, { celebrate: true });
+  }
+
+  async function waveSubmitter(token: string) {
+    setOpen(false);
+    setSubmitterNote("");
+    setSelected(null);
+    setHighlightId(null);
+    setRevealId(null);
+    writeFlagParam(null);
+    try {
+      const result = await resolveSubmitterFlags(token, undefined, apiBase);
+      if (result.status === 429) {
+        setSubmitterNote("Too many lookups. Wait a minute and try again.");
+        return;
+      }
+      const body = result.body as { flags?: Array<{ flagGridId?: number; honoreeId?: number }> } | null;
+      const flags = (layoutRef.current?.flags ?? []) as FlagBox[];
+      const matched: FlagBox[] = [];
+      for (const hit of body?.flags ?? []) {
+        const id = Number(hit.flagGridId);
+        const honoreeId = Number(hit.honoreeId);
+        const flag = flags.find((item) => item.flagGridId === id)
+          ?? (Number.isFinite(honoreeId) ? flags.find((item) => item.honoreeId === honoreeId) : undefined);
+        if (flag && !matched.some((item) => item.flagGridId === flag.flagGridId)) matched.push(flag);
+      }
+      if (matched.length === 0) {
+        setWaveIds([]);
+        setSubmitterNote("No flags found");
+        return;
+      }
+      setWaveIds(matched.map((flag) => flag.flagGridId));
+      const bounds = boundsOf(matched);
+      if (bounds) {
+        userAdjustedRef.current = true;
+        animateTo(fitView(bounds, viewportSize(), 48));
+      }
+    } catch {
+      setWaveIds([]);
+      setSubmitterNote("No flags found");
+    }
   }
 
   function onMapKeyDown(event: React.KeyboardEvent<HTMLElement>) {
@@ -1008,47 +1088,6 @@ export default function PublicFlagMap({
       event.preventDefault();
       userAdjustedRef.current = true;
       applyView(panView(viewRef.current, 0, -FLAG_MAP_ZOOM.panStep), true);
-    }
-  }
-
-  async function showMyFlags() {
-    if (!submittedFlagsEnabled || !loadSubmittedFlags) return;
-    setSearchTab("submitted");
-    setSubmitterNote("");
-    setSubmitterHits([]);
-    setSubmitterBusy(true);
-    setSelected(null);
-    setHighlightId(null);
-    setRevealId(null);
-    writeFlagParam(null);
-    try {
-      const hits = await loadSubmittedFlags();
-      const flags = (layoutRef.current?.flags ?? []) as FlagBox[];
-      const matched: FlagBox[] = [];
-      for (const hit of hits ?? []) {
-        const id = Number(hit.flagGridId);
-        const honoreeId = Number(hit.honoreeId);
-        const flag = flags.find((item) => item.flagGridId === id)
-          ?? (Number.isFinite(honoreeId) ? flags.find((item) => item.honoreeId === honoreeId) : undefined);
-        if (flag && !matched.some((item) => item.flagGridId === flag.flagGridId)) matched.push(flag);
-      }
-      if (matched.length === 0) {
-        setWaveIds([]);
-        setSubmitterNote("No flags found");
-        return;
-      }
-      setSubmitterNote("");
-      setWaveIds(matched.map((flag) => flag.flagGridId));
-      const bounds = boundsOf(matched);
-      if (bounds) {
-        userAdjustedRef.current = true;
-        animateTo(fitView(bounds, viewportSize(), 48));
-      }
-    } catch {
-      setWaveIds([]);
-      setSubmitterNote("No flags found");
-    } finally {
-      setSubmitterBusy(false);
     }
   }
 
@@ -1112,61 +1151,64 @@ export default function PublicFlagMap({
           </div>
         </div>
         <div className="publicFlagSearch">
-          <div className="publicFlagSearchTabs" role="tablist" aria-label="Flag search">
-            <button type="button" role="tab" aria-selected={searchTab === "honoree"} className={searchTab === "honoree" ? "isActive" : ""} onClick={() => { setSearchTab("honoree"); setWaveIds([]); }}>Find a honoree</button>
-            {submittedFlagsEnabled ? (
-              <button type="button" role="tab" aria-selected={searchTab === "submitted"} className={searchTab === "submitted" ? "isActive" : ""} onClick={() => { void showMyFlags(); }}>Flags I submitted</button>
-            ) : null}
-          </div>
-          {searchTab === "honoree" || !submittedFlagsEnabled ? (
-            <>
-              <label htmlFor="public-flag-search">Search honorees</label>
-              <input
-                id="public-flag-search"
-                role="combobox"
-                aria-expanded={open && suggestions.length > 0}
-                aria-controls={listId}
-                aria-autocomplete="list"
-                aria-activedescendant={open && suggestions[active] ? `${listId}-${suggestions[active].honoreeId}` : undefined}
-                type="search"
-                inputMode="search"
-                enterKeyHint="search"
-                autoComplete="off"
-                autoCapitalize="none"
-                placeholder="Type a name"
-                value={query}
-                onChange={(event) => {
-                  setQuery(event.target.value);
-                  setOpen(true);
-                  setActive(0);
-                }}
-                onFocus={() => setOpen(true)}
-                onKeyDown={onSearchKeyDown}
-              />
-              {open && suggestions.length > 0 ? (
-                <ul id={listId} role="listbox" className="publicFlagSuggestions">
-                  {suggestions.map((hit, optionIndex) => (
-                    <li
-                      id={`${listId}-${hit.honoreeId}`}
-                      key={`${hit.honoreeId}-${hit.flagGridId}`}
-                      role="option"
-                      aria-selected={optionIndex === active}
-                      className={optionIndex === active ? "isActive" : ""}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        pickSuggestion(hit);
-                      }}
-                    >
-                      <strong>{hit.displayName}</strong>
-                      <span>{[hit.serviceBranchName, hit.section, hit.flagGridName].filter(Boolean).join(" · ")}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </>
-          ) : (
-            <p className="message" role="status">{submitterBusy ? "Looking…" : (submitterNote || "Showing the flags you submitted.")}</p>
-          )}
+          <label htmlFor="public-flag-search">Search honorees</label>
+          <input
+            id="public-flag-search"
+            role="combobox"
+            aria-expanded={open && searchRows.length > 0}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            aria-activedescendant={activeDescendant}
+            type="search"
+            inputMode="search"
+            enterKeyHint="search"
+            autoComplete="off"
+            autoCapitalize="none"
+            placeholder="Type a name"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setOpen(true);
+              setActive(0);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={onSearchKeyDown}
+          />
+          {submitterNote ? <p className="message" role="status">{submitterNote}</p> : null}
+          {open && searchRows.length > 0 ? (
+            <ul id={listId} role="listbox" className="publicFlagSuggestions">
+              {searchRows.map((row, optionIndex) => row.kind === "honoree" ? (
+                <li
+                  id={`${listId}-${row.hit.honoreeId}`}
+                  key={`${row.hit.honoreeId}-${row.hit.flagGridId}`}
+                  role="option"
+                  aria-selected={optionIndex === active}
+                  className={optionIndex === active ? "isActive" : ""}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    pickSuggestion(row);
+                  }}
+                >
+                  <strong>{row.hit.displayName}</strong>
+                  <span>{[row.hit.serviceBranchName, row.hit.section, row.hit.flagGridName].filter(Boolean).join(" · ")}</span>
+                </li>
+              ) : (
+                <li
+                  id={`${listId}-submitter-${row.token}`}
+                  key={row.token}
+                  role="option"
+                  aria-selected={optionIndex === active}
+                  className={optionIndex === active ? "isActive" : ""}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    pickSuggestion(row);
+                  }}
+                >
+                  <strong>{row.label}</strong>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
         <div className="publicFlagToolbar">
           {kiosk ? <button type="button" onClick={goHome} aria-label="Home">Home</button> : null}

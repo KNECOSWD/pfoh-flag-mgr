@@ -33,12 +33,10 @@ import {
   organizationMaxLength,
   type FlagMapExportField,
   lookupApi,
-  loadMySubmittedFlags,
   profileApi
 } from "./api";
 import { decideAdminLoad } from "./adminAccess.js";
 import PublicFlagMap from "./PublicFlagMap";
-import { currentSubmitterReady } from "./publicFlagMap.js";
 import {
   clearKioskSession,
   kioskBackTarget,
@@ -486,13 +484,6 @@ export default function App() {
 
     return "Supporter";
   }, [savedDisplayName, account]);
-
-  const submittedFlagsEnabled = isAuthenticated && currentSubmitterReady(
-    savedDisplayName.trim() || (!isPlaceholderDisplayName(account?.name) ? account?.name : "")
-  );
-  const loadSubmittedFlags = submittedFlagsEnabled && account
-    ? async () => (await loadMySubmittedFlags(instance, account)).flags
-    : undefined;
 
   const submitterContact = useMemo(
     () => getAccountSubmitterContact(account),
@@ -2706,8 +2697,6 @@ export default function App() {
       <main className="kioskLock" data-kiosk-lock="1">
         <PublicFlagMap
           kiosk
-          submittedFlagsEnabled={submittedFlagsEnabled}
-          loadSubmittedFlags={loadSubmittedFlags}
           onPreviewCard={(honoreeId, title) => { void openPublicHonoreeCard(honoreeId, title); }}
           onExitKiosk={leaveKiosk}
         />
@@ -4693,8 +4682,6 @@ export default function App() {
           </>
           ) : (
             <PublicFlagMap
-              submittedFlagsEnabled={submittedFlagsEnabled}
-              loadSubmittedFlags={loadSubmittedFlags}
               onPreviewCard={(honoreeId, title) => { void openPublicHonoreeCard(honoreeId, title); }}
             />
           )}

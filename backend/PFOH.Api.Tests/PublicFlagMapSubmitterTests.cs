@@ -43,7 +43,9 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
         var accent = Sponsor("José", "García");
         var dormant = Sponsor("Dormant", "Knownname");
         var wide = Sponsor("Wide", "Net");
-        db.Sponsors.AddRange(submitter, donor, accent, dormant, wide);
+        var quotaNames = new[] { "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India" };
+        var quota = quotaNames.Select(name => Sponsor("Quotaaa", name)).ToList();
+        db.Sponsors.AddRange(new[] { submitter, donor, accent, dormant, wide }.Concat(quota));
         db.SaveChanges();
 
         var visibleGrid = Grid("C-01");
@@ -51,7 +53,8 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
         var accentGrid = Grid("C-03");
         var dormantGrid = Grid("C-04");
         var bulkGrids = Enumerable.Range(1, 11).Select(index => Grid($"W-{index:00}")).ToList();
-        db.FlagGrids.AddRange(new[] { visibleGrid, claimedGrid, accentGrid, dormantGrid }.Concat(bulkGrids));
+        var quotaGrids = quotaNames.Select((name, index) => Grid($"QA-{index + 1:00}")).ToList();
+        db.FlagGrids.AddRange(new[] { visibleGrid, claimedGrid, accentGrid, dormantGrid }.Concat(bulkGrids).Concat(quotaGrids));
         db.SaveChanges();
 
         var visible = Honoree("Visible", "Hero", visibleGrid, submitter, active: true);
@@ -59,7 +62,8 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
         var accented = Honoree("Accented", "Hero", accentGrid, accent, active: true);
         var sleeping = Honoree("Sleeping", "Record", dormantGrid, dormant, active: false);
         var bulk = bulkGrids.Select((grid, index) => Honoree($"Bulk{index}", "Row", grid, wide, active: true)).ToList();
-        db.Honorees.AddRange(new[] { visible, claimed, accented, sleeping }.Concat(bulk));
+        var listed = quotaGrids.Select((grid, index) => Honoree("Listed", quotaNames[index], grid, quota[index], active: true)).ToList();
+        db.Honorees.AddRange(new[] { visible, claimed, accented, sleeping }.Concat(bulk).Concat(listed));
         db.SaveChanges();
 
         db.FlagClaims.Add(new FlagClaim
@@ -242,48 +246,153 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
     }
 
     [Fact]
-    public async Task Current_submitter_flags_require_sign_in_and_omit_the_name()
+    public async Task Submitter_suggestions_show_the_display_name_and_no_account_details()
     {
         factory.Logs.Clear();
-        using var anonymous = await factory.CreateClient().GetAsync("/api/public/flag-map/mine");
-        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
-
-        using var mine = await SendMine(factory, "198.51.100.80", CanaryOid, $"{CanaryFirst} {CanaryLast}");
-        var body = await mine.Content.ReadAsStringAsync();
-        Assert.Equal(HttpStatusCode.OK, mine.StatusCode);
+        using var suggestions = await SendSuggestions(factory, "198.51.100.80", CanaryFirst);
+        var body = await suggestions.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, suggestions.StatusCode);
         using var json = JsonDocument.Parse(body);
-        var names = json.RootElement.GetProperty("flags").EnumerateArray()
-            .Select(flag => flag.GetProperty("displayName").GetString())
-            .ToList();
-        Assert.Contains("Visible Hero", names);
-        Assert.Contains("Claimed Flag", names);
-        Assert.Equal(2, names.Count);
-        Assert.False(json.RootElement.TryGetProperty("refine", out _));
-        AssertNoCanary(body);
-        AssertNoStore(mine);
+        var rows = json.RootElement.GetProperty("suggestions").EnumerateArray().ToList();
+        Assert.Contains(rows, row => row.GetProperty("label").GetString() == $"All flags submitted by {CanaryFirst} {CanaryLast}");
+        var token = rows.Single(row => row.GetProperty("label").GetString()!.Contains(CanaryFirst, StringComparison.Ordinal)).GetProperty("token").GetString()!;
+        Assert.Matches("^[0-9a-f]{32}$", token);
+        Assert.DoesNotContain(CanaryFirst, token, StringComparison.OrdinalIgnoreCase);
+        foreach (var row in rows)
+        {
+            Assert.Equal(2, row.EnumerateObject().Count());
+        }
 
+        AssertNoAccountDetails(body);
+        AssertNoStore(suggestions);
         var logs = string.Join('\n', factory.Logs);
         Assert.DoesNotContain(CanaryFirst, logs, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(CanaryLast, logs, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(CanaryEmail, logs, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(factory.Logs, line => line.Contains("outcome ok", StringComparison.Ordinal) && line.Contains("count 2", StringComparison.Ordinal));
+        Assert.DoesNotContain(token, logs, StringComparison.Ordinal);
 
-        using var wide = await SendMine(factory, "198.51.100.81", "wide-oid", "Wide Net");
-        var wideBody = await wide.Content.ReadAsStringAsync();
-        using var wideJson = JsonDocument.Parse(wideBody);
-        Assert.Equal(11, wideJson.RootElement.GetProperty("flags").GetArrayLength());
-        Assert.False(wideJson.RootElement.TryGetProperty("refine", out _));
-        Assert.DoesNotContain("Wide", wideBody, StringComparison.Ordinal);
-        Assert.DoesNotContain("Net", wideBody, StringComparison.Ordinal);
-        AssertNoStore(wide);
+        using var flags = await SendToken(factory, "198.51.100.81", token);
+        var flagBody = await flags.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, flags.StatusCode);
+        Assert.Contains("Visible Hero", flagBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("Claimed Flag", flagBody, StringComparison.Ordinal);
+        AssertNoAccountDetails(flagBody);
+        AssertNoStore(flags);
+        Assert.DoesNotContain(CanaryFirst, string.Join('\n', factory.Logs), StringComparison.OrdinalIgnoreCase);
+
+        using var claimer = await SendSuggestions(factory, "198.51.100.82", ClaimFirst);
+        var claimerBody = await claimer.Content.ReadAsStringAsync();
+        Assert.Contains($"All flags submitted by {ClaimFirst} {ClaimLast}", claimerBody, StringComparison.Ordinal);
+        AssertNoAccountDetails(claimerBody);
+
+        using var wide = await SendSuggestions(factory, "198.51.100.83", "Wide");
+        using var wideJson = JsonDocument.Parse(await wide.Content.ReadAsStringAsync());
+        var wideToken = wideJson.RootElement.GetProperty("suggestions").EnumerateArray().Single().GetProperty("token").GetString();
+        using var wideFlags = await SendToken(factory, "198.51.100.84", wideToken!);
+        using var wideFlagJson = JsonDocument.Parse(await wideFlags.Content.ReadAsStringAsync());
+        Assert.Equal(11, wideFlagJson.RootElement.GetProperty("flags").GetArrayLength());
+        AssertNoStore(wideFlags);
     }
 
-    private static Task<HttpResponseMessage> SendMine(Factory factory, string ip, string oid, string name)
+    [Fact]
+    public async Task Submitter_suggestions_require_three_letters_and_cap_the_list()
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, "/api/public/flag-map/mine");
+        using var shortQuery = await SendSuggestions(factory, "198.51.100.85", "Ca");
+        var shortBody = await shortQuery.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.BadRequest, shortQuery.StatusCode);
+        Assert.DoesNotContain("Ca", shortBody, StringComparison.Ordinal);
+        Assert.DoesNotContain(CanaryFirst, shortBody, StringComparison.Ordinal);
+        AssertNoAccountDetails(shortBody);
+        AssertNoStore(shortQuery);
+
+        using var buried = await SendSuggestions(factory, "198.51.100.86", "nary");
+        using var buriedJson = JsonDocument.Parse(await buried.Content.ReadAsStringAsync());
+        Assert.Equal(0, buriedJson.RootElement.GetProperty("suggestions").GetArrayLength());
+
+        using var email = await SendSuggestions(factory, "198.51.100.87", CanaryEmail);
+        var emailBody = await email.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, email.StatusCode);
+        Assert.DoesNotContain(CanaryEmail, emailBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("@", emailBody, StringComparison.Ordinal);
+
+        using var capped = await SendSuggestions(factory, "198.51.100.88", "Quotaaa");
+        var cappedBody = await capped.Content.ReadAsStringAsync();
+        using var cappedJson = JsonDocument.Parse(cappedBody);
+        Assert.Equal(PublicFlagMap.SubmitterSuggestionLimit, cappedJson.RootElement.GetProperty("suggestions").GetArrayLength());
+        Assert.DoesNotContain("India", cappedBody, StringComparison.Ordinal);
+        AssertNoAccountDetails(cappedBody);
+        AssertNoStore(capped);
+
+        using var missing = await SendToken(factory, "198.51.100.89", "not-a-real-token");
+        var missingBody = await missing.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.DoesNotContain("not-a-real-token", missingBody, StringComparison.Ordinal);
+        AssertNoStore(missing);
+    }
+
+    [Fact]
+    public async Task Submitter_suggestions_stay_limited_for_an_exempt_address_and_are_not_logged()
+    {
+        factory.Logs.Clear();
+        const string exempt = "203.0.113.77";
+        for (var i = 0; i < 20; i++)
+        {
+            using var response = await SendSuggestions(factory, exempt, "Nobodyzz");
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+
+        using var limited = await SendSuggestions(factory, exempt, CanaryFirst);
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        var limitedBody = await limited.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(CanaryFirst, limitedBody, StringComparison.OrdinalIgnoreCase);
+        AssertNoStore(limited);
+
+        using var queried = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/api/public/flag-map/submitter-suggestions?query={Uri.EscapeDataString(CanaryEmail)}");
+        queried.Headers.TryAddWithoutValidation("X-Forwarded-For", "198.51.100.90");
+        using var got = await factory.CreateClient().SendAsync(queried);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, got.StatusCode);
+        AssertNoStore(got);
+
+        var logs = string.Join('\n', factory.Logs);
+        Assert.DoesNotContain(CanaryFirst, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(CanaryEmail, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("query=", logs, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(factory.Logs, line => line.Contains("outcome", StringComparison.Ordinal) && line.Contains(exempt, StringComparison.Ordinal));
+
+        using var map = await SendPath(factory, exempt, "/api/public/flag-map/sections");
+        Assert.NotEqual(HttpStatusCode.TooManyRequests, map.StatusCode);
+    }
+
+    private static void AssertNoAccountDetails(string body)
+    {
+        Assert.DoesNotContain(CanaryEmail, body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(CanaryPhone, body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(CanaryOid, body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(CanaryStreet, body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("objectId", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("sponsorId", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("externalUser", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static Task<HttpResponseMessage> SendSuggestions(Factory factory, string ip, string query)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/public/flag-map/submitter-suggestions")
+        {
+            Content = JsonContent.Create(new { query })
+        };
         request.Headers.TryAddWithoutValidation("X-Forwarded-For", ip);
-        request.Headers.TryAddWithoutValidation(TestAuthHandler.OidHeader, oid);
-        request.Headers.TryAddWithoutValidation(TestAuthHandler.NameHeader, name);
+        return factory.CreateClient().SendAsync(request);
+    }
+
+    private static Task<HttpResponseMessage> SendToken(Factory factory, string ip, string token)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/public/flag-map/submitter-flags")
+        {
+            Content = JsonContent.Create(new { token })
+        };
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", ip);
         return factory.CreateClient().SendAsync(request);
     }
 

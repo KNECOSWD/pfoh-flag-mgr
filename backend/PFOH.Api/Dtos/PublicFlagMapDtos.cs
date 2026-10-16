@@ -11,6 +11,16 @@ public sealed class SubmitterLookupRequest
     public string? Last { get; set; }
 }
 
+public sealed class SubmitterSuggestionRequest
+{
+    public string? Query { get; set; }
+}
+
+public sealed class SubmitterTokenRequest
+{
+    public string? Token { get; set; }
+}
+
 public record PublicFlagSectionDto(
     string Section,
     int FlagCount,
