@@ -13,10 +13,10 @@ namespace PFOH.Api.Controllers;
 public class HonoreesController(
     PfohDbContext db,
     IConfiguration configuration,
-    IWebHostEnvironment environment) : ControllerBase
+    IWebHostEnvironment environment,
+    HonoreeFileStorage fileStorage) : ControllerBase
 {
     private static readonly HttpClient Http = new();
-    private readonly HonoreeFileStorage fileStorage = new(configuration);
 
     [HttpGet("search")]
     public async Task<ActionResult<IReadOnlyList<HonoreeSearchResultDto>>> Search(
@@ -92,9 +92,10 @@ public class HonoreesController(
         if (photoBytes is not null && photoBytes.Length > 0)
         {
             var contentType = GuessImageContentType(honoree.PhotoFileName, searchResult?.ImageUrl);
+            var display = DisplayImage.ForHonoreePhoto(photoBytes, contentType);
             Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
 
-            return File(photoBytes, contentType);
+            return File(display.Bytes, display.ContentType);
         }
 
         var publicUrl = BuildPublicImageUrl(honoree.PhotoFileName, searchResult?.ImageUrl);

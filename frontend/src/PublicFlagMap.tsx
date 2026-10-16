@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { qrModules, qrPath } from "./qrCode.js";
 import {
   FLAG_MAP_ZOOM,
@@ -8,15 +8,22 @@ import {
   attractView,
   createPinchBatch,
   createWheelBatch,
+  branchDotColor,
+  boundsOf,
+  countFlagsOnScreen,
   createFlagMapLoader,
   cullRects,
   filterFlagMapSuggestions,
   fitView,
+  fitWholeField,
+  flagMapPageBands,
   flagDeepLink,
   flagMapDetailGates,
-  lookupSubmittedFlags,
   flagMapLayerOpacities,
+  lookupSubmitterSuggestions,
+  resolveSubmitterFlags,
   flagYears,
+  gestureTransform,
   layoutFlagField,
   panView,
   pinchView,
@@ -90,6 +97,12 @@ const EMPTY_GATES: Gates = {
 
 const loadJson = createFlagMapLoader() as <T>(url: string) => Promise<T>;
 
+function sealUrl(logoUrl: string, edge: number, webp: boolean) {
+  const url = withApiBase(apiBase, logoUrl);
+  const join = url.includes("?") ? "&" : "?";
+  return `${url}${join}w=${edge}${webp ? "&fmt=webp" : ""}`;
+}
+
 function sameIds(left: number[], right: number[]) {
   if (left.length !== right.length) return false;
   for (let index = 0; index < left.length; index += 1) {
@@ -136,13 +149,15 @@ function FlagDetail({
   revealed,
   shareUrl,
   onPreview,
-  onClose
+  onClose,
+  showSeal
 }: {
   flag: FlagBox;
   revealed: boolean;
   shareUrl: string;
   onPreview: (honoreeId: number, title: string) => void;
   onClose: () => void;
+  showSeal: boolean;
 }) {
   const [showPhoto, setShowPhoto] = useState(Boolean(flag.photoUrl));
   useEffect(() => {
@@ -153,20 +168,22 @@ function FlagDetail({
   return (
     <aside className={revealed ? "publicFlagDetail isRevealed" : "publicFlagDetail"} aria-label="Flag detail">
       {showPhoto && flag.photoUrl ? (
-        <img
-          className="publicFlagPhoto"
-          src={withApiBase(apiBase, flag.photoUrl)}
-          alt=""
-          draggable={false}
-          onError={() => setShowPhoto(false)}
-        />
+        <div className="publicFlagPhotoFrame">
+          <img
+            className="publicFlagPhoto"
+            src={withApiBase(apiBase, flag.photoUrl)}
+            alt=""
+            draggable={false}
+            onError={() => setShowPhoto(false)}
+          />
+        </div>
       ) : null}
       <div className="publicFlagDetailBody">
         {flag.displayName ? <h3>{flag.displayName}</h3> : null}
         {flag.rank ? <p className="publicFlagRank">{flag.rank}</p> : null}
         {flag.serviceBranchName ? (
           <p className="publicFlagBranch">
-            {flag.logoUrl ? <img className="publicFlagSeal" src={withApiBase(apiBase, flag.logoUrl)} alt="" draggable={false} /> : null}
+            {showSeal && flag.logoUrl ? <img className="publicFlagSeal" src={sealUrl(flag.logoUrl, 256, false)} alt="" width={64} height={64} loading="lazy" decoding="async" draggable={false} /> : null}
             <span>
               {flag.serviceBranchName}
               {flag.serviceBranchCategoryName ? ` · ${flag.serviceBranchCategoryName}` : ""}
@@ -193,6 +210,11 @@ function FlagDetail({
     </aside>
   );
 }
+
+type SubmitterSuggestion = { label: string; token: string };
+type SearchRow =
+  | { kind: "honoree"; hit: SearchHit }
+  | { kind: "submitter"; label: string; token: string };
 
 export default function PublicFlagMap({
   onPreviewCard,
@@ -235,32 +257,42 @@ export default function PublicFlagMap({
   const boxRef = useRef({ left: 0, top: 0, width: 1, height: 1 });
   const opacityCacheRef = useRef({ section: "", seal: "", name: "", rank: "" });
   const layoutRef = useRef<ReturnType<typeof layoutFlagField> | null>(null);
+  const summariesRef = useRef<SectionSummary[]>([]);
+  const fieldTaskRef = useRef<Promise<void> | null>(null);
   const [field, setField] = useState<ReturnType<typeof layoutFlagField> | null>(null);
   const [index, setIndex] = useState<SearchHit[]>([]);
   const [query, setQuery] = useState("");
-  const [searchTab, setSearchTab] = useState<"honoree" | "submitted">("honoree");
-  const [submitterFirst, setSubmitterFirst] = useState("");
-  const [submitterLast, setSubmitterLast] = useState("");
   const [submitterNote, setSubmitterNote] = useState("");
-  const [submitterHits, setSubmitterHits] = useState<SearchHit[]>([]);
-  const [submitterBusy, setSubmitterBusy] = useState(false);
+  const [submitterSuggestions, setSubmitterSuggestions] = useState<SubmitterSuggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [error, setError] = useState(location.flagRejected ? "That flag is not on the map." : "");
   const [loading, setLoading] = useState(true);
   const [visibleSectionKeys, setVisibleSectionKeys] = useState<string[]>([]);
+  const [visibleCellIds, setVisibleCellIds] = useState<number[]>([]);
   const [visibleFlagIds, setVisibleFlagIds] = useState<number[]>([]);
   const [gates, setGates] = useState<Gates>(EMPTY_GATES);
   const [levelText, setLevelText] = useState("Sections");
   const [selected, setSelected] = useState<FlagBox | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const [revealId, setRevealId] = useState<number | null>(null);
+  const [waveIds, setWaveIds] = useState<number[]>([]);
   const [attracting, setAttracting] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
   const [pinDigits, setPinDigits] = useState("");
   const [pinMessage, setPinMessage] = useState("");
   const [pinBusy, setPinBusy] = useState(false);
   const suggestions = filterFlagMapSuggestions(index, query) as SearchHit[];
+  const searchRows: SearchRow[] = [
+    ...suggestions.map((hit) => ({ kind: "honoree" as const, hit })),
+    ...submitterSuggestions.map((item) => ({ kind: "submitter" as const, label: item.label, token: item.token }))
+  ];
+  const activeRow = searchRows[active];
+  const activeDescendant = !open || !activeRow
+    ? undefined
+    : activeRow.kind === "honoree"
+      ? `${listId}-${activeRow.hit.honoreeId}`
+      : `${listId}-submitter-${activeRow.token}`;
   const shareUrl = selected ? flagDeepLink(window.location.href, selected.flagGridId) : "";
 
   const visibleSections = useMemo(() => {
@@ -269,11 +301,17 @@ export default function PublicFlagMap({
     return field.sections.filter((section) => keys.has(section.section));
   }, [field, visibleSectionKeys]);
 
+  const visibleCells = useMemo(() => {
+    if (!field) return [];
+    const ids = new Set(visibleCellIds);
+    return field.cells.filter((cell) => ids.has(cell.flagGridId));
+  }, [field, visibleCellIds]);
+
   const visibleFlags = useMemo(() => {
-    if (!field || !gates.seals) return [];
+    if (!field) return [];
     const ids = new Set(visibleFlagIds);
     return (field.flags as FlagBox[]).filter((flag) => ids.has(flag.flagGridId));
-  }, [field, gates.seals, visibleFlagIds]);
+  }, [field, visibleFlagIds]);
 
   function syncViewportBox() {
     const rect = viewportRef.current?.getBoundingClientRect();
@@ -304,7 +342,7 @@ export default function PublicFlagMap({
     const opacity = flagMapLayerOpacities(view.scale, fitScaleRef.current);
     const layer = layerRef.current;
     if (layer) {
-      layer.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+      layer.style.transform = gestureTransform(view);
       writeOpacity(layer, "--section-opacity", "section", opacity.section);
       writeOpacity(layer, "--seal-opacity", "seal", opacity.seal);
       writeOpacity(layer, "--name-opacity", "name", opacity.name);
@@ -313,11 +351,9 @@ export default function PublicFlagMap({
     const viewport = viewportRef.current;
     if (viewport) {
       const sections = opacity.section >= 0.5 ? "on" : "off";
-      const flags = opacity.seal > 0.5 ? "on" : "off";
       if (viewport.dataset.sections !== sections) viewport.dataset.sections = sections;
-      if (viewport.dataset.flags !== flags) viewport.dataset.flags = flags;
     }
-    const nextLevel = opacity.rank >= 0.85 ? "Closest" : opacity.name >= 0.85 ? "Names" : opacity.seal >= 0.85 ? "Seals" : opacity.section >= 0.85 ? "Sections" : "";
+    const nextLevel = opacity.rank >= 0.85 ? "Closest" : opacity.name >= 0.85 ? "Names" : opacity.section >= 0.85 ? "Sections" : "";
     return { view, opacity, nextLevel };
   }
 
@@ -336,19 +372,26 @@ export default function PublicFlagMap({
       const seen = viewportWorldRect(view, size, 180);
       const layout = layoutRef.current;
       if (!layout) return;
-      const nextGates = flagMapDetailGates(view.scale, fitScaleRef.current);
+      const flagsOnScreen = countFlagsOnScreen(layout.flags, view, size);
+      const nextGates = flagMapDetailGates(view.scale, fitScaleRef.current, flagsOnScreen);
       gatesRef.current = nextGates;
       const sectionKeys = cullRects(layout.sections, seen).map((section: Box) => section.section as string);
-      const flagIds = nextGates.seals
-        ? cullRects(layout.flags, seen).map((flag: FlagBox) => flag.flagGridId)
-        : [];
+      const cellIds = cullRects(layout.cells, seen).map((cell: { flagGridId: number }) => cell.flagGridId);
+      const flagIds = cullRects(layout.flags, seen).map((flag: FlagBox) => flag.flagGridId);
       setGates((current) => (sameGates(current, nextGates) ? current : nextGates));
       setVisibleSectionKeys((current) => (current.join("|") === sectionKeys.join("|") ? current : sectionKeys));
+      setVisibleCellIds((current) => (sameIds(current, cellIds) ? current : cellIds));
       setVisibleFlagIds((current) => (sameIds(current, flagIds) ? current : flagIds));
-      const painted = paintView(view);
-      if (painted.nextLevel && painted.nextLevel !== levelRef.current) {
-        levelRef.current = painted.nextLevel;
-        setLevelText(painted.nextLevel);
+      const viewport = viewportRef.current;
+      if (viewport) {
+        const flags = nextGates.flagsInteractive ? "on" : "off";
+        if (viewport.dataset.flags !== flags) viewport.dataset.flags = flags;
+      }
+      paintView(view);
+      const nextLevel = nextGates.ranks ? "Closest" : nextGates.names ? "Names" : nextGates.seals ? "Seals" : "Sections";
+      if (nextLevel !== levelRef.current) {
+        levelRef.current = nextLevel;
+        setLevelText(nextLevel);
       }
     };
     if (immediate) {
@@ -416,7 +459,7 @@ export default function PublicFlagMap({
   }
 
   function fitWorld() {
-    const fitted = fitView(worldBounds(), viewportSize());
+    const fitted = fitWholeField(worldBounds(), viewportSize());
     fitScaleRef.current = fitted.scale;
     return fitted;
   }
@@ -442,10 +485,12 @@ export default function PublicFlagMap({
     historyRef.current = [...historyRef.current, { ...viewRef.current }].slice(-16);
     setHighlightId(flag.flagGridId);
     setSelected(flag.honoreeId ? flag : null);
+    setWaveIds([]);
     setRevealId(options?.celebrate && flag.honoreeId ? flag.flagGridId : null);
     writeFlagParam(flag.flagGridId);
     const size = viewportSize();
-    const scale = Math.min(FLAG_MAP_ZOOM.maxScale, fitScaleRef.current * FLAG_MAP_ZOOM.rankFadeEnd);
+    const closeScale = Math.min(size.width, size.height) / Math.max(flag.height * 3.2, 1);
+    const scale = Math.min(FLAG_MAP_ZOOM.maxScale, Math.max(fitScaleRef.current * FLAG_MAP_ZOOM.rankFadeEnd, closeScale));
     const centerX = flag.x + flag.width / 2;
     const centerY = flag.y + flag.height / 2;
     const panelBias = kioskRef.current ? Math.min(size.width * 0.16, 180) : 0;
@@ -464,6 +509,7 @@ export default function PublicFlagMap({
     setSelected(null);
     setHighlightId(null);
     setRevealId(null);
+    setWaveIds([]);
     setQuery("");
     setOpen(false);
     userAdjustedRef.current = false;
@@ -475,6 +521,7 @@ export default function PublicFlagMap({
   function goBack() {
     exitAttract();
     setRevealId(null);
+    setWaveIds([]);
     setSelected(null);
     setHighlightId(null);
     writeFlagParam(null);
@@ -496,14 +543,12 @@ export default function PublicFlagMap({
     setSelected(cleared.selected);
     setHighlightId(cleared.highlightId);
     setRevealId(cleared.revealId);
+    setWaveIds([]);
     setQuery(cleared.query);
     setOpen(cleared.open);
     setActive(cleared.active);
-    setSearchTab(cleared.searchTab === "submitted" ? "submitted" : "honoree");
-    setSubmitterFirst(cleared.submitterFirst);
-    setSubmitterLast(cleared.submitterLast);
-    setSubmitterNote(cleared.submitterNote);
-    setSubmitterHits(cleared.submitterHits);
+    setSubmitterNote("");
+    setSubmitterSuggestions([]);
     historyRef.current = cleared.history;
     writeFlagParam(null);
     userAdjustedRef.current = true;
@@ -546,6 +591,33 @@ export default function PublicFlagMap({
   exitAttractRef.current = exitAttract;
   armIdleRef.current = armIdle;
 
+  function rememberLayout() {
+    const seatsBySection = new Map<string, PublicSeat[]>();
+    for (const flag of (layoutRef.current?.flags ?? []) as FlagBox[]) {
+      const seats = seatsBySection.get(flag.section) ?? [];
+      seats.push(flag);
+      seatsBySection.set(flag.section, seats);
+    }
+    const nextField = layoutFlagField(summariesRef.current.map((summary) => ({
+      ...summary,
+      seats: seatsBySection.get(summary.section) ?? []
+    })));
+    layoutRef.current = nextField;
+    setField(nextField);
+  }
+
+  function loadField() {
+    if (fieldTaskRef.current) return fieldTaskRef.current;
+    const task = loadJson<{ sections: Array<SectionSummary & { seats: PublicSeat[] }> }>(urls.field)
+      .then((payload) => {
+        const nextField = layoutFlagField(payload.sections ?? []);
+        layoutRef.current = nextField;
+        setField(nextField);
+      });
+    fieldTaskRef.current = task;
+    return task;
+  }
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -554,16 +626,16 @@ export default function PublicFlagMap({
       loadJson<SearchHit[]>(urls.searchIndex)
     ])
       .then(async ([summaries, nextIndex]) => {
-        const seats = await Promise.all(summaries.map(async (summary) => {
-          const payload = await loadJson<{ seats: PublicSeat[] }>(urls.section(summary.section));
-          return { ...summary, seats: payload.seats };
-        }));
         if (cancelled) return;
-        const nextField = layoutFlagField(seats);
-        layoutRef.current = nextField;
-        setField(nextField);
+        summariesRef.current = summaries;
         setIndex(nextIndex);
-        setError("");
+        if (pendingFlagRef.current == null) {
+          rememberLayout();
+          void loadField();
+        } else {
+          await loadField();
+        }
+        if (!cancelled) setError("");
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "The flag map could not be loaded.");
@@ -608,16 +680,80 @@ export default function PublicFlagMap({
     return () => window.clearTimeout(timer);
   }, [revealId]);
 
+  useEffect(() => {
+    if (waveIds.length === 0) return;
+    const timer = window.setTimeout(() => setWaveIds([]), 2400);
+    return () => window.clearTimeout(timer);
+  }, [waveIds]);
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 3) {
+      setSubmitterSuggestions([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void lookupSubmitterSuggestions(trimmed, undefined, apiBase)
+        .then((result) => {
+          if (cancelled) return;
+          if (result.status === 429) {
+            setSubmitterNote("Too many lookups. Wait a minute and try again.");
+            setSubmitterSuggestions([]);
+            return;
+          }
+          const body = result.body as { suggestions?: SubmitterSuggestion[] } | null;
+          const next = Array.isArray(body?.suggestions)
+            ? body.suggestions.filter((item) => item && typeof item.label === "string" && typeof item.token === "string" && item.token.length > 0)
+            : [];
+          setSubmitterNote("");
+          setSubmitterSuggestions(next);
+        })
+        .catch(() => {
+          if (!cancelled) setSubmitterSuggestions([]);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query]);
+
   useLayoutEffect(() => {
     const root = document.documentElement;
-    if (!kiosk) return;
-    root.classList.add("flagMapKiosk");
-    const meta = document.querySelector('meta[name="viewport"]');
-    const previous = meta?.getAttribute("content") ?? "";
-    meta?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no");
+    const bandNames = ["--flag-map-header", "--flag-map-tools", "--flag-map-bottom", "--flag-map-side", "--flag-map-pad-top", "--flag-map-pad-bottom"];
+    const clearBands = () => {
+      for (const name of bandNames) root.style.removeProperty(name);
+    };
+    if (kiosk) {
+      root.classList.remove("flagMapPage");
+      clearBands();
+      root.classList.add("flagMapKiosk");
+      const meta = document.querySelector('meta[name="viewport"]');
+      const previous = meta?.getAttribute("content") ?? "";
+      meta?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no");
+      return () => {
+        root.classList.remove("flagMapKiosk");
+        if (previous) meta?.setAttribute("content", previous);
+      };
+    }
+    root.classList.remove("flagMapKiosk");
+    root.classList.add("flagMapPage");
+    const applyBands = () => {
+      const bands = flagMapPageBands({ width: window.innerWidth, height: window.innerHeight });
+      root.style.setProperty("--flag-map-header", `${bands.header}px`);
+      root.style.setProperty("--flag-map-tools", `${bands.tools}px`);
+      root.style.setProperty("--flag-map-bottom", `${bands.bottom}px`);
+      root.style.setProperty("--flag-map-side", `${bands.side}px`);
+      root.style.setProperty("--flag-map-pad-top", `${bands.mapPadTop}px`);
+      root.style.setProperty("--flag-map-pad-bottom", `${bands.mapPadBottom}px`);
+    };
+    applyBands();
+    window.addEventListener("resize", applyBands);
     return () => {
-      root.classList.remove("flagMapKiosk");
-      if (previous) meta?.setAttribute("content", previous);
+      root.classList.remove("flagMapPage");
+      clearBands();
+      window.removeEventListener("resize", applyBands);
     };
   }, [kiosk]);
 
@@ -729,12 +865,8 @@ export default function PublicFlagMap({
         batch.point.y,
         viewRef.current.scale * wheelScaleFactor(batch.deltaY)
       );
-      paintView(next);
-      const nextGates = flagMapDetailGates(next.scale, fitScaleRef.current);
-      if (wheelFrameShouldCull(gatesRef.current, nextGates, false)) {
-        gatesRef.current = nextGates;
-        publishCull(true);
-      }
+      viewRef.current = next;
+      if (layerRef.current) layerRef.current.style.transform = gestureTransform(next);
       window.clearTimeout(wheelSettleRef.current);
       wheelSettleRef.current = window.setTimeout(() => {
         publishCull(true);
@@ -745,12 +877,8 @@ export default function PublicFlagMap({
       pinchFrameRef.current = 0;
       const next = pinchBatchRef.current.flush();
       if (!next) return;
-      paintView(next);
-      const nextGates = flagMapDetailGates(next.scale, fitScaleRef.current);
-      if (wheelFrameShouldCull(gatesRef.current, nextGates, false)) {
-        gatesRef.current = nextGates;
-        publishCull(true);
-      }
+      viewRef.current = next;
+      if (layerRef.current) layerRef.current.style.transform = gestureTransform(next);
       window.clearTimeout(pinchSettleRef.current);
       pinchSettleRef.current = window.setTimeout(() => {
         publishCull(true);
@@ -892,24 +1020,69 @@ export default function PublicFlagMap({
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setOpen(true);
-      setActive((current) => Math.min(current + 1, Math.max(suggestions.length - 1, 0)));
+      setActive((current) => Math.min(current + 1, Math.max(searchRows.length - 1, 0)));
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setOpen(true);
       setActive((current) => Math.max(current - 1, 0));
-    } else if (event.key === "Enter" && open && suggestions[active]) {
+    } else if (event.key === "Enter" && open && searchRows[active]) {
       event.preventDefault();
-      pickSuggestion(suggestions[active]);
+      pickSuggestion(searchRows[active]);
     } else if (event.key === "Escape") {
       setOpen(false);
     }
   }
 
-  function pickSuggestion(hit: SearchHit) {
+  function pickSuggestion(row: SearchRow) {
+    if (row.kind === "submitter") {
+      void waveSubmitter(row.token);
+      return;
+    }
+    const hit = row.hit;
     setQuery(hit.displayName);
     setOpen(false);
     const flag = (layoutRef.current?.flags as FlagBox[] | undefined)?.find((item) => item.flagGridId === hit.flagGridId);
     if (flag) openFlag(flag, { celebrate: true });
+  }
+
+  async function waveSubmitter(token: string) {
+    setOpen(false);
+    setSubmitterNote("");
+    setSelected(null);
+    setHighlightId(null);
+    setRevealId(null);
+    writeFlagParam(null);
+    try {
+      const result = await resolveSubmitterFlags(token, undefined, apiBase);
+      if (result.status === 429) {
+        setSubmitterNote("Too many lookups. Wait a minute and try again.");
+        return;
+      }
+      const body = result.body as { flags?: Array<{ flagGridId?: number; honoreeId?: number }> } | null;
+      const flags = (layoutRef.current?.flags ?? []) as FlagBox[];
+      const matched: FlagBox[] = [];
+      for (const hit of body?.flags ?? []) {
+        const id = Number(hit.flagGridId);
+        const honoreeId = Number(hit.honoreeId);
+        const flag = flags.find((item) => item.flagGridId === id)
+          ?? (Number.isFinite(honoreeId) ? flags.find((item) => item.honoreeId === honoreeId) : undefined);
+        if (flag && !matched.some((item) => item.flagGridId === flag.flagGridId)) matched.push(flag);
+      }
+      if (matched.length === 0) {
+        setWaveIds([]);
+        setSubmitterNote("No flags found");
+        return;
+      }
+      setWaveIds(matched.map((flag) => flag.flagGridId));
+      const bounds = boundsOf(matched);
+      if (bounds) {
+        userAdjustedRef.current = true;
+        animateTo(fitView(bounds, viewportSize(), 48));
+      }
+    } catch {
+      setWaveIds([]);
+      setSubmitterNote("No flags found");
+    }
   }
 
   function onMapKeyDown(event: React.KeyboardEvent<HTMLElement>) {
@@ -943,48 +1116,6 @@ export default function PublicFlagMap({
       userAdjustedRef.current = true;
       applyView(panView(viewRef.current, 0, -FLAG_MAP_ZOOM.panStep), true);
     }
-  }
-
-  async function runSubmitterLookup() {
-    setSubmitterBusy(true);
-    setSubmitterNote("");
-    setSubmitterHits([]);
-    try {
-      const result = await lookupSubmittedFlags(submitterFirst.trim(), submitterLast.trim(), undefined, apiBase);
-      if (result.status === 429) {
-        setSubmitterNote("Too many lookups. Wait a minute and try again.");
-        return;
-      }
-      const body = result.body as { message?: string; refine?: boolean; flags?: SearchHit[] } | null;
-      if (result.status === 400) {
-        setSubmitterNote(body?.message || "Enter at least 2 letters of the first name and 3 of the last name.");
-        return;
-      }
-      if (body?.refine) {
-        setSubmitterNote("Too many flags match. Enter more of the name.");
-        return;
-      }
-      if (!body?.flags || body.flags.length === 0) {
-        setSubmitterNote(body?.message || "No flags found");
-        return;
-      }
-      setSubmitterHits(body.flags);
-    } catch {
-      setSubmitterNote("No flags found");
-    } finally {
-      setSubmitterBusy(false);
-    }
-  }
-
-  function openSubmitterHit(hit: SearchHit) {
-    const flags = layoutRef.current?.flags as FlagBox[] | undefined;
-    const flag = flags?.find((item) => item.flagGridId === hit.flagGridId) ?? flags?.find((item) => item.honoreeId === hit.honoreeId);
-    if (!flag) {
-      setSubmitterNote("No flags found");
-      return;
-    }
-    setSubmitterNote("");
-    openFlag(flag, { celebrate: true });
   }
 
   function beginExitHold(event: { preventDefault: () => void; stopPropagation: () => void }) {
@@ -1038,114 +1169,73 @@ export default function PublicFlagMap({
     >
       <div className="publicFlagChrome">
         <div className="sectionHeader publicFlagHeading">
-          <span className="publicFlagWave" aria-hidden="true" />
           <div>
             <p className="eyebrow">Field</p>
             <h2>Public Flag Map</h2>
             <p id={helpId} className={kiosk ? "helperText srOnly" : "helperText"}>
-              Pinch or use the wheel to zoom. Drag to move around the field. Zooming in reveals seals, then names, then ranks.
+              Pinch or use the wheel to zoom. Drag to move around the field. Branch seals appear only when fewer than 10 flags are on screen, then names, then ranks.
             </p>
           </div>
         </div>
         <div className="publicFlagSearch">
-          <div className="publicFlagSearchTabs" role="tablist" aria-label="Flag search">
-            <button type="button" role="tab" aria-selected={searchTab === "honoree"} className={searchTab === "honoree" ? "isActive" : ""} onClick={() => setSearchTab("honoree")}>Find a honoree</button>
-            <button type="button" role="tab" aria-selected={searchTab === "submitted"} className={searchTab === "submitted" ? "isActive" : ""} onClick={() => setSearchTab("submitted")}>Flags I submitted</button>
-          </div>
-          {searchTab === "honoree" ? (
-            <>
-              <label htmlFor="public-flag-search">Search honorees</label>
-              <input
-                id="public-flag-search"
-                role="combobox"
-                aria-expanded={open && suggestions.length > 0}
-                aria-controls={listId}
-                aria-autocomplete="list"
-                aria-activedescendant={open && suggestions[active] ? `${listId}-${suggestions[active].honoreeId}` : undefined}
-                type="search"
-                inputMode="search"
-                enterKeyHint="search"
-                autoComplete="off"
-                autoCapitalize="none"
-                placeholder="Type a name"
-                value={query}
-                onChange={(event) => {
-                  setQuery(event.target.value);
-                  setOpen(true);
-                  setActive(0);
-                }}
-                onFocus={() => setOpen(true)}
-                onKeyDown={onSearchKeyDown}
-              />
-              {open && suggestions.length > 0 ? (
-                <ul id={listId} role="listbox" className="publicFlagSuggestions">
-                  {suggestions.map((hit, optionIndex) => (
-                    <li
-                      id={`${listId}-${hit.honoreeId}`}
-                      key={`${hit.honoreeId}-${hit.flagGridId}`}
-                      role="option"
-                      aria-selected={optionIndex === active}
-                      className={optionIndex === active ? "isActive" : ""}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        pickSuggestion(hit);
-                      }}
-                    >
-                      <strong>{hit.displayName}</strong>
-                      <span>{[hit.serviceBranchName, hit.section, hit.flagGridName].filter(Boolean).join(" · ")}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </>
-          ) : (
-            <form
-              className="publicFlagSubmitter"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void runSubmitterLookup();
-              }}
-            >
-              <label htmlFor="submitter-first">First name
-                <input
-                  id="submitter-first"
-                  type="text"
-                  inputMode="text"
-                  enterKeyHint="next"
-                  autoComplete="given-name"
-                  autoCapitalize="words"
-                  value={submitterFirst}
-                  onChange={(event) => setSubmitterFirst(event.target.value)}
-                />
-              </label>
-              <label htmlFor="submitter-last">Last name
-                <input
-                  id="submitter-last"
-                  type="text"
-                  inputMode="text"
-                  enterKeyHint="search"
-                  autoComplete="family-name"
-                  autoCapitalize="words"
-                  value={submitterLast}
-                  onChange={(event) => setSubmitterLast(event.target.value)}
-                />
-              </label>
-              <button type="submit" disabled={submitterBusy}>{submitterBusy ? "Looking…" : "Find flags"}</button>
-              {submitterNote ? <p className="message" role="status">{submitterNote}</p> : null}
-              {submitterHits.length > 0 ? (
-                <ul className="publicFlagSuggestions" aria-label="Flags for that name">
-                  {submitterHits.map((hit) => (
-                    <li key={`${hit.honoreeId}-${hit.flagGridId}`}>
-                      <button type="button" onClick={() => openSubmitterHit(hit)}>
-                        <strong>{hit.displayName}</strong>
-                        <span>{[hit.serviceBranchName, hit.section, hit.flagGridName].filter(Boolean).join(" · ")}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </form>
-          )}
+          <label htmlFor="public-flag-search">Search honorees</label>
+          <input
+            id="public-flag-search"
+            role="combobox"
+            aria-expanded={open && searchRows.length > 0}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            aria-activedescendant={activeDescendant}
+            type="search"
+            inputMode="search"
+            enterKeyHint="search"
+            autoComplete="off"
+            autoCapitalize="none"
+            placeholder="Type a name"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setOpen(true);
+              setActive(0);
+            }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={onSearchKeyDown}
+          />
+          {submitterNote ? <p className="message" role="status">{submitterNote}</p> : null}
+          {open && searchRows.length > 0 ? (
+            <ul id={listId} role="listbox" className="publicFlagSuggestions">
+              {searchRows.map((row, optionIndex) => row.kind === "honoree" ? (
+                <li
+                  id={`${listId}-${row.hit.honoreeId}`}
+                  key={`${row.hit.honoreeId}-${row.hit.flagGridId}`}
+                  role="option"
+                  aria-selected={optionIndex === active}
+                  className={optionIndex === active ? "isActive" : ""}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    pickSuggestion(row);
+                  }}
+                >
+                  <strong>{row.hit.displayName}</strong>
+                  <span>{[row.hit.serviceBranchName, row.hit.section, row.hit.flagGridName].filter(Boolean).join(" · ")}</span>
+                </li>
+              ) : (
+                <li
+                  id={`${listId}-submitter-${row.token}`}
+                  key={row.token}
+                  role="option"
+                  aria-selected={optionIndex === active}
+                  className={optionIndex === active ? "isActive" : ""}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    pickSuggestion(row);
+                  }}
+                >
+                  <strong>{row.label}</strong>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
         <div className="publicFlagToolbar">
           {kiosk ? <button type="button" onClick={goHome} aria-label="Home">Home</button> : null}
@@ -1172,6 +1262,22 @@ export default function PublicFlagMap({
       >
         {loading ? <p className="publicFlagLoading">Loading the flag map…</p> : null}
         <div ref={layerRef} className="publicFlagLayer" style={{ width: field?.worldWidth, height: field?.worldHeight }}>
+          {field?.aisle ? (
+            <div className="publicFlagAisle" style={{ left: field.aisle.x, top: field.aisle.y, width: field.aisle.width, height: field.aisle.height }} />
+          ) : null}
+          {visibleCells.map((cell) => (
+            <div
+              key={`cell-${cell.flagGridId}`}
+              className={cell.status === "Reserved" ? "publicFlagSeat isReserved" : "publicFlagSeat"}
+              style={{ left: cell.x, top: cell.y, width: cell.width, height: cell.height }}
+            />
+          ))}
+          {field?.rowLabels.map((label) => (
+            <div key={`row-${label.row}`} className="publicFlagRowLabel" style={{ left: label.x, top: label.y, width: label.width, height: label.height }}>{label.label}</div>
+          ))}
+          {field?.pavilion ? (
+            <div className="publicFlagPavilion" style={{ left: field.pavilion.x, top: field.pavilion.y, width: field.pavilion.width, height: field.pavilion.height }}>{field.pavilion.label}</div>
+          ) : null}
           {visibleSections.map((section) => (
             <button
               key={section.section}
@@ -1185,16 +1291,19 @@ export default function PublicFlagMap({
                 setSelected(null);
                 setHighlightId(null);
                 setRevealId(null);
+                setWaveIds([]);
                 writeFlagParam(null);
                 animateTo(fitView(section, viewportSize(), 48));
               })}
             >
-              <strong>{section.section}</strong>
               <span>{section.occupiedCount} of {section.flagCount}</span>
             </button>
           ))}
+          {field?.columnLabels.map((label) => (
+            <div key={`col-${label.section}`} className="publicFlagColumnLabel" style={{ left: label.x, top: label.y, width: label.width, height: label.height }}>{label.label}</div>
+          ))}
           {visibleFlags.map((flag) => {
-            const revealed = flag.flagGridId === revealId;
+            const revealed = flag.flagGridId === revealId || waveIds.includes(flag.flagGridId);
             const highlighted = flag.flagGridId === highlightId;
             const className = [
               "publicFlagMarker",
@@ -1207,12 +1316,24 @@ export default function PublicFlagMap({
                 key={flag.flagGridId}
                 type="button"
                 className={className}
-                style={{ left: flag.x, top: flag.y, width: flag.width, height: flag.height }}
+                style={{
+                  left: flag.x,
+                  top: flag.y,
+                  width: flag.width,
+                  height: flag.height,
+                  "--branch-dot": branchDotColor(flag.serviceBranchName, flag.status)
+                } as CSSProperties}
                 aria-current={highlighted ? "true" : undefined}
                 aria-label={[flag.flagGridName, flag.displayName || flag.status, flag.rank, flag.serviceBranchName].filter(Boolean).join(", ")}
                 onClick={() => acceptClick(() => openFlag(flag))}
               >
-                {flag.logoUrl ? <img src={withApiBase(apiBase, flag.logoUrl)} alt="" draggable={false} /> : <span className="publicFlagMarkerStatus">{flag.status === "Reserved" ? "Reserved" : flag.status === "Open" ? "Open" : ""}</span>}
+                <span className="publicFlagDot" />
+                {gates.seals && flag.logoUrl ? (
+                  <picture>
+                    <source type="image/webp" srcSet={`${sealUrl(flag.logoUrl, 128, true)} 128w, ${sealUrl(flag.logoUrl, 256, true)} 256w`} sizes="64px" />
+                    <img className="publicFlagSealImg" src={sealUrl(flag.logoUrl, 256, false)} alt="" width={64} height={64} loading="lazy" decoding="async" draggable={false} />
+                  </picture>
+                ) : null}
                 {gates.names ? <em>{flag.displayName || flag.flagGridName}</em> : null}
                 {gates.ranks && flag.rank ? <small>{flag.rank}</small> : null}
               </button>
@@ -1226,6 +1347,7 @@ export default function PublicFlagMap({
           revealed={selected.flagGridId === revealId}
           shareUrl={shareUrl}
           onPreview={onPreviewCard}
+          showSeal={gates.seals}
           onClose={() => {
             setSelected(null);
             setRevealId(null);

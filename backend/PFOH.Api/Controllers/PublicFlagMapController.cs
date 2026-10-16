@@ -1,6 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -15,34 +12,43 @@ namespace PFOH.Api.Controllers;
 [Route("api/public/flag-map")]
 public class PublicFlagMapController(
     PublicFlagMap map,
+    PublicFlagMapCache cache,
+    PublicLogoCache logos,
     HonoreeFileStorage fileStorage,
     IConfiguration configuration,
     ILogger<PublicFlagMapController> logger) : ControllerBase
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-
     [HttpGet("sections")]
     public async Task<IActionResult> Sections(CancellationToken ct)
     {
-        return CachedJson(await map.SectionsAsync(ct), 60);
+        var snapshot = await cache.GetAsync(ct);
+        return CachedBody(snapshot.SectionsJson, snapshot.SectionsEtag, 60);
+    }
+
+    [HttpGet("field")]
+    public async Task<IActionResult> Field(CancellationToken ct)
+    {
+        var snapshot = await cache.GetAsync(ct);
+        return CachedBody(snapshot.FieldJson, snapshot.FieldEtag, 60);
     }
 
     [HttpGet("sections/{section}")]
     public async Task<IActionResult> Section(string section, CancellationToken ct)
     {
-        var seats = await map.SeatsAsync(section, ct);
-        if (seats is null)
+        var snapshot = await cache.GetAsync(ct);
+        if (!snapshot.Sections.TryGetValue(section, out var payload))
         {
             return NotFound();
         }
 
-        return CachedJson(new { section = seats[0].Section, seats }, 60);
+        return CachedBody(payload.Json, payload.Etag, 60);
     }
 
     [HttpGet("search-index")]
     public async Task<IActionResult> SearchIndex(CancellationToken ct)
     {
-        return CachedJson(await map.SearchIndexAsync(ct), 60);
+        var snapshot = await cache.GetAsync(ct);
+        return CachedBody(snapshot.SearchJson, snapshot.SearchEtag, 60);
     }
 
     [HttpGet("by-submitter")]
@@ -82,9 +88,10 @@ public class PublicFlagMapController(
     }
 
     [HttpGet("logos/{fileName}")]
-    public async Task<IActionResult> Logo(string fileName, CancellationToken ct)
+    public async Task<IActionResult> Logo(string fileName, [FromQuery] int? w, [FromQuery] string? fmt, CancellationToken ct)
     {
-        if (!await map.IsPublishedLogoAsync(fileName, ct))
+        var snapshot = await cache.GetAsync(ct);
+        if (!PublicFlagMap.IsPublishedLogo(fileName, snapshot.StoredLogoFileNames))
         {
             return NotFound();
         }
@@ -95,15 +102,21 @@ public class PublicFlagMapController(
             return NotFound();
         }
 
-        var hash = Convert.ToHexString(SHA256.HashData(bytes));
-        Response.Headers.ETag = $"\"{hash}\"";
-        Response.Headers.CacheControl = "public, max-age=86400";
+        var webp = string.Equals(fmt, "webp", StringComparison.OrdinalIgnoreCase)
+            || (string.IsNullOrWhiteSpace(fmt)
+                && Request.Headers.Accept.Any(value => value?.Contains("image/webp", StringComparison.OrdinalIgnoreCase) == true));
+        var edge = w == DisplayImage.LogoEdgeSmall ? DisplayImage.LogoEdgeSmall : DisplayImage.LogoEdgeLarge;
+        var encoded = logos.Get(fileName, edge, webp, bytes);
+        Response.Headers.ETag = encoded.Etag;
+        Response.Headers.CacheControl = StaticAssetCaching.ImmutableYear;
+        Response.Headers.Vary = "Accept";
+        var hash = encoded.Etag.Trim('"');
         if (Request.Headers.IfNoneMatch.Any(tag => tag?.Contains(hash, StringComparison.Ordinal) == true))
         {
             return StatusCode(StatusCodes.Status304NotModified);
         }
 
-        return File(bytes, LogoContentType(fileName));
+        return File(encoded.Bytes, encoded.ContentType);
     }
 
     [HttpPost("kiosk-exit")]
@@ -123,28 +136,16 @@ public class PublicFlagMapController(
         return NoContent();
     }
 
-    private IActionResult CachedJson(object payload, int maxAgeSeconds)
+    private IActionResult CachedBody(string json, string etag, int maxAgeSeconds)
     {
-        var json = JsonSerializer.Serialize(payload, JsonOptions);
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
-        Response.Headers.ETag = $"\"{hash}\"";
+        Response.Headers.ETag = etag;
         Response.Headers.CacheControl = $"public, max-age={maxAgeSeconds}";
+        var hash = etag.Trim('"');
         if (Request.Headers.IfNoneMatch.Any(tag => tag?.Contains(hash, StringComparison.Ordinal) == true))
         {
             return StatusCode(StatusCodes.Status304NotModified);
         }
 
         return Content(json, "application/json");
-    }
-
-    private static string LogoContentType(string fileName)
-    {
-        return Path.GetExtension(fileName).ToLowerInvariant() switch
-        {
-            ".jpg" or ".jpeg" => "image/jpeg",
-            ".gif" => "image/gif",
-            ".webp" => "image/webp",
-            _ => "image/png"
-        };
     }
 }

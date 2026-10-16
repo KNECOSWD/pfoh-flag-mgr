@@ -12,15 +12,28 @@ import {
   cullRects,
   filterFlagMapSuggestions,
   fitView,
+  fitWholeField,
+  flagMapPageBands,
+  initialOverviewPlacement,
+  boxInsideViewport,
   flagDeepLink,
+  countFlagsOnScreen,
   flagMapDetailGates,
   flagMapLayerOpacities,
+  boundsOf,
+  FIELD_MAP_ROWS,
+  FIELD_MAP_Z_ROWS,
   layoutFlagField,
+  PAVILION_COLUMNS_LEFT_TO_RIGHT,
+  sealImagesAllowed,
+  SEAL_ON_SCREEN_LIMIT,
   pointerDragCapture,
   pointerIsTap,
   pinchView,
   pointerShouldOpen,
   lookupSubmittedFlags,
+  lookupSubmitterSuggestions,
+  resolveSubmitterFlags,
   publicFlagMapUrls,
   readFlagMapLocation,
   springEase,
@@ -65,7 +78,7 @@ test("the public page does not start a sign-in redirect", () => {
   assert.match(page, /Preview card/);
   assert.match(page, /aria-label="Zoom in"/);
   assert.match(page, /aria-label="Reset view"/);
-  assert.match(page, /translate\(/);
+  assert.match(page, /gestureTransform\(/);
   assert.match(page, /onWheel|addEventListener\("wheel"/);
   assert.match(page, /touchmove/);
 });
@@ -96,25 +109,24 @@ test("semantic zoom fades section, seal, name, and rank without a jump", () => {
 
   const mid = flagMapLayerOpacities((FLAG_MAP_ZOOM.sealFadeStart + FLAG_MAP_ZOOM.sealFadeEnd) / 2, fit);
   assert.ok(Math.abs(mid.section - 0.5) < 0.001);
-  assert.ok(Math.abs(mid.seal - 0.5) < 0.001);
-  assert.equal(mid.section + mid.seal, 1);
+  assert.equal(mid.seal, 0);
   assert.equal(mid.name, 0);
   assert.equal(mid.rank, 0);
 
   const seals = flagMapLayerOpacities(2.05, fit);
   assert.equal(seals.section, 0);
-  assert.equal(seals.seal, 1);
+  assert.equal(seals.seal, 0);
   assert.equal(seals.name, 0);
   assert.equal(seals.rank, 0);
 
   const names = flagMapLayerOpacities(2.9, fit);
-  assert.equal(names.seal, 1);
+  assert.equal(names.seal, 0);
   assert.equal(names.name, 1);
   assert.equal(names.rank, 0);
 
   const closest = flagMapLayerOpacities(FLAG_MAP_ZOOM.rankFadeEnd, fit);
   assert.equal(closest.section, 0);
-  assert.equal(closest.seal, 1);
+  assert.equal(closest.seal, 0);
   assert.equal(closest.name, 1);
   assert.equal(closest.rank, 1);
 
@@ -157,6 +169,203 @@ test("the field layout culls flags outside the viewport", () => {
   const seen = viewportWorldRect(fitted, { width: 800, height: 600 });
   assert.equal(cullRects(field.flags, seen).length, 2);
   assert.equal(cullRects(field.flags, { x: field.worldWidth + 10, y: 0, width: 20, height: 20 }).length, 0);
+});
+
+test("the field is laid out as seen from the pavilion", () => {
+  const field = layoutFlagField([
+    {
+      section: "AA",
+      flagCount: 2,
+      occupiedCount: 0,
+      seats: [
+        { flagGridId: 1, flagGridName: "AA-01", columnNumber: 1, section: "AA", status: "Open" },
+        { flagGridId: 2, flagGridName: "AA-21", columnNumber: 21, section: "AA", status: "Open" }
+      ]
+    },
+    {
+      section: "Z",
+      flagCount: 1,
+      occupiedCount: 0,
+      seats: [
+        { flagGridId: 3, flagGridName: "Z-01", columnNumber: 1, section: "Z", status: "Reserved" },
+        { flagGridId: 6, flagGridName: "Z-15", columnNumber: 15, section: "Z", status: "Occupied" }
+      ]
+    },
+    {
+      section: "YY",
+      flagCount: 1,
+      occupiedCount: 0,
+      seats: [{ flagGridId: 4, flagGridName: "YY-40", columnNumber: 40, section: "YY", status: "Open" }]
+    },
+    {
+      section: "QQ",
+      flagCount: 1,
+      occupiedCount: 0,
+      seats: [{ flagGridId: 5, flagGridName: "QQ-01", columnNumber: 1, section: "QQ", status: "Open" }]
+    }
+  ]);
+  assert.deepEqual(field.sections.map((section) => section.section), [...PAVILION_COLUMNS_LEFT_TO_RIGHT, "QQ"]);
+  const row1 = field.flags.find((flag) => flag.flagGridId === 1);
+  const row21 = field.flags.find((flag) => flag.flagGridId === 2);
+  const row40 = field.flags.find((flag) => flag.flagGridId === 4);
+  assert.ok(row1.y > row21.y);
+  assert.ok(row40.y < row1.y);
+  assert.ok(row1.y - row21.y > 20 * 31);
+  const unknown = field.sections.find((section) => section.section === "QQ");
+  const aa = field.sections.find((section) => section.section === "AA");
+  assert.ok(unknown.x > aa.x);
+  assert.equal(field.flags.length, 6);
+  assert.equal(field.flags.some((flag) => flag.flagGridName === "Z-10"), false);
+  assert.equal(field.cells.some((cell) => cell.flagGridName === "Z-10"), false);
+  const zCells = field.cells.filter((cell) => cell.section === "Z");
+  assert.equal(zCells.length, FIELD_MAP_Z_ROWS + 1);
+  assert.ok(zCells.filter((cell) => cell.columnNumber <= FIELD_MAP_Z_ROWS).every((cell) => cell.status === "Reserved"));
+  assert.equal(field.cells.filter((cell) => cell.section === "QQ").length, 1);
+  assert.equal(field.cells.filter((cell) => cell.section === "AA").length, FIELD_MAP_ROWS);
+  assert.ok(field.aisle);
+  assert.ok(field.aisle.y > row21.y);
+  assert.ok(field.aisle.y < row1.y);
+  const z01 = field.cells.find((cell) => cell.flagGridName === "Z-01");
+  const zSection = field.sections.find((section) => section.section === "Z");
+  assert.equal(field.pavilion.label, "Pavilion");
+  assert.equal(field.pavilion.x, zSection.x);
+  assert.ok(field.pavilion.y >= z01.y + z01.height);
+  assert.ok(field.rowLabels.some((label) => label.row === 1 && label.y === z01.y));
+  assert.ok(field.columnLabels.some((label) => label.label === "AA" && label.x === aa.x));
+  const empty = layoutFlagField([]);
+  assert.equal(empty.flags.length, 0);
+  assert.equal(empty.sections.length, PAVILION_COLUMNS_LEFT_TO_RIGHT.length);
+  assert.equal(empty.cells.filter((cell) => cell.section === "Z" && cell.status === "Reserved").length, FIELD_MAP_Z_ROWS);
+  assert.equal(empty.cells.some((cell) => cell.flagGridName === "Z-10"), false);
+});
+
+test("the opening fit keeps row 1 and the pavilion inside the window", () => {
+  const field = layoutFlagField([]);
+  const sizes = [
+    { width: 1440, height: 900 },
+    { width: 1024, height: 768 },
+    { width: 390, height: 844 },
+    { width: 320, height: 568 },
+    { width: 1920, height: 1080, kiosk: true }
+  ];
+  for (const size of sizes) {
+    const placed = initialOverviewPlacement(field, size, { kiosk: Boolean(size.kiosk) });
+    assert.equal(boxInsideViewport(placed.frame, size), true, `canvas ${size.width}`);
+    assert.equal(boxInsideViewport(placed.row40, size), true, `row 40 ${size.width}`);
+    assert.equal(boxInsideViewport(placed.row1, size), true, `row 1 ${size.width}`);
+    assert.equal(boxInsideViewport(placed.pavilion, size), true, `pavilion ${size.width}`);
+    assert.ok(placed.pavilion.top < size.height, `pavilion top ${size.width}`);
+    assert.ok(placed.row1.bottom <= size.height + 0.5, `row 1 bottom ${size.width}`);
+    assert.ok(placed.row40.top >= -0.5, `row 40 top ${size.width}`);
+    assert.ok(placed.pavilion.bottom > placed.row1.top);
+  }
+  assert.match(page, /fitWholeField/);
+  assert.match(page, /flagMapPageBands/);
+  assert.match(page, /flagMapPage/);
+  assert.match(css, /html\.flagMapPage \.publicFlagViewport/);
+  assert.match(css, /--flag-map-header/);
+  assert.match(css, /min-height:\s*0\s*!important/);
+  const desktop = flagMapPageBands({ width: 1440, height: 900 });
+  assert.ok(desktop.header > 0 && desktop.bottom > 0 && desktop.tools > 0);
+  assert.equal(flagMapPageBands({ width: 1920, height: 1080 }, { kiosk: true }).header, 0);
+  const fitted = fitWholeField(
+    { x: 0, y: 0, width: field.worldWidth, height: field.worldHeight },
+    { width: 280, height: 120 }
+  );
+  assert.ok(fitted.scale < FLAG_MAP_ZOOM.minScale);
+  assert.ok(fitted.y >= 0);
+  assert.ok(fitted.y + field.worldHeight * fitted.scale <= 120.5);
+});
+
+test("submitter suggestions share the honoree search and wave every match", () => {
+  assert.equal(boundsOf([{ x: 2, y: 4, width: 10, height: 6 }, { x: 20, y: 1, width: 4, height: 3 }]).width, 22);
+  assert.match(page, /lookupSubmitterSuggestions\(/);
+  assert.match(page, /resolveSubmitterFlags\(/);
+  assert.match(page, /void waveSubmitter\(/);
+  assert.match(page, /boundsOf\(matched\)/);
+  assert.match(page, /setWaveIds\(matched\.map/);
+  assert.match(page, /trimmed\.length < 3/);
+  assert.doesNotMatch(page, /Flags I submitted/);
+  assert.doesNotMatch(page, /flag-map\/mine/);
+  assert.doesNotMatch(page, /submittedFlagsEnabled/);
+  assert.doesNotMatch(app, /loadMySubmittedFlags/);
+  assert.doesNotMatch(app, /currentSubmitterReady/);
+  assert.match(page, /publicFlagSeat/);
+  assert.match(page, /isReserved/);
+  assert.match(page, /publicFlagRowLabel/);
+  assert.match(page, /publicFlagColumnLabel/);
+  assert.match(page, /publicFlagAisle/);
+  assert.match(page, /publicFlagPavilion/);
+  assert.doesNotMatch(page, /submitter-first/);
+  assert.match(css, /\.publicFlagSeat\.isReserved/);
+  assert.match(css, /\.publicFlagPavilion/);
+});
+
+test("the flag detail photo shows the whole picture", () => {
+  const frame = css.slice(css.indexOf(".publicFlagPhotoFrame {"), css.indexOf(".publicFlagQrBlock"));
+  assert.match(frame, /object-fit:\s*contain/);
+  assert.match(frame, /max-height:\s*min\(34vh, 280px\)/);
+  assert.match(frame, /background:\s*#0b1f3a/);
+  assert.doesNotMatch(frame, /object-fit:\s*cover/);
+  assert.match(page, /publicFlagPhotoFrame/);
+  assert.match(css, /\.publicFlagPhoto \{[^}]*object-fit:\s*contain/);
+  assert.doesNotMatch(css, /\.publicFlagPhoto \{[^}]*object-fit:\s*cover/);
+  assert.match(css, /\.publicFlagMap\.isKiosk \.publicFlagPhotoFrame/);
+  assert.match(css, /max-height:\s*min\(32vh, 220px\)/);
+});
+
+test("branch seals render only when fewer than 10 flags are on screen", () => {
+  assert.equal(SEAL_ON_SCREEN_LIMIT, 10);
+  assert.equal(sealImagesAllowed(10), false);
+  assert.equal(sealImagesAllowed(9), true);
+  assert.equal(sealImagesAllowed(0), true);
+  const wide = flagMapDetailGates(12, 1, 40);
+  assert.equal(wide.seals, false);
+  assert.equal(wide.names, false);
+  assert.equal(wide.ranks, false);
+  assert.equal(wide.flagsInteractive, false);
+  const close = flagMapDetailGates(12, 1, 9);
+  assert.equal(close.seals, true);
+  assert.equal(close.names, true);
+  assert.equal(close.flagsInteractive, true);
+  assert.equal(flagMapDetailGates(12, 1, 10).seals, false);
+  assert.equal(flagMapDetailGates(12, 1).seals, false);
+
+  const flags = Array.from({ length: 12 }, (_, index) => ({
+    x: index * 20,
+    y: 0,
+    width: 20,
+    height: 20
+  }));
+  assert.equal(countFlagsOnScreen(flags, { x: 0, y: 0, scale: 1 }, { width: 100, height: 40 }), 5);
+  assert.equal(countFlagsOnScreen(flags, { x: 0, y: 0, scale: 1 }, { width: 1000, height: 40 }), 12);
+
+  const markerStart = page.indexOf("visibleFlags.map");
+  const marker = page.slice(markerStart, page.indexOf("selected ?", markerStart));
+  assert.match(marker, /gates\.seals && flag\.logoUrl/);
+  assert.match(marker, /publicFlagDot/);
+  assert.match(marker, /branchDotColor/);
+  assert.match(marker, /publicFlagSealImg/);
+  assert.match(marker, /loading="lazy"/);
+  assert.match(marker, /decoding="async"/);
+  assert.match(page, /countFlagsOnScreen\(layout\.flags, view, size\)/);
+  assert.doesNotMatch(page, /publicFlagWave/);
+  assert.match(page, /showSeal=\{gates\.seals\}/);
+
+  const flush = page.slice(page.indexOf("const flushWheelFrame"), page.indexOf("const flushPinchFrame"));
+  const beforeSettle = flush.slice(0, flush.indexOf("setTimeout"));
+  assert.match(beforeSettle, /gestureTransform/);
+  assert.doesNotMatch(beforeSettle, /publishCull|paintView|setGates|setVisibleFlagIds/);
+  assert.match(flush.slice(flush.indexOf("setTimeout")), /publishCull\(true\)/);
+
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  assert.match(css, /@keyframes publicFlagSealFade/);
+  assert.match(css, /from \{ opacity: 0; \}/);
+  assert.doesNotMatch(css, /publicFlagWave/);
+  const load = page.slice(page.indexOf("setLoading(true);"), page.indexOf("useLayoutEffect(() => {"));
+  assert.doesNotMatch(load, /summaries\.map/);
+  assert.match(load, /loadField\(/);
+  assert.match(page, /urls\.field/);
 });
 
 test("a click opens the target and a drag does not capture until the pointer leaves the slop", () => {
@@ -336,6 +545,7 @@ test("a kiosk attract loop does not request the flag map again", async () => {
   const load = page.slice(page.indexOf("setLoading(true);"), page.indexOf("useLayoutEffect(() => {"));
   assert.equal((load.match(/searchIndex/g) || []).length, 1);
   assert.match(load, /\}, \[\]\);/);
+  assert.doesNotMatch(load, /summaries\.map/);
 
   let calls = 0;
   const loader = createFlagMapLoader(async (url, init) => {
@@ -386,7 +596,8 @@ test("a kiosk attract loop does not request the flag map again", async () => {
   assert.equal(cleared.submitterNote, "");
   assert.deepEqual(cleared.submitterHits, []);
   assert.equal(cleared.view.scale, 0.4);
-  assert.match(attract, /setSubmitterFirst\(cleared\.submitterFirst\)/);
+  assert.match(attract, /setSubmitterSuggestions\(\[\]\)/);
+  assert.match(attract, /setWaveIds\(\[\]\)/);
   assert.match(attract, /setQuery\(cleared\.query\)/);
   assert.match(attract, /setSelected\(cleared\.selected\)/);
   assert.ok(attract.indexOf("applyKioskIdleReset") < attract.indexOf("attractView"));
@@ -484,7 +695,9 @@ test("kiosk mode stays on the flag map and hides admin chrome", () => {
   assert.doesNotMatch(shell, /adminAlertBanner|authBox|heroNav|appFooter|\/admin\/review|loginRedirect|Sign out|Log in/);
   assert.match(app, /if \(kioskLockedRef\.current\) return/);
   assert.match(app, /Your name can be used to look up flags you submitted at the event kiosk\./);
-  assert.match(page, /Flags I submitted/);
+  assert.match(page, /lookupSubmitterSuggestions/);
+  assert.doesNotMatch(page, /Flags I submitted/);
+  assert.doesNotMatch(page, /flag-map\/mine/);
   assert.doesNotMatch(page, /loginRedirect/);
   const setup = readFileSync(new URL("../../docs/kiosk-setup.md", import.meta.url), "utf8");
   assert.match(setup, /signed out/i);
@@ -510,6 +723,24 @@ test("the submitted-flag lookup does not send a sign-in token", async () => {
     return { status: 401 };
   });
   assert.equal(exitStatus, 401);
+
+  let suggestionHeaders = null;
+  const suggestions = await lookupSubmitterSuggestions("Ada", async (url, init) => {
+    suggestionHeaders = init.headers;
+    assert.equal(url, "/api/public/flag-map/submitter-suggestions");
+    assert.equal(init.method, "POST");
+    assert.equal(init.body, JSON.stringify({ query: "Ada" }));
+    return { status: 200, json: async () => ({ suggestions: [{ label: "All flags submitted by Ada Lovelace", token: "abc" }] }) };
+  });
+  assert.equal(suggestionHeaders.Authorization, undefined);
+  assert.equal(suggestions.body.suggestions[0].label, "All flags submitted by Ada Lovelace");
+  const resolved = await resolveSubmitterFlags("abc", async (url, init) => {
+    assert.equal(init.headers.Authorization, undefined);
+    assert.equal(url, "/api/public/flag-map/submitter-flags");
+    assert.equal(init.body, JSON.stringify({ token: "abc" }));
+    return { status: 200, json: async () => ({ flags: [{ flagGridId: 2 }] }) };
+  });
+  assert.equal(resolved.body.flags[0].flagGridId, 2);
 });
 
 function memoryStorage() {

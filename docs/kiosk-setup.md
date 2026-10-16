@@ -20,7 +20,7 @@ Use a fresh browser profile that is signed out.
 
 Check that the window does not show Log in, and that it does not redirect to a Microsoft sign-in page.
 
-Visitors can look up flags they submitted from the Flags I submitted tab. That lookup does not ask them to sign in.
+Visitors search from the same name box used for honorees. After 3 letters, a suggestion can read "All flags submitted by First Last". Choosing it fits that person's flags. The search works while the kiosk is signed out and does not ask anyone to sign in.
 
 ## Leaving the page
 

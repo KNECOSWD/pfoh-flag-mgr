@@ -4681,7 +4681,9 @@ export default function App() {
 
           </>
           ) : (
-            <PublicFlagMap onPreviewCard={(honoreeId, title) => { void openPublicHonoreeCard(honoreeId, title); }} />
+            <PublicFlagMap
+              onPreviewCard={(honoreeId, title) => { void openPublicHonoreeCard(honoreeId, title); }}
+            />
           )}
 
       <footer className="appFooter" aria-label="Plano Flags of Honor footer">
