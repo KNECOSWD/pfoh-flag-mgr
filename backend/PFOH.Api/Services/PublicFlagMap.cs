@@ -65,6 +65,11 @@ public class PublicFlagMap(PfohDbContext db)
 
     public async Task<SubmitterLookupResult> BySubmitterAsync(string? first, string? last, CancellationToken ct)
     {
+        if (IsPrivateNameToken(first) || IsPrivateNameToken(last))
+        {
+            return new SubmitterLookupResult("none", 0, []);
+        }
+
         var firstQuery = NormalizeName(first);
         var lastQuery = NormalizeName(last);
         if (firstQuery.Length < 2 || lastQuery.Length < 3)
@@ -151,8 +156,31 @@ public class PublicFlagMap(PfohDbContext db)
         return new SubmitterLookupResult("ok", matches.Count, matches);
     }
 
+    internal static bool IsPrivateNameToken(string? value)
+    {
+        var token = (value ?? string.Empty).Trim();
+        if (token.Length == 0)
+        {
+            return false;
+        }
+
+        if (token.Contains('@') || token.Contains('_') || token.Any(char.IsDigit))
+        {
+            return true;
+        }
+
+        var dot = token.IndexOf('.');
+        return dot >= 0 && dot < token.Length - 1;
+    }
+
     internal static bool NameMatches(string? storedFirst, string? storedLast, string firstQuery, string lastQuery)
     {
+        if (IsPrivateNameToken(storedFirst) || IsPrivateNameToken(storedLast) ||
+            IsPrivateNameToken(firstQuery) || IsPrivateNameToken(lastQuery))
+        {
+            return false;
+        }
+
         var first = NormalizeName(storedFirst);
         var last = NormalizeName(storedLast);
         if (first.Length == 0 || last.Length == 0 || lastQuery.Length == 0 || firstQuery.Length == 0)
@@ -183,10 +211,12 @@ public class PublicFlagMap(PfohDbContext db)
         return builder.ToString().Normalize(NormalizationForm.FormC);
     }
 
-    private static (string First, string Last) SplitDisplayName(string? displayName)
+    internal static (string First, string Last) SplitDisplayName(string? displayName)
     {
         var parts = (displayName ?? string.Empty)
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(part => !IsPrivateNameToken(part))
+            .ToArray();
         if (parts.Length == 0)
         {
             return ("", "");

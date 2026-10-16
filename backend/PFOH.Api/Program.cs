@@ -1,4 +1,5 @@
 using System.Threading.RateLimiting;
+using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -90,6 +91,9 @@ builder.Services.AddApplicationInsightsTelemetry(options =>
 {
     options.EnableAdaptiveSampling = false;
 });
+builder.Services.AddSingleton<ITelemetryInitializer, SubmitterLookupTelemetryInitializer>();
+builder.Services.AddSingleton<IHttpContextFactory>(serviceProvider =>
+    new SubmitterLookupHttpContextFactory(ActivatorUtilities.CreateInstance<DefaultHttpContextFactory>(serviceProvider)));
 builder.Services.AddSingleton<HonoreeFileStorage>();
 builder.Services.AddScoped<UserProfileService>();
 builder.Services.AddScoped<FlagGridAssignment>();
@@ -144,6 +148,20 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+
+app.Use(async (context, next) =>
+{
+    if (SubmitterLookupPrivacy.IsLookupPath(context.Request.Path))
+    {
+        context.Response.OnStarting(() =>
+        {
+            SubmitterLookupPrivacy.ApplyResponseHeaders(context.Response);
+            return Task.CompletedTask;
+        });
+    }
+
+    await next();
+});
 
 //using (var scope = app.Services.CreateScope())
 //{

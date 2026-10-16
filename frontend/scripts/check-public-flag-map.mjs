@@ -7,6 +7,7 @@ import {
   applyKioskIdleReset,
   attractView,
   createFlagMapLoader,
+  createPinchBatch,
   createWheelBatch,
   cullRects,
   filterFlagMapSuggestions,
@@ -17,6 +18,7 @@ import {
   layoutFlagField,
   pointerDragCapture,
   pointerIsTap,
+  pinchView,
   pointerShouldOpen,
   lookupSubmittedFlags,
   publicFlagMapUrls,
@@ -244,6 +246,88 @@ test("wheel zoom coalesces each frame and stays under the 45fps bar on a 1,200-f
   assert.match(page, /wheelFrameShouldCull/);
 });
 
+test("pinch zoom coalesces each frame and stays under the 45fps bar on a 320-wide field", () => {
+  const seats = Array.from({ length: 1200 }, (_, index) => ({
+    flagGridId: index + 1,
+    flagGridName: `A-${index + 1}`,
+    section: "A",
+    status: index % 5 === 0 ? "Occupied" : "Open",
+    displayName: index % 5 === 0 ? `Honoree ${index}` : null
+  }));
+  const field = layoutFlagField([{ section: "A", flagCount: 1200, occupiedCount: 240, seats }]);
+  const viewport = { width: 320, height: 640 };
+  const origin = { x: 8, y: 12, scale: 1 };
+  const startMid = { x: 160, y: 280 };
+  let view = { ...origin };
+  let gates = flagMapDetailGates(view.scale, 1);
+  const frames = 40;
+  const eventsPerFrame = 8;
+  let applies = 0;
+  let culls = 0;
+  const samples = [];
+  const batch = createPinchBatch();
+  for (let frame = 0; frame < frames; frame += 1) {
+    const started = performance.now();
+    for (let event = 0; event < eventsPerFrame; event += 1) {
+      const distance = 40 + frame * 8 + event;
+      batch.push(pinchView(origin, startMid, distance, 40, { x: startMid.x + event, y: startMid.y }));
+    }
+    const next = batch.flush();
+    assert.ok(next);
+    view = next;
+    applies += 1;
+    const nextGates = flagMapDetailGates(view.scale, 1);
+    const ended = frame === frames - 1;
+    if (wheelFrameShouldCull(gates, nextGates, ended)) {
+      cullRects(field.flags, viewportWorldRect(view, viewport, 180));
+      culls += 1;
+      gates = nextGates;
+    }
+    samples.push(performance.now() - started);
+  }
+  samples.sort((left, right) => left - right);
+  const p95 = samples[Math.min(samples.length - 1, Math.ceil(samples.length * 0.95) - 1)];
+  assert.equal(viewport.width, 320);
+  assert.equal(field.flags.length, 1200);
+  assert.equal(applies, frames);
+  assert.equal(frames * eventsPerFrame, 320);
+  assert.ok(culls < frames / 2, `culled on ${culls} of ${frames} frames`);
+  assert.ok(culls <= 8, `expected culls only when the level changes, plus the last frame, got ${culls}`);
+  assert.ok(view.scale > 1);
+  assert.ok(p95 < 1000 / 45, `pinch frame p95 ${p95.toFixed(2)}ms is slower than 45fps`);
+  assert.equal(batch.flush(), null);
+
+  const move = page.slice(page.indexOf("const onTouchMove"), page.indexOf("const onTouchEnd"));
+  assert.match(move, /requestAnimationFrame\(flushPinchFrame\)/);
+  assert.match(move, /pinchBatchRef/);
+  assert.match(move, /pinchView/);
+  assert.doesNotMatch(move, /applyView|publishCull|setVisibleFlagIds|setGates|setLevelText/);
+});
+
+test("kiosk touch targets are at least 56px", () => {
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  const exit = css.slice(css.indexOf(".kioskExitZone {"), css.indexOf(".kioskPinOverlay"));
+  assert.match(exit, /width:\s*56px/);
+  assert.match(exit, /height:\s*56px/);
+  assert.match(exit, /min-width:\s*56px/);
+  assert.match(exit, /min-height:\s*56px/);
+  const targets = css.slice(css.indexOf(".publicFlagMap.isKiosk button:not(.publicFlagTile):not(.publicFlagMarker)"), css.indexOf(".publicFlagSearchTabs button.isActive"));
+  assert.match(targets, /min-width:\s*56px/);
+  assert.match(targets, /min-height:\s*56px/);
+  assert.match(targets, /\.publicFlagSearchTabs button/);
+  assert.match(targets, /\.publicFlagMap\.isKiosk input/);
+  assert.match(targets, /\.publicFlagMap\.isKiosk a/);
+  assert.doesNotMatch(css, /min-height:\s*44px|min-width:\s*44px|width:\s*44px|height:\s*44px/);
+
+  const tags = page.match(/<(button|input|a|select|textarea)\b[^>]*>/g) || [];
+  assert.ok(tags.length >= 8);
+  for (const tag of tags) {
+    const mapGlyph = /publicFlagTile|publicFlagMarker/.test(tag);
+    const covered = mapGlyph || /button|input|a|select|textarea/.test(tag);
+    assert.equal(covered, true);
+  }
+});
+
 test("a kiosk attract loop does not request the flag map again", async () => {
   const attract = page.slice(page.indexOf("function beginAttract"), page.indexOf("function exitAttract"));
   const idle = page.slice(page.indexOf("function armIdle"), page.indexOf("const beginAttractRef"));
@@ -412,8 +496,10 @@ test("the submitted-flag lookup does not send a sign-in token", async () => {
   let headers = null;
   const result = await lookupSubmittedFlags("Ada", "Lovelace", async (url, init) => {
     headers = init.headers;
-    assert.match(url, /\/api\/public\/flag-map\/by-submitter\?/);
-    assert.doesNotMatch(url, /search-index/);
+    assert.equal(url, "/api/public/flag-map/by-submitter");
+    assert.equal(init.method, "POST");
+    assert.equal(init.body, JSON.stringify({ first: "Ada", last: "Lovelace" }));
+    assert.doesNotMatch(url, /search-index|\?/);
     return { status: 200, json: async () => ({ flags: [{ honoreeId: 1, flagGridId: 2, displayName: "Visible Hero" }] }) };
   });
   assert.equal(headers.Authorization, undefined);

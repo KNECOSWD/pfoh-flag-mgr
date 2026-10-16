@@ -5,6 +5,12 @@ public sealed class KioskExitRequest
     public string? Pin { get; set; }
 }
 
+public sealed class SubmitterLookupRequest
+{
+    public string? First { get; set; }
+    public string? Last { get; set; }
+}
+
 public record PublicFlagSectionDto(
     string Section,
     int FlagCount,

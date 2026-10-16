@@ -11112,8 +11112,10 @@ html.flagMapKiosk a {
   left: 0;
   bottom: 0;
   z-index: 70;
-  width: 44px;
-  height: 44px;
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  min-height: 56px;
   margin: 0;
   padding: 0;
   border: 0;
@@ -11217,8 +11219,18 @@ html.flagMapKiosk a {
   margin-bottom: 10px;
 }
 
-.publicFlagSearchTabs button {
-  min-height: 44px;
+.publicFlagMap.isKiosk button:not(.publicFlagTile):not(.publicFlagMarker),
+.publicFlagMap.isKiosk input,
+.publicFlagMap.isKiosk select,
+.publicFlagMap.isKiosk textarea,
+.publicFlagMap.isKiosk a,
+.publicFlagMap.isKiosk .publicFlagSuggestions li,
+.publicFlagMap.isKiosk .publicFlagSuggestions button,
+.publicFlagSearchTabs button,
+.kioskPinKeys button,
+.kioskPinPad > button {
+  min-width: 56px;
+  min-height: 56px;
 }
 
 .publicFlagSearchTabs button.isActive {

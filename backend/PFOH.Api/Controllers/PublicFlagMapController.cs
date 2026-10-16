@@ -47,9 +47,16 @@ public class PublicFlagMapController(
 
     [HttpGet("by-submitter")]
     [EnableRateLimiting("PublicFlagMapBySubmitter")]
-    public async Task<IActionResult> BySubmitter([FromQuery] string? first, [FromQuery] string? last, CancellationToken ct)
+    public IActionResult BySubmitterGet()
     {
-        var result = await map.BySubmitterAsync(first, last, ct);
+        return StatusCode(StatusCodes.Status405MethodNotAllowed);
+    }
+
+    [HttpPost("by-submitter")]
+    [EnableRateLimiting("PublicFlagMapBySubmitter")]
+    public async Task<IActionResult> BySubmitter([FromBody] SubmitterLookupRequest? request, CancellationToken ct)
+    {
+        var result = await map.BySubmitterAsync(request?.First, request?.Last, ct);
         logger.LogInformation(
             "Public flag map submitter lookup from {ClientIp} outcome {Outcome} count {Count}",
             PublicFlagMapClientIp.Resolve(HttpContext),

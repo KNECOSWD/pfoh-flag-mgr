@@ -6,6 +6,7 @@ import {
   WHEEL_SETTLE_MS,
   applyKioskIdleReset,
   attractView,
+  createPinchBatch,
   createWheelBatch,
   createFlagMapLoader,
   cullRects,
@@ -18,6 +19,7 @@ import {
   flagYears,
   layoutFlagField,
   panView,
+  pinchView,
   pointerDragCapture,
   pointerShouldOpen,
   publicFlagMapUrls,
@@ -215,6 +217,8 @@ export default function PublicFlagMap({
   const attractFrameRef = useRef(0);
   const wheelFrameRef = useRef(0);
   const wheelSettleRef = useRef(0);
+  const pinchFrameRef = useRef(0);
+  const pinchSettleRef = useRef(0);
   const idleTimerRef = useRef(0);
   const exitHoldRef = useRef(0);
   const suppressClickRef = useRef(false);
@@ -227,6 +231,7 @@ export default function PublicFlagMap({
   const pendingFlagRef = useRef<number | null>(location.flagId);
   const historyRef = useRef<View[]>([]);
   const wheelBatchRef = useRef(createWheelBatch());
+  const pinchBatchRef = useRef(createPinchBatch());
   const boxRef = useRef({ left: 0, top: 0, width: 1, height: 1 });
   const opacityCacheRef = useRef({ section: "", seal: "", name: "", rank: "" });
   const layoutRef = useRef<ReturnType<typeof layoutFlagField> | null>(null);
@@ -367,6 +372,10 @@ export default function PublicFlagMap({
     wheelFrameRef.current = 0;
     window.clearTimeout(wheelSettleRef.current);
     wheelBatchRef.current.flush();
+    cancelAnimationFrame(pinchFrameRef.current);
+    pinchFrameRef.current = 0;
+    window.clearTimeout(pinchSettleRef.current);
+    pinchBatchRef.current.flush();
   }
 
   function animateTo(target: View, onDone?: () => void) {
@@ -707,8 +716,8 @@ export default function PublicFlagMap({
     let captured = false;
     let pinching = false;
     let pinchStart = 0;
-    let pinchScale = 1;
-    let pinchMid = { x: 0, y: 0 };
+    let pinchOrigin: View | null = null;
+    let pinchStartMid = { x: 0, y: 0 };
 
     const flushWheelFrame = () => {
       wheelFrameRef.current = 0;
@@ -728,6 +737,22 @@ export default function PublicFlagMap({
       }
       window.clearTimeout(wheelSettleRef.current);
       wheelSettleRef.current = window.setTimeout(() => {
+        publishCull(true);
+      }, WHEEL_SETTLE_MS);
+    };
+
+    const flushPinchFrame = () => {
+      pinchFrameRef.current = 0;
+      const next = pinchBatchRef.current.flush();
+      if (!next) return;
+      paintView(next);
+      const nextGates = flagMapDetailGates(next.scale, fitScaleRef.current);
+      if (wheelFrameShouldCull(gatesRef.current, nextGates, false)) {
+        gatesRef.current = nextGates;
+        publishCull(true);
+      }
+      window.clearTimeout(pinchSettleRef.current);
+      pinchSettleRef.current = window.setTimeout(() => {
         publishCull(true);
       }, WHEEL_SETTLE_MS);
     };
@@ -792,17 +817,17 @@ export default function PublicFlagMap({
       if (event.touches.length !== 2) return;
       pinching = true;
       pinchStart = touchDistance(event);
-      pinchScale = viewRef.current.scale;
+      pinchOrigin = { ...viewRef.current };
       syncViewportBox();
       const rect = boxRef.current;
-      pinchMid = {
+      pinchStartMid = {
         x: (event.touches[0].clientX + event.touches[1].clientX) / 2 - rect.left,
         y: (event.touches[0].clientY + event.touches[1].clientY) / 2 - rect.top
       };
     };
 
     const onTouchMove = (event: TouchEvent) => {
-      if (!pinching || event.touches.length < 2 || pinchStart <= 0) return;
+      if (!pinching || !pinchOrigin || event.touches.length < 2 || pinchStart <= 0) return;
       event.preventDefault();
       userAdjustedRef.current = true;
       const rect = boxRef.current;
@@ -810,13 +835,21 @@ export default function PublicFlagMap({
         x: (event.touches[0].clientX + event.touches[1].clientX) / 2 - rect.left,
         y: (event.touches[0].clientY + event.touches[1].clientY) / 2 - rect.top
       };
-      const zoomed = zoomAt(viewRef.current, pinchMid.x, pinchMid.y, pinchScale * (touchDistance(event) / pinchStart));
-      applyView(panView(zoomed, mid.x - pinchMid.x, mid.y - pinchMid.y));
-      pinchMid = mid;
+      pinchBatchRef.current.push(pinchView(pinchOrigin, pinchStartMid, touchDistance(event), pinchStart, mid));
+      if (pinchFrameRef.current) return;
+      pinchFrameRef.current = requestAnimationFrame(flushPinchFrame);
     };
 
     const onTouchEnd = () => {
+      if (!pinching) return;
       pinching = false;
+      pinchOrigin = null;
+      cancelAnimationFrame(pinchFrameRef.current);
+      pinchFrameRef.current = 0;
+      const next = pinchBatchRef.current.flush();
+      if (next) paintView(next);
+      window.clearTimeout(pinchSettleRef.current);
+      publishCull(true);
     };
 
     node.addEventListener("wheel", onWheel, { passive: false });
@@ -840,6 +873,8 @@ export default function PublicFlagMap({
       node.removeEventListener("touchcancel", onTouchEnd);
       cancelAnimationFrame(wheelFrameRef.current);
       window.clearTimeout(wheelSettleRef.current);
+      cancelAnimationFrame(pinchFrameRef.current);
+      window.clearTimeout(pinchSettleRef.current);
     };
     // Gesture listeners read refs so they can stay attached for the life of the canvas.
     // eslint-disable-next-line react-hooks/exhaustive-deps

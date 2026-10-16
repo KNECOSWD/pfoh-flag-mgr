@@ -1,4 +1,7 @@
+using System.Collections;
 using System.Net;
+using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
@@ -65,7 +68,7 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
             FlagGridId = claimedGrid.Id,
             ExternalUserObjectId = CanaryOid,
             ExternalUserEmail = CanaryEmail,
-            ExternalUserName = $"{ClaimFirst} {ClaimLast}",
+            ExternalUserName = $"{CanaryEmail} {ClaimFirst} user_42 {ClaimLast}",
             ClaimStatus = "Claimed"
         });
         db.SaveChanges();
@@ -94,8 +97,7 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
             AssertNoCanary(body);
         }
 
-        Assert.False(matched.Headers.Contains("ETag"));
-        Assert.False(matched.Headers.CacheControl?.ToString().Length > 0);
+        AssertNoStore(matched);
         Assert.DoesNotContain("Canary", string.Join('\n', factory.Logs), StringComparison.OrdinalIgnoreCase);
         Assert.Contains(factory.Logs, line => line.Contains("outcome ok", StringComparison.Ordinal) && line.Contains("198.51.100.10", StringComparison.Ordinal));
     }
@@ -108,6 +110,7 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.DoesNotContain(ClaimLast, body, StringComparison.Ordinal);
         AssertNoCanary(body);
+        AssertNoStore(response);
     }
 
     [Fact]
@@ -149,6 +152,7 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
         using var json = JsonDocument.Parse(body);
         Assert.True(json.RootElement.GetProperty("refine").GetBoolean());
         Assert.False(json.RootElement.TryGetProperty("flags", out _));
+        AssertNoStore(response);
         Assert.DoesNotContain("Bulk", body, StringComparison.Ordinal);
         Assert.DoesNotContain("Wide", body, StringComparison.Ordinal);
         Assert.DoesNotContain("Net", body, StringComparison.Ordinal);
@@ -166,6 +170,7 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
 
         using var limited = await Send(factory, exempt, "Nobody", "Zzzzzzz");
         Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+        AssertNoStore(limited);
 
         using var map = await SendPath(factory, exempt, "/api/public/flag-map/sections");
         Assert.NotEqual(HttpStatusCode.TooManyRequests, map.StatusCode);
@@ -180,6 +185,60 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
         Assert.True(PublicFlagMap.NameMatches("José", "García", "jos", last));
         Assert.False(PublicFlagMap.NameMatches("José", "García", "ose", last));
         Assert.False(PublicFlagMap.NameMatches("José", "García", first, "garc"));
+        Assert.Equal(("Casey", "Claimer"), PublicFlagMap.SplitDisplayName($"Casey {CanaryEmail} user_42 Claimer"));
+        Assert.Equal(("", ""), PublicFlagMap.SplitDisplayName(CanaryEmail));
+        Assert.False(PublicFlagMap.NameMatches("user_name", "Claimer", "user", "claimer"));
+        Assert.False(PublicFlagMap.IsPrivateNameToken("Mary-Anne"));
+        Assert.True(PublicFlagMap.IsPrivateNameToken("jane.doe"));
+    }
+
+    [Fact]
+    public async Task An_email_token_search_matches_the_unknown_name_response()
+    {
+        var email = await Send(factory, "198.51.100.51", CanaryEmail, "Claimer");
+        var handle = await Send(factory, "198.51.100.52", "user_name", "Claimer");
+        var digits = await Send(factory, "198.51.100.53", CanaryFirst, "Canaryln2");
+        var unknown = await Send(factory, "198.51.100.54", "Nobody", "Zzzzzzz");
+        var unknownBody = await unknown.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, email.StatusCode);
+        Assert.Equal(unknownBody, await email.Content.ReadAsStringAsync());
+        Assert.Equal(unknownBody, await handle.Content.ReadAsStringAsync());
+        Assert.Equal(unknownBody, await digits.Content.ReadAsStringAsync());
+        Assert.Equal("No flags found", Message(unknownBody));
+        AssertNoStore(email);
+        AssertNoStore(unknown);
+        AssertNoCanary(unknownBody);
+    }
+
+    [Fact]
+    public async Task Canary_names_never_appear_in_any_log()
+    {
+        factory.Logs.Clear();
+        using var posted = await Send(factory, "198.51.100.61", CanaryFirst, CanaryLast);
+        using var queried = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/api/public/flag-map/by-submitter?first={Uri.EscapeDataString(CanaryEmail)}&last={Uri.EscapeDataString(CanaryLast)}");
+        queried.Headers.TryAddWithoutValidation("X-Forwarded-For", "198.51.100.62");
+        using var got = await factory.CreateClient().SendAsync(queried);
+
+        Assert.Equal(HttpStatusCode.OK, posted.StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, got.StatusCode);
+        AssertNoStore(posted);
+        AssertNoStore(got);
+
+        var logs = string.Join('\n', factory.Logs);
+        Assert.DoesNotContain(CanaryFirst, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(CanaryLast, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(CanaryEmail, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(CanaryPhone, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(CanaryOid, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(CanaryStreet, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(ClaimFirst, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(ClaimLast, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("first=", logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("last=", logs, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(factory.Logs, line => line.Contains("outcome ok", StringComparison.Ordinal) && line.Contains("198.51.100.61", StringComparison.Ordinal));
     }
 
     private static string Message(string json)
@@ -204,10 +263,21 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
         Assert.DoesNotContain("claimer", body, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static void AssertNoStore(HttpResponseMessage response)
+    {
+        Assert.False(response.Headers.Contains("ETag"));
+        Assert.Contains("no-store", response.Headers.CacheControl?.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("no-cache", response.Headers.Pragma.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
     private static Task<HttpResponseMessage> Send(Factory factory, string ip, string first, string last)
     {
-        var path = $"/api/public/flag-map/by-submitter?first={Uri.EscapeDataString(first)}&last={Uri.EscapeDataString(last)}";
-        return SendPath(factory, ip, path);
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/public/flag-map/by-submitter")
+        {
+            Content = JsonContent.Create(new { first, last })
+        };
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", ip);
+        return factory.CreateClient().SendAsync(request);
     }
 
     private static Task<HttpResponseMessage> SendPath(Factory factory, string ip, string path)
@@ -263,10 +333,18 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
             {
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["PublicFlagMap:UnlimitedIps:0"] = "203.0.113.77"
+                    ["PublicFlagMap:UnlimitedIps:0"] = "203.0.113.77",
+                    ["Logging:LogLevel:Default"] = "Information",
+                    ["Logging:LogLevel:Microsoft"] = "Information",
+                    ["Logging:LogLevel:Microsoft.AspNetCore"] = "Information",
+                    ["Logging:LogLevel:Microsoft.AspNetCore.Hosting.Diagnostics"] = "Information"
                 });
             });
-            builder.ConfigureLogging(logging => logging.AddProvider(new ListLoggerProvider(Logs)));
+            builder.ConfigureLogging(logging =>
+            {
+                logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Information);
+                logging.AddProvider(new ListLoggerProvider(Logs));
+            });
             base.ConfigureWebHost(builder);
         }
     }
@@ -284,14 +362,28 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
-            if (!category.Contains("PublicFlagMapController", StringComparison.Ordinal))
+            var text = new StringBuilder();
+            text.Append(category);
+            text.Append(' ');
+            text.Append(formatter(state, exception));
+            if (state is not string && state is IEnumerable items)
             {
-                return;
+                foreach (var item in items)
+                {
+                    text.Append(' ');
+                    text.Append(item);
+                }
+            }
+
+            if (exception is not null)
+            {
+                text.Append(' ');
+                text.Append(exception);
             }
 
             lock (logs)
             {
-                logs.Add(formatter(state, exception));
+                logs.Add(text.ToString());
             }
         }
     }

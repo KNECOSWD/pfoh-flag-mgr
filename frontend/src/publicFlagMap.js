@@ -4,20 +4,20 @@ export function publicFlagMapUrls(apiBase = "") {
     sections: `${base}/api/public/flag-map/sections`,
     section: (section) => `${base}/api/public/flag-map/sections/${encodeURIComponent(section)}`,
     searchIndex: `${base}/api/public/flag-map/search-index`,
-    bySubmitter: (first, last) => {
-      const params = new URLSearchParams();
-      params.set("first", first ?? "");
-      params.set("last", last ?? "");
-      return `${base}/api/public/flag-map/by-submitter?${params.toString()}`;
-    }
+    bySubmitter: () => `${base}/api/public/flag-map/by-submitter`
   };
 }
 
 export async function lookupSubmittedFlags(first, last, fetchImpl, apiBase = "") {
   const send = fetchImpl ?? ((url, init) => fetch(url, init));
-  const response = await send(publicFlagMapUrls(apiBase).bySubmitter(first, last), {
+  const response = await send(publicFlagMapUrls(apiBase).bySubmitter(), {
+    method: "POST",
     cache: "no-store",
-    headers: { Accept: "application/json" }
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ first: first ?? "", last: last ?? "" })
   });
   let body = null;
   try {
@@ -361,6 +361,27 @@ export function createWheelBatch() {
       return batch;
     }
   };
+}
+
+export function createPinchBatch() {
+  let next = null;
+  return {
+    push(view) {
+      next = view;
+    },
+    flush() {
+      if (!next) return null;
+      const view = next;
+      next = null;
+      return view;
+    }
+  };
+}
+
+export function pinchView(origin, startMid, distance, startDistance, mid) {
+  const scale = origin.scale * (distance / startDistance);
+  const zoomed = zoomAt(origin, startMid.x, startMid.y, scale);
+  return panView(zoomed, mid.x - startMid.x, mid.y - startMid.y);
 }
 
 export function wheelScaleFactor(deltaY) {
