@@ -96,15 +96,11 @@ public sealed class PublicFlagMapCache(IServiceScopeFactory scopes)
     }
 }
 
-public sealed class PublicFlagMapCacheInvalidator(PublicFlagMapCache cache) : SaveChangesInterceptor
+public sealed class PublicFlagMapCacheInvalidator(PublicFlagMapCache cache, SubmitterNameTokenCache names) : SaveChangesInterceptor
 {
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
     {
-        if (TouchesMap(eventData.Context))
-        {
-            cache.Invalidate();
-        }
-
+        Invalidate(eventData.Context);
         return base.SavingChanges(eventData, result);
     }
 
@@ -113,21 +109,19 @@ public sealed class PublicFlagMapCacheInvalidator(PublicFlagMapCache cache) : Sa
         InterceptionResult<int> result,
         CancellationToken cancellationToken = default)
     {
-        if (TouchesMap(eventData.Context))
-        {
-            cache.Invalidate();
-        }
-
+        Invalidate(eventData.Context);
         return base.SavingChangesAsync(eventData, result, cancellationToken);
     }
 
-    private static bool TouchesMap(DbContext? context)
+    private void Invalidate(DbContext? context)
     {
         if (context is null)
         {
-            return false;
+            return;
         }
 
+        var map = false;
+        var submitters = false;
         foreach (var entry in context.ChangeTracker.Entries())
         {
             if (entry.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted))
@@ -137,11 +131,24 @@ public sealed class PublicFlagMapCacheInvalidator(PublicFlagMapCache cache) : Sa
 
             if (entry.Entity is Models.Honoree or Models.FlagGrid or Models.ServiceBranch or Models.ServiceBranchCategory)
             {
-                return true;
+                map = true;
+                submitters = true;
+            }
+            else if (entry.Entity is Models.Sponsor or Models.FlagClaim)
+            {
+                submitters = true;
             }
         }
 
-        return false;
+        if (map)
+        {
+            cache.Invalidate();
+        }
+
+        if (submitters)
+        {
+            names.Invalidate();
+        }
     }
 }
 

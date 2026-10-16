@@ -12,6 +12,7 @@ namespace PFOH.Api.Controllers;
 [Route("api/public/flag-map")]
 public class PublicFlagMapSubmitterSearchController(
     PublicFlagMap map,
+    SubmitterNameTokenCache names,
     SubmitterSuggestionTokens tokens,
     ILogger<PublicFlagMapSubmitterSearchController> logger) : ControllerBase
 {
@@ -25,7 +26,7 @@ public class PublicFlagMapSubmitterSearchController(
     [HttpPost("submitter-suggestions")]
     public async Task<IActionResult> Suggestions([FromBody] SubmitterSuggestionRequest? request, CancellationToken ct)
     {
-        var result = await map.SuggestSubmittersAsync(request?.Query, ct);
+        var result = await names.SuggestAsync(request?.Query, ct);
         logger.LogInformation(
             "Public flag map submitter suggestions from {ClientIp} outcome {Outcome} count {Count}",
             PublicFlagMapClientIp.Resolve(HttpContext),

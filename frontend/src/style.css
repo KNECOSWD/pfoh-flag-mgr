@@ -11202,6 +11202,7 @@ html.flagMapKiosk a {
 
 .publicFlagSearch {
   position: relative;
+  z-index: 2;
   margin: 12px 0 18px;
 }
 
@@ -11283,7 +11284,7 @@ html.flagMapKiosk a {
   border: 1px solid rgba(212, 175, 55, 0.45);
   background: #fffdf8;
   position: absolute;
-  z-index: 6;
+  z-index: 5;
   width: 100%;
   max-height: 320px;
   overflow: auto;
@@ -11324,8 +11325,15 @@ html.flagMapKiosk a {
   font-size: 0.82rem;
 }
 
+.publicFlagChrome {
+  position: relative;
+  z-index: 30;
+  overflow: visible;
+}
+
 .publicFlagStage {
   position: relative;
+  z-index: 1;
 }
 
 .publicFlagViewport {
@@ -11450,26 +11458,35 @@ html.flagMapKiosk a {
   transition: none;
 }
 
-.publicFlagTile {
-  justify-content: flex-end;
+.publicFlagTile,
+.publicFlagZone {
+  justify-content: center;
   opacity: var(--section-opacity, 1);
-  background: linear-gradient(180deg, rgba(23, 62, 120, 0.05), rgba(23, 62, 120, 0.28));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 46%),
+    linear-gradient(160deg, rgba(47, 116, 192, 0.92) 0%, rgba(23, 62, 120, 0.94) 100%);
   color: #fff8e8;
-  border: 1px solid rgba(243, 226, 167, 0.55);
+  border: 2px solid rgba(243, 226, 167, 0.85);
   border-radius: 8px;
-  padding: 0 0 4px;
+  padding: 2px;
   box-shadow: none;
 }
 
-.publicFlagTile strong {
-  font-size: 22px;
-  line-height: 1;
+.publicFlagZone strong {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 34px;
+  line-height: 0.85;
   color: #ffe7a3;
 }
 
-.publicFlagTile span {
-  font-size: 9px;
+.publicFlagZone span {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1;
   color: #fff8e8;
+  white-space: nowrap;
 }
 
 .publicFlagTile span,
@@ -11479,47 +11496,76 @@ html.flagMapKiosk a {
 }
 
 .publicFlagMarker {
-  opacity: 1;
-  background: transparent;
-  color: #102033;
-  border: 0;
+  box-sizing: border-box;
+  opacity: calc(1 - var(--section-opacity, 1));
+  overflow: hidden;
+  background: rgba(244, 239, 228, 0.14);
+  color: #fff8e8;
+  border: 1px solid rgba(255, 248, 232, 0.38);
   border-radius: 4px;
-  padding: 0;
+  padding: 1px;
   box-shadow: none;
+  gap: 0;
 }
 
-.publicFlagDot {
-  width: 46%;
-  height: 62%;
-  border-radius: 50%;
-  background: var(--branch-dot, #f4efe4);
-  box-shadow: 0 0 0 1px rgba(7, 21, 38, 0.28);
+.publicFlagMarker.isOpen {
+  background: rgba(244, 239, 228, 0.1);
+  color: #fff8e8;
+}
+
+.publicFlagMarker.isOccupied {
+  background: linear-gradient(180deg, #fffdf8 0%, #f4efe4 100%);
+  color: #102033;
+  border-color: rgba(212, 175, 55, 0.75);
+}
+
+.publicFlagMarker.isReserved {
+  background: #e1b84a;
+  color: #102033;
+  border-color: #e1b84a;
+}
+
+.publicFlagMarker em,
+.publicFlagMarker small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  font-style: normal;
+  line-height: 1.05;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .publicFlagMarker em {
-  opacity: var(--name-opacity, 0);
-  font-style: normal;
-  font-size: 0.82rem;
-  line-height: 1.15;
+  opacity: 1;
 }
 
 .publicFlagMarker small {
-  opacity: var(--rank-opacity, 0);
+  opacity: 1;
   color: #8a6a12;
 }
 
-.publicFlagMarker img,
+.publicFlagMarker.isOpen small,
+.publicFlagMarker.isReserved small {
+  color: inherit;
+}
+
 .publicFlagSeal {
   width: 64px;
   height: 64px;
   object-fit: contain;
 }
 
+.publicFlagMarker img,
 .publicFlagSealImg {
-  position: absolute;
-  width: 86%;
-  height: 86%;
+  position: static;
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 55%;
   object-fit: contain;
+  flex: 0 0 auto;
   animation: publicFlagSealFade 280ms ease both;
 }
 
@@ -11877,10 +11923,12 @@ html.flagMapPage .publicFlagMap {
 }
 
 html.flagMapPage .publicFlagChrome {
-  flex: 0 0 var(--flag-map-tools, 104px);
-  height: var(--flag-map-tools, 104px);
-  max-height: var(--flag-map-tools, 104px);
-  overflow: hidden;
+  flex: 0 0 auto;
+  min-height: var(--flag-map-tools, 104px);
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  z-index: 30;
 }
 
 html.flagMapPage .publicFlagHeading {
@@ -11918,4 +11966,53 @@ html.flagMapPage .publicFlagViewport {
   height: auto !important;
   min-height: 0 !important;
   max-height: none;
+}
+
+html.isMapFullscreen .hero,
+html.isMapFullscreen .appFooter {
+  display: none !important;
+}
+
+html.isMapFullscreen .publicFlagMap,
+html.flagMapPage.isMapFullscreen .publicFlagMap,
+html.isMapFullscreen .publicFlagMap.isKiosk {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 10px 12px 12px;
+  box-sizing: border-box;
+  background: #071526;
+}
+
+html.isMapFullscreen .publicFlagChrome {
+  flex: 0 0 auto;
+  height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+html.isMapFullscreen .publicFlagStage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+html.isMapFullscreen .publicFlagViewport {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none;
+}
+
+html.isMapFullscreen .publicFlagSearch label,
+html.isMapFullscreen .publicFlagLevel {
+  color: #f3e2a7;
 }

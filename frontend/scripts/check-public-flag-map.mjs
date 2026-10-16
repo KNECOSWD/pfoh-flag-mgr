@@ -24,8 +24,11 @@ import {
   FIELD_MAP_ROWS,
   FIELD_MAP_Z_ROWS,
   layoutFlagField,
+  MAP_FULLSCREEN_CLASS,
   PAVILION_COLUMNS_LEFT_TO_RIGHT,
   sealImagesAllowed,
+  spotContents,
+  SUBMITTER_SUGGESTION_DEBOUNCE_MS,
   SEAL_ON_SCREEN_LIMIT,
   pointerDragCapture,
   pointerIsTap,
@@ -87,6 +90,49 @@ test("robots.txt and the API header keep the page out of search results", () => 
   assert.match(robots, /Disallow:\s*\/flag-map/);
   assert.match(program, /X-Robots-Tag/);
   assert.match(program, /\/api\/public\/flag-map/);
+});
+
+test("zoomed-out zones use real ranges and spots stay inside their box", () => {
+  assert.equal(SUBMITTER_SUGGESTION_DEBOUNCE_MS, 150);
+  assert.match(page, /SUBMITTER_SUGGESTION_DEBOUNCE_MS/);
+  assert.equal(MAP_FULLSCREEN_CLASS, "isMapFullscreen");
+  assert.match(page, /Exit full screen/);
+  assert.match(page, /requestElementFullscreen/);
+  assert.match(page, /cssFallbackRef/);
+  assert.match(page, /event\.key !== "Escape" \|\| !mapFullRef\.current/);
+  assert.match(css, /html\.isMapFullscreen \.hero/);
+  assert.match(css, /html\.isMapFullscreen \.appFooter/);
+  assert.match(css, /html\.isMapFullscreen \.publicFlagMap/);
+  const chrome = css.slice(css.indexOf("html.flagMapPage .publicFlagChrome {"), css.indexOf("html.flagMapPage .publicFlagHeading"));
+  assert.match(chrome, /overflow:\s*visible/);
+  assert.match(chrome, /z-index:\s*30/);
+  assert.match(css, /\.publicFlagChrome\s*\{[^}]*z-index:\s*30/);
+  assert.match(css, /\.publicFlagSuggestions\s*\{[^}]*z-index:\s*5/);
+  assert.match(css, /\.publicFlagStage\s*\{[^}]*z-index:\s*1/);
+  assert.doesNotMatch(css, /\.publicFlagDot/);
+  const open = spotContents({ width: 52, height: 28, status: "Open" }, { names: false, seals: false, ranks: false });
+  assert.equal(open.name, "Open");
+  assert.equal(open.seal, 0);
+  const named = spotContents(
+    { width: 52, height: 28, status: "Occupied", displayName: "Ean Howard Sullivan" },
+    { names: true, seals: false, ranks: false }
+  );
+  assert.ok(named.name.length > 0);
+  assert.ok(named.name.length * named.nameSize * 0.56 <= 52);
+  assert.ok(named.nameSize + 4 <= 28);
+  const sealed = spotContents(
+    { width: 52, height: 28, status: "Occupied", displayName: "Ada", logoUrl: "/seal.png", rank: "Capt" },
+    { names: true, seals: true, ranks: true }
+  );
+  assert.ok(sealed.seal >= 8 && sealed.seal <= 26);
+  assert.ok(sealed.seal + (named.name ? 0 : 0) <= 28);
+  assert.ok(sealed.name.length === 0 || sealed.name.length * sealed.nameSize * 0.56 <= 52);
+  const hidden = spotContents(
+    { width: 52, height: 28, status: "Occupied", displayName: "Ada", logoUrl: "/seal.png" },
+    { names: true, seals: false, ranks: false }
+  );
+  assert.equal(hidden.seal, 0);
+  assert.equal(hidden.name, "Ada");
 });
 
 test("search suggestions use the name and stay on the allowlist fields", () => {
@@ -237,6 +283,22 @@ test("the field is laid out as seen from the pavilion", () => {
   assert.equal(empty.sections.length, PAVILION_COLUMNS_LEFT_TO_RIGHT.length);
   assert.equal(empty.cells.filter((cell) => cell.section === "Z" && cell.status === "Reserved").length, FIELD_MAP_Z_ROWS);
   assert.equal(empty.cells.some((cell) => cell.flagGridName === "Z-10"), false);
+  assert.deepEqual(empty.zones.filter((zone) => zone.section === "C").map((zone) => zone.label), ["C 21\u201340", "C 1\u201320"]);
+  assert.deepEqual(empty.zones.filter((zone) => zone.section === "Z").map((zone) => zone.label), ["Z 1\u20139"]);
+  const partial = layoutFlagField([
+    {
+      section: "QQ",
+      flagCount: 3,
+      occupiedCount: 1,
+      seats: [
+        { flagGridId: 11, flagGridName: "QQ-03", columnNumber: 3, section: "QQ", status: "Occupied", displayName: "Ada Lovelace" },
+        { flagGridId: 12, flagGridName: "QQ-08", columnNumber: 8, section: "QQ", status: "Open" },
+        { flagGridId: 13, flagGridName: "QQ-22", columnNumber: 22, section: "QQ", status: "Open" },
+        { flagGridId: 14, flagGridName: "QQ-30", columnNumber: 30, section: "QQ", status: "Occupied" }
+      ]
+    }
+  ]);
+  assert.deepEqual(partial.zones.filter((zone) => zone.section === "QQ").map((zone) => zone.label), ["QQ 22\u201330", "QQ 3\u20138"]);
 });
 
 test("the opening fit keeps row 1 and the pavilion inside the window", () => {
@@ -321,13 +383,18 @@ test("branch seals render only when fewer than 10 flags are on screen", () => {
   assert.equal(sealImagesAllowed(0), true);
   const wide = flagMapDetailGates(12, 1, 40);
   assert.equal(wide.seals, false);
-  assert.equal(wide.names, false);
-  assert.equal(wide.ranks, false);
-  assert.equal(wide.flagsInteractive, false);
+  assert.equal(wide.names, true);
+  assert.equal(wide.ranks, true);
+  assert.equal(wide.flagsInteractive, true);
   const close = flagMapDetailGates(12, 1, 9);
   assert.equal(close.seals, true);
   assert.equal(close.names, true);
   assert.equal(close.flagsInteractive, true);
+  const mid = flagMapDetailGates(1.4, 1, 400);
+  assert.equal(mid.seals, false);
+  assert.equal(mid.names, false);
+  assert.equal(mid.sectionsInteractive, true);
+  assert.equal(mid.flagsInteractive, false);
   assert.equal(flagMapDetailGates(12, 1, 10).seals, false);
   assert.equal(flagMapDetailGates(12, 1).seals, false);
 
@@ -340,11 +407,13 @@ test("branch seals render only when fewer than 10 flags are on screen", () => {
   assert.equal(countFlagsOnScreen(flags, { x: 0, y: 0, scale: 1 }, { width: 100, height: 40 }), 5);
   assert.equal(countFlagsOnScreen(flags, { x: 0, y: 0, scale: 1 }, { width: 1000, height: 40 }), 12);
 
-  const markerStart = page.indexOf("visibleFlags.map");
+  const markerStart = page.indexOf("visibleCells.map");
   const marker = page.slice(markerStart, page.indexOf("selected ?", markerStart));
-  assert.match(marker, /gates\.seals && flag\.logoUrl/);
-  assert.match(marker, /publicFlagDot/);
-  assert.match(marker, /branchDotColor/);
+  assert.match(marker, /spot\.seal > 0 && cell\.logoUrl/);
+  assert.match(marker, /spotContents/);
+  assert.doesNotMatch(marker, /publicFlagDot/);
+  assert.doesNotMatch(page, /branchDotColor/);
+  assert.doesNotMatch(page, /publicFlagDot/);
   assert.match(marker, /publicFlagSealImg/);
   assert.match(marker, /loading="lazy"/);
   assert.match(marker, /decoding="async"/);

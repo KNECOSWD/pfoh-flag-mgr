@@ -365,6 +365,38 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
         Assert.NotEqual(HttpStatusCode.TooManyRequests, map.StatusCode);
     }
 
+    [Fact]
+    public async Task Submitter_suggestions_answer_from_the_cached_name_index()
+    {
+        var tokens = new List<PublicFlagMap.SubmitterIdentity>(8000);
+        for (var i = 0; i < 8000; i++)
+        {
+            tokens.Add(new PublicFlagMap.SubmitterIdentity($"first{i:0000}", $"last{i:0000}", $"First{i:0000} Last{i:0000}"));
+        }
+
+        tokens.Add(new PublicFlagMap.SubmitterIdentity("matthew", "sullivan", "Matthew Sullivan"));
+        var index = SubmitterTokenIndex.Build(tokens);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var matched = index.Match("sul", PublicFlagMap.SubmitterSuggestionLimit);
+        watch.Stop();
+        Assert.Contains(matched, name => name.Display == "Matthew Sullivan");
+        Assert.True(watch.ElapsedMilliseconds < 30, $"name token index took {watch.Elapsed.TotalMilliseconds:0.00} ms");
+
+        using var warm = await SendSuggestions(factory, "198.51.100.210", CanaryFirst);
+        Assert.Equal(HttpStatusCode.OK, warm.StatusCode);
+        var http = System.Diagnostics.Stopwatch.StartNew();
+        using var timed = await SendSuggestions(factory, "198.51.100.211", CanaryFirst);
+        http.Stop();
+        Assert.Equal(HttpStatusCode.OK, timed.StatusCode);
+        var body = await timed.Content.ReadAsStringAsync();
+        Assert.Contains($"All flags submitted by {CanaryFirst} {CanaryLast}", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(CanaryEmail, body, StringComparison.OrdinalIgnoreCase);
+        AssertNoStore(timed);
+        Assert.True(http.ElapsedMilliseconds < 300, $"cached submitter suggestions took {http.Elapsed.TotalMilliseconds:0.00} ms");
+        Console.WriteLine($"SUBMITTER_SUGGESTION_INDEX_MS={watch.Elapsed.TotalMilliseconds:0.00}");
+        Console.WriteLine($"SUBMITTER_SUGGESTION_HTTP_MS={http.Elapsed.TotalMilliseconds:0.00}");
+    }
+
     private static void AssertNoAccountDetails(string body)
     {
         Assert.DoesNotContain(CanaryEmail, body, StringComparison.OrdinalIgnoreCase);

@@ -260,27 +260,123 @@ public class PublicFlagMap(PfohDbContext db)
 
     public async Task<SubmitterSuggestionResult> SuggestSubmittersAsync(string? query, CancellationToken ct)
     {
+        if (SuggestionQueryOutcome(query) is string outcome)
+        {
+            return new SubmitterSuggestionResult(outcome, []);
+        }
+
+        var tokens = await LoadSubmitterTokensAsync(ct);
+        return SuggestFromTokens(tokens, query);
+    }
+
+    public async Task<IReadOnlyList<SubmitterIdentity>> LoadSubmitterTokensAsync(CancellationToken ct)
+    {
+        var honoreeRows = await db.Honorees
+            .AsNoTracking()
+            .Where(honoree =>
+                honoree.IsActive &&
+                honoree.DeletedDate == null &&
+                honoree.FlagGridId != null &&
+                honoree.FlagGrid != null &&
+                honoree.FlagGrid.DeletedDate == null)
+            .Select(honoree => new { honoree.Id, honoree.SponsorId })
+            .ToListAsync(ct);
+
+        var sponsorIds = honoreeRows
+            .Where(row => row.SponsorId.HasValue)
+            .Select(row => row.SponsorId!.Value)
+            .Distinct()
+            .ToList();
+        var pairs = new List<(string? First, string? Last)>();
+        if (sponsorIds.Count > 0)
+        {
+            var sponsorRows = await db.Sponsors
+                .AsNoTracking()
+                .Where(sponsor => sponsorIds.Contains(sponsor.Id))
+                .Select(sponsor => new { sponsor.FirstName, sponsor.LastName })
+                .ToListAsync(ct);
+            foreach (var row in sponsorRows)
+            {
+                pairs.Add((row.FirstName, row.LastName));
+            }
+        }
+
+        var honoreeIds = honoreeRows.Select(row => row.Id).ToList();
+        if (honoreeIds.Count > 0)
+        {
+            var claimNames = await db.FlagClaims
+                .AsNoTracking()
+                .Where(claim =>
+                    claim.HonoreeId != null &&
+                    honoreeIds.Contains(claim.HonoreeId.Value) &&
+                    (claim.ClaimStatus == "Claimed" || claim.ClaimStatus == "Submitted" || claim.ClaimStatus == "Approved"))
+                .Select(claim => claim.ExternalUserName)
+                .ToListAsync(ct);
+            foreach (var displayName in claimNames)
+            {
+                var split = SplitDisplayName(displayName);
+                pairs.Add((split.First, split.Last));
+            }
+        }
+
+        return CollectSubmitterIdentities(pairs);
+    }
+
+    internal static string? SuggestionQueryOutcome(string? query)
+    {
         var trimmed = (query ?? string.Empty).Trim();
         if (trimmed.Length < 3)
         {
-            return new SubmitterSuggestionResult("rejected", []);
+            return "rejected";
         }
 
         if (IsPrivateNameToken(trimmed))
         {
-            return new SubmitterSuggestionResult("none", []);
+            return "none";
         }
 
-        var named = await LoadNamedFlagsAsync(ct);
-        var names = named
-            .Where(row => SuggestionMatches(row.NormalizedFirst, row.NormalizedLast, trimmed))
-            .GroupBy(row => row.NormalizedFirst + "\n" + row.NormalizedLast, StringComparer.Ordinal)
-            .Select(group => group.First())
-            .OrderBy(row => row.Display, StringComparer.OrdinalIgnoreCase)
-            .Take(SubmitterSuggestionLimit)
-            .Select(row => new SubmitterIdentity(row.NormalizedFirst, row.NormalizedLast, row.Display))
-            .ToList();
+        return null;
+    }
+
+    public static SubmitterSuggestionResult SuggestFromTokens(IReadOnlyList<SubmitterIdentity> tokens, string? query)
+    {
+        if (SuggestionQueryOutcome(query) is string outcome)
+        {
+            return new SubmitterSuggestionResult(outcome, []);
+        }
+
+        var names = SubmitterTokenIndex.Match(tokens, query, SubmitterSuggestionLimit);
         return new SubmitterSuggestionResult(names.Count == 0 ? "none" : "ok", names);
+    }
+
+    internal static List<SubmitterIdentity> CollectSubmitterIdentities(IEnumerable<(string? First, string? Last)> pairs)
+    {
+        var map = new Dictionary<string, SubmitterIdentity>(StringComparer.Ordinal);
+        foreach (var (first, last) in pairs)
+        {
+            if (IsPrivateNameToken(first) || IsPrivateNameToken(last))
+            {
+                continue;
+            }
+
+            var normalizedFirst = NormalizeName(first);
+            var normalizedLast = NormalizeName(last);
+            if (normalizedFirst.Length == 0 || normalizedLast.Length == 0)
+            {
+                continue;
+            }
+
+            var key = normalizedFirst + "\n" + normalizedLast;
+            if (map.ContainsKey(key))
+            {
+                continue;
+            }
+
+            var display = $"{(first ?? string.Empty).Trim()} {(last ?? string.Empty).Trim()}".Trim();
+            map[key] = new SubmitterIdentity(normalizedFirst, normalizedLast, display);
+        }
+
+        return map.Values.ToList();
     }
 
     public async Task<IReadOnlyList<PublicFlagSearchDto>> FlagsForExactSubmitterAsync(

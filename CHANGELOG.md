@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.2
+
+- Public Flag Map search suggestions sit on top of the field on a desktop, a phone, and the kiosk.
+- Zoomed out, each zone is labeled with its letter and the flag numbers actually in that zone, such as "C 1–20", because the aisle and the reserved block split a column. The colored circles are gone.
+- Zooming in shows each spot as occupied or open, and the honoree name only when it fits inside the spot. Spots stay inside their own box at every zoom. Branch seals still wait until fewer than 10 flags are on screen.
+- Full screen hides the site header and footer so the map fills the window. Escape and the Full screen button leave it. Browsers that support the Fullscreen API use it, and others, including iOS, use the same full-window layout. Kiosk lockdown is unchanged.
+- Submitter suggestions wait about 150 ms, then answer from a cached index of name tokens. The privacy limits are unchanged: display name only, 3-character minimum, cap of 8, rate limit, no-store, opaque token, and no names in the log.
+
 ## 2.0.1
 
 - The public Flag Map loads one field snapshot instead of a separate request for every section. That snapshot is cached in memory for a short time and dropped when a honoree, flag spot, or branch changes.
