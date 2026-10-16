@@ -65,7 +65,8 @@ test("honoree records and the review queue share the Honoree Card viewer", () =>
   const modalStart = source.indexOf("{cardPreview ? (");
   const modal = source.slice(modalStart, modalStart + 3200);
   assert.ok(modalStart >= 0);
-  assert.match(modal, /<h2 id="card-preview-title">Honoree Card<\/h2>/);
+  assert.match(modal, /<h2 id="card-preview-title">\{cardPreview\.heading\}<\/h2>/);
+  assert.match(source, /heading = honoreeCardHeading/);
   assert.match(modal, /\{cardPreview\.title\}/);
   assert.match(modal, />\s*Download\s*</);
   assert.match(modal, />\s*Print\s*</);
@@ -93,7 +94,10 @@ test("the honoree card viewer fits the whole page", () => {
   assert.match(app, /function honoreeCardViewUrl\(url: string\)/);
   assert.match(app, /#view=Fit&zoom=page-fit/);
   assert.match(app, /src=\{honoreeCardViewUrl\(cardPreview\.url\)\}/);
-  assert.match(app, /Loading the honoree card/);
+  assert.match(app, /cardPreviewLoadingMessage\(cardPreview\.heading\)/);
+  const preview = readFileSync(new URL("../src/cardPreview.js", import.meta.url), "utf8");
+  assert.match(preview, /Loading the honoree card/);
+  assert.match(preview, /export const honoreeCardHeading = "Honoree Card"/);
   const opener = app.slice(app.indexOf("function openCardBlob"), app.indexOf("function openSubmissionCard"));
   assert.ok(opener.indexOf('phase: "loading"') >= 0 || opener.includes("beginCardPreview"));
   assert.ok(opener.indexOf("beginCardPreview") < opener.indexOf("load()"));

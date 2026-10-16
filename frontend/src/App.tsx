@@ -40,6 +40,14 @@ import { createBlobUrlCache } from "./blobUrlCache.js";
 import { shouldCompressHonoreePhoto, withDeadline } from "./prepareHonoreePhoto.js";
 import { createProfileLoadGate } from "./profileLoad.js";
 import {
+  cardPreviewLoadingMessage,
+  honoreeCardDownloadName,
+  honoreeCardHeading,
+  mergedPrintDownloadName,
+  printCenterHeading,
+  printSelectionSubtitle
+} from "./cardPreview.js";
+import {
   dropWithdrawnSubmission,
   fieldChangeText,
   flagSpotLabel,
@@ -312,11 +320,13 @@ type ConfirmDialogState = {
 };
 
 type CardPreviewState = {
+  heading: string;
   title: string;
   phase: "loading" | "ready" | "error";
   url?: string;
   revoke?: boolean;
   message?: string;
+  downloadName?: string;
 };
 
 function reportableErrorMessage(error: unknown, fallback: string) {
@@ -384,6 +394,8 @@ export default function App() {
   const [cardPreview, setCardPreview] = useState<CardPreviewState | null>(null);
   const cardPreviewFrameRef = useRef<HTMLIFrameElement | null>(null);
   const cardPreviewRequest = useRef(0);
+  const cardPreviewRef = useRef<CardPreviewState | null>(null);
+  cardPreviewRef.current = cardPreview;
   const [printQueue, setPrintQueue] = useState<AdminPrintQueueItem[]>([]);
   const [selectedPrintIds, setSelectedPrintIds] = useState<number[]>([]);
   const [adminBusyId, setAdminBusyId] = useState<number | null>(null);
@@ -693,6 +705,13 @@ export default function App() {
   useEffect(() => subscribeSignInError((message) => {
     if (message) setError(message);
   }), []);
+
+  useEffect(() => {
+    return () => {
+      const current = cardPreviewRef.current;
+      if (current?.revoke && current.url) URL.revokeObjectURL(current.url);
+    };
+  }, []);
 
   const profileLoadGate = useRef(createProfileLoadGate());
   const profileAccountRef = useRef(account);
@@ -2176,39 +2195,61 @@ export default function App() {
     });
   }
 
-  function beginCardPreview(title: string) {
+  function beginCardPreview(
+    title: string,
+    heading = honoreeCardHeading,
+    downloadName = honoreeCardDownloadName
+  ) {
     const requestId = ++cardPreviewRequest.current;
     setCardPreview((current) => {
       if (current?.revoke && current.url) URL.revokeObjectURL(current.url);
-      return { title, phase: "loading" };
+      return { heading, title, phase: "loading", downloadName };
     });
     return requestId;
   }
 
-  function finishCardPreview(requestId: number, title: string, url: string, revoke: boolean) {
+  function finishCardPreview(
+    requestId: number,
+    title: string,
+    url: string,
+    revoke: boolean,
+    heading = honoreeCardHeading,
+    downloadName = honoreeCardDownloadName
+  ) {
     if (cardPreviewRequest.current !== requestId) {
       if (revoke) URL.revokeObjectURL(url);
       return;
     }
 
-    setCardPreview({ title, phase: "ready", url, revoke });
+    setCardPreview({ heading, title, phase: "ready", url, revoke, downloadName });
   }
 
-  function failCardPreview(requestId: number, title: string, message: string) {
+  function failCardPreview(requestId: number, title: string, message: string, heading = honoreeCardHeading) {
     if (cardPreviewRequest.current !== requestId) return;
 
     setCardPreview((current) => {
       if (current?.revoke && current.url) URL.revokeObjectURL(current.url);
-      return { title, phase: "error", message };
+      return { heading, title, phase: "error", message };
     });
   }
 
-  function openCardBlob(title: string, load: () => Promise<Blob>) {
+  function openCardBlob(
+    title: string,
+    load: () => Promise<Blob>,
+    options?: { heading?: string; downloadName?: string; errorFallback?: string }
+  ) {
+    const heading = options?.heading ?? honoreeCardHeading;
+    const downloadName = options?.downloadName ?? honoreeCardDownloadName;
     setError("");
-    const requestId = beginCardPreview(title);
+    const requestId = beginCardPreview(title, heading, downloadName);
     void load()
-      .then((blob) => finishCardPreview(requestId, title, URL.createObjectURL(blob), true))
-      .catch((err) => failCardPreview(requestId, title, reportableErrorMessage(err, "Unable to open the honoree card.")));
+      .then((blob) => finishCardPreview(requestId, title, URL.createObjectURL(blob), true, heading, downloadName))
+      .catch((err) => failCardPreview(
+        requestId,
+        title,
+        reportableErrorMessage(err, options?.errorFallback ?? "Unable to open the honoree card."),
+        heading
+      ));
   }
 
   function openSubmissionCard(claim: FlagClaim) {
@@ -2257,7 +2298,7 @@ export default function App() {
 
     const anchor = document.createElement("a");
     anchor.href = cardPreview.url;
-    anchor.download = "honoree-card.pdf";
+    anchor.download = cardPreview.downloadName || honoreeCardDownloadName;
     anchor.rel = "noopener";
     document.body.appendChild(anchor);
     anchor.click();
@@ -2376,26 +2417,27 @@ export default function App() {
     }
   }
 
-  async function downloadSelectedPrintPdf() {
+  function openSelectedPrintPdf() {
     if (!account) return;
 
-    if (selectedPrintIds.length === 0) {
-      setError("Select at least one item to print.");
+    const count = selectedPrintIds.length;
+    const title = printSelectionSubtitle(count);
+    if (count === 0) {
+      const requestId = beginCardPreview(title, printCenterHeading);
+      failCardPreview(requestId, title, "Select at least one item to print.", printCenterHeading);
       return;
     }
 
-    setSaving(true);
-    setError("");
-    setNotice("");
-
-    try {
-      await adminApi.downloadMergedPrintPdf(instance, account, selectedPrintIds);
-      setNotice("Merged PDF downloaded. Send the downloaded PDF to the printer.");
-    } catch (err) {
-      setError(reportableErrorMessage(err, "Unable to download merged PDF."));
-    } finally {
-      setSaving(false);
-    }
+    const ids = [...selectedPrintIds];
+    openCardBlob(
+      title,
+      () => adminApi.fetchMergedPrintPdf(instance, account, ids),
+      {
+        heading: printCenterHeading,
+        downloadName: mergedPrintDownloadName(),
+        errorFallback: "Unable to open the print PDF."
+      }
+    );
   }
 
   async function markSelectedPrinted() {
@@ -2709,18 +2751,18 @@ export default function App() {
               onClick={closeCardPreview}
             >
               <div className="modalCard appConfirmModal cardPreviewModal" onClick={(event) => event.stopPropagation()} aria-busy={cardPreview.phase === "loading"}>
-                <h2 id="card-preview-title">Honoree Card</h2>
+                <h2 id="card-preview-title">{cardPreview.heading}</h2>
                 <p className="helperText">{cardPreview.title}</p>
                 {cardPreview.phase === "ready" && cardPreview.url ? (
                   <iframe
                     ref={cardPreviewFrameRef}
                     className="cardPreviewFrame"
-                    title={`Honoree card for ${cardPreview.title}`}
+                    title={cardPreview.heading === printCenterHeading ? `${cardPreview.heading}, ${cardPreview.title}` : `Honoree card for ${cardPreview.title}`}
                     src={honoreeCardViewUrl(cardPreview.url)}
                   />
                 ) : (
                   <p className={`cardPreviewStatus${cardPreview.phase === "error" ? " error" : ""}`} role={cardPreview.phase === "error" ? "alert" : "status"}>
-                    {cardPreview.phase === "error" ? cardPreview.message : "Loading the honoree card…"}
+                    {cardPreview.phase === "error" ? cardPreview.message : cardPreviewLoadingMessage(cardPreview.heading)}
                   </p>
                 )}
                 <div className="modalActions">
@@ -4093,7 +4135,7 @@ export default function App() {
                     <button
                       type="button"
                       className="secondary"
-                      onClick={downloadSelectedPrintPdf}
+                      onClick={openSelectedPrintPdf}
                       disabled={saving || selectedPrintIds.length === 0}
                     >
                       Download merged PDF
@@ -4157,7 +4199,15 @@ export default function App() {
                             <td data-label="Approved">{formatDate(item.approvedUtc)}</td>
                             <td data-label="PDF">
                               {item.honoreeId ? (
-                                <a className="textLink" href={honoreePdfUrl(item.honoreeId)} target="_blank" rel="noreferrer">
+                                <a
+                                  className="textLink"
+                                  href={honoreePdfUrl(item.honoreeId)}
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    if (!item.honoreeId) return;
+                                    void openPublicHonoreeCard(item.honoreeId, item.honoreeName);
+                                  }}
+                                >
                                   Open PDF
                                 </a>
                               ) : (
