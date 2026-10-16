@@ -44,6 +44,9 @@ jobs:
       - name: Check submission display
         run: node --test frontend/scripts/check-submission-display.mjs
 
+      - name: Check Print Center viewer
+        run: node --test frontend/scripts/check-print-center.mjs
+
       - name: Check network retry
         run: node --test frontend/scripts/check-token-retry.mjs
 

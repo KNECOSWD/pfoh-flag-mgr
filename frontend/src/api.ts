@@ -339,23 +339,29 @@ export function isPendingHonoreePhoto(photoFileName?: string | null) {
 export async function fetchAuthorizedBlob(
   instance: IPublicClientApplication,
   account: AccountInfo,
-  url: string
+  url: string,
+  init: RequestInit = {}
 ) {
   const token = await getToken(instance, account);
+  const method = (init.method ?? "GET").toUpperCase();
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${token}`);
   const response = await withNetworkRetry(async () => {
     try {
       return await fetch(url, {
+        ...init,
+        method,
         cache: "no-store",
-        headers: { Authorization: `Bearer ${token}` },
-        signal: requestTimeoutSignal(undefined)
+        headers,
+        signal: requestTimeoutSignal(init.signal)
       });
     } catch (error) {
-      throw buildNetworkError(error, "GET", url);
+      throw buildNetworkError(error, method, url);
     }
   });
 
   if (!response.ok) {
-    throw await buildApiError(response, "GET", url);
+    throw await buildApiError(response, method, url);
   }
 
   return response.blob();
@@ -646,21 +652,16 @@ export const adminApi = {
       method: "POST"
     }),
 
-  downloadMergedPrintPdf: (
+  fetchMergedPrintPdf: (
     instance: IPublicClientApplication,
     account: AccountInfo,
     changeRequestIds: number[]
   ) =>
-    downloadFile(
-      instance,
-      account,
-      "/api/admin/print/merge",
-      `pfoh-card-reprints-${new Date().toISOString().slice(0, 10)}.pdf`,
-      {
-        method: "POST",
-        body: JSON.stringify({ changeRequestIds })
-      }
-    ),
+    fetchAuthorizedBlob(instance, account, `${apiBase}/api/admin/print/merge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ changeRequestIds })
+    }),
 
 
   queueHonoreeReprint: (
