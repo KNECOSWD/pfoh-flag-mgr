@@ -1,18 +1,20 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { qrModules, qrPath } from "./qrCode.js";
 import {
   FLAG_MAP_ZOOM,
   KIOSK_IDLE_MS,
+  MAP_FULLSCREEN_CLASS,
+  SUBMITTER_SUGGESTION_DEBOUNCE_MS,
   WHEEL_SETTLE_MS,
   applyKioskIdleReset,
   attractView,
   createPinchBatch,
   createWheelBatch,
-  branchDotColor,
   boundsOf,
   countFlagsOnScreen,
   createFlagMapLoader,
   cullRects,
+  exitDocumentFullscreen,
   filterFlagMapSuggestions,
   fitView,
   fitWholeField,
@@ -31,6 +33,8 @@ import {
   pointerShouldOpen,
   publicFlagMapUrls,
   readFlagMapLocation,
+  requestElementFullscreen,
+  spotContents,
   springEase,
   viewportWorldRect,
   wheelFrameShouldCull,
@@ -246,6 +250,8 @@ export default function PublicFlagMap({
   const suppressClickRef = useRef(false);
   const attractingRef = useRef(false);
   const fullscreenTriedRef = useRef(false);
+  const mapFullRef = useRef(false);
+  const cssFallbackRef = useRef(false);
   const reducedMotionRef = useRef(false);
   const kioskRef = useRef(kiosk);
   const gatesRef = useRef<Gates>(EMPTY_GATES);
@@ -268,9 +274,9 @@ export default function PublicFlagMap({
   const [active, setActive] = useState(0);
   const [error, setError] = useState(location.flagRejected ? "That flag is not on the map." : "");
   const [loading, setLoading] = useState(true);
-  const [visibleSectionKeys, setVisibleSectionKeys] = useState<string[]>([]);
+  const [visibleZoneKeys, setVisibleZoneKeys] = useState<string[]>([]);
+  const [mapFull, setMapFull] = useState(false);
   const [visibleCellIds, setVisibleCellIds] = useState<number[]>([]);
-  const [visibleFlagIds, setVisibleFlagIds] = useState<number[]>([]);
   const [gates, setGates] = useState<Gates>(EMPTY_GATES);
   const [levelText, setLevelText] = useState("Sections");
   const [selected, setSelected] = useState<FlagBox | null>(null);
@@ -295,23 +301,17 @@ export default function PublicFlagMap({
       : `${listId}-submitter-${activeRow.token}`;
   const shareUrl = selected ? flagDeepLink(window.location.href, selected.flagGridId) : "";
 
-  const visibleSections = useMemo(() => {
+  const visibleZones = useMemo(() => {
     if (!field) return [];
-    const keys = new Set(visibleSectionKeys);
-    return field.sections.filter((section) => keys.has(section.section));
-  }, [field, visibleSectionKeys]);
+    const keys = new Set(visibleZoneKeys);
+    return field.zones.filter((zone) => keys.has(zone.label));
+  }, [field, visibleZoneKeys]);
 
   const visibleCells = useMemo(() => {
     if (!field) return [];
     const ids = new Set(visibleCellIds);
     return field.cells.filter((cell) => ids.has(cell.flagGridId));
   }, [field, visibleCellIds]);
-
-  const visibleFlags = useMemo(() => {
-    if (!field) return [];
-    const ids = new Set(visibleFlagIds);
-    return (field.flags as FlagBox[]).filter((flag) => ids.has(flag.flagGridId));
-  }, [field, visibleFlagIds]);
 
   function syncViewportBox() {
     const rect = viewportRef.current?.getBoundingClientRect();
@@ -375,20 +375,18 @@ export default function PublicFlagMap({
       const flagsOnScreen = countFlagsOnScreen(layout.flags, view, size);
       const nextGates = flagMapDetailGates(view.scale, fitScaleRef.current, flagsOnScreen);
       gatesRef.current = nextGates;
-      const sectionKeys = cullRects(layout.sections, seen).map((section: Box) => section.section as string);
+      const zoneKeys = cullRects(layout.zones, seen).map((zone: { label: string }) => zone.label);
       const cellIds = cullRects(layout.cells, seen).map((cell: { flagGridId: number }) => cell.flagGridId);
-      const flagIds = cullRects(layout.flags, seen).map((flag: FlagBox) => flag.flagGridId);
       setGates((current) => (sameGates(current, nextGates) ? current : nextGates));
-      setVisibleSectionKeys((current) => (current.join("|") === sectionKeys.join("|") ? current : sectionKeys));
+      setVisibleZoneKeys((current) => (current.join("|") === zoneKeys.join("|") ? current : zoneKeys));
       setVisibleCellIds((current) => (sameIds(current, cellIds) ? current : cellIds));
-      setVisibleFlagIds((current) => (sameIds(current, flagIds) ? current : flagIds));
       const viewport = viewportRef.current;
       if (viewport) {
         const flags = nextGates.flagsInteractive ? "on" : "off";
         if (viewport.dataset.flags !== flags) viewport.dataset.flags = flags;
       }
       paintView(view);
-      const nextLevel = nextGates.ranks ? "Closest" : nextGates.names ? "Names" : nextGates.seals ? "Seals" : "Sections";
+      const nextLevel = nextGates.ranks ? "Closest" : nextGates.seals ? "Seals" : nextGates.names ? "Names" : "Sections";
       if (nextLevel !== levelRef.current) {
         levelRef.current = nextLevel;
         setLevelText(nextLevel);
@@ -712,12 +710,40 @@ export default function PublicFlagMap({
         .catch(() => {
           if (!cancelled) setSubmitterSuggestions([]);
         });
-    }, 250);
+    }, SUBMITTER_SUGGESTION_DEBOUNCE_MS);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
   }, [query]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const active = () => Boolean(document.fullscreenElement || (document as Document & { webkitFullscreenElement?: Element }).webkitFullscreenElement);
+    const onChange = () => {
+      if (!active() && mapFullRef.current && !cssFallbackRef.current) {
+        mapFullRef.current = false;
+        cssFallbackRef.current = false;
+        setMapFull(false);
+        root.classList.remove(MAP_FULLSCREEN_CLASS);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || !mapFullRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void exitMapFull();
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    document.addEventListener("webkitfullscreenchange", onChange);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange);
+      document.removeEventListener("webkitfullscreenchange", onChange);
+      window.removeEventListener("keydown", onKey, true);
+      root.classList.remove(MAP_FULLSCREEN_CLASS);
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const root = document.documentElement;
@@ -1118,6 +1144,29 @@ export default function PublicFlagMap({
     }
   }
 
+  function exitMapFull() {
+    cssFallbackRef.current = false;
+    mapFullRef.current = false;
+    setMapFull(false);
+    document.documentElement.classList.remove(MAP_FULLSCREEN_CLASS);
+    return exitDocumentFullscreen(document);
+  }
+
+  async function enterMapFull() {
+    const root = document.documentElement;
+    mapFullRef.current = true;
+    setMapFull(true);
+    root.classList.add(MAP_FULLSCREEN_CLASS);
+    const ok = await requestElementFullscreen(root);
+    cssFallbackRef.current = !ok;
+    if (!ok && !mapFullRef.current) root.classList.remove(MAP_FULLSCREEN_CLASS);
+  }
+
+  function toggleMapFull() {
+    if (mapFullRef.current) void exitMapFull();
+    else void enterMapFull();
+  }
+
   function beginExitHold(event: { preventDefault: () => void; stopPropagation: () => void }) {
     event.preventDefault();
     event.stopPropagation();
@@ -1173,7 +1222,7 @@ export default function PublicFlagMap({
             <p className="eyebrow">Field</p>
             <h2>Public Flag Map</h2>
             <p id={helpId} className={kiosk ? "helperText srOnly" : "helperText"}>
-              Pinch or use the wheel to zoom. Drag to move around the field. Branch seals appear only when fewer than 10 flags are on screen, then names, then ranks.
+              Pinch or use the wheel to zoom. Drag to move around the field. Zooming in shows each spot and the name that fits inside it. Branch seals appear only when fewer than 10 flags are on screen.
             </p>
           </div>
         </div>
@@ -1242,6 +1291,15 @@ export default function PublicFlagMap({
           {kiosk ? <button type="button" className="secondary" onClick={goBack} aria-label="Back">Back</button> : null}
           <button type="button" className="secondary" onClick={() => zoomBy(1 / FLAG_MAP_ZOOM.zoomStep)} aria-label="Zoom out">−</button>
           <button type="button" className="secondary" onClick={() => zoomBy(FLAG_MAP_ZOOM.zoomStep)} aria-label="Zoom in">+</button>
+          <button
+            type="button"
+            className="secondary"
+            aria-pressed={mapFull}
+            aria-label={mapFull ? "Exit full screen" : "Full screen"}
+            onClick={toggleMapFull}
+          >
+            {mapFull ? "Exit full screen" : "Full screen"}
+          </button>
           {kiosk ? null : (
             <button type="button" className="secondary" onClick={goHome} aria-label="Reset view">Reset view</button>
           )}
@@ -1278,65 +1336,89 @@ export default function PublicFlagMap({
           {field?.pavilion ? (
             <div className="publicFlagPavilion" style={{ left: field.pavilion.x, top: field.pavilion.y, width: field.pavilion.width, height: field.pavilion.height }}>{field.pavilion.label}</div>
           ) : null}
-          {visibleSections.map((section) => (
-            <button
-              key={section.section}
-              type="button"
-              className="publicFlagTile"
-              style={{ left: section.x, top: section.y, width: section.width, height: section.height }}
-              aria-label={`${section.section}, ${section.occupiedCount} of ${section.flagCount} flags`}
-              onClick={() => acceptClick(() => {
-                historyRef.current = [...historyRef.current, { ...viewRef.current }].slice(-16);
-                userAdjustedRef.current = true;
-                setSelected(null);
-                setHighlightId(null);
-                setRevealId(null);
-                setWaveIds([]);
-                writeFlagParam(null);
-                animateTo(fitView(section, viewportSize(), 48));
-              })}
-            >
-              <span>{section.occupiedCount} of {section.flagCount}</span>
-            </button>
-          ))}
+          {visibleZones.map((zone) => {
+            const letterSize = Math.max(8, Math.min(34, Math.floor(zone.height * 0.42), Math.floor(zone.width * 0.62)));
+            const rangeSize = Math.min(13, Math.floor(zone.height * 0.16));
+            const range = zone.min === zone.max ? String(zone.min) : `${zone.min}\u2013${zone.max}`;
+            return (
+              <button
+                key={zone.label}
+                type="button"
+                className="publicFlagTile publicFlagZone"
+                style={{ left: zone.x, top: zone.y, width: zone.width, height: zone.height }}
+                aria-label={`${zone.label}, ${zone.occupiedCount} of ${zone.flagCount} flags`}
+                onClick={() => acceptClick(() => {
+                  historyRef.current = [...historyRef.current, { ...viewRef.current }].slice(-16);
+                  userAdjustedRef.current = true;
+                  setSelected(null);
+                  setHighlightId(null);
+                  setRevealId(null);
+                  setWaveIds([]);
+                  writeFlagParam(null);
+                  animateTo(fitView(zone, viewportSize(), 28));
+                })}
+              >
+                <strong style={{ fontSize: letterSize }}>{zone.section}</strong>
+                {rangeSize >= 8 ? <span style={{ fontSize: rangeSize }}>{range}</span> : null}
+              </button>
+            );
+          })}
           {field?.columnLabels.map((label) => (
             <div key={`col-${label.section}`} className="publicFlagColumnLabel" style={{ left: label.x, top: label.y, width: label.width, height: label.height }}>{label.label}</div>
           ))}
-          {visibleFlags.map((flag) => {
-            const revealed = flag.flagGridId === revealId || waveIds.includes(flag.flagGridId);
-            const highlighted = flag.flagGridId === highlightId;
+          {visibleCells.map((cell) => {
+            const spot = spotContents(cell, gates);
+            const interactive = !cell.template && cell.flagGridId > 0;
+            const revealed = cell.flagGridId === revealId || waveIds.includes(cell.flagGridId);
+            const highlighted = cell.flagGridId === highlightId;
             const className = [
               "publicFlagMarker",
+              spot.status === "Occupied" ? "isOccupied" : spot.status === "Reserved" ? "isReserved" : "isOpen",
               highlighted ? "isHighlighted" : "",
               revealed ? "isRevealed" : ""
             ].filter(Boolean).join(" ");
-            return (
+            const label = [cell.flagGridName, cell.displayName || cell.status, cell.rank, cell.serviceBranchName].filter(Boolean).join(", ");
+            const body = (
+              <>
+                {spot.seal > 0 && cell.logoUrl ? (
+                  <img
+                    className="publicFlagSealImg"
+                    src={sealUrl(cell.logoUrl, 128, true)}
+                    alt=""
+                    width={spot.seal}
+                    height={spot.seal}
+                    style={{ width: spot.seal, height: spot.seal }}
+                    loading="lazy"
+                    decoding="async"
+                    draggable={false}
+                  />
+                ) : null}
+                {spot.name ? <em style={{ fontSize: spot.nameSize }}>{spot.name}</em> : null}
+                {spot.rank ? <small style={{ fontSize: spot.rankSize }}>{spot.rank}</small> : null}
+              </>
+            );
+            return interactive ? (
               <button
-                id={`public-flag-${flag.flagGridId}`}
-                key={flag.flagGridId}
+                id={`public-flag-${cell.flagGridId}`}
+                key={cell.flagGridId}
                 type="button"
                 className={className}
-                style={{
-                  left: flag.x,
-                  top: flag.y,
-                  width: flag.width,
-                  height: flag.height,
-                  "--branch-dot": branchDotColor(flag.serviceBranchName, flag.status)
-                } as CSSProperties}
+                style={{ left: cell.x, top: cell.y, width: cell.width, height: cell.height }}
                 aria-current={highlighted ? "true" : undefined}
-                aria-label={[flag.flagGridName, flag.displayName || flag.status, flag.rank, flag.serviceBranchName].filter(Boolean).join(", ")}
-                onClick={() => acceptClick(() => openFlag(flag))}
+                aria-label={label}
+                onClick={() => acceptClick(() => openFlag(cell as FlagBox))}
               >
-                <span className="publicFlagDot" />
-                {gates.seals && flag.logoUrl ? (
-                  <picture>
-                    <source type="image/webp" srcSet={`${sealUrl(flag.logoUrl, 128, true)} 128w, ${sealUrl(flag.logoUrl, 256, true)} 256w`} sizes="64px" />
-                    <img className="publicFlagSealImg" src={sealUrl(flag.logoUrl, 256, false)} alt="" width={64} height={64} loading="lazy" decoding="async" draggable={false} />
-                  </picture>
-                ) : null}
-                {gates.names ? <em>{flag.displayName || flag.flagGridName}</em> : null}
-                {gates.ranks && flag.rank ? <small>{flag.rank}</small> : null}
+                {body}
               </button>
+            ) : (
+              <div
+                key={cell.flagGridId}
+                className={className}
+                style={{ left: cell.x, top: cell.y, width: cell.width, height: cell.height }}
+                aria-hidden="true"
+              >
+                {body}
+              </div>
             );
           })}
         </div>

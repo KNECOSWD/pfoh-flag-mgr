@@ -85,6 +85,7 @@ builder.Services.AddAuthorization(options =>
 });
 
 builder.Services.AddSingleton<PublicFlagMapCache>();
+builder.Services.AddSingleton<SubmitterNameTokenCache>();
 builder.Services.AddSingleton<PublicFlagMapCacheInvalidator>();
 builder.Services.AddSingleton<PublicLogoCache>();
 builder.Services.AddDbContext<PfohDbContext>((sp, options) =>

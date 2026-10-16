@@ -90,6 +90,9 @@ export function flagYears(seat) {
   return "";
 }
 
+export const SUBMITTER_SUGGESTION_DEBOUNCE_MS = 150;
+export const MAP_FULLSCREEN_CLASS = "isMapFullscreen";
+
 export const FLAG_MAP_ZOOM = {
   minScale: 0.05,
   maxScale: 12,
@@ -115,7 +118,7 @@ const FLAG_HEIGHT = 28;
 const FLAG_GAP = 3;
 const SECTION_GAP = 8;
 const LABEL_BAND = 36;
-const FIELD_AISLE_AFTER_ROW = 20;
+export const FIELD_AISLE_AFTER_ROW = 20;
 const FIELD_AISLE = 22;
 
 function seatRow(seat) {
@@ -167,19 +170,6 @@ export function pavilionColumnIndex(section) {
   return known === -1 ? PAVILION_COLUMNS_LEFT_TO_RIGHT.length : known;
 }
 
-export function branchDotColor(branchName, status) {
-  if (status === "Reserved") return "#e1b84a";
-  if (status !== "Occupied") return "#f4efe4";
-  const value = String(branchName || "").toLowerCase();
-  if (value.includes("air force")) return "#00308f";
-  if (value.includes("navy")) return "#0a3161";
-  if (value.includes("marine")) return "#ba0c2f";
-  if (value.includes("coast")) return "#f26522";
-  if (value.includes("space")) return "#5b7c99";
-  if (value.includes("army")) return "#4b5320";
-  return "#8a6a12";
-}
-
 export function flagMapLayerOpacities(scale, fitScale) {
   const relative = relativeFlagScale(scale, fitScale);
   return {
@@ -195,12 +185,13 @@ export function flagMapDetailGates(scale, fitScale, flagsOnScreen = Number.POSIT
   const relative = relativeFlagScale(scale, fitScale);
   const opacity = flagMapLayerOpacities(scale, fitScale);
   const seals = sealImagesAllowed(flagsOnScreen);
+  const spotsVisible = opacity.section <= 0.5;
   return {
     seals,
-    names: seals && relative >= FLAG_MAP_ZOOM.nameFadeStart - 0.02,
-    ranks: seals && relative >= FLAG_MAP_ZOOM.rankFadeStart - 0.02,
-    sectionsInteractive: opacity.section > 0.2 && !seals,
-    flagsInteractive: seals
+    names: relative >= FLAG_MAP_ZOOM.nameFadeStart - 0.02,
+    ranks: relative >= FLAG_MAP_ZOOM.rankFadeStart - 0.02,
+    sectionsInteractive: opacity.section > 0.5,
+    flagsInteractive: spotsVisible
   };
 }
 
@@ -512,9 +503,146 @@ export function layoutFlagField(sections) {
     columnLabels,
     aisle,
     pavilion,
+    zones: flagZones(placedCells),
     worldWidth: contentRight,
     worldHeight: Math.max(fieldHeight + LABEL_BAND, pavilion ? pavilion.y + pavilion.height : 0, 1)
   };
+}
+
+export function flagZones(cells) {
+  const groups = new Map();
+  for (const cell of Array.isArray(cells) ? cells : []) {
+    const section = String(cell?.section || "");
+    const row = Number(cell?.columnNumber);
+    if (!section || !Number.isFinite(row) || row <= 0) continue;
+    const list = groups.get(section) ?? [];
+    list.push(cell);
+    groups.set(section, list);
+  }
+
+  const zones = [];
+  for (const [section, seats] of groups) {
+    seats.sort((left, right) => left.columnNumber - right.columnNumber || left.flagGridId - right.flagGridId);
+    let bucket = [];
+    const flush = () => {
+      if (bucket.length === 0) return;
+      const rows = bucket.map((seat) => seat.columnNumber);
+      const min = Math.min(...rows);
+      const max = Math.max(...rows);
+      const box = boundsOf(bucket);
+      zones.push({
+        section,
+        min,
+        max,
+        label: min === max ? `${section} ${min}` : `${section} ${min}\u2013${max}`,
+        occupiedCount: bucket.filter((seat) => seat.status === "Occupied").length,
+        flagCount: bucket.length,
+        x: box.x,
+        y: box.y,
+        width: box.width,
+        height: box.height
+      });
+      bucket = [];
+    };
+    for (const seat of seats) {
+      const previous = bucket[bucket.length - 1];
+      if (previous) {
+        const aisle = previous.columnNumber <= FIELD_AISLE_AFTER_ROW && seat.columnNumber > FIELD_AISLE_AFTER_ROW;
+        const reservedBreak = previous.status === "Reserved" && seat.status !== "Reserved";
+        if (aisle || reservedBreak) flush();
+      }
+      bucket.push(seat);
+    }
+    flush();
+  }
+
+  zones.sort((left, right) => left.x - right.x || left.y - right.y || left.label.localeCompare(right.label));
+  return zones;
+}
+
+export function spotTextThatFits(text, width, fontSize, pad = 3) {
+  const label = String(text || "").replace(/\s+/g, " ").trim();
+  const size = Number(fontSize);
+  if (!label || !Number.isFinite(size) || size < 6) return "";
+  const inner = Number(width) - pad * 2;
+  if (!(inner > 0)) return "";
+  const maxChars = Math.floor(inner / (size * 0.56));
+  if (maxChars < 1) return "";
+  if (label.length <= maxChars) return label;
+  if (maxChars < 2) return "";
+  return `${label.slice(0, maxChars - 1)}\u2026`;
+}
+
+export function spotContents(cell, gates = {}) {
+  const width = Number(cell?.width) || 0;
+  const height = Number(cell?.height) || 0;
+  const status = cell?.status || "Open";
+  const pad = 2;
+  let used = pad;
+  const sealBudget = gates.seals && cell?.logoUrl
+    ? Math.floor(Math.min(width - pad * 2, (height - pad * 2) * 0.5))
+    : 0;
+  const seal = sealBudget >= 8 ? sealBudget : 0;
+  if (seal) used += seal + 1;
+  const occupied = status === "Occupied";
+  const captionSource = occupied
+    ? (gates.names ? (cell?.displayName || cell?.flagGridName || "") : "")
+    : status === "Reserved" ? "Reserved" : "Open";
+  let name = "";
+  let nameSize = 0;
+  const nameRoom = height - used - pad;
+  if (captionSource && nameRoom >= 7) {
+    nameSize = Math.max(7, Math.min(11, Math.floor(nameRoom * 0.85)));
+    if (nameSize > nameRoom) nameSize = Math.floor(nameRoom);
+    name = spotTextThatFits(captionSource, width, nameSize, pad);
+    if (!name) nameSize = 0;
+    else used += nameSize + 1;
+  }
+  let rank = "";
+  let rankSize = 0;
+  const rankRoom = height - used - pad;
+  if (occupied && gates.ranks && cell?.rank && rankRoom >= 6) {
+    rankSize = Math.max(6, Math.min(9, Math.floor(rankRoom)));
+    if (rankSize > rankRoom) rankSize = Math.floor(rankRoom);
+    rank = spotTextThatFits(cell.rank, width, rankSize, pad);
+    if (!rank) rankSize = 0;
+  }
+  return { seal, name, nameSize, rank, rankSize, status };
+}
+
+export function mapFullscreenSupported(element) {
+  if (!element) return false;
+  return typeof element.requestFullscreen === "function" || typeof element.webkitRequestFullscreen === "function";
+}
+
+export function requestElementFullscreen(element) {
+  if (!element) return Promise.resolve(false);
+  const doc = element.ownerDocument;
+  if (doc && (doc.fullscreenElement || doc.webkitFullscreenElement)) return Promise.resolve(true);
+  const request = element.requestFullscreen?.bind(element) || element.webkitRequestFullscreen?.bind(element);
+  if (!request) return Promise.resolve(false);
+  try {
+    const pending = request();
+    if (pending && typeof pending.then === "function") return pending.then(() => true).catch(() => false);
+    return Promise.resolve(true);
+  } catch {
+    return Promise.resolve(false);
+  }
+}
+
+export function exitDocumentFullscreen(doc) {
+  if (!doc) return Promise.resolve(false);
+  const active = doc.fullscreenElement || doc.webkitFullscreenElement;
+  if (!active) return Promise.resolve(false);
+  const exit = doc.exitFullscreen?.bind(doc) || doc.webkitExitFullscreen?.bind(doc);
+  if (!exit) return Promise.resolve(false);
+  try {
+    const pending = exit();
+    if (pending && typeof pending.then === "function") return pending.then(() => true).catch(() => false);
+    return Promise.resolve(true);
+  } catch {
+    return Promise.resolve(false);
+  }
 }
 
 export function gestureTransform(view) {
