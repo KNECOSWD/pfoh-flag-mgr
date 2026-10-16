@@ -753,6 +753,18 @@ public sealed class PfohApiFactory : WebApplicationFactory<Program>
             return base.PromoteImageAsync(sourceFileName, honoreeId, ct);
         }
 
+        public Dictionary<string, byte[]> Logos { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public override Task<byte[]?> DownloadServiceLogoAsync(string? fileName, CancellationToken ct)
+        {
+            if (!string.IsNullOrWhiteSpace(fileName) && Logos.TryGetValue(fileName, out var bytes))
+            {
+                return Task.FromResult<byte[]?>(bytes);
+            }
+
+            return base.DownloadServiceLogoAsync(fileName, ct);
+        }
+
         public override Task<HonoreeImageProbeResult> ProbeHonoreeImageAsync(string? photoFileName, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(photoFileName))

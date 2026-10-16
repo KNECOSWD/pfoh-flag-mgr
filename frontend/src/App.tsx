@@ -36,6 +36,7 @@ import {
   profileApi
 } from "./api";
 import { decideAdminLoad } from "./adminAccess.js";
+import PublicFlagMap from "./PublicFlagMap";
 import { createBlobUrlCache } from "./blobUrlCache.js";
 import { shouldCompressHonoreePhoto, withDeadline } from "./prepareHonoreePhoto.js";
 import { createProfileLoadGate } from "./profileLoad.js";
@@ -186,12 +187,13 @@ const blankForm: SaveHonoreeChangeRequest = {
   submitterEmailAddress: ""
 };
 
-type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/admin/review" | "/admin/flag-map" | "/admin/printing";
+type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/flag-map" | "/admin/printing";
 
 const appRoutes: AppRoute[] = [
   "/find",
   "/my-flags",
   "/honor-a-hero",
+  "/flag-map",
   "/admin/review",
   "/admin/flag-map",
   "/admin/printing"
@@ -498,10 +500,16 @@ export default function App() {
   );
 
   const isFindRoute = activeRoute === "/find";
+  const isPublicFlagMapRoute = activeRoute === "/flag-map";
   const isMyFlagsRoute = activeRoute === "/my-flags";
   const isHonorHeroRoute = activeRoute === "/honor-a-hero";
   const isAdminReviewRoute = activeRoute === "/admin/review";
   const isFlagMapRoute = activeRoute === "/admin/flag-map";
+  const siteNav: { route: AppRoute; label: string; show: boolean }[] = [
+    { route: "/find", label: "Search", show: true },
+    { route: "/my-flags", label: publicCopy.mySubmissions, show: true },
+    { route: "/flag-map", label: "Flag Map", show: false }
+  ];
   const isPrintingRoute = activeRoute === "/admin/printing";
   const isAdminRoute = activeRoute.startsWith("/admin");
 
@@ -950,6 +958,17 @@ export default function App() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
+
+  useEffect(() => {
+    if (activeRoute !== "/flag-map") return;
+    const meta = document.createElement("meta");
+    meta.name = "robots";
+    meta.content = "noindex, nofollow";
+    document.head.appendChild(meta);
+    return () => {
+      meta.remove();
+    };
+  }, [activeRoute]);
 
   useEffect(() => {
     if (activeRoute !== "/honor-a-hero" || !account || selectedClaim || isNominating) {
@@ -2547,12 +2566,12 @@ export default function App() {
 
   return (
     <main>
-      <header className={mobileNavOpen ? "hero mobileMenuOpen" : "hero"}>
+      <header className={mobileNavOpen ? "hero mobileMenuOpen" : isPublicFlagMapRoute ? "hero publicMapHero" : "hero"}>
         <div className="heroContent">
 
           <p className="eyebrow">Plano Flags of Honor</p>
-          <h1>{publicCopy.title}</h1>
-          <p className="heroLead">{publicCopy.subtitle}</p>
+          <h1>{isPublicFlagMapRoute ? "Public Flag Map" : publicCopy.title}</h1>
+          {isPublicFlagMapRoute ? null : <p className="heroLead">{publicCopy.subtitle}</p>}
         </div>
 
         <div className="authBox">
@@ -2581,8 +2600,9 @@ export default function App() {
         </div>
 
           <nav id="hero-navigation" className="heroNav desktopHeroNav" aria-label="Main navigation">
-            <a className={activeRoute === "/find" ? "isActive" : ""} href="/find" onClick={(event) => handleRouteLink(event, "/find")}>Search</a>
-            <a className={activeRoute === "/my-flags" ? "isActive" : ""} href="/my-flags" onClick={(event) => handleRouteLink(event, "/my-flags")}>{publicCopy.mySubmissions}</a>
+            {siteNav.filter((item) => item.show).map((item) => (
+              <a key={item.route} className={activeRoute === item.route ? "isActive" : ""} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
+            ))}
             {isAdmin ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
             {isAdmin ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
             {isAdmin ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
@@ -2626,8 +2646,9 @@ export default function App() {
                 </p>
 
                 <nav className="mobileDrawerNav" aria-label="Mobile navigation">
-                  <a className={activeRoute === "/find" ? "isActive" : ""} href="/find" onClick={(event) => handleRouteLink(event, "/find")}>Search</a>
-                  <a className={activeRoute === "/my-flags" ? "isActive" : ""} href="/my-flags" onClick={(event) => handleRouteLink(event, "/my-flags")}>{publicCopy.mySubmissions}</a>
+                  {siteNav.filter((item) => item.show).map((item) => (
+                    <a key={item.route} className={activeRoute === item.route ? "isActive" : ""} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
+                  ))}
                   {isAdmin ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
                   {isAdmin ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
                   {isAdmin ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
@@ -2694,6 +2715,9 @@ export default function App() {
           </Dialog.Root>
       </header>
 
+          {!isPublicFlagMapRoute ? (
+          <>
+
           {isAdmin && adminAlertItems.length > 0 ? (
             <section className="adminAlertBanner" aria-label="Administrator notifications">
               <div className="adminAlertBannerText">
@@ -2742,6 +2766,9 @@ export default function App() {
             </div>
           ) : null}
 
+          </>
+          ) : null}
+
           {cardPreview ? (
             <div
               className="modalOverlay appConfirmOverlay cardPreviewOverlay"
@@ -2779,6 +2806,9 @@ export default function App() {
               </div>
             </div>
           ) : null}
+
+          {!isPublicFlagMapRoute ? (
+          <>
 
           {(error || notice) && (
             <section className="messageStack" aria-live="polite" aria-atomic="true">
@@ -4543,6 +4573,11 @@ export default function App() {
               </form>
             </section>
           ) : null}
+
+          </>
+          ) : (
+            <PublicFlagMap onPreviewCard={(honoreeId, title) => { void openPublicHonoreeCard(honoreeId, title); }} />
+          )}
 
       <footer className="appFooter" aria-label="Plano Flags of Honor footer">
         <div className="appFooterInner">

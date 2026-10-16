@@ -280,7 +280,7 @@ public class HonoreeFileStorage(IConfiguration configuration)
         yield return "MilitarySilhouette.png";
     }
 
-    public async Task<byte[]?> DownloadServiceLogoAsync(string? fileName, CancellationToken ct)
+    public virtual async Task<byte[]?> DownloadServiceLogoAsync(string? fileName, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(fileName))
         {
@@ -543,7 +543,51 @@ public class HonoreeFileStorage(IConfiguration configuration)
         yield return $"{withoutExtension}.jpeg";
     }
 
-    private static IEnumerable<string> ServiceLogoCandidates(string? branchName)
+    public static bool IsPublicLogoFileName(string? fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return false;
+        }
+
+        var name = fileName.Trim();
+        if (name.Length is < 1 or > 120)
+        {
+            return false;
+        }
+
+        if (name.Contains('/') || name.Contains('\\') || name.Contains("..", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return System.Text.RegularExpressions.Regex.IsMatch(
+            name,
+            @"^[A-Za-z0-9][A-Za-z0-9._-]*\.(png|jpg|jpeg|gif|webp)$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    }
+
+    public static readonly HashSet<string> FallbackLogoFileNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "AirCorps.png",
+        "ArmyAirCorps.png",
+        "NationalGuard.png",
+        "CoastGuard.png",
+        "FireAndRescue.png",
+        "LawEnforcement.png",
+        "FirstResponder.png",
+        "MarineCorps.png",
+        "MerchantMarine.png",
+        "SpaceForce.png",
+        "AirForce.png",
+        "Navy.png",
+        "Army.png",
+        "SignalCorps.png",
+        "Cavalry.png",
+        "MilitaryService.png"
+    };
+
+    public static IEnumerable<string> ServiceLogoCandidates(string? branchName)
     {
         var value = branchName?.ToLowerInvariant() ?? string.Empty;
 

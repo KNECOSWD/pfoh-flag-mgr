@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.0
+
+- A public Flag Map is available at /flag-map by direct link. It is not in the navigation, footer, or home page. The page asks search engines not to index it.
+- The map shows sections from flag grid names, then each flag in a section. Approved active honorees show their name, rank, branch, and branch seal. Open and reserved grids stay visible without private notes.
+- Search suggests honorees as you type and highlights the matching flag. Preview card opens the Honoree Card window.
+- The admin Flag Map is unchanged.
+
 ## 1.5.2
 
 - Print Center uses the Honoree Card viewer. Open PDF on a row and Download merged PDF for the selection open that window immediately, show a loading message until the PDF is ready, then offer Download and Print. The merged view is titled Print Center and shows how many cards are selected, such as "28 cards selected". A single card uses the honoree name. If the PDF cannot be opened, the message stays in the window.

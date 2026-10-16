@@ -47,6 +47,9 @@ jobs:
       - name: Check Print Center viewer
         run: node --test frontend/scripts/check-print-center.mjs
 
+      - name: Check the public flag map
+        run: node --test frontend/scripts/check-public-flag-map.mjs
+
       - name: Check network retry
         run: node --test frontend/scripts/check-token-retry.mjs
 

@@ -11031,3 +11031,169 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
     overflow: hidden !important;
   }
 }
+
+.hero.publicMapHero {
+  padding-bottom: 12px;
+}
+
+.hero.publicMapHero h1 {
+  font-size: 1.6rem;
+}
+
+.publicFlagMap {
+  margin: 12px auto 32px;
+  max-width: 1100px;
+  padding: 0 16px;
+}
+
+.publicFlagSearch {
+  position: relative;
+  margin: 12px 0 18px;
+}
+
+.publicFlagSearch input {
+  width: 100%;
+}
+
+.publicFlagSuggestions {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  border: 1px solid #d7d1c6;
+  background: #fff;
+  position: absolute;
+  z-index: 5;
+  width: 100%;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.publicFlagSuggestions li {
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.publicFlagSuggestions li.isActive,
+.publicFlagSuggestions li:hover {
+  background: #f4efe4;
+}
+
+.publicFlagSections {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.publicFlagSection,
+.publicFlagSeat {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  background: #fff;
+  color: #1c2430;
+  border: 1px solid #d7d1c6;
+}
+
+.publicFlagSection {
+  min-height: 72px;
+}
+
+.publicFlagToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.publicFlagLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  gap: 16px;
+  align-items: start;
+}
+
+.publicFlagBoard {
+  transform-origin: top left;
+  width: 100%;
+}
+
+.publicFlagSeats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+.publicFlagSeat {
+  min-height: 96px;
+}
+
+.publicFlagSeat.isOpen {
+  background: #f7f4ee;
+}
+
+.publicFlagSeat.isReserved {
+  background: #efe7d6;
+}
+
+.publicFlagSeat.isHighlighted {
+  outline: 3px solid #8a1c1c;
+}
+
+.publicFlagSeat img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.publicFlagDetail {
+  background: #fff;
+  border: 1px solid #d7d1c6;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.publicFlagDetail img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.publicFlagPhoto {
+  width: 100% !important;
+  height: auto !important;
+  max-height: 220px;
+  object-fit: cover;
+}
+
+@media (max-width: 760px) {
+  .publicFlagLayout {
+    display: block;
+  }
+
+  .publicFlagDetail {
+    margin-top: 12px;
+  }
+
+  .publicFlagMap {
+    padding: 0 12px;
+  }
+}
+
+@media (max-width: 390px) {
+  .publicFlagSeats,
+  .publicFlagSections {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
