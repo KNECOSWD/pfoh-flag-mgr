@@ -101,14 +101,22 @@ builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.AddPolicy("PublicFlagMap", httpContext =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+    {
+        var ip = PublicFlagMapClientIp.Resolve(httpContext);
+        if (PublicFlagMapClientIp.IsUnlimited(httpContext.RequestServices.GetRequiredService<IConfiguration>(), ip))
+        {
+            return RateLimitPartition.GetNoLimiter(ip);
+        }
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            ip,
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 120,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0
-            }));
+            });
+    });
 });
 
 var app = builder.Build();

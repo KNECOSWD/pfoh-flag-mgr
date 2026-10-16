@@ -1,9 +1,12 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using PFOH.Api.Data;
 using PFOH.Api.Models;
+using PFOH.Api.Services;
 using Xunit;
 
 namespace PFOH.Api.Tests;
@@ -360,5 +363,103 @@ public class PublicFlagMapRateLimitTests(PfohApiFactory factory) : IClassFixture
         }
 
         Assert.Equal(HttpStatusCode.TooManyRequests, last);
+    }
+
+    [Fact]
+    public async Task One_forwarded_ip_is_limited_after_120_requests()
+    {
+        var client = factory.CreateClient();
+        for (var i = 0; i < 120; i++)
+        {
+            using var response = await Send(client, "203.0.113.10");
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+
+        using var limited = await Send(client, "203.0.113.10");
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+    }
+
+    [Fact]
+    public async Task Different_forwarded_ips_do_not_share_a_bucket()
+    {
+        var client = factory.CreateClient();
+        for (var i = 0; i < 121; i++)
+        {
+            using var response = await Send(client, "198.51.100.21");
+            if (i == 120)
+            {
+                Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+            }
+        }
+
+        using var other = await Send(client, "198.51.100.22");
+        Assert.NotEqual(HttpStatusCode.TooManyRequests, other.StatusCode);
+
+        using var spoofedLeft = await Send(client, "198.51.100.21, 203.0.113.40");
+        Assert.NotEqual(HttpStatusCode.TooManyRequests, spoofedLeft.StatusCode);
+
+        using var realHop = await Send(client, "203.0.113.40, 198.51.100.21");
+        Assert.Equal(HttpStatusCode.TooManyRequests, realHop.StatusCode);
+    }
+
+    [Fact]
+    public void Forwarded_for_keeps_only_the_proxy_hop()
+    {
+        Assert.Equal("203.0.113.10", PublicFlagMapClientIp.RightMostForwardedHop("203.0.113.10"));
+        Assert.Equal("198.51.100.8", PublicFlagMapClientIp.RightMostForwardedHop("1.2.3.4, 198.51.100.8"));
+        Assert.Null(PublicFlagMapClientIp.RightMostForwardedHop("not-an-ip"));
+        Assert.False(PublicFlagMapClientIp.IsUnlimited(new ConfigurationBuilder().Build(), "203.0.113.10"));
+    }
+
+    private static Task<HttpResponseMessage> Send(HttpClient client, string forwardedFor)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/public/flag-map/sections");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", forwardedFor);
+        return client.SendAsync(request);
+    }
+}
+
+public class PublicFlagMapUnlimitedIpTests(PublicFlagMapUnlimitedIpTests.Factory factory) : IClassFixture<PublicFlagMapUnlimitedIpTests.Factory>
+{
+    [Fact]
+    public async Task An_exempt_ip_is_never_limited()
+    {
+        var client = factory.CreateClient();
+        for (var i = 0; i < 130; i++)
+        {
+            using var response = await Send(client, "203.0.113.77");
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+
+        for (var i = 0; i < 120; i++)
+        {
+            using var response = await Send(client, "203.0.113.78");
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, response.StatusCode);
+        }
+
+        using var limited = await Send(client, "203.0.113.78");
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+    }
+
+    private static Task<HttpResponseMessage> Send(HttpClient client, string forwardedFor)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/public/flag-map/sections");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", forwardedFor);
+        return client.SendAsync(request);
+    }
+
+    public sealed class Factory : PfohApiFactory
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.ConfigureAppConfiguration((_, config) =>
+            {
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["PublicFlagMap:UnlimitedIps:0"] = "203.0.113.77"
+                });
+            });
+            base.ConfigureWebHost(builder);
+        }
     }
 }

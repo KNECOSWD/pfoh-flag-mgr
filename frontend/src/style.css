@@ -11517,6 +11517,16 @@ html.flagMapKiosk button:hover:not(:disabled) {
   max-height: none;
 }
 
+.publicFlagMap:not(.isKiosk) .publicFlagDetail {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  left: auto;
+  width: min(420px, calc(100vw - 24px));
+  max-height: none;
+}
+
 .publicFlagMap.isKiosk .publicFlagDetail h3 {
   font-size: 2.15rem;
 }
@@ -11581,6 +11591,21 @@ html.flagMapKiosk button:hover:not(:disabled) {
 @media (max-width: 760px) {
   .publicFlagMap {
     padding: 0 12px;
+  }
+
+  .publicFlagMap:not(.isKiosk) .publicFlagDetail {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+    max-height: none;
+    z-index: 20;
+  }
+
+  .publicFlagMap:not(.isKiosk) .publicFlagPhoto {
+    height: 140px !important;
   }
 
   .publicFlagViewport {

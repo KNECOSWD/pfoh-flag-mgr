@@ -223,16 +223,52 @@ export function readFlagMapLocation(search = "") {
   const params = new URLSearchParams(String(search).replace(/^\?/, ""));
   const kioskValue = (params.get("kiosk") || "").trim().toLowerCase();
   const flagRaw = (params.get("flag") || "").trim();
+  const flagValid = /^[0-9]+$/.test(flagRaw);
   return {
     kiosk: kioskValue === "1" || kioskValue === "true" || kioskValue === "yes",
-    flagId: /^[0-9]+$/.test(flagRaw) ? Number(flagRaw) : null
+    flagId: flagValid ? Number(flagRaw) : null,
+    flagRejected: params.has("flag") && flagRaw !== "" && !flagValid
   };
 }
 
 export function flagDeepLink(href, flagId) {
-  const url = new URL(href, "http://localhost");
-  url.searchParams.set("flag", String(flagId));
-  return url.toString();
+  const current = new URL(href, "http://localhost");
+  const link = new URL("/flag-map", current.origin);
+  link.searchParams.set("flag", String(flagId));
+  return link.toString();
+}
+
+export function createFlagMapLoader(fetchImpl) {
+  const send = fetchImpl ?? ((url, init) => fetch(url, init));
+  const etags = new Map();
+  const bodies = new Map();
+  const inflight = new Map();
+  return function loadFlagMapJson(url) {
+    const pending = inflight.get(url);
+    if (pending) return pending;
+    const promise = read(url).finally(() => {
+      if (inflight.get(url) === promise) inflight.delete(url);
+    });
+    inflight.set(url, promise);
+    return promise;
+  };
+
+  async function read(url) {
+    const headers = { Accept: "application/json" };
+    const known = etags.get(url);
+    if (known) headers["If-None-Match"] = known;
+    const response = await send(url, { cache: "no-store", headers });
+    if (response.status === 304) {
+      if (!bodies.has(url)) throw new Error("The flag map could not be loaded (304).");
+      return bodies.get(url);
+    }
+    if (!response.ok) throw new Error(`The flag map could not be loaded (${response.status}).`);
+    const etag = response.headers?.get?.("ETag");
+    if (etag) etags.set(url, etag);
+    const body = await response.json();
+    bodies.set(url, body);
+    return body;
+  }
 }
 
 export function springEase(amount) {

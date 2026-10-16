@@ -5,6 +5,7 @@ import {
   FLAG_MAP_ZOOM,
   KIOSK_IDLE_MS,
   attractView,
+  createFlagMapLoader,
   createWheelBatch,
   cullRects,
   filterFlagMapSuggestions,
@@ -229,14 +230,54 @@ test("wheel zoom coalesces each frame and stays under the 45fps bar on a 1,200-f
   assert.match(page, /wheelFrameShouldCull/);
 });
 
+test("a kiosk attract loop does not request the flag map again", async () => {
+  const attract = page.slice(page.indexOf("function beginAttract"), page.indexOf("function exitAttract"));
+  const idle = page.slice(page.indexOf("function armIdle"), page.indexOf("const beginAttractRef"));
+  assert.doesNotMatch(attract, /loadJson|fetch\(|urls\.|createFlagMapLoader/);
+  assert.doesNotMatch(idle, /loadJson|fetch\(|urls\.|createFlagMapLoader/);
+  const load = page.slice(page.indexOf("setLoading(true);"), page.indexOf("useLayoutEffect(() => {"));
+  assert.equal((load.match(/searchIndex/g) || []).length, 1);
+  assert.match(load, /\}, \[\]\);/);
+
+  let calls = 0;
+  const loader = createFlagMapLoader(async (url, init) => {
+    calls += 1;
+    const etag = init?.headers?.["If-None-Match"];
+    if (etag) {
+      return { status: 304, ok: false, headers: { get: () => etag }, json: async () => { throw new Error("304 has no body"); } };
+    }
+    return { status: 200, ok: true, headers: { get: () => "\"map\"" }, json: async () => ({ url }) };
+  });
+  const url = "/api/public/flag-map/search-index";
+  const [first, parallel] = await Promise.all([loader(url), loader(url)]);
+  assert.equal(calls, 1);
+  assert.deepEqual(parallel, first);
+  for (let frame = 0; frame < 120; frame += 1) {
+    attractView({ x: 10, y: 20, scale: 0.4 }, frame * 16, { width: 1280, height: 800 }, false);
+  }
+  assert.equal(calls, 1);
+  const again = await loader(url);
+  assert.equal(calls, 2);
+  assert.deepEqual(again, first);
+});
+
 test("kiosk mode, deep links, and the client-side QR stay on the public map", () => {
   assert.equal(KIOSK_IDLE_MS, 60000);
   assert.equal(readFlagMapLocation("?kiosk=1").kiosk, true);
   assert.equal(readFlagMapLocation("?flag=14").flagId, 14);
+  assert.equal(readFlagMapLocation("?flag=14").flagRejected, false);
   assert.equal(readFlagMapLocation("?kiosk=1&flag=14").kiosk, true);
+  assert.equal(readFlagMapLocation("?flag=nope").flagId, null);
+  assert.equal(readFlagMapLocation("?flag=nope").flagRejected, true);
+  assert.equal(readFlagMapLocation("?flag=14.2").flagRejected, true);
+  assert.equal(readFlagMapLocation("?flag=").flagRejected, false);
+  assert.equal(readFlagMapLocation("?kiosk=1&flag=999999").kiosk, true);
+  assert.equal(readFlagMapLocation("?kiosk=1&flag=999999").flagId, 999999);
   const link = flagDeepLink("https://flags.example/flag-map?kiosk=1", 14);
-  assert.match(link, /\/flag-map\?/);
-  assert.match(link, /flag=14/);
+  assert.equal(link, "https://flags.example/flag-map?flag=14");
+  assert.equal(flagDeepLink("https://flags.example/flag-map?kiosk=1&flag=9", 6504), "https://flags.example/flag-map?flag=6504");
+  assert.doesNotMatch(link, /kiosk/);
+  assert.match(page, /That flag is not on the map\./);
   assert.equal(springEase(0), 0);
   assert.equal(springEase(1), 1);
   const drifted = attractView({ x: 10, y: 20, scale: 0.4 }, 8000, { width: 1200, height: 800 }, false);

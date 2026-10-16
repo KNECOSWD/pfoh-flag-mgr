@@ -612,7 +612,7 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
         string? ClaimantOrganization);
 }
 
-public sealed class PfohApiFactory : WebApplicationFactory<Program>
+public class PfohApiFactory : WebApplicationFactory<Program>
 {
     private readonly string databaseName = $"PfohProfileTests-{Guid.NewGuid():N}";
 

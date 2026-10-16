@@ -6,6 +6,7 @@ import {
   WHEEL_SETTLE_MS,
   attractView,
   createWheelBatch,
+  createFlagMapLoader,
   cullRects,
   filterFlagMapSuggestions,
   fitView,
@@ -82,16 +83,7 @@ const EMPTY_GATES: Gates = {
   flagsInteractive: false
 };
 
-async function loadJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, {
-    cache: "no-cache",
-    headers: { Accept: "application/json" }
-  });
-  if (!response.ok) {
-    throw new Error(`The flag map could not be loaded (${response.status}).`);
-  }
-  return response.json() as Promise<T>;
-}
+const loadJson = createFlagMapLoader() as <T>(url: string) => Promise<T>;
 
 function sameIds(left: number[], right: number[]) {
   if (left.length !== right.length) return false;
@@ -234,7 +226,7 @@ export default function PublicFlagMap({
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(location.flagRejected ? "That flag is not on the map." : "");
   const [loading, setLoading] = useState(true);
   const [visibleSectionKeys, setVisibleSectionKeys] = useState<string[]>([]);
   const [visibleFlagIds, setVisibleFlagIds] = useState<number[]>([]);
@@ -418,6 +410,7 @@ export default function PublicFlagMap({
   }
 
   function openFlag(flag: FlagBox, options?: { celebrate?: boolean }) {
+    setError("");
     historyRef.current = [...historyRef.current, { ...viewRef.current }].slice(-16);
     setHighlightId(flag.flagGridId);
     setSelected(flag.honoreeId ? flag : null);
@@ -438,6 +431,7 @@ export default function PublicFlagMap({
 
   function goHome() {
     exitAttract();
+    setError((current) => (current === "That flag is not on the map." ? "" : current));
     historyRef.current = [];
     setSelected(null);
     setHighlightId(null);
@@ -562,6 +556,9 @@ export default function PublicFlagMap({
       const flags = layoutRef.current?.flags as FlagBox[] | undefined;
       const flag = flags?.find((item) => item.flagGridId === id) ?? flags?.find((item) => item.honoreeId === id);
       if (flag) openFlag(flag);
+      else setError("That flag is not on the map.");
+    } else if (location.flagRejected) {
+      setError("That flag is not on the map.");
     }
     const observer = new ResizeObserver(fit);
     observer.observe(node);
