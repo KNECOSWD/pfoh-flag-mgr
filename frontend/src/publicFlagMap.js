@@ -54,6 +54,10 @@ export const FLAG_MAP_ZOOM = {
   rankFadeEnd: 4
 };
 
+export const KIOSK_IDLE_MS = 60_000;
+export const WHEEL_ZOOM_SENSITIVITY = 0.0015;
+export const WHEEL_SETTLE_MS = 120;
+
 const FLAG_WIDTH = 148;
 const FLAG_HEIGHT = 108;
 const FLAG_GAP = 12;
@@ -213,4 +217,86 @@ export function layoutFlagField(sections) {
     worldWidth: Math.max(1, ...placedSections.map((section) => section.x + section.width), 1),
     worldHeight: Math.max(1, ...placedSections.map((section) => section.y + section.height), 1)
   };
+}
+
+export function readFlagMapLocation(search = "") {
+  const params = new URLSearchParams(String(search).replace(/^\?/, ""));
+  const kioskValue = (params.get("kiosk") || "").trim().toLowerCase();
+  const flagRaw = (params.get("flag") || "").trim();
+  return {
+    kiosk: kioskValue === "1" || kioskValue === "true" || kioskValue === "yes",
+    flagId: /^[0-9]+$/.test(flagRaw) ? Number(flagRaw) : null
+  };
+}
+
+export function flagDeepLink(href, flagId) {
+  const url = new URL(href, "http://localhost");
+  url.searchParams.set("flag", String(flagId));
+  return url.toString();
+}
+
+export function springEase(amount) {
+  const t = clamp(amount, 0, 1);
+  if (t >= 1) return 1;
+  const decay = Math.exp(-5.4 * t);
+  const wave = Math.cos(t * Math.PI * 3);
+  const value = 1 - decay * wave;
+  if (t > 0.9) return value + (1 - value) * ((t - 0.9) / 0.1);
+  return value;
+}
+
+export function attractView(fitted, elapsedMs, viewport, reducedMotion = false) {
+  if (reducedMotion) return { x: fitted.x, y: fitted.y, scale: fitted.scale };
+  const ampX = Math.min(Math.max(viewport?.width || 1, 1) * 0.16, 160);
+  const ampY = Math.min(Math.max(viewport?.height || 1, 1) * 0.1, 96);
+  const t = elapsedMs / 1000;
+  return {
+    x: fitted.x + Math.sin(t * 0.21) * ampX,
+    y: fitted.y + Math.cos(t * 0.13) * ampY,
+    scale: fitted.scale
+  };
+}
+
+export function pointerDragCapture(start, point, alreadyCaptured = false) {
+  if (alreadyCaptured) return true;
+  return !pointerIsTap(start, point);
+}
+
+export function pointerShouldOpen(start, point) {
+  return pointerIsTap(start, point);
+}
+
+export function createWheelBatch() {
+  let deltaY = 0;
+  let point = null;
+  let dirty = false;
+  return {
+    push(delta, origin) {
+      deltaY += delta;
+      point = origin;
+      dirty = true;
+    },
+    flush() {
+      if (!dirty || !point) return null;
+      const batch = { deltaY, point };
+      deltaY = 0;
+      point = null;
+      dirty = false;
+      return batch;
+    }
+  };
+}
+
+export function wheelScaleFactor(deltaY) {
+  return Math.exp(-deltaY * WHEEL_ZOOM_SENSITIVITY);
+}
+
+export function wheelFrameShouldCull(previousGates, nextGates, gestureEnded) {
+  if (gestureEnded) return true;
+  if (!previousGates || !nextGates) return true;
+  return previousGates.seals !== nextGates.seals
+    || previousGates.names !== nextGates.names
+    || previousGates.ranks !== nextGates.ranks
+    || previousGates.sectionsInteractive !== nextGates.sectionsInteractive
+    || previousGates.flagsInteractive !== nextGates.flagsInteractive;
 }

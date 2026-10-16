@@ -1,17 +1,28 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { qrModules, qrPath } from "./qrCode.js";
 import {
   FLAG_MAP_ZOOM,
+  KIOSK_IDLE_MS,
+  WHEEL_SETTLE_MS,
+  attractView,
+  createWheelBatch,
   cullRects,
   filterFlagMapSuggestions,
   fitView,
+  flagDeepLink,
   flagMapDetailGates,
   flagMapLayerOpacities,
   flagYears,
   layoutFlagField,
   panView,
-  pointerIsTap,
+  pointerDragCapture,
+  pointerShouldOpen,
   publicFlagMapUrls,
+  readFlagMapLocation,
+  springEase,
   viewportWorldRect,
+  wheelFrameShouldCull,
+  wheelScaleFactor,
   withApiBase,
   zoomAt
 } from "./publicFlagMap.js";
@@ -59,9 +70,17 @@ type SearchHit = {
 type View = { x: number; y: number; scale: number };
 type Box = { x: number; y: number; width: number; height: number; section: string; flagCount: number; occupiedCount: number };
 type FlagBox = PublicSeat & Box;
+type Gates = ReturnType<typeof flagMapDetailGates>;
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
 const urls = publicFlagMapUrls(apiBase);
+const EMPTY_GATES: Gates = {
+  seals: false,
+  names: false,
+  ranks: false,
+  sectionsInteractive: true,
+  flagsInteractive: false
+};
 
 async function loadJson<T>(url: string): Promise<T> {
   const response = await fetch(url, {
@@ -82,6 +101,101 @@ function sameIds(left: number[], right: number[]) {
   return true;
 }
 
+function sameGates(left: Gates, right: Gates) {
+  return left.seals === right.seals
+    && left.names === right.names
+    && left.ranks === right.ranks
+    && left.sectionsInteractive === right.sectionsInteractive
+    && left.flagsInteractive === right.flagsInteractive;
+}
+
+function requestKioskFullscreen() {
+  const root = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+  if (document.fullscreenElement) return;
+  const request = root.requestFullscreen?.bind(root) ?? root.webkitRequestFullscreen?.bind(root);
+  if (!request) return;
+  try {
+    const pending = request() as void | Promise<void>;
+    if (pending && typeof (pending as Promise<void>).catch === "function") {
+      (pending as Promise<void>).catch(() => {});
+    }
+  } catch {
+    // The layout already fills the screen when fullscreen is declined.
+  }
+}
+
+function FlagQr({ value }: { value: string }) {
+  const drawn = useMemo(() => qrPath(qrModules(value)), [value]);
+  return (
+    <svg className="publicFlagQr" viewBox={`0 0 ${drawn.size} ${drawn.size}`} role="img" aria-label="QR code for this flag">
+      <rect width={drawn.size} height={drawn.size} fill="#ffffff" />
+      <path d={drawn.d} fill="#0b1f3a" />
+    </svg>
+  );
+}
+
+function FlagDetail({
+  flag,
+  revealed,
+  shareUrl,
+  onPreview,
+  onClose
+}: {
+  flag: FlagBox;
+  revealed: boolean;
+  shareUrl: string;
+  onPreview: (honoreeId: number, title: string) => void;
+  onClose: () => void;
+}) {
+  const [showPhoto, setShowPhoto] = useState(Boolean(flag.photoUrl));
+  useEffect(() => {
+    setShowPhoto(Boolean(flag.photoUrl));
+  }, [flag.flagGridId, flag.photoUrl]);
+  const years = flagYears(flag);
+
+  return (
+    <aside className={revealed ? "publicFlagDetail isRevealed" : "publicFlagDetail"} aria-label="Flag detail">
+      {showPhoto && flag.photoUrl ? (
+        <img
+          className="publicFlagPhoto"
+          src={withApiBase(apiBase, flag.photoUrl)}
+          alt=""
+          onError={() => setShowPhoto(false)}
+        />
+      ) : null}
+      <div className="publicFlagDetailBody">
+        {flag.displayName ? <h3>{flag.displayName}</h3> : null}
+        {flag.rank ? <p className="publicFlagRank">{flag.rank}</p> : null}
+        {flag.serviceBranchName ? (
+          <p className="publicFlagBranch">
+            {flag.logoUrl ? <img className="publicFlagSeal" src={withApiBase(apiBase, flag.logoUrl)} alt="" /> : null}
+            <span>
+              {flag.serviceBranchName}
+              {flag.serviceBranchCategoryName ? ` · ${flag.serviceBranchCategoryName}` : ""}
+            </span>
+          </p>
+        ) : null}
+        <p className="publicFlagSpot">{flag.flagGridName} · Section {flag.section}</p>
+        {years ? <p>{years}</p> : null}
+        {flag.kia ? <p>Killed in action</p> : null}
+        {flag.description ? <p className="publicFlagBio">{flag.description}</p> : null}
+        {flag.conflictsServed ? <p>Conflicts served: {flag.conflictsServed}</p> : null}
+        {flag.awards ? <p>Awards: {flag.awards}</p> : null}
+        <div className="publicFlagQrBlock">
+          <FlagQr value={shareUrl} />
+          <p>Scan to open this flag</p>
+        </div>
+        {flag.honoreeId ? (
+          <button type="button" onClick={() => onPreview(flag.honoreeId!, flag.displayName || "Honoree")}>
+            Preview card
+          </button>
+        ) : null}
+        <button type="button" className="secondary" onClick={onClose}>Close</button>
+      </div>
+    </aside>
+  );
+}
+
 export default function PublicFlagMap({
   onPreviewCard
 }: {
@@ -89,6 +203,8 @@ export default function PublicFlagMap({
 }) {
   const listId = useId();
   const helpId = useId();
+  const location = useMemo(() => readFlagMapLocation(window.location.search), []);
+  const kiosk = location.kiosk;
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const layerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<View>({ x: 0, y: 0, scale: 1 });
@@ -96,7 +212,22 @@ export default function PublicFlagMap({
   const userAdjustedRef = useRef(false);
   const animRef = useRef(0);
   const cullFrameRef = useRef(0);
+  const attractFrameRef = useRef(0);
+  const wheelFrameRef = useRef(0);
+  const wheelSettleRef = useRef(0);
+  const idleTimerRef = useRef(0);
   const suppressClickRef = useRef(false);
+  const attractingRef = useRef(false);
+  const fullscreenTriedRef = useRef(false);
+  const reducedMotionRef = useRef(false);
+  const kioskRef = useRef(kiosk);
+  const gatesRef = useRef<Gates>(EMPTY_GATES);
+  const levelRef = useRef("Sections");
+  const pendingFlagRef = useRef<number | null>(location.flagId);
+  const historyRef = useRef<View[]>([]);
+  const wheelBatchRef = useRef(createWheelBatch());
+  const boxRef = useRef({ left: 0, top: 0, width: 1, height: 1 });
+  const opacityCacheRef = useRef({ section: "", seal: "", name: "", rank: "" });
   const layoutRef = useRef<ReturnType<typeof layoutFlagField> | null>(null);
   const [field, setField] = useState<ReturnType<typeof layoutFlagField> | null>(null);
   const [index, setIndex] = useState<SearchHit[]>([]);
@@ -107,11 +238,14 @@ export default function PublicFlagMap({
   const [loading, setLoading] = useState(true);
   const [visibleSectionKeys, setVisibleSectionKeys] = useState<string[]>([]);
   const [visibleFlagIds, setVisibleFlagIds] = useState<number[]>([]);
-  const [gates, setGates] = useState({ seals: false, names: false, ranks: false, sectionsInteractive: true, flagsInteractive: false });
+  const [gates, setGates] = useState<Gates>(EMPTY_GATES);
   const [levelText, setLevelText] = useState("Sections");
   const [selected, setSelected] = useState<FlagBox | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
+  const [revealId, setRevealId] = useState<number | null>(null);
+  const [attracting, setAttracting] = useState(false);
   const suggestions = filterFlagMapSuggestions(index, query) as SearchHit[];
+  const shareUrl = selected ? flagDeepLink(window.location.href, selected.flagGridId) : "";
 
   const visibleSections = useMemo(() => {
     if (!field) return [];
@@ -125,35 +259,57 @@ export default function PublicFlagMap({
     return (field.flags as FlagBox[]).filter((flag) => ids.has(flag.flagGridId));
   }, [field, gates.seals, visibleFlagIds]);
 
-  function viewportSize() {
+  function syncViewportBox() {
     const rect = viewportRef.current?.getBoundingClientRect();
-    return { width: rect?.width || 1, height: rect?.height || 1 };
+    if (!rect) return boxRef.current;
+    const box = { left: rect.left, top: rect.top, width: rect.width || 1, height: rect.height || 1 };
+    boxRef.current = box;
+    return box;
+  }
+
+  function viewportSize() {
+    const box = boxRef.current.width > 1 ? boxRef.current : syncViewportBox();
+    return { width: box.width || 1, height: box.height || 1 };
+  }
+
+  function localPoint(event: { clientX: number; clientY: number }) {
+    const box = boxRef.current;
+    return { x: event.clientX - box.left, y: event.clientY - box.top };
   }
 
   function worldBounds() {
     return { x: 0, y: 0, width: layoutRef.current?.worldWidth || 1, height: layoutRef.current?.worldHeight || 1 };
   }
 
-  function applyView(next: View, cullNow = false) {
+  function paintView(next: View) {
     const scale = Math.min(FLAG_MAP_ZOOM.maxScale, Math.max(FLAG_MAP_ZOOM.minScale, next.scale));
     const view = { x: next.x, y: next.y, scale };
     viewRef.current = view;
-    const layer = layerRef.current;
     const opacity = flagMapLayerOpacities(view.scale, fitScaleRef.current);
+    const layer = layerRef.current;
     if (layer) {
       layer.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
-      layer.style.setProperty("--section-opacity", String(opacity.section));
-      layer.style.setProperty("--seal-opacity", String(opacity.seal));
-      layer.style.setProperty("--name-opacity", String(opacity.name));
-      layer.style.setProperty("--rank-opacity", String(opacity.rank));
+      writeOpacity(layer, "--section-opacity", "section", opacity.section);
+      writeOpacity(layer, "--seal-opacity", "seal", opacity.seal);
+      writeOpacity(layer, "--name-opacity", "name", opacity.name);
+      writeOpacity(layer, "--rank-opacity", "rank", opacity.rank);
     }
     const viewport = viewportRef.current;
     if (viewport) {
-      viewport.dataset.relative = String(opacity.relative);
-      viewport.dataset.sections = opacity.section >= 0.5 ? "on" : "off";
-      viewport.dataset.flags = opacity.seal > 0.5 ? "on" : "off";
+      const sections = opacity.section >= 0.5 ? "on" : "off";
+      const flags = opacity.seal > 0.5 ? "on" : "off";
+      if (viewport.dataset.sections !== sections) viewport.dataset.sections = sections;
+      if (viewport.dataset.flags !== flags) viewport.dataset.flags = flags;
     }
-    publishCull(cullNow);
+    const nextLevel = opacity.rank >= 0.85 ? "Closest" : opacity.name >= 0.85 ? "Names" : opacity.seal >= 0.85 ? "Seals" : opacity.section >= 0.85 ? "Sections" : "";
+    return { view, opacity, nextLevel };
+  }
+
+  function writeOpacity(layer: HTMLDivElement, property: string, key: "section" | "seal" | "name" | "rank", value: number) {
+    const next = value < 0.004 ? "0" : value > 0.996 ? "1" : value.toFixed(3);
+    if (opacityCacheRef.current[key] === next) return;
+    opacityCacheRef.current[key] = next;
+    layer.style.setProperty(property, next);
   }
 
   function publishCull(immediate = false) {
@@ -165,24 +321,19 @@ export default function PublicFlagMap({
       const layout = layoutRef.current;
       if (!layout) return;
       const nextGates = flagMapDetailGates(view.scale, fitScaleRef.current);
+      gatesRef.current = nextGates;
       const sectionKeys = cullRects(layout.sections, seen).map((section: Box) => section.section as string);
       const flagIds = nextGates.seals
         ? cullRects(layout.flags, seen).map((flag: FlagBox) => flag.flagGridId)
         : [];
-      setGates((current) => (
-        current.seals === nextGates.seals &&
-        current.names === nextGates.names &&
-        current.ranks === nextGates.ranks &&
-        current.sectionsInteractive === nextGates.sectionsInteractive &&
-        current.flagsInteractive === nextGates.flagsInteractive
-          ? current
-          : nextGates
-      ));
+      setGates((current) => (sameGates(current, nextGates) ? current : nextGates));
       setVisibleSectionKeys((current) => (current.join("|") === sectionKeys.join("|") ? current : sectionKeys));
       setVisibleFlagIds((current) => (sameIds(current, flagIds) ? current : flagIds));
-      const opacity = flagMapLayerOpacities(view.scale, fitScaleRef.current);
-      const nextLevel = opacity.rank >= 0.85 ? "Closest" : opacity.name >= 0.85 ? "Names" : opacity.seal >= 0.85 ? "Seals" : opacity.section >= 0.85 ? "Sections" : "";
-      if (nextLevel) setLevelText((current) => (current === nextLevel ? current : nextLevel));
+      const painted = paintView(view);
+      if (painted.nextLevel && painted.nextLevel !== levelRef.current) {
+        levelRef.current = painted.nextLevel;
+        setLevelText(painted.nextLevel);
+      }
     };
     if (immediate) {
       cancelAnimationFrame(cullFrameRef.current);
@@ -193,19 +344,53 @@ export default function PublicFlagMap({
     cullFrameRef.current = requestAnimationFrame(run);
   }
 
-  function animateTo(target: View) {
+  function applyView(next: View, cullNow = false) {
+    paintView(next);
+    publishCull(cullNow);
+  }
+
+  function stopMotion() {
     cancelAnimationFrame(animRef.current);
+    cancelAnimationFrame(attractFrameRef.current);
+    cancelAnimationFrame(wheelFrameRef.current);
+    wheelFrameRef.current = 0;
+    window.clearTimeout(wheelSettleRef.current);
+    wheelBatchRef.current.flush();
+  }
+
+  function animateTo(target: View, onDone?: () => void) {
+    stopMotion();
     const from = { ...viewRef.current };
+    const unchanged = Math.abs(from.x - target.x) < 0.5
+      && Math.abs(from.y - target.y) < 0.5
+      && Math.abs(from.scale - target.scale) < 0.0001;
+    if (reducedMotionRef.current || unchanged) {
+      applyView(target, true);
+      onDone?.();
+      return;
+    }
     const started = performance.now();
+    let lastGates = flagMapDetailGates(from.scale, fitScaleRef.current);
     const step = (now: number) => {
-      const amount = Math.min(1, (now - started) / 480);
-      const eased = 1 - (1 - amount) ** 3;
-      applyView({
+      const amount = Math.min(1, (now - started) / 680);
+      const eased = springEase(amount);
+      const next = {
         x: from.x + (target.x - from.x) * eased,
         y: from.y + (target.y - from.y) * eased,
         scale: from.scale + (target.scale - from.scale) * eased
-      }, amount === 1 || amount === 0);
-      if (amount < 1) animRef.current = requestAnimationFrame(step);
+      };
+      paintView(next);
+      const nextGates = flagMapDetailGates(next.scale, fitScaleRef.current);
+      const done = amount >= 1;
+      if (wheelFrameShouldCull(lastGates, nextGates, done)) {
+        lastGates = nextGates;
+        publishCull(true);
+      }
+      if (!done) {
+        animRef.current = requestAnimationFrame(step);
+      } else {
+        onDone?.();
+      }
     };
     animRef.current = requestAnimationFrame(step);
   }
@@ -216,6 +401,15 @@ export default function PublicFlagMap({
     return fitted;
   }
 
+  function writeFlagParam(flagId: number | null) {
+    const url = new URL(window.location.href);
+    if (flagId) url.searchParams.set("flag", String(flagId));
+    else url.searchParams.delete("flag");
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (next !== current) window.history.replaceState(null, "", next);
+  }
+
   function zoomBy(factor: number, origin?: { x: number; y: number }) {
     userAdjustedRef.current = true;
     const size = viewportSize();
@@ -223,20 +417,105 @@ export default function PublicFlagMap({
     animateTo(zoomAt(viewRef.current, point.x, point.y, viewRef.current.scale * factor));
   }
 
-  function openFlag(flag: FlagBox) {
+  function openFlag(flag: FlagBox, options?: { celebrate?: boolean }) {
+    historyRef.current = [...historyRef.current, { ...viewRef.current }].slice(-16);
     setHighlightId(flag.flagGridId);
     setSelected(flag.honoreeId ? flag : null);
+    setRevealId(options?.celebrate && flag.honoreeId ? flag.flagGridId : null);
+    writeFlagParam(flag.flagGridId);
     const size = viewportSize();
     const scale = Math.min(FLAG_MAP_ZOOM.maxScale, fitScaleRef.current * FLAG_MAP_ZOOM.rankFadeEnd);
     const centerX = flag.x + flag.width / 2;
     const centerY = flag.y + flag.height / 2;
+    const panelBias = kioskRef.current ? Math.min(size.width * 0.16, 180) : 0;
     userAdjustedRef.current = true;
     animateTo({
       scale,
-      x: size.width / 2 - centerX * scale,
+      x: size.width / 2 - panelBias - centerX * scale,
       y: size.height / 2 - centerY * scale
     });
   }
+
+  function goHome() {
+    exitAttract();
+    historyRef.current = [];
+    setSelected(null);
+    setHighlightId(null);
+    setRevealId(null);
+    setQuery("");
+    setOpen(false);
+    userAdjustedRef.current = false;
+    writeFlagParam(null);
+    syncViewportBox();
+    animateTo(fitWorld());
+  }
+
+  function goBack() {
+    exitAttract();
+    setRevealId(null);
+    setSelected(null);
+    setHighlightId(null);
+    writeFlagParam(null);
+    const previous = historyRef.current.pop();
+    if (!previous) {
+      goHome();
+      return;
+    }
+    userAdjustedRef.current = true;
+    animateTo(previous);
+  }
+
+  function beginAttract() {
+    if (!kioskRef.current || attractingRef.current) return;
+    attractingRef.current = true;
+    setAttracting(true);
+    setSelected(null);
+    setHighlightId(null);
+    setRevealId(null);
+    setQuery("");
+    setOpen(false);
+    historyRef.current = [];
+    writeFlagParam(null);
+    userAdjustedRef.current = true;
+    syncViewportBox();
+    const fitted = fitWorld();
+    animateTo(fitted, () => {
+      if (!attractingRef.current) return;
+      const started = performance.now();
+      const loop = (now: number) => {
+        if (!attractingRef.current) return;
+        paintView(attractView(fitted, now - started, boxRef.current, reducedMotionRef.current));
+        attractFrameRef.current = requestAnimationFrame(loop);
+      };
+      if (!reducedMotionRef.current) attractFrameRef.current = requestAnimationFrame(loop);
+    });
+  }
+
+  function exitAttract() {
+    if (!attractingRef.current) return;
+    attractingRef.current = false;
+    setAttracting(false);
+    cancelAnimationFrame(attractFrameRef.current);
+    cancelAnimationFrame(animRef.current);
+    userAdjustedRef.current = false;
+    syncViewportBox();
+    const fitted = fitWorld();
+    fitScaleRef.current = fitted.scale;
+    applyView(fitted, true);
+  }
+
+  function armIdle() {
+    window.clearTimeout(idleTimerRef.current);
+    if (!kioskRef.current || attractingRef.current) return;
+    idleTimerRef.current = window.setTimeout(beginAttract, KIOSK_IDLE_MS);
+  }
+
+  const beginAttractRef = useRef(beginAttract);
+  const exitAttractRef = useRef(exitAttract);
+  const armIdleRef = useRef(armIdle);
+  beginAttractRef.current = beginAttract;
+  exitAttractRef.current = exitAttract;
+  armIdleRef.current = armIdle;
 
   useEffect(() => {
     let cancelled = false;
@@ -272,10 +551,18 @@ export default function PublicFlagMap({
     if (!field || !viewportRef.current) return;
     const node = viewportRef.current;
     const fit = () => {
-      if (userAdjustedRef.current) return;
+      syncViewportBox();
+      if (userAdjustedRef.current || attractingRef.current) return;
       applyView(fitWorld(), true);
     };
     fit();
+    if (pendingFlagRef.current) {
+      const id = pendingFlagRef.current;
+      pendingFlagRef.current = null;
+      const flags = layoutRef.current?.flags as FlagBox[] | undefined;
+      const flag = flags?.find((item) => item.flagGridId === id) ?? flags?.find((item) => item.honoreeId === id);
+      if (flag) openFlag(flag);
+    }
     const observer = new ResizeObserver(fit);
     observer.observe(node);
     return () => observer.disconnect();
@@ -284,54 +571,163 @@ export default function PublicFlagMap({
   }, [field]);
 
   useEffect(() => {
+    if (!revealId) return;
+    const timer = window.setTimeout(() => setRevealId((current) => (current === revealId ? null : current)), 1400);
+    return () => window.clearTimeout(timer);
+  }, [revealId]);
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    if (!kiosk) return;
+    root.classList.add("flagMapKiosk");
+    const meta = document.querySelector('meta[name="viewport"]');
+    const previous = meta?.getAttribute("content") ?? "";
+    meta?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no");
+    return () => {
+      root.classList.remove("flagMapKiosk");
+      if (previous) meta?.setAttribute("content", previous);
+    };
+  }, [kiosk]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const apply = () => {
+      reducedMotionRef.current = media.matches;
+    };
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    if (!kiosk) return;
+    const blockMenu = (event: Event) => event.preventDefault();
+    const blockGesture = (event: Event) => event.preventDefault();
+    const blockCtrlWheel = (event: WheelEvent) => {
+      if (event.ctrlKey) event.preventDefault();
+    };
+    const onFirstPointer = () => {
+      if (fullscreenTriedRef.current) return;
+      fullscreenTriedRef.current = true;
+      requestKioskFullscreen();
+    };
+    const onWake = (event: Event) => {
+      if (!attractingRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      exitAttractRef.current();
+      armIdleRef.current();
+    };
+    const onActivity = () => {
+      if (attractingRef.current) return;
+      armIdleRef.current();
+    };
+    document.addEventListener("contextmenu", blockMenu);
+    document.addEventListener("gesturestart", blockGesture);
+    window.addEventListener("wheel", blockCtrlWheel, { passive: false });
+    window.addEventListener("pointerdown", onFirstPointer, true);
+    window.addEventListener("pointerdown", onWake, true);
+    window.addEventListener("touchstart", onWake, true);
+    window.addEventListener("pointerdown", onActivity, true);
+    window.addEventListener("keydown", onActivity);
+    armIdleRef.current();
+    return () => {
+      document.removeEventListener("contextmenu", blockMenu);
+      document.removeEventListener("gesturestart", blockGesture);
+      window.removeEventListener("wheel", blockCtrlWheel);
+      window.removeEventListener("pointerdown", onFirstPointer, true);
+      window.removeEventListener("pointerdown", onWake, true);
+      window.removeEventListener("touchstart", onWake, true);
+      window.removeEventListener("pointerdown", onActivity, true);
+      window.removeEventListener("keydown", onActivity);
+      window.clearTimeout(idleTimerRef.current);
+      cancelAnimationFrame(attractFrameRef.current);
+    };
+  }, [kiosk]);
+
+  useEffect(() => {
     const node = viewportRef.current;
     if (!node) return;
     let start: { x: number; y: number } | null = null;
     let origin = { x: 0, y: 0 };
     let moved = false;
+    let captured = false;
     let pinching = false;
     let pinchStart = 0;
     let pinchScale = 1;
     let pinchMid = { x: 0, y: 0 };
 
-    const localPoint = (event: { clientX: number; clientY: number }) => {
-      const rect = node.getBoundingClientRect();
-      return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    const flushWheelFrame = () => {
+      wheelFrameRef.current = 0;
+      const batch = wheelBatchRef.current.flush();
+      if (!batch) return;
+      const next = zoomAt(
+        viewRef.current,
+        batch.point.x,
+        batch.point.y,
+        viewRef.current.scale * wheelScaleFactor(batch.deltaY)
+      );
+      paintView(next);
+      const nextGates = flagMapDetailGates(next.scale, fitScaleRef.current);
+      if (wheelFrameShouldCull(gatesRef.current, nextGates, false)) {
+        gatesRef.current = nextGates;
+        publishCull(true);
+      }
+      window.clearTimeout(wheelSettleRef.current);
+      wheelSettleRef.current = window.setTimeout(() => {
+        publishCull(true);
+      }, WHEEL_SETTLE_MS);
     };
 
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
+      if (attractingRef.current) exitAttractRef.current();
       userAdjustedRef.current = true;
-      const point = localPoint(event);
-      const factor = Math.exp(-event.deltaY * 0.0015);
-      applyView(zoomAt(viewRef.current, point.x, point.y, viewRef.current.scale * factor));
+      if (!wheelFrameRef.current) syncViewportBox();
+      wheelBatchRef.current.push(event.deltaY, localPoint(event));
+      armIdleRef.current();
+      if (wheelFrameRef.current) return;
+      wheelFrameRef.current = requestAnimationFrame(flushWheelFrame);
     };
 
     const onPointerDown = (event: PointerEvent) => {
       suppressClickRef.current = false;
       if (pinching || event.button > 0) return;
       if ((event.target as HTMLElement | null)?.closest(".publicFlagChrome, .publicFlagDetail")) return;
+      syncViewportBox();
       start = localPoint(event);
       origin = { x: viewRef.current.x, y: viewRef.current.y };
       moved = false;
-      node.setPointerCapture(event.pointerId);
+      captured = false;
     };
 
     const onPointerMove = (event: PointerEvent) => {
       if (!start || pinching) return;
       const point = localPoint(event);
-      if (!pointerIsTap(start, point)) moved = true;
-      if (moved) {
-        userAdjustedRef.current = true;
-        applyView({ x: origin.x + point.x - start.x, y: origin.y + point.y - start.y, scale: viewRef.current.scale });
+      if (!pointerDragCapture(start, point, captured)) return;
+      if (!captured) {
+        captured = true;
+        try {
+          node.setPointerCapture(event.pointerId);
+        } catch {
+          captured = false;
+        }
       }
+      moved = true;
+      userAdjustedRef.current = true;
+      applyView({ x: origin.x + point.x - start.x, y: origin.y + point.y - start.y, scale: viewRef.current.scale });
     };
 
     const onPointerUp = (event: PointerEvent) => {
       if (!start) return;
       const point = localPoint(event);
-      if (moved || !pointerIsTap(start, point)) suppressClickRef.current = true;
+      if (captured && node.hasPointerCapture(event.pointerId)) {
+        node.releasePointerCapture(event.pointerId);
+      }
+      suppressClickRef.current = !pointerShouldOpen(start, point);
       start = null;
+      captured = false;
+      moved = false;
     };
 
     const touchDistance = (event: TouchEvent) => {
@@ -344,7 +740,8 @@ export default function PublicFlagMap({
       pinching = true;
       pinchStart = touchDistance(event);
       pinchScale = viewRef.current.scale;
-      const rect = node.getBoundingClientRect();
+      syncViewportBox();
+      const rect = boxRef.current;
       pinchMid = {
         x: (event.touches[0].clientX + event.touches[1].clientX) / 2 - rect.left,
         y: (event.touches[0].clientY + event.touches[1].clientY) / 2 - rect.top
@@ -355,7 +752,7 @@ export default function PublicFlagMap({
       if (!pinching || event.touches.length < 2 || pinchStart <= 0) return;
       event.preventDefault();
       userAdjustedRef.current = true;
-      const rect = node.getBoundingClientRect();
+      const rect = boxRef.current;
       const mid = {
         x: (event.touches[0].clientX + event.touches[1].clientX) / 2 - rect.left,
         y: (event.touches[0].clientY + event.touches[1].clientY) / 2 - rect.top
@@ -388,6 +785,8 @@ export default function PublicFlagMap({
       node.removeEventListener("touchmove", onTouchMove);
       node.removeEventListener("touchend", onTouchEnd);
       node.removeEventListener("touchcancel", onTouchEnd);
+      cancelAnimationFrame(wheelFrameRef.current);
+      window.clearTimeout(wheelSettleRef.current);
     };
     // Gesture listeners read refs so they can stay attached for the life of the canvas.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -422,13 +821,14 @@ export default function PublicFlagMap({
     setQuery(hit.displayName);
     setOpen(false);
     const flag = (layoutRef.current?.flags as FlagBox[] | undefined)?.find((item) => item.flagGridId === hit.flagGridId);
-    if (flag) openFlag(flag);
+    if (flag) openFlag(flag, { celebrate: true });
   }
 
   function onMapKeyDown(event: React.KeyboardEvent<HTMLElement>) {
     if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
     if (event.key === "Escape") {
       setSelected(null);
+      setRevealId(null);
       setOpen(false);
       return;
     }
@@ -458,13 +858,21 @@ export default function PublicFlagMap({
   }
 
   return (
-    <section className="publicFlagMap" aria-label="Public Flag Map" onKeyDown={onMapKeyDown}>
+    <section
+      className={kiosk ? "publicFlagMap isKiosk" : "publicFlagMap"}
+      data-kiosk={kiosk ? "1" : "0"}
+      data-attract={attracting ? "1" : "0"}
+      aria-label="Public Flag Map"
+      onKeyDown={onMapKeyDown}
+      onContextMenu={kiosk ? (event) => event.preventDefault() : undefined}
+    >
       <div className="publicFlagChrome">
-        <div className="sectionHeader">
+        <div className="sectionHeader publicFlagHeading">
+          <span className="publicFlagWave" aria-hidden="true" />
           <div>
             <p className="eyebrow">Field</p>
             <h2>Public Flag Map</h2>
-            <p id={helpId} className="helperText">
+            <p id={helpId} className={kiosk ? "helperText srOnly" : "helperText"}>
               Pinch or use the wheel to zoom. Drag to move around the field. Zooming in reveals seals, then names, then ranks.
             </p>
           </div>
@@ -479,8 +887,10 @@ export default function PublicFlagMap({
             aria-autocomplete="list"
             aria-activedescendant={open && suggestions[active] ? `${listId}-${suggestions[active].honoreeId}` : undefined}
             type="search"
+            inputMode="search"
             enterKeyHint="search"
             autoComplete="off"
+            autoCapitalize="none"
             placeholder="Type a name"
             value={query}
             onChange={(event) => {
@@ -513,15 +923,20 @@ export default function PublicFlagMap({
           ) : null}
         </div>
         <div className="publicFlagToolbar">
+          {kiosk ? <button type="button" onClick={goHome} aria-label="Home">Home</button> : null}
+          {kiosk ? <button type="button" className="secondary" onClick={goBack} aria-label="Back">Back</button> : null}
           <button type="button" className="secondary" onClick={() => zoomBy(1 / FLAG_MAP_ZOOM.zoomStep)} aria-label="Zoom out">−</button>
           <button type="button" className="secondary" onClick={() => zoomBy(FLAG_MAP_ZOOM.zoomStep)} aria-label="Zoom in">+</button>
-          <button type="button" className="secondary" onClick={() => { userAdjustedRef.current = false; animateTo(fitWorld()); }} aria-label="Reset view">Reset view</button>
-          <p className="srOnly" aria-live="polite">{levelText}</p>
+          {kiosk ? null : (
+            <button type="button" className="secondary" onClick={goHome} aria-label="Reset view">Reset view</button>
+          )}
+          <p className="publicFlagLevel" aria-live="polite">{levelText}</p>
         </div>
       </div>
 
       {error ? <p className="message error" role="alert">{error}</p> : null}
 
+      <div className="publicFlagStage">
       <div
         ref={viewportRef}
         className="publicFlagViewport"
@@ -540,8 +955,12 @@ export default function PublicFlagMap({
               style={{ left: section.x, top: section.y, width: section.width, height: section.height }}
               aria-label={`${section.section}, ${section.occupiedCount} of ${section.flagCount} flags`}
               onClick={() => acceptClick(() => {
+                historyRef.current = [...historyRef.current, { ...viewRef.current }].slice(-16);
                 userAdjustedRef.current = true;
                 setSelected(null);
+                setHighlightId(null);
+                setRevealId(null);
+                writeFlagParam(null);
                 animateTo(fitView(section, viewportSize(), 48));
               })}
             >
@@ -549,49 +968,46 @@ export default function PublicFlagMap({
               <span>{section.occupiedCount} of {section.flagCount}</span>
             </button>
           ))}
-          {visibleFlags.map((flag) => (
-            <button
-              id={`public-flag-${flag.flagGridId}`}
-              key={flag.flagGridId}
-              type="button"
-              className={flag.flagGridId === highlightId ? "publicFlagMarker isHighlighted" : "publicFlagMarker"}
-              style={{ left: flag.x, top: flag.y, width: flag.width, height: flag.height }}
-              aria-current={flag.flagGridId === highlightId ? "true" : undefined}
-              aria-label={[flag.flagGridName, flag.displayName || flag.status, flag.rank, flag.serviceBranchName].filter(Boolean).join(", ")}
-              onClick={() => acceptClick(() => openFlag(flag))}
-            >
-              {flag.logoUrl ? <img src={withApiBase(apiBase, flag.logoUrl)} alt="" /> : <span className="publicFlagMarkerStatus">{flag.status === "Reserved" ? "Reserved" : flag.status === "Open" ? "Open" : ""}</span>}
-              {gates.names ? <em>{flag.displayName || flag.flagGridName}</em> : null}
-              {gates.ranks && flag.rank ? <small>{flag.rank}</small> : null}
-            </button>
-          ))}
-        </div>
-        {selected ? (
-          <aside className="publicFlagDetail" aria-label="Flag detail">
-            {selected.photoUrl ? <img className="publicFlagPhoto" src={withApiBase(apiBase, selected.photoUrl)} alt="" /> : null}
-            <h3>{selected.displayName}</h3>
-            {selected.rank ? <p>{selected.rank}</p> : null}
-            {selected.serviceBranchName ? (
-              <p>
-                {selected.logoUrl ? <img src={withApiBase(apiBase, selected.logoUrl)} alt="" /> : null}
-                {selected.serviceBranchName}
-                {selected.serviceBranchCategoryName ? ` · ${selected.serviceBranchCategoryName}` : ""}
-              </p>
-            ) : null}
-            <p>{selected.flagGridName} · Section {selected.section}</p>
-            {flagYears(selected) ? <p>{flagYears(selected)}</p> : null}
-            {selected.kia ? <p>Killed in action</p> : null}
-            {selected.description ? <p>{selected.description}</p> : null}
-            {selected.conflictsServed ? <p>Conflicts served: {selected.conflictsServed}</p> : null}
-            {selected.awards ? <p>Awards: {selected.awards}</p> : null}
-            {selected.honoreeId ? (
-              <button type="button" onClick={() => onPreviewCard(selected.honoreeId!, selected.displayName || "Honoree")}>
-                Preview card
+          {visibleFlags.map((flag) => {
+            const revealed = flag.flagGridId === revealId;
+            const highlighted = flag.flagGridId === highlightId;
+            const className = [
+              "publicFlagMarker",
+              highlighted ? "isHighlighted" : "",
+              revealed ? "isRevealed" : ""
+            ].filter(Boolean).join(" ");
+            return (
+              <button
+                id={`public-flag-${flag.flagGridId}`}
+                key={flag.flagGridId}
+                type="button"
+                className={className}
+                style={{ left: flag.x, top: flag.y, width: flag.width, height: flag.height }}
+                aria-current={highlighted ? "true" : undefined}
+                aria-label={[flag.flagGridName, flag.displayName || flag.status, flag.rank, flag.serviceBranchName].filter(Boolean).join(", ")}
+                onClick={() => acceptClick(() => openFlag(flag))}
+              >
+                {flag.logoUrl ? <img src={withApiBase(apiBase, flag.logoUrl)} alt="" /> : <span className="publicFlagMarkerStatus">{flag.status === "Reserved" ? "Reserved" : flag.status === "Open" ? "Open" : ""}</span>}
+                {gates.names ? <em>{flag.displayName || flag.flagGridName}</em> : null}
+                {gates.ranks && flag.rank ? <small>{flag.rank}</small> : null}
               </button>
-            ) : null}
-            <button type="button" className="secondary" onClick={() => setSelected(null)}>Close</button>
-          </aside>
-        ) : null}
+            );
+          })}
+        </div>
+      </div>
+      {selected ? (
+        <FlagDetail
+          flag={selected}
+          revealed={selected.flagGridId === revealId}
+          shareUrl={shareUrl}
+          onPreview={onPreviewCard}
+          onClose={() => {
+            setSelected(null);
+            setRevealId(null);
+            writeFlagParam(null);
+          }}
+        />
+      ) : null}
       </div>
     </section>
   );
