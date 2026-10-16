@@ -8,7 +8,9 @@
 - HTML, CSS, JavaScript, and JSON responses can be compressed with Brotli or gzip. Hashed files under /assets can be cached for a year. The flag map page itself stays uncached and preloads the section list and the search index.
 - The search index no longer repeats the separate name parts. Search still matches the display name, including a middle name or suffix when those words are in it.
 - On the public Flag Map, the small navy, gold, and cream flag mark next to the title is gone. Other pages are unchanged.
-- The field is drawn as you see it from the pavilion: row 1 is nearest the bottom of the screen, an aisle sits between rows 20 and 21 when both are present, and the columns run YY through Z to AA from left to right. Labels are not mirrored. Seats come only from the data.
+- The field is drawn as you see it from the pavilion: row 1 is nearest the bottom of the screen, an aisle sits between rows 20 and 21, and the columns run YY through Z to AA from left to right. Every spot on that field map is drawn, including empty seats and the reserved Z01–Z09 block, plus any extra spot the data actually has. Row and column labels stay readable. A pavilion marker sits below Z01.
+- Flags I submitted appears only when you are signed in and your saved name can identify you. Choosing it fits every flag tied to that sign-in and plays the wave on each of them. The response does not include your name. The signed-out event kiosk has no current submitter, so that tab stays hidden there.
+- The honoree photo in the flag detail keeps its own shape. The whole picture stays visible, the height is capped, and a navy background fills the space beside it on the desktop, phone, and kiosk.
 - Branch seals and logos are not drawn or requested unless fewer than 10 flags are on screen. Farther out, each flag is a colored dot. The seal fades in once that close view is reached. During a wheel or pinch, the map only moves the existing picture and redraws when the gesture ends.
 
 ## 2.0.0

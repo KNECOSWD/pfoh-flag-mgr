@@ -230,8 +230,91 @@ export function pointerIsTap(start, end, slop = FLAG_MAP_ZOOM.tapSlop) {
   return Math.hypot(end.x - start.x, end.y - start.y) <= slop;
 }
 
+export const FIELD_MAP_ROWS = 40;
+export const FIELD_MAP_Z_ROWS = 9;
+const ROW_LABEL_WIDTH = 28;
+const PAVILION_BAND = 22;
+
+function templateFlagId(section, row) {
+  return -((pavilionColumnIndex(section) + 1) * 1000 + row);
+}
+
+function mergeStadiumSections(sections) {
+  const buckets = new Map();
+  for (const section of PAVILION_COLUMNS_LEFT_TO_RIGHT) {
+    const rows = section === "Z" ? FIELD_MAP_Z_ROWS : FIELD_MAP_ROWS;
+    const seats = [];
+    for (let row = 1; row <= rows; row += 1) {
+      seats.push({
+        flagGridId: templateFlagId(section, row),
+        flagGridName: `${section}-${String(row).padStart(2, "0")}`,
+        columnNumber: row,
+        section,
+        status: section === "Z" ? "Reserved" : "Open",
+        template: true
+      });
+    }
+    buckets.set(section, { section, seats, onFieldMap: true });
+  }
+
+  for (const section of Array.isArray(sections) ? sections : []) {
+    const key = String(section?.section || "").trim().toUpperCase();
+    if (!key) continue;
+    if (!buckets.has(key)) {
+      buckets.set(key, { section: key, seats: [], onFieldMap: false });
+    }
+    const bucket = buckets.get(key);
+    const byRow = new Map(bucket.seats.map((seat) => [seatRow(seat), seat]));
+    for (const seat of Array.isArray(section.seats) ? section.seats : []) {
+      const row = seatRow(seat);
+      if (!row) continue;
+      byRow.set(row, {
+        ...seat,
+        section: key,
+        columnNumber: Number.isFinite(seat.columnNumber) ? seat.columnNumber : row,
+        template: false
+      });
+    }
+    bucket.seats = bucket.onFieldMap
+      ? [...byRow.values()]
+      : [...byRow.values()].filter((seat) => !seat.template);
+  }
+
+  return [...buckets.values()].map((bucket) => ({
+    section: bucket.section,
+    flagCount: bucket.seats.length,
+    occupiedCount: bucket.seats.filter((seat) => seat.status === "Occupied").length,
+    seats: bucket.seats
+  }));
+}
+
+export function currentSubmitterReady(name) {
+  const trimmed = String(name || "").trim().replace(/\s+/g, " ");
+  if (!trimmed) return false;
+  const normalized = trimmed.toLowerCase();
+  if (normalized === "unknown" || normalized === "unknown unknown" || normalized === "supporter") return false;
+  const parts = trimmed.split(" ").filter((part) => part && !/[0-9@_]/.test(part) && !(part.includes(".") && part.indexOf(".") < part.length - 1));
+  if (parts.length < 2) return false;
+  return parts[0].length >= 2 && parts[parts.length - 1].length >= 3;
+}
+
+export function boundsOf(items) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const item of Array.isArray(items) ? items : []) {
+    minX = Math.min(minX, item.x);
+    minY = Math.min(minY, item.y);
+    maxX = Math.max(maxX, item.x + item.width);
+    maxY = Math.max(maxY, item.y + item.height);
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { x: minX, y: minY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) };
+}
+
 export function layoutFlagField(sections) {
-  const source = Array.isArray(sections) ? sections : [];
+  const source = mergeStadiumSections(sections);
   const ordered = source
     .map((section, index) => ({ section, index }))
     .sort((left, right) => {
@@ -256,14 +339,16 @@ export function layoutFlagField(sections) {
       if (row > FIELD_AISLE_AFTER_ROW) hasHigh = true;
     }
   }
-  const aisle = hasLow && hasHigh ? FIELD_AISLE : 0;
-  const fieldHeight = rowTop(1, maxRow, aisle) + FLAG_HEIGHT;
+  const aisleGap = hasLow && hasHigh ? FIELD_AISLE : 0;
+  const fieldHeight = rowTop(1, maxRow, aisleGap) + FLAG_HEIGHT;
   const placedSections = [];
+  const placedCells = [];
   const placedFlags = [];
+  const rows = new Set();
 
   ordered.forEach((section, index) => {
     const seats = Array.isArray(section.seats) ? section.seats : [];
-    const x = index * (FLAG_WIDTH + SECTION_GAP);
+    const x = ROW_LABEL_WIDTH + index * (FLAG_WIDTH + SECTION_GAP);
     placedSections.push({
       section: section.section,
       flagCount: section.flagCount ?? seats.length,
@@ -276,21 +361,59 @@ export function layoutFlagField(sections) {
     for (const seat of seats) {
       const row = seatRow(seat);
       if (!row) continue;
-      placedFlags.push({
+      rows.add(row);
+      const placed = {
         ...seat,
         x,
-        y: rowTop(row, maxRow, aisle),
+        y: rowTop(row, maxRow, aisleGap),
         width: FLAG_WIDTH,
         height: FLAG_HEIGHT
-      });
+      };
+      placedCells.push(placed);
+      if (!seat.template) placedFlags.push(placed);
     }
   });
 
+  const contentRight = Math.max(ROW_LABEL_WIDTH + 1, ...placedSections.map((section) => section.x + section.width));
+  const zSection = placedSections.find((section) => section.section === "Z") ?? null;
+  const pavilion = zSection
+    ? { x: zSection.x, y: fieldHeight + LABEL_BAND, width: zSection.width, height: PAVILION_BAND, label: "Pavilion" }
+    : null;
+  const rowLabels = [...rows].sort((left, right) => right - left).map((row) => ({
+    row,
+    label: String(row),
+    x: 0,
+    y: rowTop(row, maxRow, aisleGap),
+    width: ROW_LABEL_WIDTH - 4,
+    height: FLAG_HEIGHT
+  }));
+  const columnLabels = placedSections.map((section) => ({
+    section: section.section,
+    label: section.section,
+    x: section.x,
+    y: fieldHeight,
+    width: section.width,
+    height: LABEL_BAND
+  }));
+  const aisle = aisleGap
+    ? {
+        x: ROW_LABEL_WIDTH,
+        y: rowTop(FIELD_AISLE_AFTER_ROW + 1, maxRow, aisleGap) + FLAG_HEIGHT,
+        width: Math.max(1, contentRight - ROW_LABEL_WIDTH),
+        height: aisleGap
+      }
+    : null;
+
   return {
     sections: placedSections,
+    cells: placedCells,
     flags: placedFlags,
-    worldWidth: Math.max(1, ...placedSections.map((section) => section.x + section.width)),
-    worldHeight: Math.max(1, ...placedSections.map((section) => section.y + section.height))
+    rowLabels,
+    columnLabels,
+    aisle,
+    pavilion,
+    worldWidth: contentRight,
+    worldHeight: Math.max(fieldHeight + LABEL_BAND, pavilion ? pavilion.y + pavilion.height : 0, 1)
   };
 }
 

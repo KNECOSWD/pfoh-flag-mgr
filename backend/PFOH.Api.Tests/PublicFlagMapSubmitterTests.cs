@@ -241,6 +241,52 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
         Assert.Contains(factory.Logs, line => line.Contains("outcome ok", StringComparison.Ordinal) && line.Contains("198.51.100.61", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task Current_submitter_flags_require_sign_in_and_omit_the_name()
+    {
+        factory.Logs.Clear();
+        using var anonymous = await factory.CreateClient().GetAsync("/api/public/flag-map/mine");
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+
+        using var mine = await SendMine(factory, "198.51.100.80", CanaryOid, $"{CanaryFirst} {CanaryLast}");
+        var body = await mine.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, mine.StatusCode);
+        using var json = JsonDocument.Parse(body);
+        var names = json.RootElement.GetProperty("flags").EnumerateArray()
+            .Select(flag => flag.GetProperty("displayName").GetString())
+            .ToList();
+        Assert.Contains("Visible Hero", names);
+        Assert.Contains("Claimed Flag", names);
+        Assert.Equal(2, names.Count);
+        Assert.False(json.RootElement.TryGetProperty("refine", out _));
+        AssertNoCanary(body);
+        AssertNoStore(mine);
+
+        var logs = string.Join('\n', factory.Logs);
+        Assert.DoesNotContain(CanaryFirst, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(CanaryLast, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(CanaryEmail, logs, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(factory.Logs, line => line.Contains("outcome ok", StringComparison.Ordinal) && line.Contains("count 2", StringComparison.Ordinal));
+
+        using var wide = await SendMine(factory, "198.51.100.81", "wide-oid", "Wide Net");
+        var wideBody = await wide.Content.ReadAsStringAsync();
+        using var wideJson = JsonDocument.Parse(wideBody);
+        Assert.Equal(11, wideJson.RootElement.GetProperty("flags").GetArrayLength());
+        Assert.False(wideJson.RootElement.TryGetProperty("refine", out _));
+        Assert.DoesNotContain("Wide", wideBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("Net", wideBody, StringComparison.Ordinal);
+        AssertNoStore(wide);
+    }
+
+    private static Task<HttpResponseMessage> SendMine(Factory factory, string ip, string oid, string name)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/public/flag-map/mine");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", ip);
+        request.Headers.TryAddWithoutValidation(TestAuthHandler.OidHeader, oid);
+        request.Headers.TryAddWithoutValidation(TestAuthHandler.NameHeader, name);
+        return factory.CreateClient().SendAsync(request);
+    }
+
     private static string Message(string json)
     {
         using var document = JsonDocument.Parse(json);

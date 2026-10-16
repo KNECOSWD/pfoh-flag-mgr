@@ -11379,6 +11379,63 @@ html.flagMapKiosk a {
   will-change: transform;
 }
 
+.publicFlagSeat,
+.publicFlagRowLabel,
+.publicFlagColumnLabel,
+.publicFlagAisle,
+.publicFlagPavilion {
+  position: absolute;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.publicFlagSeat {
+  border-radius: 3px;
+  background: rgba(244, 239, 228, 0.28);
+  border: 1px solid rgba(255, 248, 232, 0.22);
+}
+
+.publicFlagSeat.isReserved {
+  background: rgba(225, 184, 74, 0.72);
+  border-color: #e1b84a;
+}
+
+.publicFlagRowLabel,
+.publicFlagColumnLabel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffe7a3;
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.publicFlagRowLabel {
+  justify-content: flex-end;
+  padding-right: 2px;
+}
+
+.publicFlagColumnLabel {
+  z-index: 2;
+}
+
+.publicFlagAisle {
+  background: rgba(7, 21, 38, 0.45);
+}
+
+.publicFlagPavilion {
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: #e1b84a;
+  color: #102033;
+  font-size: 11px;
+  font-weight: 750;
+}
+
 .publicFlagTile,
 .publicFlagMarker {
   position: absolute;
@@ -11565,12 +11622,28 @@ html.flagMapKiosk a {
   white-space: pre-wrap;
 }
 
-.publicFlagPhoto {
-  width: 100% !important;
-  height: min(34vh, 280px) !important;
-  max-height: none !important;
-  object-fit: cover;
+.publicFlagPhotoFrame {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-height: min(34vh, 280px);
+  overflow: hidden;
+  background: #0b1f3a;
   border-radius: 22px 22px 0 0;
+}
+
+.publicFlagPhoto {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: min(34vh, 280px);
+  object-fit: contain;
+  object-position: center center;
+  image-orientation: from-image;
+  background: #0b1f3a;
 }
 
 .publicFlagQrBlock {
@@ -11665,8 +11738,9 @@ html.flagMapKiosk a {
   font-size: 1.15rem;
 }
 
+.publicFlagMap.isKiosk .publicFlagPhotoFrame,
 .publicFlagMap.isKiosk .publicFlagPhoto {
-  height: min(38vh, 340px) !important;
+  max-height: min(38vh, 340px);
 }
 
 .publicFlagMap.isKiosk .publicFlagQr {
@@ -11733,8 +11807,10 @@ html.flagMapKiosk a {
     z-index: 20;
   }
 
+  .publicFlagMap:not(.isKiosk) .publicFlagPhotoFrame,
   .publicFlagMap:not(.isKiosk) .publicFlagPhoto {
-    height: 140px !important;
+    max-height: min(32vh, 220px);
+    height: auto;
   }
 
   .publicFlagViewport {

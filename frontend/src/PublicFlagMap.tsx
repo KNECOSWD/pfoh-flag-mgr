@@ -9,6 +9,7 @@ import {
   createPinchBatch,
   createWheelBatch,
   branchDotColor,
+  boundsOf,
   countFlagsOnScreen,
   createFlagMapLoader,
   cullRects,
@@ -16,7 +17,6 @@ import {
   fitView,
   flagDeepLink,
   flagMapDetailGates,
-  lookupSubmittedFlags,
   flagMapLayerOpacities,
   flagYears,
   gestureTransform,
@@ -164,13 +164,15 @@ function FlagDetail({
   return (
     <aside className={revealed ? "publicFlagDetail isRevealed" : "publicFlagDetail"} aria-label="Flag detail">
       {showPhoto && flag.photoUrl ? (
-        <img
-          className="publicFlagPhoto"
-          src={withApiBase(apiBase, flag.photoUrl)}
-          alt=""
-          draggable={false}
-          onError={() => setShowPhoto(false)}
-        />
+        <div className="publicFlagPhotoFrame">
+          <img
+            className="publicFlagPhoto"
+            src={withApiBase(apiBase, flag.photoUrl)}
+            alt=""
+            draggable={false}
+            onError={() => setShowPhoto(false)}
+          />
+        </div>
       ) : null}
       <div className="publicFlagDetailBody">
         {flag.displayName ? <h3>{flag.displayName}</h3> : null}
@@ -208,11 +210,15 @@ function FlagDetail({
 export default function PublicFlagMap({
   onPreviewCard,
   kiosk: kioskLocked = false,
-  onExitKiosk
+  onExitKiosk,
+  submittedFlagsEnabled = false,
+  loadSubmittedFlags
 }: {
   onPreviewCard: (honoreeId: number, title: string) => void;
   kiosk?: boolean;
   onExitKiosk?: () => void;
+  submittedFlagsEnabled?: boolean;
+  loadSubmittedFlags?: () => Promise<ReadonlyArray<Record<string, unknown>>>;
 }) {
   const listId = useId();
   const helpId = useId();
@@ -262,12 +268,14 @@ export default function PublicFlagMap({
   const [error, setError] = useState(location.flagRejected ? "That flag is not on the map." : "");
   const [loading, setLoading] = useState(true);
   const [visibleSectionKeys, setVisibleSectionKeys] = useState<string[]>([]);
+  const [visibleCellIds, setVisibleCellIds] = useState<number[]>([]);
   const [visibleFlagIds, setVisibleFlagIds] = useState<number[]>([]);
   const [gates, setGates] = useState<Gates>(EMPTY_GATES);
   const [levelText, setLevelText] = useState("Sections");
   const [selected, setSelected] = useState<FlagBox | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const [revealId, setRevealId] = useState<number | null>(null);
+  const [waveIds, setWaveIds] = useState<number[]>([]);
   const [attracting, setAttracting] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
   const [pinDigits, setPinDigits] = useState("");
@@ -281,6 +289,12 @@ export default function PublicFlagMap({
     const keys = new Set(visibleSectionKeys);
     return field.sections.filter((section) => keys.has(section.section));
   }, [field, visibleSectionKeys]);
+
+  const visibleCells = useMemo(() => {
+    if (!field) return [];
+    const ids = new Set(visibleCellIds);
+    return field.cells.filter((cell) => ids.has(cell.flagGridId));
+  }, [field, visibleCellIds]);
 
   const visibleFlags = useMemo(() => {
     if (!field) return [];
@@ -351,9 +365,11 @@ export default function PublicFlagMap({
       const nextGates = flagMapDetailGates(view.scale, fitScaleRef.current, flagsOnScreen);
       gatesRef.current = nextGates;
       const sectionKeys = cullRects(layout.sections, seen).map((section: Box) => section.section as string);
+      const cellIds = cullRects(layout.cells, seen).map((cell: { flagGridId: number }) => cell.flagGridId);
       const flagIds = cullRects(layout.flags, seen).map((flag: FlagBox) => flag.flagGridId);
       setGates((current) => (sameGates(current, nextGates) ? current : nextGates));
       setVisibleSectionKeys((current) => (current.join("|") === sectionKeys.join("|") ? current : sectionKeys));
+      setVisibleCellIds((current) => (sameIds(current, cellIds) ? current : cellIds));
       setVisibleFlagIds((current) => (sameIds(current, flagIds) ? current : flagIds));
       const viewport = viewportRef.current;
       if (viewport) {
@@ -458,6 +474,7 @@ export default function PublicFlagMap({
     historyRef.current = [...historyRef.current, { ...viewRef.current }].slice(-16);
     setHighlightId(flag.flagGridId);
     setSelected(flag.honoreeId ? flag : null);
+    setWaveIds([]);
     setRevealId(options?.celebrate && flag.honoreeId ? flag.flagGridId : null);
     writeFlagParam(flag.flagGridId);
     const size = viewportSize();
@@ -481,6 +498,7 @@ export default function PublicFlagMap({
     setSelected(null);
     setHighlightId(null);
     setRevealId(null);
+    setWaveIds([]);
     setQuery("");
     setOpen(false);
     userAdjustedRef.current = false;
@@ -492,6 +510,7 @@ export default function PublicFlagMap({
   function goBack() {
     exitAttract();
     setRevealId(null);
+    setWaveIds([]);
     setSelected(null);
     setHighlightId(null);
     writeFlagParam(null);
@@ -513,6 +532,7 @@ export default function PublicFlagMap({
     setSelected(cleared.selected);
     setHighlightId(cleared.highlightId);
     setRevealId(cleared.revealId);
+    setWaveIds([]);
     setQuery(cleared.query);
     setOpen(cleared.open);
     setActive(cleared.active);
@@ -651,6 +671,16 @@ export default function PublicFlagMap({
     const timer = window.setTimeout(() => setRevealId((current) => (current === revealId ? null : current)), 1400);
     return () => window.clearTimeout(timer);
   }, [revealId]);
+
+  useEffect(() => {
+    if (waveIds.length === 0) return;
+    const timer = window.setTimeout(() => setWaveIds([]), 2400);
+    return () => window.clearTimeout(timer);
+  }, [waveIds]);
+
+  useEffect(() => {
+    if (!submittedFlagsEnabled && searchTab === "submitted") setSearchTab("honoree");
+  }, [submittedFlagsEnabled, searchTab]);
 
   useLayoutEffect(() => {
     const root = document.documentElement;
@@ -981,46 +1011,45 @@ export default function PublicFlagMap({
     }
   }
 
-  async function runSubmitterLookup() {
-    setSubmitterBusy(true);
+  async function showMyFlags() {
+    if (!submittedFlagsEnabled || !loadSubmittedFlags) return;
+    setSearchTab("submitted");
     setSubmitterNote("");
     setSubmitterHits([]);
+    setSubmitterBusy(true);
+    setSelected(null);
+    setHighlightId(null);
+    setRevealId(null);
+    writeFlagParam(null);
     try {
-      const result = await lookupSubmittedFlags(submitterFirst.trim(), submitterLast.trim(), undefined, apiBase);
-      if (result.status === 429) {
-        setSubmitterNote("Too many lookups. Wait a minute and try again.");
+      const hits = await loadSubmittedFlags();
+      const flags = (layoutRef.current?.flags ?? []) as FlagBox[];
+      const matched: FlagBox[] = [];
+      for (const hit of hits ?? []) {
+        const id = Number(hit.flagGridId);
+        const honoreeId = Number(hit.honoreeId);
+        const flag = flags.find((item) => item.flagGridId === id)
+          ?? (Number.isFinite(honoreeId) ? flags.find((item) => item.honoreeId === honoreeId) : undefined);
+        if (flag && !matched.some((item) => item.flagGridId === flag.flagGridId)) matched.push(flag);
+      }
+      if (matched.length === 0) {
+        setWaveIds([]);
+        setSubmitterNote("No flags found");
         return;
       }
-      const body = result.body as { message?: string; refine?: boolean; flags?: SearchHit[] } | null;
-      if (result.status === 400) {
-        setSubmitterNote(body?.message || "Enter at least 2 letters of the first name and 3 of the last name.");
-        return;
+      setSubmitterNote("");
+      setWaveIds(matched.map((flag) => flag.flagGridId));
+      const bounds = boundsOf(matched);
+      if (bounds) {
+        userAdjustedRef.current = true;
+        animateTo(fitView(bounds, viewportSize(), 48));
       }
-      if (body?.refine) {
-        setSubmitterNote("Too many flags match. Enter more of the name.");
-        return;
-      }
-      if (!body?.flags || body.flags.length === 0) {
-        setSubmitterNote(body?.message || "No flags found");
-        return;
-      }
-      setSubmitterHits(body.flags);
     } catch {
+      setWaveIds([]);
       setSubmitterNote("No flags found");
     } finally {
       setSubmitterBusy(false);
     }
-  }
-
-  function openSubmitterHit(hit: SearchHit) {
-    const flags = layoutRef.current?.flags as FlagBox[] | undefined;
-    const flag = flags?.find((item) => item.flagGridId === hit.flagGridId) ?? flags?.find((item) => item.honoreeId === hit.honoreeId);
-    if (!flag) {
-      setSubmitterNote("No flags found");
-      return;
-    }
-    setSubmitterNote("");
-    openFlag(flag, { celebrate: true });
   }
 
   function beginExitHold(event: { preventDefault: () => void; stopPropagation: () => void }) {
@@ -1084,10 +1113,12 @@ export default function PublicFlagMap({
         </div>
         <div className="publicFlagSearch">
           <div className="publicFlagSearchTabs" role="tablist" aria-label="Flag search">
-            <button type="button" role="tab" aria-selected={searchTab === "honoree"} className={searchTab === "honoree" ? "isActive" : ""} onClick={() => setSearchTab("honoree")}>Find a honoree</button>
-            <button type="button" role="tab" aria-selected={searchTab === "submitted"} className={searchTab === "submitted" ? "isActive" : ""} onClick={() => setSearchTab("submitted")}>Flags I submitted</button>
+            <button type="button" role="tab" aria-selected={searchTab === "honoree"} className={searchTab === "honoree" ? "isActive" : ""} onClick={() => { setSearchTab("honoree"); setWaveIds([]); }}>Find a honoree</button>
+            {submittedFlagsEnabled ? (
+              <button type="button" role="tab" aria-selected={searchTab === "submitted"} className={searchTab === "submitted" ? "isActive" : ""} onClick={() => { void showMyFlags(); }}>Flags I submitted</button>
+            ) : null}
           </div>
-          {searchTab === "honoree" ? (
+          {searchTab === "honoree" || !submittedFlagsEnabled ? (
             <>
               <label htmlFor="public-flag-search">Search honorees</label>
               <input
@@ -1134,52 +1165,7 @@ export default function PublicFlagMap({
               ) : null}
             </>
           ) : (
-            <form
-              className="publicFlagSubmitter"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void runSubmitterLookup();
-              }}
-            >
-              <label htmlFor="submitter-first">First name
-                <input
-                  id="submitter-first"
-                  type="text"
-                  inputMode="text"
-                  enterKeyHint="next"
-                  autoComplete="given-name"
-                  autoCapitalize="words"
-                  value={submitterFirst}
-                  onChange={(event) => setSubmitterFirst(event.target.value)}
-                />
-              </label>
-              <label htmlFor="submitter-last">Last name
-                <input
-                  id="submitter-last"
-                  type="text"
-                  inputMode="text"
-                  enterKeyHint="search"
-                  autoComplete="family-name"
-                  autoCapitalize="words"
-                  value={submitterLast}
-                  onChange={(event) => setSubmitterLast(event.target.value)}
-                />
-              </label>
-              <button type="submit" disabled={submitterBusy}>{submitterBusy ? "Looking…" : "Find flags"}</button>
-              {submitterNote ? <p className="message" role="status">{submitterNote}</p> : null}
-              {submitterHits.length > 0 ? (
-                <ul className="publicFlagSuggestions" aria-label="Flags for that name">
-                  {submitterHits.map((hit) => (
-                    <li key={`${hit.honoreeId}-${hit.flagGridId}`}>
-                      <button type="button" onClick={() => openSubmitterHit(hit)}>
-                        <strong>{hit.displayName}</strong>
-                        <span>{[hit.serviceBranchName, hit.section, hit.flagGridName].filter(Boolean).join(" · ")}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </form>
+            <p className="message" role="status">{submitterBusy ? "Looking…" : (submitterNote || "Showing the flags you submitted.")}</p>
           )}
         </div>
         <div className="publicFlagToolbar">
@@ -1207,6 +1193,22 @@ export default function PublicFlagMap({
       >
         {loading ? <p className="publicFlagLoading">Loading the flag map…</p> : null}
         <div ref={layerRef} className="publicFlagLayer" style={{ width: field?.worldWidth, height: field?.worldHeight }}>
+          {field?.aisle ? (
+            <div className="publicFlagAisle" style={{ left: field.aisle.x, top: field.aisle.y, width: field.aisle.width, height: field.aisle.height }} />
+          ) : null}
+          {visibleCells.map((cell) => (
+            <div
+              key={`cell-${cell.flagGridId}`}
+              className={cell.status === "Reserved" ? "publicFlagSeat isReserved" : "publicFlagSeat"}
+              style={{ left: cell.x, top: cell.y, width: cell.width, height: cell.height }}
+            />
+          ))}
+          {field?.rowLabels.map((label) => (
+            <div key={`row-${label.row}`} className="publicFlagRowLabel" style={{ left: label.x, top: label.y, width: label.width, height: label.height }}>{label.label}</div>
+          ))}
+          {field?.pavilion ? (
+            <div className="publicFlagPavilion" style={{ left: field.pavilion.x, top: field.pavilion.y, width: field.pavilion.width, height: field.pavilion.height }}>{field.pavilion.label}</div>
+          ) : null}
           {visibleSections.map((section) => (
             <button
               key={section.section}
@@ -1220,16 +1222,19 @@ export default function PublicFlagMap({
                 setSelected(null);
                 setHighlightId(null);
                 setRevealId(null);
+                setWaveIds([]);
                 writeFlagParam(null);
                 animateTo(fitView(section, viewportSize(), 48));
               })}
             >
-              <strong>{section.section}</strong>
               <span>{section.occupiedCount} of {section.flagCount}</span>
             </button>
           ))}
+          {field?.columnLabels.map((label) => (
+            <div key={`col-${label.section}`} className="publicFlagColumnLabel" style={{ left: label.x, top: label.y, width: label.width, height: label.height }}>{label.label}</div>
+          ))}
           {visibleFlags.map((flag) => {
-            const revealed = flag.flagGridId === revealId;
+            const revealed = flag.flagGridId === revealId || waveIds.includes(flag.flagGridId);
             const highlighted = flag.flagGridId === highlightId;
             const className = [
               "publicFlagMarker",

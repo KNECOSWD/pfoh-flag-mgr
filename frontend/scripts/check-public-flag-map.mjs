@@ -16,7 +16,12 @@ import {
   countFlagsOnScreen,
   flagMapDetailGates,
   flagMapLayerOpacities,
+  boundsOf,
+  currentSubmitterReady,
+  FIELD_MAP_ROWS,
+  FIELD_MAP_Z_ROWS,
   layoutFlagField,
+  PAVILION_COLUMNS_LEFT_TO_RIGHT,
   sealImagesAllowed,
   SEAL_ON_SCREEN_LIMIT,
   pointerDragCapture,
@@ -176,7 +181,10 @@ test("the field is laid out as seen from the pavilion", () => {
       section: "Z",
       flagCount: 1,
       occupiedCount: 0,
-      seats: [{ flagGridId: 3, flagGridName: "Z-01", columnNumber: 1, section: "Z", status: "Reserved" }]
+      seats: [
+        { flagGridId: 3, flagGridName: "Z-01", columnNumber: 1, section: "Z", status: "Reserved" },
+        { flagGridId: 6, flagGridName: "Z-15", columnNumber: 15, section: "Z", status: "Occupied" }
+      ]
     },
     {
       section: "YY",
@@ -191,7 +199,7 @@ test("the field is laid out as seen from the pavilion", () => {
       seats: [{ flagGridId: 5, flagGridName: "QQ-01", columnNumber: 1, section: "QQ", status: "Open" }]
     }
   ]);
-  assert.deepEqual(field.sections.map((section) => section.section), ["YY", "Z", "AA", "QQ"]);
+  assert.deepEqual(field.sections.map((section) => section.section), [...PAVILION_COLUMNS_LEFT_TO_RIGHT, "QQ"]);
   const row1 = field.flags.find((flag) => flag.flagGridId === 1);
   const row21 = field.flags.find((flag) => flag.flagGridId === 2);
   const row40 = field.flags.find((flag) => flag.flagGridId === 4);
@@ -201,8 +209,68 @@ test("the field is laid out as seen from the pavilion", () => {
   const unknown = field.sections.find((section) => section.section === "QQ");
   const aa = field.sections.find((section) => section.section === "AA");
   assert.ok(unknown.x > aa.x);
-  assert.equal(field.flags.length, 5);
+  assert.equal(field.flags.length, 6);
   assert.equal(field.flags.some((flag) => flag.flagGridName === "Z-10"), false);
+  assert.equal(field.cells.some((cell) => cell.flagGridName === "Z-10"), false);
+  const zCells = field.cells.filter((cell) => cell.section === "Z");
+  assert.equal(zCells.length, FIELD_MAP_Z_ROWS + 1);
+  assert.ok(zCells.filter((cell) => cell.columnNumber <= FIELD_MAP_Z_ROWS).every((cell) => cell.status === "Reserved"));
+  assert.equal(field.cells.filter((cell) => cell.section === "QQ").length, 1);
+  assert.equal(field.cells.filter((cell) => cell.section === "AA").length, FIELD_MAP_ROWS);
+  assert.ok(field.aisle);
+  assert.ok(field.aisle.y > row21.y);
+  assert.ok(field.aisle.y < row1.y);
+  const z01 = field.cells.find((cell) => cell.flagGridName === "Z-01");
+  const zSection = field.sections.find((section) => section.section === "Z");
+  assert.equal(field.pavilion.label, "Pavilion");
+  assert.equal(field.pavilion.x, zSection.x);
+  assert.ok(field.pavilion.y >= z01.y + z01.height);
+  assert.ok(field.rowLabels.some((label) => label.row === 1 && label.y === z01.y));
+  assert.ok(field.columnLabels.some((label) => label.label === "AA" && label.x === aa.x));
+  const empty = layoutFlagField([]);
+  assert.equal(empty.flags.length, 0);
+  assert.equal(empty.sections.length, PAVILION_COLUMNS_LEFT_TO_RIGHT.length);
+  assert.equal(empty.cells.filter((cell) => cell.section === "Z" && cell.status === "Reserved").length, FIELD_MAP_Z_ROWS);
+  assert.equal(empty.cells.some((cell) => cell.flagGridName === "Z-10"), false);
+});
+
+test("flags I submitted waits for a current submitter", () => {
+  assert.equal(currentSubmitterReady("Ada Lovelace"), true);
+  assert.equal(currentSubmitterReady("Supporter"), false);
+  assert.equal(currentSubmitterReady("unknown"), false);
+  assert.equal(currentSubmitterReady("unknown unknown"), false);
+  assert.equal(currentSubmitterReady("Ada"), false);
+  assert.equal(currentSubmitterReady("user_42 Claimer"), false);
+  assert.equal(boundsOf([{ x: 2, y: 4, width: 10, height: 6 }, { x: 20, y: 1, width: 4, height: 3 }]).width, 22);
+  assert.match(page, /submittedFlagsEnabled \?/);
+  assert.match(page, /void showMyFlags\(\)/);
+  assert.match(page, /boundsOf\(matched\)/);
+  assert.match(page, /setWaveIds\(matched\.map/);
+  assert.match(page, /publicFlagSeat/);
+  assert.match(page, /isReserved/);
+  assert.match(page, /publicFlagRowLabel/);
+  assert.match(page, /publicFlagColumnLabel/);
+  assert.match(page, /publicFlagAisle/);
+  assert.match(page, /publicFlagPavilion/);
+  assert.match(page, /Flags I submitted/);
+  assert.doesNotMatch(page, /submitter-first/);
+  assert.match(app, /currentSubmitterReady\(/);
+  assert.match(app, /loadMySubmittedFlags/);
+  assert.match(css, /\.publicFlagSeat\.isReserved/);
+  assert.match(css, /\.publicFlagPavilion/);
+});
+
+test("the flag detail photo shows the whole picture", () => {
+  const frame = css.slice(css.indexOf(".publicFlagPhotoFrame {"), css.indexOf(".publicFlagQrBlock"));
+  assert.match(frame, /object-fit:\s*contain/);
+  assert.match(frame, /max-height:\s*min\(34vh, 280px\)/);
+  assert.match(frame, /background:\s*#0b1f3a/);
+  assert.doesNotMatch(frame, /object-fit:\s*cover/);
+  assert.match(page, /publicFlagPhotoFrame/);
+  assert.match(css, /\.publicFlagPhoto \{[^}]*object-fit:\s*contain/);
+  assert.doesNotMatch(css, /\.publicFlagPhoto \{[^}]*object-fit:\s*cover/);
+  assert.match(css, /\.publicFlagMap\.isKiosk \.publicFlagPhotoFrame/);
+  assert.match(css, /max-height:\s*min\(32vh, 220px\)/);
 });
 
 test("branch seals render only when fewer than 10 flags are on screen", () => {

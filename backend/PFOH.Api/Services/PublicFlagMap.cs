@@ -256,6 +256,104 @@ public class PublicFlagMap(PfohDbContext db)
         return new SubmitterLookupResult("ok", matches.Count, matches);
     }
 
+    public async Task<IReadOnlyList<PublicFlagSearchDto>> ForCurrentSubmitterAsync(
+        string objectId,
+        string? displayName,
+        CancellationToken ct)
+    {
+        var (nameFirst, nameLast) = SplitDisplayName(displayName);
+        var firstQuery = NormalizeName(nameFirst);
+        var lastQuery = NormalizeName(nameLast);
+        var nameUsable = !UserProfileService.IsPlaceholderDisplayName(displayName)
+            && firstQuery.Length >= 2
+            && lastQuery.Length >= 3
+            && !IsPrivateNameToken(nameFirst)
+            && !IsPrivateNameToken(nameLast);
+
+        var honorees = await db.Honorees
+            .AsNoTracking()
+            .Include(honoree => honoree.FlagGrid)
+            .Include(honoree => honoree.ServiceBranch)
+            .ThenInclude(branch => branch!.ServiceBranchCategory)
+            .Where(honoree =>
+                honoree.IsActive &&
+                honoree.DeletedDate == null &&
+                honoree.FlagGridId != null &&
+                honoree.FlagGrid != null &&
+                honoree.FlagGrid.DeletedDate == null)
+            .ToListAsync(ct);
+
+        var matchedIds = new HashSet<int>();
+        if (nameUsable)
+        {
+            var sponsorIds = honorees
+                .Where(honoree => honoree.SponsorId.HasValue)
+                .Select(honoree => honoree.SponsorId!.Value)
+                .Distinct()
+                .ToList();
+            var sponsorNames = new Dictionary<int, (string FirstName, string LastName)>();
+            if (sponsorIds.Count > 0)
+            {
+                var sponsorRows = await db.Sponsors
+                    .AsNoTracking()
+                    .Where(sponsor => sponsorIds.Contains(sponsor.Id))
+                    .Select(sponsor => new { sponsor.Id, sponsor.FirstName, sponsor.LastName })
+                    .ToListAsync(ct);
+                foreach (var row in sponsorRows)
+                {
+                    sponsorNames[row.Id] = (row.FirstName, row.LastName);
+                }
+            }
+
+            var claimNames = await db.FlagClaims
+                .AsNoTracking()
+                .Where(claim =>
+                    claim.HonoreeId != null &&
+                    (claim.ClaimStatus == "Claimed" || claim.ClaimStatus == "Submitted" || claim.ClaimStatus == "Approved"))
+                .Select(claim => new { claim.HonoreeId, claim.ExternalUserName })
+                .ToListAsync(ct);
+            var claimersByHonoree = claimNames
+                .Where(claim => claim.HonoreeId.HasValue)
+                .GroupBy(claim => claim.HonoreeId!.Value)
+                .ToDictionary(group => group.Key, group => group.Select(claim => SplitDisplayName(claim.ExternalUserName)).ToList());
+
+            foreach (var honoree in honorees)
+            {
+                var sponsorHit = honoree.SponsorId is int sponsorId &&
+                    sponsorNames.TryGetValue(sponsorId, out var sponsorName) &&
+                    NameMatches(sponsorName.FirstName, sponsorName.LastName, firstQuery, lastQuery);
+                var claimHit = claimersByHonoree.TryGetValue(honoree.Id, out var claimers) &&
+                    claimers.Any(name => NameMatches(name.First, name.Last, firstQuery, lastQuery));
+                if (sponsorHit || claimHit)
+                {
+                    matchedIds.Add(honoree.Id);
+                }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(objectId))
+        {
+            var ownedIds = await db.FlagClaims
+                .AsNoTracking()
+                .Where(claim =>
+                    claim.ExternalUserObjectId == objectId &&
+                    claim.HonoreeId != null &&
+                    (claim.ClaimStatus == "Claimed" || claim.ClaimStatus == "Submitted" || claim.ClaimStatus == "Approved"))
+                .Select(claim => claim.HonoreeId!.Value)
+                .ToListAsync(ct);
+            foreach (var id in ownedIds)
+            {
+                matchedIds.Add(id);
+            }
+        }
+
+        return honorees
+            .Where(honoree => matchedIds.Contains(honoree.Id))
+            .Select(ToSearch)
+            .OrderBy(hit => hit.FlagGridName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
     internal static bool IsPrivateNameToken(string? value)
     {
         var token = (value ?? string.Empty).Trim();

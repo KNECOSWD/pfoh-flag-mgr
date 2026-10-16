@@ -20,7 +20,7 @@ Use a fresh browser profile that is signed out.
 
 Check that the window does not show Log in, and that it does not redirect to a Microsoft sign-in page.
 
-Visitors can look up flags they submitted from the Flags I submitted tab. That lookup does not ask them to sign in.
+The Flags I submitted tab is shown only when a visitor is signed in and a usable name is saved for that sign-in. The event kiosk stays signed out, so that tab is not on the kiosk. Visitors at the kiosk look up a honoree by name instead.
 
 ## Leaving the page
 

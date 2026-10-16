@@ -799,6 +799,10 @@ export type UpdateUserProfileRequest = {
   organization?: string;
 };
 
+export function loadMySubmittedFlags(instance: IPublicClientApplication, account: AccountInfo) {
+  return request<{ flags: Array<Record<string, unknown>> }>(instance, account, "/api/public/flag-map/mine");
+}
+
 export const profileApi = {
   get: (instance: IPublicClientApplication, account: AccountInfo) =>
     request<UserProfile>(instance, account, "/api/profile"),
