@@ -482,9 +482,12 @@ export function layoutFlagField(sections) {
   const placedFlags = [];
   const rows = new Set();
 
+  let nextX = gridLeft;
   ordered.forEach((section, index) => {
     const seats = Array.isArray(section.seats) ? section.seats : [];
-    const x = gridLeft + index * (FLAG_WIDTH + FLAG_GAP);
+    const besideZ = section.section === "Z" || ordered[index - 1]?.section === "Z";
+    const x = index === 0 ? nextX : nextX + (besideZ ? SECTION_GAP : FLAG_GAP);
+    nextX = x + FLAG_WIDTH;
     placedSections.push({
       section: section.section,
       flagCount: section.flagCount ?? seats.length,
@@ -579,6 +582,10 @@ export function flagZones(cells) {
     let bucket = [];
     const flush = () => {
       if (bucket.length === 0) return;
+      if (bucket.every((seat) => seat.status === "Reserved")) {
+        bucket = [];
+        return;
+      }
       const rows = bucket.map((seat) => seat.columnNumber);
       const min = Math.min(...rows);
       const max = Math.max(...rows);
@@ -683,6 +690,7 @@ export function spotContents(cell, gates = {}, scale = 1) {
   const innerW = width - pad * 2;
   const innerH = height - pad * 2;
   out.pad = pad / s;
+  if (status === "Reserved") return out;
   if (innerW < 12 || innerH < SPOT_TEXT_PX.number.min * LINE_HEIGHT) return out;
   const number = String(cell?.flagGridName || "").trim();
 
@@ -707,7 +715,7 @@ export function spotContents(cell, gates = {}, scale = 1) {
 
   const numberSize = clamp(innerH * 0.12, SPOT_TEXT_PX.number.min, closest ? 12 : 11);
   const nameRange = closest ? SPOT_TEXT_PX.closestName : SPOT_TEXT_PX.name;
-  const caption = occupied ? (cell?.displayName || "") : status === "Reserved" ? "Reserved" : "Open";
+  const caption = occupied ? (cell?.displayName || "") : "Open";
   if (number && room >= (numberSize + nameRange.min) * LINE_HEIGHT && number.length * numberSize * NUMBER_EM <= innerW) {
     out.number = number;
     out.numberSize = numberSize / s;

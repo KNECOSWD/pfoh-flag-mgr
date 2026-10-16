@@ -11407,8 +11407,8 @@ html.flagMapKiosk a {
 }
 
 .publicFlagSeat.isReserved {
-  background: rgba(225, 184, 74, 0.72);
-  border-color: #e1b84a;
+  background: transparent;
+  border-color: transparent;
 }
 
 .publicFlagRowLabel,
@@ -11475,9 +11475,7 @@ html.flagMapKiosk a {
 .publicFlagZone {
   justify-content: center;
   opacity: var(--section-opacity, 1);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 46%),
-    linear-gradient(160deg, rgba(47, 116, 192, 0.92) 0%, rgba(23, 62, 120, 0.94) 100%);
+  background: #24569a;
   color: #fff8e8;
   border: calc(var(--px, 1px) * 1.5) solid rgba(243, 226, 167, 0.85);
   border-radius: calc(var(--px, 1px) * 4);
@@ -11537,9 +11535,10 @@ html.flagMapKiosk a {
 }
 
 .publicFlagMarker.isReserved {
-  background: #e1b84a;
-  color: #102033;
-  border-color: #e1b84a;
+  background: transparent;
+  color: transparent;
+  border-color: transparent;
+  pointer-events: none;
 }
 
 .publicFlagMarker b,
@@ -11856,10 +11855,6 @@ html.flagMapKiosk a {
   background: #0b1f3a;
   border: 1px dashed #fff8e8;
   outline: 1px solid rgba(11, 31, 58, 0.4);
-}
-
-.publicFlagLegend i.isReserved {
-  background: #e1b84a;
 }
 
 .publicFlagMap.isKiosk .publicFlagLegend,

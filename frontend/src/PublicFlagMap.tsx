@@ -1351,7 +1351,6 @@ export default function PublicFlagMap({
           <ul className="publicFlagLegend" aria-label="Spot key">
             <li><i className="isOccupied" aria-hidden="true" />Occupied</li>
             <li><i className="isOpen" aria-hidden="true" />Open</li>
-            <li><i className="isReserved" aria-hidden="true" />Reserved</li>
           </ul>
           <p className="publicFlagLevel" aria-live="polite">{levelText}</p>
         </div>
@@ -1429,7 +1428,7 @@ export default function PublicFlagMap({
           })}
           {visibleCells.map((cell) => {
             const spot = spotContents(cell, gates, renderScale);
-            const interactive = !cell.template && cell.flagGridId > 0;
+            const interactive = !cell.template && cell.flagGridId > 0 && cell.status !== "Reserved";
             const revealed = cell.flagGridId === revealId || waveIds.includes(cell.flagGridId);
             const highlighted = cell.flagGridId === highlightId;
             const className = [

@@ -259,6 +259,45 @@ test("the fit shows the whole grid with padding and a pan reaches every edge", (
   assert.match(page, /const target = limitView\(requested\)/);
 });
 
+test("section blocks are flat, the reserved Z block is plain, and Z has an aisle on both sides", () => {
+  const zoneBlock = css.slice(css.indexOf(".publicFlagTile,\n.publicFlagZone {"), css.indexOf(".publicFlagZone strong"));
+  assert.match(zoneBlock, /background:\s*#[0-9a-f]{6};/i);
+  assert.doesNotMatch(zoneBlock, /gradient/);
+  assert.match(css, /\.publicFlagSeat\.isReserved \{\s*background: transparent;\s*border-color: transparent;/);
+  assert.match(css, /\.publicFlagMarker\.isReserved \{\s*background: transparent;\s*color: transparent;\s*border-color: transparent;/);
+  assert.doesNotMatch(page, /<li><i className="isReserved"/);
+  assert.match(page, /cell\.status !== "Reserved"/);
+
+  const field = layoutFlagField([
+    {
+      section: "Z",
+      flagCount: 3,
+      occupiedCount: 1,
+      seats: [
+        { flagGridId: 901, flagGridName: "Z-10", columnNumber: 10, section: "Z", status: "Reserved" },
+        { flagGridId: 902, flagGridName: "Z-11", columnNumber: 11, section: "Z", status: "Occupied", displayName: "Ada Lovelace" },
+        { flagGridId: 903, flagGridName: "Z-12", columnNumber: 12, section: "Z", status: "Open" }
+      ]
+    }
+  ]);
+  assert.deepEqual(field.zones.filter((zone) => zone.section === "Z").map((zone) => zone.label), ["Z 11\u201312"]);
+  const reserved = field.cells.find((cell) => cell.flagGridName === "Z-10");
+  const gates = flagMapDetailGates(300 / SPOT_SIZE.width, 4);
+  const plain = spotContents(reserved, gates, 300 / SPOT_SIZE.width);
+  assert.equal(plain.number, "");
+  assert.deepEqual(plain.lines, []);
+  assert.equal(plain.seal, 0);
+  assert.equal(spotContents(field.cells.find((cell) => cell.flagGridName === "Z-11"), gates, 300 / SPOT_SIZE.width).lines.join(" "), "Ada Lovelace");
+
+  const x = Object.fromEntries(field.sections.map((section) => [section.section, section]));
+  const gapBefore = x.Z.x - (x.N.x + x.N.width);
+  const gapAfter = x.M.x - (x.Z.x + x.Z.width);
+  const usual = x.L.x - (x.M.x + x.M.width);
+  assert.equal(gapAfter, gapBefore);
+  assert.ok(gapBefore > usual * 3, `Z gap ${gapBefore} vs ${usual}`);
+  assert.equal(usual, SPOT_SIZE.gap);
+});
+
 test("the detail drawer sits above the search bar at every size", () => {
   const stage = page.slice(page.indexOf('<div className="publicFlagStage">'), page.indexOf("{selected ? ("));
   assert.doesNotMatch(stage, /<FlagDetail/);
@@ -421,7 +460,7 @@ test("the field is laid out as seen from the pavilion", () => {
   assert.equal(empty.cells.filter((cell) => cell.section === "Z" && cell.status === "Reserved").length, FIELD_MAP_Z_ROWS);
   assert.equal(empty.cells.some((cell) => cell.flagGridName === "Z-10"), false);
   assert.deepEqual(empty.zones.filter((zone) => zone.section === "C").map((zone) => zone.label), ["C 21\u201340", "C 1\u201320"]);
-  assert.deepEqual(empty.zones.filter((zone) => zone.section === "Z").map((zone) => zone.label), ["Z 1\u20139"]);
+  assert.deepEqual(empty.zones.filter((zone) => zone.section === "Z").map((zone) => zone.label), []);
   const partial = layoutFlagField([
     {
       section: "QQ",
