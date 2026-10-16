@@ -4,6 +4,7 @@ import {
   FLAG_MAP_ZOOM,
   KIOSK_IDLE_MS,
   WHEEL_SETTLE_MS,
+  applyKioskIdleReset,
   attractView,
   createWheelBatch,
   createFlagMapLoader,
@@ -12,6 +13,7 @@ import {
   fitView,
   flagDeepLink,
   flagMapDetailGates,
+  lookupSubmittedFlags,
   flagMapLayerOpacities,
   flagYears,
   layoutFlagField,
@@ -27,6 +29,7 @@ import {
   withApiBase,
   zoomAt
 } from "./publicFlagMap.js";
+import { KIOSK_EXIT_HOLD_MS, kioskSessionOn, requestKioskExit } from "./kioskSession.js";
 
 type SectionSummary = {
   section: string;
@@ -152,6 +155,7 @@ function FlagDetail({
           className="publicFlagPhoto"
           src={withApiBase(apiBase, flag.photoUrl)}
           alt=""
+          draggable={false}
           onError={() => setShowPhoto(false)}
         />
       ) : null}
@@ -160,7 +164,7 @@ function FlagDetail({
         {flag.rank ? <p className="publicFlagRank">{flag.rank}</p> : null}
         {flag.serviceBranchName ? (
           <p className="publicFlagBranch">
-            {flag.logoUrl ? <img className="publicFlagSeal" src={withApiBase(apiBase, flag.logoUrl)} alt="" /> : null}
+            {flag.logoUrl ? <img className="publicFlagSeal" src={withApiBase(apiBase, flag.logoUrl)} alt="" draggable={false} /> : null}
             <span>
               {flag.serviceBranchName}
               {flag.serviceBranchCategoryName ? ` · ${flag.serviceBranchCategoryName}` : ""}
@@ -189,14 +193,18 @@ function FlagDetail({
 }
 
 export default function PublicFlagMap({
-  onPreviewCard
+  onPreviewCard,
+  kiosk: kioskLocked = false,
+  onExitKiosk
 }: {
   onPreviewCard: (honoreeId: number, title: string) => void;
+  kiosk?: boolean;
+  onExitKiosk?: () => void;
 }) {
   const listId = useId();
   const helpId = useId();
   const location = useMemo(() => readFlagMapLocation(window.location.search), []);
-  const kiosk = location.kiosk;
+  const kiosk = kioskLocked || location.kiosk || kioskSessionOn(window.sessionStorage);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const layerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<View>({ x: 0, y: 0, scale: 1 });
@@ -208,6 +216,7 @@ export default function PublicFlagMap({
   const wheelFrameRef = useRef(0);
   const wheelSettleRef = useRef(0);
   const idleTimerRef = useRef(0);
+  const exitHoldRef = useRef(0);
   const suppressClickRef = useRef(false);
   const attractingRef = useRef(false);
   const fullscreenTriedRef = useRef(false);
@@ -224,6 +233,12 @@ export default function PublicFlagMap({
   const [field, setField] = useState<ReturnType<typeof layoutFlagField> | null>(null);
   const [index, setIndex] = useState<SearchHit[]>([]);
   const [query, setQuery] = useState("");
+  const [searchTab, setSearchTab] = useState<"honoree" | "submitted">("honoree");
+  const [submitterFirst, setSubmitterFirst] = useState("");
+  const [submitterLast, setSubmitterLast] = useState("");
+  const [submitterNote, setSubmitterNote] = useState("");
+  const [submitterHits, setSubmitterHits] = useState<SearchHit[]>([]);
+  const [submitterBusy, setSubmitterBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [error, setError] = useState(location.flagRejected ? "That flag is not on the map." : "");
@@ -236,6 +251,10 @@ export default function PublicFlagMap({
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const [revealId, setRevealId] = useState<number | null>(null);
   const [attracting, setAttracting] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pinDigits, setPinDigits] = useState("");
+  const [pinMessage, setPinMessage] = useState("");
+  const [pinBusy, setPinBusy] = useState(false);
   const suggestions = filterFlagMapSuggestions(index, query) as SearchHit[];
   const shareUrl = selected ? flagDeepLink(window.location.href, selected.flagGridId) : "";
 
@@ -462,17 +481,24 @@ export default function PublicFlagMap({
   function beginAttract() {
     if (!kioskRef.current || attractingRef.current) return;
     attractingRef.current = true;
+    syncViewportBox();
+    const cleared = applyKioskIdleReset({ fitView: fitWorld() });
     setAttracting(true);
-    setSelected(null);
-    setHighlightId(null);
-    setRevealId(null);
-    setQuery("");
-    setOpen(false);
-    historyRef.current = [];
+    setSelected(cleared.selected);
+    setHighlightId(cleared.highlightId);
+    setRevealId(cleared.revealId);
+    setQuery(cleared.query);
+    setOpen(cleared.open);
+    setActive(cleared.active);
+    setSearchTab(cleared.searchTab === "submitted" ? "submitted" : "honoree");
+    setSubmitterFirst(cleared.submitterFirst);
+    setSubmitterLast(cleared.submitterLast);
+    setSubmitterNote(cleared.submitterNote);
+    setSubmitterHits(cleared.submitterHits);
+    historyRef.current = cleared.history;
     writeFlagParam(null);
     userAdjustedRef.current = true;
-    syncViewportBox();
-    const fitted = fitWorld();
+    const fitted = cleared.view;
     animateTo(fitted, () => {
       if (!attractingRef.current) return;
       const started = performance.now();
@@ -610,10 +636,31 @@ export default function PublicFlagMap({
     };
     const onWake = (event: Event) => {
       if (!attractingRef.current) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest(".kioskExitZone, .kioskPinOverlay")) return;
       event.preventDefault();
       event.stopPropagation();
       exitAttractRef.current();
       armIdleRef.current();
+    };
+    const blockDrag = (event: Event) => event.preventDefault();
+    const blockSelect = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("input, textarea")) return;
+      event.preventDefault();
+    };
+    const blockPagePinch = (event: TouchEvent) => {
+      if (event.touches.length < 2) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest(".publicFlagViewport")) return;
+      event.preventDefault();
+    };
+    const blockNavKey = (event: KeyboardEvent) => {
+      const target = event.target;
+      const typing = target instanceof HTMLElement && Boolean(target.closest("input, textarea"));
+      if ((event.altKey && event.key === "ArrowLeft") || (!typing && event.key === "Backspace")) {
+        event.preventDefault();
+      }
     };
     const onActivity = () => {
       if (attractingRef.current) return;
@@ -621,6 +668,10 @@ export default function PublicFlagMap({
     };
     document.addEventListener("contextmenu", blockMenu);
     document.addEventListener("gesturestart", blockGesture);
+    document.addEventListener("dragstart", blockDrag);
+    document.addEventListener("selectstart", blockSelect);
+    document.addEventListener("touchmove", blockPagePinch, { passive: false });
+    window.addEventListener("keydown", blockNavKey);
     window.addEventListener("wheel", blockCtrlWheel, { passive: false });
     window.addEventListener("pointerdown", onFirstPointer, true);
     window.addEventListener("pointerdown", onWake, true);
@@ -631,7 +682,12 @@ export default function PublicFlagMap({
     return () => {
       document.removeEventListener("contextmenu", blockMenu);
       document.removeEventListener("gesturestart", blockGesture);
+      document.removeEventListener("dragstart", blockDrag);
+      document.removeEventListener("selectstart", blockSelect);
+      document.removeEventListener("touchmove", blockPagePinch);
+      window.removeEventListener("keydown", blockNavKey);
       window.removeEventListener("wheel", blockCtrlWheel);
+      window.clearTimeout(exitHoldRef.current);
       window.removeEventListener("pointerdown", onFirstPointer, true);
       window.removeEventListener("pointerdown", onWake, true);
       window.removeEventListener("touchstart", onWake, true);
@@ -854,6 +910,88 @@ export default function PublicFlagMap({
     }
   }
 
+  async function runSubmitterLookup() {
+    setSubmitterBusy(true);
+    setSubmitterNote("");
+    setSubmitterHits([]);
+    try {
+      const result = await lookupSubmittedFlags(submitterFirst.trim(), submitterLast.trim(), undefined, apiBase);
+      if (result.status === 429) {
+        setSubmitterNote("Too many lookups. Wait a minute and try again.");
+        return;
+      }
+      const body = result.body as { message?: string; refine?: boolean; flags?: SearchHit[] } | null;
+      if (result.status === 400) {
+        setSubmitterNote(body?.message || "Enter at least 2 letters of the first name and 3 of the last name.");
+        return;
+      }
+      if (body?.refine) {
+        setSubmitterNote("Too many flags match. Enter more of the name.");
+        return;
+      }
+      if (!body?.flags || body.flags.length === 0) {
+        setSubmitterNote(body?.message || "No flags found");
+        return;
+      }
+      setSubmitterHits(body.flags);
+    } catch {
+      setSubmitterNote("No flags found");
+    } finally {
+      setSubmitterBusy(false);
+    }
+  }
+
+  function openSubmitterHit(hit: SearchHit) {
+    const flags = layoutRef.current?.flags as FlagBox[] | undefined;
+    const flag = flags?.find((item) => item.flagGridId === hit.flagGridId) ?? flags?.find((item) => item.honoreeId === hit.honoreeId);
+    if (!flag) {
+      setSubmitterNote("No flags found");
+      return;
+    }
+    setSubmitterNote("");
+    openFlag(flag, { celebrate: true });
+  }
+
+  function beginExitHold(event: { preventDefault: () => void; stopPropagation: () => void }) {
+    event.preventDefault();
+    event.stopPropagation();
+    window.clearTimeout(exitHoldRef.current);
+    exitHoldRef.current = window.setTimeout(() => {
+      setPinDigits("");
+      setPinMessage("");
+      setPinOpen(true);
+    }, KIOSK_EXIT_HOLD_MS);
+  }
+
+  function cancelExitHold() {
+    window.clearTimeout(exitHoldRef.current);
+  }
+
+  function appendPinDigit(digit: string) {
+    setPinMessage("");
+    setPinDigits((current) => (current.length >= 12 ? current : current + digit));
+  }
+
+  async function submitExitPin() {
+    if (pinBusy) return;
+    setPinBusy(true);
+    try {
+      const status = await requestKioskExit(pinDigits);
+      if (status === 204) {
+        setPinOpen(false);
+        onExitKiosk?.();
+        return;
+      }
+      setPinDigits("");
+      setPinMessage(status === 429 ? "Too many tries. Wait a minute and try again." : "That PIN is not right.");
+    } catch {
+      setPinDigits("");
+      setPinMessage("That PIN is not right.");
+    } finally {
+      setPinBusy(false);
+    }
+  }
+
   return (
     <section
       className={kiosk ? "publicFlagMap isKiosk" : "publicFlagMap"}
@@ -875,49 +1013,104 @@ export default function PublicFlagMap({
           </div>
         </div>
         <div className="publicFlagSearch">
-          <label htmlFor="public-flag-search">Search honorees</label>
-          <input
-            id="public-flag-search"
-            role="combobox"
-            aria-expanded={open && suggestions.length > 0}
-            aria-controls={listId}
-            aria-autocomplete="list"
-            aria-activedescendant={open && suggestions[active] ? `${listId}-${suggestions[active].honoreeId}` : undefined}
-            type="search"
-            inputMode="search"
-            enterKeyHint="search"
-            autoComplete="off"
-            autoCapitalize="none"
-            placeholder="Type a name"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setOpen(true);
-              setActive(0);
-            }}
-            onFocus={() => setOpen(true)}
-            onKeyDown={onSearchKeyDown}
-          />
-          {open && suggestions.length > 0 ? (
-            <ul id={listId} role="listbox" className="publicFlagSuggestions">
-              {suggestions.map((hit, optionIndex) => (
-                <li
-                  id={`${listId}-${hit.honoreeId}`}
-                  key={`${hit.honoreeId}-${hit.flagGridId}`}
-                  role="option"
-                  aria-selected={optionIndex === active}
-                  className={optionIndex === active ? "isActive" : ""}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    pickSuggestion(hit);
-                  }}
-                >
-                  <strong>{hit.displayName}</strong>
-                  <span>{[hit.serviceBranchName, hit.section, hit.flagGridName].filter(Boolean).join(" · ")}</span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          <div className="publicFlagSearchTabs" role="tablist" aria-label="Flag search">
+            <button type="button" role="tab" aria-selected={searchTab === "honoree"} className={searchTab === "honoree" ? "isActive" : ""} onClick={() => setSearchTab("honoree")}>Find a honoree</button>
+            <button type="button" role="tab" aria-selected={searchTab === "submitted"} className={searchTab === "submitted" ? "isActive" : ""} onClick={() => setSearchTab("submitted")}>Flags I submitted</button>
+          </div>
+          {searchTab === "honoree" ? (
+            <>
+              <label htmlFor="public-flag-search">Search honorees</label>
+              <input
+                id="public-flag-search"
+                role="combobox"
+                aria-expanded={open && suggestions.length > 0}
+                aria-controls={listId}
+                aria-autocomplete="list"
+                aria-activedescendant={open && suggestions[active] ? `${listId}-${suggestions[active].honoreeId}` : undefined}
+                type="search"
+                inputMode="search"
+                enterKeyHint="search"
+                autoComplete="off"
+                autoCapitalize="none"
+                placeholder="Type a name"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setOpen(true);
+                  setActive(0);
+                }}
+                onFocus={() => setOpen(true)}
+                onKeyDown={onSearchKeyDown}
+              />
+              {open && suggestions.length > 0 ? (
+                <ul id={listId} role="listbox" className="publicFlagSuggestions">
+                  {suggestions.map((hit, optionIndex) => (
+                    <li
+                      id={`${listId}-${hit.honoreeId}`}
+                      key={`${hit.honoreeId}-${hit.flagGridId}`}
+                      role="option"
+                      aria-selected={optionIndex === active}
+                      className={optionIndex === active ? "isActive" : ""}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        pickSuggestion(hit);
+                      }}
+                    >
+                      <strong>{hit.displayName}</strong>
+                      <span>{[hit.serviceBranchName, hit.section, hit.flagGridName].filter(Boolean).join(" · ")}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </>
+          ) : (
+            <form
+              className="publicFlagSubmitter"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void runSubmitterLookup();
+              }}
+            >
+              <label htmlFor="submitter-first">First name
+                <input
+                  id="submitter-first"
+                  type="text"
+                  inputMode="text"
+                  enterKeyHint="next"
+                  autoComplete="given-name"
+                  autoCapitalize="words"
+                  value={submitterFirst}
+                  onChange={(event) => setSubmitterFirst(event.target.value)}
+                />
+              </label>
+              <label htmlFor="submitter-last">Last name
+                <input
+                  id="submitter-last"
+                  type="text"
+                  inputMode="text"
+                  enterKeyHint="search"
+                  autoComplete="family-name"
+                  autoCapitalize="words"
+                  value={submitterLast}
+                  onChange={(event) => setSubmitterLast(event.target.value)}
+                />
+              </label>
+              <button type="submit" disabled={submitterBusy}>{submitterBusy ? "Looking…" : "Find flags"}</button>
+              {submitterNote ? <p className="message" role="status">{submitterNote}</p> : null}
+              {submitterHits.length > 0 ? (
+                <ul className="publicFlagSuggestions" aria-label="Flags for that name">
+                  {submitterHits.map((hit) => (
+                    <li key={`${hit.honoreeId}-${hit.flagGridId}`}>
+                      <button type="button" onClick={() => openSubmitterHit(hit)}>
+                        <strong>{hit.displayName}</strong>
+                        <span>{[hit.serviceBranchName, hit.section, hit.flagGridName].filter(Boolean).join(" · ")}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </form>
+          )}
         </div>
         <div className="publicFlagToolbar">
           {kiosk ? <button type="button" onClick={goHome} aria-label="Home">Home</button> : null}
@@ -984,7 +1177,7 @@ export default function PublicFlagMap({
                 aria-label={[flag.flagGridName, flag.displayName || flag.status, flag.rank, flag.serviceBranchName].filter(Boolean).join(", ")}
                 onClick={() => acceptClick(() => openFlag(flag))}
               >
-                {flag.logoUrl ? <img src={withApiBase(apiBase, flag.logoUrl)} alt="" /> : <span className="publicFlagMarkerStatus">{flag.status === "Reserved" ? "Reserved" : flag.status === "Open" ? "Open" : ""}</span>}
+                {flag.logoUrl ? <img src={withApiBase(apiBase, flag.logoUrl)} alt="" draggable={false} /> : <span className="publicFlagMarkerStatus">{flag.status === "Reserved" ? "Reserved" : flag.status === "Open" ? "Open" : ""}</span>}
                 {gates.names ? <em>{flag.displayName || flag.flagGridName}</em> : null}
                 {gates.ranks && flag.rank ? <small>{flag.rank}</small> : null}
               </button>
@@ -1006,6 +1199,38 @@ export default function PublicFlagMap({
         />
       ) : null}
       </div>
+      {kiosk ? (
+        <button
+          type="button"
+          className="kioskExitZone"
+          aria-hidden="true"
+          tabIndex={-1}
+          onPointerDown={beginExitHold}
+          onPointerUp={cancelExitHold}
+          onPointerCancel={cancelExitHold}
+          onPointerLeave={cancelExitHold}
+          onContextMenu={(event) => event.preventDefault()}
+        />
+      ) : null}
+      {kiosk && pinOpen ? (
+        <div className="kioskPinOverlay" role="dialog" aria-modal="true" aria-label="Exit code">
+          <div className="kioskPinPad">
+            <p className="kioskPinDots" aria-live="polite">{pinDigits ? "•".repeat(pinDigits.length) : "Enter the code"}</p>
+            {pinMessage ? <p className="message error" role="alert">{pinMessage}</p> : null}
+            <div className="kioskPinKeys">
+              {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => (
+                <button key={digit} type="button" onClick={() => appendPinDigit(digit)}>{digit}</button>
+              ))}
+              <button type="button" className="secondary" onClick={() => { setPinDigits(""); setPinMessage(""); }}>Clear</button>
+              <button type="button" onClick={() => appendPinDigit("0")}>0</button>
+              <button type="button" onClick={() => { setPinOpen(false); setPinDigits(""); setPinMessage(""); }}>Cancel</button>
+            </div>
+            <button type="button" disabled={pinBusy || pinDigits.length === 0} onClick={() => { void submitExitPin(); }}>
+              {pinBusy ? "Checking…" : "Continue"}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

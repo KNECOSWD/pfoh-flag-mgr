@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using PFOH.Api.Dtos;
 using PFOH.Api.Services;
 
 namespace PFOH.Api.Controllers;
@@ -12,7 +13,11 @@ namespace PFOH.Api.Controllers;
 [AllowAnonymous]
 [EnableRateLimiting("PublicFlagMap")]
 [Route("api/public/flag-map")]
-public class PublicFlagMapController(PublicFlagMap map, HonoreeFileStorage fileStorage) : ControllerBase
+public class PublicFlagMapController(
+    PublicFlagMap map,
+    HonoreeFileStorage fileStorage,
+    IConfiguration configuration,
+    ILogger<PublicFlagMapController> logger) : ControllerBase
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -40,6 +45,35 @@ public class PublicFlagMapController(PublicFlagMap map, HonoreeFileStorage fileS
         return CachedJson(await map.SearchIndexAsync(ct), 60);
     }
 
+    [HttpGet("by-submitter")]
+    [EnableRateLimiting("PublicFlagMapBySubmitter")]
+    public async Task<IActionResult> BySubmitter([FromQuery] string? first, [FromQuery] string? last, CancellationToken ct)
+    {
+        var result = await map.BySubmitterAsync(first, last, ct);
+        logger.LogInformation(
+            "Public flag map submitter lookup from {ClientIp} outcome {Outcome} count {Count}",
+            PublicFlagMapClientIp.Resolve(HttpContext),
+            result.Outcome,
+            result.Count);
+
+        if (result.Outcome == "rejected")
+        {
+            return BadRequest(new { message = "Enter at least 2 letters of the first name and 3 of the last name." });
+        }
+
+        if (result.Outcome == "refine")
+        {
+            return Ok(new { refine = true });
+        }
+
+        if (result.Outcome == "none")
+        {
+            return Ok(new { message = "No flags found" });
+        }
+
+        return Ok(new { flags = result.Flags });
+    }
+
     [HttpGet("logos/{fileName}")]
     public async Task<IActionResult> Logo(string fileName, CancellationToken ct)
     {
@@ -63,6 +97,23 @@ public class PublicFlagMapController(PublicFlagMap map, HonoreeFileStorage fileS
         }
 
         return File(bytes, LogoContentType(fileName));
+    }
+
+    [HttpPost("kiosk-exit")]
+    [EnableRateLimiting("PublicFlagMapKioskExit")]
+    public IActionResult KioskExit([FromBody] KioskExitRequest? request)
+    {
+        if (KioskExitPin.ConfiguredValue(configuration) is null)
+        {
+            return NotFound();
+        }
+
+        if (!KioskExitPin.Matches(configuration, request?.Pin))
+        {
+            return Unauthorized();
+        }
+
+        return NoContent();
     }
 
     private IActionResult CachedJson(object payload, int maxAgeSeconds)

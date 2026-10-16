@@ -117,6 +117,30 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0
             });
     });
+    options.AddPolicy("PublicFlagMapBySubmitter", httpContext =>
+    {
+        var ip = PublicFlagMapClientIp.Resolve(httpContext);
+        return RateLimitPartition.GetFixedWindowLimiter(
+            ip,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+    });
+    options.AddPolicy("PublicFlagMapKioskExit", httpContext =>
+    {
+        var ip = PublicFlagMapClientIp.Resolve(httpContext);
+        return RateLimitPartition.GetFixedWindowLimiter(
+            ip,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+    });
 });
 
 var app = builder.Build();

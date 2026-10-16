@@ -1,5 +1,10 @@
 namespace PFOH.Api.Dtos;
 
+public sealed class KioskExitRequest
+{
+    public string? Pin { get; set; }
+}
+
 public record PublicFlagSectionDto(
     string Section,
     int FlagCount,

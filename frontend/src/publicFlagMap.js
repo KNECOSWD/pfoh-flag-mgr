@@ -3,8 +3,29 @@ export function publicFlagMapUrls(apiBase = "") {
   return {
     sections: `${base}/api/public/flag-map/sections`,
     section: (section) => `${base}/api/public/flag-map/sections/${encodeURIComponent(section)}`,
-    searchIndex: `${base}/api/public/flag-map/search-index`
+    searchIndex: `${base}/api/public/flag-map/search-index`,
+    bySubmitter: (first, last) => {
+      const params = new URLSearchParams();
+      params.set("first", first ?? "");
+      params.set("last", last ?? "");
+      return `${base}/api/public/flag-map/by-submitter?${params.toString()}`;
+    }
   };
+}
+
+export async function lookupSubmittedFlags(first, last, fetchImpl, apiBase = "") {
+  const send = fetchImpl ?? ((url, init) => fetch(url, init));
+  const response = await send(publicFlagMapUrls(apiBase).bySubmitter(first, last), {
+    cache: "no-store",
+    headers: { Accept: "application/json" }
+  });
+  let body = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  return { status: response.status, body };
 }
 
 export function withApiBase(apiBase, path) {
@@ -279,6 +300,25 @@ export function springEase(amount) {
   const value = 1 - decay * wave;
   if (t > 0.9) return value + (1 - value) * ((t - 0.9) / 0.1);
   return value;
+}
+
+export function applyKioskIdleReset(state = {}) {
+  const fit = state.fitView ?? { x: 0, y: 0, scale: 1 };
+  return {
+    query: "",
+    open: false,
+    active: 0,
+    selected: null,
+    highlightId: null,
+    revealId: null,
+    history: [],
+    searchTab: "honoree",
+    submitterFirst: "",
+    submitterLast: "",
+    submitterNote: "",
+    submitterHits: [],
+    view: { x: fit.x, y: fit.y, scale: fit.scale }
+  };
 }
 
 export function attractView(fitted, elapsedMs, viewport, reducedMotion = false) {

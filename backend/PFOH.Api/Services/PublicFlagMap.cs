@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
@@ -59,6 +61,143 @@ public class PublicFlagMap(PfohDbContext db)
             .ThenBy(hit => hit.FirstName, StringComparer.OrdinalIgnoreCase)
             .ThenBy(hit => hit.FlagGridName, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    public async Task<SubmitterLookupResult> BySubmitterAsync(string? first, string? last, CancellationToken ct)
+    {
+        var firstQuery = NormalizeName(first);
+        var lastQuery = NormalizeName(last);
+        if (firstQuery.Length < 2 || lastQuery.Length < 3)
+        {
+            return new SubmitterLookupResult("rejected", 0, []);
+        }
+
+        var honorees = await db.Honorees
+            .AsNoTracking()
+            .Include(honoree => honoree.FlagGrid)
+            .Include(honoree => honoree.ServiceBranch)
+            .ThenInclude(branch => branch!.ServiceBranchCategory)
+            .Where(honoree =>
+                honoree.IsActive &&
+                honoree.DeletedDate == null &&
+                honoree.FlagGridId != null &&
+                honoree.FlagGrid != null &&
+                honoree.FlagGrid.DeletedDate == null)
+            .ToListAsync(ct);
+
+        var honoreeIds = honorees.Select(honoree => honoree.Id).ToList();
+        var sponsorIds = honorees
+            .Where(honoree => honoree.SponsorId.HasValue)
+            .Select(honoree => honoree.SponsorId!.Value)
+            .Distinct()
+            .ToList();
+        var sponsorNames = new Dictionary<int, (string FirstName, string LastName)>();
+        if (sponsorIds.Count > 0)
+        {
+            var sponsorRows = await db.Sponsors
+                .AsNoTracking()
+                .Where(sponsor => sponsorIds.Contains(sponsor.Id))
+                .Select(sponsor => new { sponsor.Id, sponsor.FirstName, sponsor.LastName })
+                .ToListAsync(ct);
+            foreach (var row in sponsorRows)
+            {
+                sponsorNames[row.Id] = (row.FirstName, row.LastName);
+            }
+        }
+
+        var claimNames = honoreeIds.Count == 0
+            ? []
+            : await db.FlagClaims
+                .AsNoTracking()
+                .Where(claim =>
+                    claim.HonoreeId != null &&
+                    honoreeIds.Contains(claim.HonoreeId.Value) &&
+                    (claim.ClaimStatus == "Claimed" || claim.ClaimStatus == "Submitted" || claim.ClaimStatus == "Approved"))
+                .Select(claim => new { claim.HonoreeId, claim.ExternalUserName })
+                .ToListAsync(ct);
+
+        var claimersByHonoree = claimNames
+            .Where(claim => claim.HonoreeId.HasValue)
+            .GroupBy(claim => claim.HonoreeId!.Value)
+            .ToDictionary(group => group.Key, group => group.Select(claim => SplitDisplayName(claim.ExternalUserName)).ToList());
+
+        var matches = honorees
+            .Where(honoree =>
+            {
+                if (honoree.SponsorId is int sponsorId &&
+                    sponsorNames.TryGetValue(sponsorId, out var sponsorName) &&
+                    NameMatches(sponsorName.FirstName, sponsorName.LastName, firstQuery, lastQuery))
+                {
+                    return true;
+                }
+
+                return claimersByHonoree.TryGetValue(honoree.Id, out var claimers) &&
+                    claimers.Any(name => NameMatches(name.First, name.Last, firstQuery, lastQuery));
+            })
+            .Select(ToSearch)
+            .OrderBy(hit => hit.FlagGridName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (matches.Count == 0)
+        {
+            return new SubmitterLookupResult("none", 0, []);
+        }
+
+        if (matches.Count > 10)
+        {
+            return new SubmitterLookupResult("refine", matches.Count, []);
+        }
+
+        return new SubmitterLookupResult("ok", matches.Count, matches);
+    }
+
+    internal static bool NameMatches(string? storedFirst, string? storedLast, string firstQuery, string lastQuery)
+    {
+        var first = NormalizeName(storedFirst);
+        var last = NormalizeName(storedLast);
+        if (first.Length == 0 || last.Length == 0 || lastQuery.Length == 0 || firstQuery.Length == 0)
+        {
+            return false;
+        }
+
+        if (!string.Equals(last, lastQuery, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return first.StartsWith(firstQuery, StringComparison.Ordinal);
+    }
+
+    internal static string NormalizeName(string? value)
+    {
+        var trimmed = (value ?? string.Empty).Trim().Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(trimmed.Length);
+        foreach (var character in trimmed)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark)
+            {
+                builder.Append(char.ToLowerInvariant(character));
+            }
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormC);
+    }
+
+    private static (string First, string Last) SplitDisplayName(string? displayName)
+    {
+        var parts = (displayName ?? string.Empty)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length == 0)
+        {
+            return ("", "");
+        }
+
+        if (parts.Length == 1)
+        {
+            return (parts[0], "");
+        }
+
+        return (parts[0], parts[^1]);
     }
 
     public async Task<bool> IsPublishedLogoAsync(string fileName, CancellationToken ct)
@@ -244,6 +383,8 @@ public class PublicFlagMap(PfohDbContext db)
     {
         return year is null or 0 ? null : year;
     }
+
+    public sealed record SubmitterLookupResult(string Outcome, int Count, IReadOnlyList<PublicFlagSearchDto> Flags);
 
     private sealed class SectionComparer : IComparer<string>
     {

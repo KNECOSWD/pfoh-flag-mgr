@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   FLAG_MAP_ZOOM,
   KIOSK_IDLE_MS,
+  applyKioskIdleReset,
   attractView,
   createFlagMapLoader,
   createWheelBatch,
@@ -17,6 +18,7 @@ import {
   pointerDragCapture,
   pointerIsTap,
   pointerShouldOpen,
+  lookupSubmittedFlags,
   publicFlagMapUrls,
   readFlagMapLocation,
   springEase,
@@ -26,6 +28,18 @@ import {
   zoomAt
 } from "../src/publicFlagMap.js";
 import { qrModules } from "../src/qrCode.js";
+import {
+  KIOSK_EXIT_HOLD_MS,
+  KIOSK_GUARDED_ROUTES,
+  clearKioskSession,
+  kioskBackTarget,
+  kioskBlocksNavigationKey,
+  kioskChrome,
+  kioskLinkLeavesMap,
+  rememberKioskSession,
+  requestKioskExit,
+  routeWhileKiosk
+} from "../src/kioskSession.js";
 
 const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 const program = readFileSync(new URL("../../backend/PFOH.Api/Program.cs", import.meta.url), "utf8");
@@ -259,6 +273,39 @@ test("a kiosk attract loop does not request the flag map again", async () => {
   const again = await loader(url);
   assert.equal(calls, 2);
   assert.deepEqual(again, first);
+
+  const cleared = applyKioskIdleReset({
+    query: "Eleanor",
+    open: true,
+    active: 2,
+    selected: { id: 1 },
+    highlightId: 9,
+    revealId: 9,
+    history: [{}],
+    searchTab: "submitted",
+    submitterFirst: "Ada",
+    submitterLast: "Lovelace",
+    submitterNote: "No flags found",
+    submitterHits: [{ displayName: "Eleanor" }],
+    view: { x: 40, y: 12, scale: 3 },
+    fitView: { x: 1, y: 2, scale: 0.4 }
+  });
+  assert.equal(cleared.query, "");
+  assert.equal(cleared.open, false);
+  assert.equal(cleared.selected, null);
+  assert.equal(cleared.highlightId, null);
+  assert.equal(cleared.revealId, null);
+  assert.deepEqual(cleared.history, []);
+  assert.equal(cleared.searchTab, "honoree");
+  assert.equal(cleared.submitterFirst, "");
+  assert.equal(cleared.submitterLast, "");
+  assert.equal(cleared.submitterNote, "");
+  assert.deepEqual(cleared.submitterHits, []);
+  assert.equal(cleared.view.scale, 0.4);
+  assert.match(attract, /setSubmitterFirst\(cleared\.submitterFirst\)/);
+  assert.match(attract, /setQuery\(cleared\.query\)/);
+  assert.match(attract, /setSelected\(cleared\.selected\)/);
+  assert.ok(attract.indexOf("applyKioskIdleReset") < attract.indexOf("attractView"));
 });
 
 test("kiosk mode, deep links, and the client-side QR stay on the public map", () => {
@@ -315,6 +362,78 @@ test("kiosk mode, deep links, and the client-side QR stay on the public map", ()
   assertFinder(modules, 0, modules.length - 7);
   assert.deepEqual(modules, qrModules(link));
 });
+
+test("kiosk mode stays on the flag map and hides admin chrome", () => {
+  const storage = memoryStorage();
+  assert.equal(rememberKioskSession(storage, "?kiosk=1"), true);
+  assert.equal(rememberKioskSession(storage, ""), true);
+  assert.equal(rememberKioskSession(storage, "?flag=14"), true);
+  for (const route of KIOSK_GUARDED_ROUTES) {
+    assert.equal(routeWhileKiosk(route, true), "/flag-map");
+    assert.equal(kioskBackTarget(route, true), "/flag-map");
+  }
+  assert.equal(routeWhileKiosk("/flag-map", true), "/flag-map");
+  assert.equal(kioskBackTarget("/flag-map", true), "/flag-map");
+  clearKioskSession(storage);
+  assert.equal(rememberKioskSession(storage, ""), false);
+
+  const chrome = kioskChrome(true, true);
+  assert.equal(chrome.shell, "map");
+  assert.equal(chrome.header, false);
+  assert.equal(chrome.nav, false);
+  assert.equal(chrome.auth, false);
+  assert.equal(chrome.drawer, false);
+  assert.equal(chrome.footer, false);
+  assert.equal(chrome.adminBanner, false);
+  assert.equal(chrome.adminLinks, false);
+  assert.equal(chrome.loadSignedInData, false);
+  assert.equal(kioskBlocksNavigationKey("ArrowLeft", true, true), true);
+  assert.equal(kioskBlocksNavigationKey("Backspace", false, false), true);
+  assert.equal(kioskBlocksNavigationKey("Backspace", false, true), false);
+  assert.equal(kioskLinkLeavesMap("/admin/review", "https://flags.example/flag-map?kiosk=1"), true);
+  assert.equal(kioskLinkLeavesMap("https://flags.example/flag-map?flag=14", "https://flags.example/flag-map"), false);
+  assert.equal(KIOSK_EXIT_HOLD_MS, 3000);
+
+  const shell = app.slice(app.indexOf('if (chrome.shell === "map")'), app.indexOf("\n  return (\n    <main>"));
+  assert.match(shell, /data-kiosk-lock="1"/);
+  assert.match(shell, /openPublicHonoreeCard/);
+  assert.doesNotMatch(shell, /adminAlertBanner|authBox|heroNav|appFooter|\/admin\/review|loginRedirect|Sign out|Log in/);
+  assert.match(app, /if \(kioskLockedRef\.current\) return/);
+  assert.match(app, /Your name can be used to look up flags you submitted at the event kiosk\./);
+  assert.match(page, /Flags I submitted/);
+  assert.doesNotMatch(page, /loginRedirect/);
+  const setup = readFileSync(new URL("../../docs/kiosk-setup.md", import.meta.url), "utf8");
+  assert.match(setup, /signed out/i);
+  assert.match(setup, /PublicFlagMap:KioskExitPin/);
+  assert.doesNotMatch(readFileSync(new URL("../../backend/PFOH.Api/appsettings.json", import.meta.url), "utf8"), /KioskExitPin"\s*:\s*"[^"]+"/);
+});
+
+test("the submitted-flag lookup does not send a sign-in token", async () => {
+  let headers = null;
+  const result = await lookupSubmittedFlags("Ada", "Lovelace", async (url, init) => {
+    headers = init.headers;
+    assert.match(url, /\/api\/public\/flag-map\/by-submitter\?/);
+    assert.doesNotMatch(url, /search-index/);
+    return { status: 200, json: async () => ({ flags: [{ honoreeId: 1, flagGridId: 2, displayName: "Visible Hero" }] }) };
+  });
+  assert.equal(headers.Authorization, undefined);
+  assert.equal(result.body.flags[0].displayName, "Visible Hero");
+  const exitStatus = await requestKioskExit("0000", async (_url, init) => {
+    assert.equal(init.headers.Authorization, undefined);
+    assert.equal(init.method, "POST");
+    return { status: 401 };
+  });
+  assert.equal(exitStatus, 401);
+});
+
+function memoryStorage() {
+  const data = new Map();
+  return {
+    getItem: (key) => (data.has(key) ? data.get(key) : null),
+    setItem: (key, value) => data.set(key, String(value)),
+    removeItem: (key) => data.delete(key)
+  };
+}
 
 function assertFinder(modules, x0, y0) {
   for (let y = 0; y < 7; y += 1) {
