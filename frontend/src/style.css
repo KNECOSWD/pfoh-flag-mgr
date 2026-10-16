@@ -11031,3 +11031,712 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
     overflow: hidden !important;
   }
 }
+
+.hero.publicMapHero {
+  padding-bottom: 12px;
+}
+
+.hero.publicMapHero h1 {
+  font-size: 1.6rem;
+}
+
+html.flagMapKiosk,
+html.flagMapKiosk body {
+  height: 100%;
+  overflow: hidden;
+  background: #071526;
+  touch-action: pan-x pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+}
+
+html.flagMapKiosk input,
+html.flagMapKiosk textarea {
+  user-select: text;
+  -webkit-user-select: text;
+  touch-action: manipulation;
+}
+
+html.flagMapKiosk main {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+html.flagMapKiosk main > header,
+html.flagMapKiosk .appFooterInner {
+  display: none !important;
+}
+
+html.flagMapKiosk .appFooter {
+  position: fixed !important;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  width: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  overflow: visible !important;
+  z-index: 40;
+  pointer-events: none;
+}
+
+html.flagMapKiosk .appVersionStamp {
+  margin: 0 !important;
+  padding: 8px 14px 10px !important;
+  color: rgba(243, 226, 167, 0.82) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+html.flagMapKiosk button:hover:not(:disabled) {
+  transform: none;
+}
+
+html.flagMapKiosk img,
+html.flagMapKiosk a {
+  -webkit-user-drag: none;
+}
+
+.kioskLock {
+  min-height: 100dvh;
+  background: #071526;
+}
+
+.kioskExitZone {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  z-index: 70;
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  min-height: 56px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+  cursor: default;
+}
+
+.kioskPinOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(7, 21, 38, 0.72);
+}
+
+.kioskPinPad {
+  width: min(360px, 100%);
+  padding: 22px;
+  border: 1px solid rgba(212, 175, 55, 0.5);
+  border-radius: 18px;
+  background: #0b1f3a;
+  color: #f7f1de;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+
+.kioskPinDots {
+  min-height: 1.6em;
+  margin: 0 0 12px;
+  text-align: center;
+  font-size: 1.4rem;
+  letter-spacing: 0.28em;
+}
+
+.kioskPinKeys {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.kioskPinKeys button,
+.kioskPinPad > button {
+  min-height: 56px;
+  font-size: 1.25rem;
+}
+
+.publicFlagMap {
+  margin: 12px auto 32px;
+  max-width: 1200px;
+  padding: 0 16px;
+}
+
+.publicFlagHeading {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.publicFlagWave {
+  width: 36px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 3px;
+  background: linear-gradient(#0b1f3a 0 33%, #d4af37 33% 66%, #f7f1e4 66%);
+  box-shadow: 0 8px 16px rgba(7, 21, 38, 0.28);
+  transform-origin: left center;
+  animation: publicFlagWave 2.8s ease-in-out infinite;
+}
+
+.publicFlagMap.isKiosk {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  margin: 0;
+  padding: 18px 22px 16px;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(212, 175, 55, 0.2), transparent 26rem),
+    radial-gradient(circle at 90% 100%, rgba(23, 59, 115, 0.45), transparent 28rem),
+    #071526;
+  color: #f7f1e4;
+}
+
+.publicFlagSearch {
+  position: relative;
+  margin: 12px 0 18px;
+}
+
+.publicFlagSearchTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.publicFlagMap.isKiosk button:not(.publicFlagTile):not(.publicFlagMarker),
+.publicFlagMap.isKiosk input,
+.publicFlagMap.isKiosk select,
+.publicFlagMap.isKiosk textarea,
+.publicFlagMap.isKiosk a,
+.publicFlagMap.isKiosk .publicFlagSuggestions li,
+.publicFlagMap.isKiosk .publicFlagSuggestions button,
+.publicFlagSearchTabs button,
+.kioskPinKeys button,
+.kioskPinPad > button {
+  min-width: 56px;
+  min-height: 56px;
+}
+
+.publicFlagSearchTabs button.isActive {
+  box-shadow: inset 0 0 0 2px #d4af37;
+}
+
+.publicFlagSubmitter {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.publicFlagSubmitter label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.publicFlagSubmitter .message,
+.publicFlagSubmitter .publicFlagSuggestions {
+  grid-column: 1 / -1;
+}
+
+.publicFlagSubmitter .publicFlagSuggestions button {
+  width: 100%;
+  text-align: left;
+}
+
+@media (max-width: 760px) {
+  .publicFlagSubmitter {
+    grid-template-columns: 1fr;
+  }
+}
+
+.publicFlagSearch label {
+  color: #5c4b32;
+  font-weight: 700;
+}
+
+.publicFlagMap.isKiosk .publicFlagSearch label {
+  color: #f3e2a7;
+}
+
+.publicFlagSearch input {
+  width: 100%;
+  min-height: 52px;
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  background: #fffdf8;
+  box-shadow: 0 10px 24px rgba(7, 21, 38, 0.08);
+}
+
+.publicFlagSuggestions {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 6px;
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  background: #fffdf8;
+  position: absolute;
+  z-index: 6;
+  width: 100%;
+  max-height: 320px;
+  overflow: auto;
+  border-radius: 16px;
+  box-shadow: 0 18px 40px rgba(7, 21, 38, 0.18);
+}
+
+.publicFlagSuggestions li {
+  min-height: 48px;
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 12px;
+}
+
+.publicFlagSuggestions li.isActive,
+.publicFlagSuggestions li:hover {
+  background: #f4efe4;
+}
+
+.publicFlagToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.publicFlagLevel {
+  margin: 0 0 0 auto;
+  color: #8a6a12;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.82rem;
+}
+
+.publicFlagStage {
+  position: relative;
+}
+
+.publicFlagViewport {
+  position: relative;
+  height: min(72vh, 820px);
+  min-height: 420px;
+  overflow: hidden;
+  touch-action: none;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(212, 175, 55, 0.18), transparent 22rem),
+    linear-gradient(180deg, #16345d 0%, #0b1f3a 100%);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 22px;
+  cursor: grab;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.18) inset,
+    0 22px 50px rgba(7, 21, 38, 0.22);
+}
+
+.publicFlagViewport::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent 32%, rgba(243, 226, 167, 0.18) 50%, transparent 68%);
+  transform: translateX(-60%);
+  animation: publicFlagShimmer 7.5s ease-in-out infinite;
+}
+
+.publicFlagViewport:active {
+  cursor: grabbing;
+}
+
+.publicFlagViewport:focus-visible {
+  outline: 3px solid #d4af37;
+  outline-offset: 3px;
+}
+
+.publicFlagLoading {
+  position: absolute;
+  z-index: 2;
+  margin: 16px;
+  color: #f7f1e4;
+}
+
+.publicFlagLayer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.publicFlagTile,
+.publicFlagMarker {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  overflow: hidden;
+  text-align: center;
+  transition: none;
+}
+
+.publicFlagTile {
+  opacity: var(--section-opacity, 1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 46%),
+    linear-gradient(160deg, #2f74c0 0%, #173e78 100%);
+  color: #fff8e8;
+  border: 3px solid rgba(243, 226, 167, 0.85);
+  border-radius: 22px;
+  padding: 12px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28) inset,
+    0 18px 36px rgba(4, 12, 24, 0.35);
+}
+
+.publicFlagTile strong {
+  font-size: 148px;
+  line-height: 0.9;
+  color: #ffe7a3;
+}
+
+.publicFlagTile span {
+  font-size: 42px;
+  color: #fff8e8;
+}
+
+.publicFlagTile span,
+.publicFlagMarker em,
+.publicFlagMarker small {
+  font-weight: 650;
+}
+
+.publicFlagMarker {
+  opacity: var(--seal-opacity, 0);
+  background: linear-gradient(180deg, #fffdf8 0%, #f4efe4 100%);
+  color: #102033;
+  border: 1px solid rgba(212, 175, 55, 0.55);
+  border-radius: 14px;
+  padding: 6px;
+  box-shadow: 0 10px 18px rgba(7, 21, 38, 0.16);
+}
+
+.publicFlagMarker em {
+  opacity: var(--name-opacity, 0);
+  font-style: normal;
+  font-size: 0.82rem;
+  line-height: 1.15;
+}
+
+.publicFlagMarker small {
+  opacity: var(--rank-opacity, 0);
+  color: #8a6a12;
+}
+
+.publicFlagMarker img,
+.publicFlagSeal {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.publicFlagTile:hover,
+.publicFlagMarker:hover,
+.publicFlagTile:hover:not(:disabled),
+.publicFlagMarker:hover:not(:disabled) {
+  transform: none;
+}
+
+.publicFlagTile:focus-visible,
+.publicFlagMarker:focus-visible {
+  outline: 3px solid #d4af37;
+  outline-offset: 2px;
+  z-index: 3;
+}
+
+.publicFlagMarker.isHighlighted {
+  box-shadow: 0 0 0 4px #d4af37, 0 0 0 10px rgba(212, 175, 55, 0.35);
+  z-index: 4;
+}
+
+.publicFlagMarker.isRevealed {
+  z-index: 6;
+  animation: publicFlagReveal 1.15s ease;
+}
+
+.publicFlagMarker.isRevealed::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 18px;
+  pointer-events: none;
+  box-shadow: 0 0 0 3px #f3e2a7, 0 0 28px 8px rgba(212, 175, 55, 0.85);
+  animation: publicFlagGlow 1.15s ease;
+}
+
+.publicFlagViewport[data-sections="off"] .publicFlagTile,
+.publicFlagViewport[data-flags="off"] .publicFlagMarker {
+  pointer-events: none;
+}
+
+.publicFlagSuggestions,
+.publicFlagDetail {
+  touch-action: pan-y;
+}
+
+.publicFlagDetail {
+  position: absolute;
+  z-index: 7;
+  right: 12px;
+  bottom: 12px;
+  width: min(420px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  background: #fffdf8;
+  border: 1px solid rgba(212, 175, 55, 0.55);
+  border-radius: 22px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.6) inset,
+    0 24px 60px rgba(7, 21, 38, 0.32);
+}
+
+.publicFlagDetail.isRevealed {
+  animation: publicFlagPanel 0.7s ease;
+}
+
+.publicFlagDetailBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
+
+.publicFlagDetail h3 {
+  margin: 0;
+  color: #0b1f3a;
+  font-size: 1.7rem;
+  line-height: 1.15;
+}
+
+.publicFlagRank,
+.publicFlagSpot {
+  margin: 0;
+  color: #5c4b32;
+}
+
+.publicFlagBranch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.publicFlagBio {
+  white-space: pre-wrap;
+}
+
+.publicFlagPhoto {
+  width: 100% !important;
+  height: min(34vh, 280px) !important;
+  max-height: none !important;
+  object-fit: cover;
+  border-radius: 22px 22px 0 0;
+}
+
+.publicFlagQrBlock {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.publicFlagQrBlock p {
+  margin: 0;
+  color: #0b1f3a;
+  font-weight: 700;
+}
+
+.publicFlagQr {
+  width: 132px;
+  height: 132px;
+  flex: 0 0 auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(7, 21, 38, 0.12);
+}
+
+.publicFlagMap.isKiosk .publicFlagChrome {
+  flex: 0 0 auto;
+}
+
+.publicFlagMap.isKiosk .publicFlagStage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.publicFlagMap.isKiosk .publicFlagViewport {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  border-radius: 28px;
+}
+
+.publicFlagMap.isKiosk .publicFlagSearch input,
+.publicFlagMap.isKiosk .publicFlagSuggestions li,
+.publicFlagMap.isKiosk .publicFlagToolbar button,
+.publicFlagMap.isKiosk .publicFlagDetail button {
+  min-height: 56px;
+  min-width: 56px;
+}
+
+.publicFlagMap.isKiosk .publicFlagSearch input {
+  min-height: 64px;
+  font-size: 1.35rem;
+  padding: 0 18px;
+}
+
+.publicFlagMap.isKiosk .publicFlagSuggestions li {
+  min-height: 64px;
+  padding: 12px 16px;
+  font-size: 1.2rem;
+}
+
+.publicFlagMap.isKiosk .publicFlagToolbar button {
+  padding: 0 18px;
+  font-size: 1.05rem;
+}
+
+.publicFlagMap.isKiosk .publicFlagDetail {
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  width: min(460px, calc(100% - 32px));
+  max-height: none;
+}
+
+.publicFlagMap:not(.isKiosk) .publicFlagDetail {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  left: auto;
+  width: min(420px, calc(100vw - 24px));
+  max-height: none;
+}
+
+.publicFlagMap.isKiosk .publicFlagDetail h3 {
+  font-size: 2.15rem;
+}
+
+.publicFlagMap.isKiosk .publicFlagDetail p,
+.publicFlagMap.isKiosk .publicFlagDetail button {
+  font-size: 1.15rem;
+}
+
+.publicFlagMap.isKiosk .publicFlagPhoto {
+  height: min(38vh, 340px) !important;
+}
+
+.publicFlagMap.isKiosk .publicFlagQr {
+  width: 180px;
+  height: 180px;
+}
+
+.publicFlagMap.isKiosk .publicFlagLevel {
+  color: #f3e2a7;
+}
+
+@keyframes publicFlagWave {
+  0%, 100% { transform: skewY(0deg) scaleX(1); }
+  50% { transform: skewY(7deg) scaleX(1.08); }
+}
+
+@keyframes publicFlagShimmer {
+  0%, 100% { opacity: 0.28; transform: translateX(-60%); }
+  50% { opacity: 0.7; transform: translateX(60%); }
+}
+
+@keyframes publicFlagReveal {
+  0% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(-3deg) scale(1.06); }
+  50% { transform: rotate(2.4deg) scale(1.04); }
+  75% { transform: rotate(-1.4deg) scale(1.02); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+
+@keyframes publicFlagGlow {
+  0% { opacity: 0; }
+  35% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes publicFlagPanel {
+  0% { opacity: 0; transform: translateY(18px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .publicFlagWave,
+  .publicFlagViewport::after,
+  .publicFlagMarker.isRevealed,
+  .publicFlagMarker.isRevealed::after,
+  .publicFlagDetail.isRevealed {
+    animation: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .publicFlagMap {
+    padding: 0 12px;
+  }
+
+  .publicFlagMap:not(.isKiosk) .publicFlagDetail {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: auto;
+    max-height: none;
+    z-index: 20;
+  }
+
+  .publicFlagMap:not(.isKiosk) .publicFlagPhoto {
+    height: 140px !important;
+  }
+
+  .publicFlagViewport {
+    height: calc(100dvh - 230px);
+    min-height: 320px;
+  }
+
+  .publicFlagMap.isKiosk {
+    padding: 12px;
+  }
+}

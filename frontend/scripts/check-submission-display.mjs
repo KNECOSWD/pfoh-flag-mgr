@@ -62,8 +62,9 @@ test("my submissions open the honoree card for that claim", () => {
 
 test("honoree records and the review queue share the Honoree Card viewer", () => {
   const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
-  const modalStart = source.indexOf("{cardPreview ? (");
-  const modal = source.slice(modalStart, modalStart + 3200);
+  const modalStart = source.indexOf("function renderCardPreview()");
+  const modalEnd = source.indexOf('if (chrome.shell === "map")', modalStart);
+  const modal = source.slice(modalStart, modalEnd);
   assert.ok(modalStart >= 0);
   assert.match(modal, /<h2 id="card-preview-title">\{cardPreview\.heading\}<\/h2>/);
   assert.match(source, /heading = honoreeCardHeading/);

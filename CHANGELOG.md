@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.0.0
+
+- A public Flag Map is available at /flag-map by direct link. It is not in the navigation, footer, or home page. The page asks search engines not to index it.
+- The map is one field you can pan and zoom. Zoomed out, it shows each section and how many flags are filled. Zooming in fades in the branch seal, then the name, then the rank. A section click zooms to that section. A flag click opens the detail, and Preview card opens the Honoree Card window.
+- Search suggests honorees as you type. Choosing one zooms to that flag, outlines it in gold, and gives a short gold glow. A click on a section fits that section. A click on a flag opens it. Dragging the field does not. The wheel zoom stays smooth on a large field.
+- Kiosk mode at /flag-map?kiosk=1 fills the screen for a touchscreen at the event. The first touch asks for full screen. Home and Back are on the page. Search uses a large field and large results so an on-screen keyboard works. After about a minute with no touch, the map returns to the overview and drifts slowly across the field until someone touches it.
+- A link such as /flag-map?flag=14 opens that flag zoomed in, with the detail panel. The panel shows the photo when the record has one, the public details, and a QR code for that flag's link. The QR code uses the normal address, /flag-map?flag=<id>, so a phone does not open kiosk mode. A link to a flag that is not on the map leaves the overview up and says so.
+- The public flag map counts requests separately for each visitor. Behind the site front end, that address is the one the front end recorded, not an address the browser can invent. The event kiosk stays under that limit: it loads the map once and does not ask again while the field is drifting. PublicFlagMap:UnlimitedIps can exempt the kiosk machine. It is empty unless the setting is filled in.
+- Kiosk mode stays on for the browser tab after the address loses `kiosk=1`. The page is only the flag map. Other pages, the Back button, and links off the map return to it. After about a minute, search, the open flag, and the zoom reset, then the field drifts. Leaving it takes a corner press and the PIN in `PublicFlagMap:KioskExitPin`. There is no default PIN. The event browser should be signed out. Setup is in `docs/kiosk-setup.md`.
+- Flags I submitted looks up a flag from the first and last name of the person who submitted or claimed it. The lookup is sent in the request body. Those names are used only to match. They are not shown, they are not logged, and they are not in the honoree search list. A value that looks like an email, a handle, or a name with digits is not used. The submission form says your name can be used for that lookup at the event kiosk.
+- Pinch zoom on a narrow screen updates the field once per frame. Kiosk buttons, search tabs, and the corner control are at least 56 pixels.
+- The admin Flag Map is unchanged.
+
 ## 1.5.2
 
 - Print Center uses the Honoree Card viewer. Open PDF on a row and Download merged PDF for the selection open that window immediately, show a loading message until the PDF is ready, then offer Download and Print. The merged view is titled Print Center and shows how many cards are selected, such as "28 cards selected". A single card uses the honoree name. If the PDF cannot be opened, the message stays in the window.

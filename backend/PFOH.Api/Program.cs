@@ -1,4 +1,7 @@
+using System.Threading.RateLimiting;
+using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
 using PFOH.Api.Data;
@@ -88,13 +91,77 @@ builder.Services.AddApplicationInsightsTelemetry(options =>
 {
     options.EnableAdaptiveSampling = false;
 });
+builder.Services.AddSingleton<ITelemetryInitializer, SubmitterLookupTelemetryInitializer>();
+builder.Services.AddSingleton<IHttpContextFactory>(serviceProvider =>
+    new SubmitterLookupHttpContextFactory(ActivatorUtilities.CreateInstance<DefaultHttpContextFactory>(serviceProvider)));
 builder.Services.AddSingleton<HonoreeFileStorage>();
 builder.Services.AddScoped<UserProfileService>();
 builder.Services.AddScoped<FlagGridAssignment>();
 builder.Services.AddScoped<PendingReviewMaintenance>();
 builder.Services.AddScoped<ReprintQueueMaintenance>();
+builder.Services.AddScoped<PublicFlagMap>();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("PublicFlagMap", httpContext =>
+    {
+        var ip = PublicFlagMapClientIp.Resolve(httpContext);
+        if (PublicFlagMapClientIp.IsUnlimited(httpContext.RequestServices.GetRequiredService<IConfiguration>(), ip))
+        {
+            return RateLimitPartition.GetNoLimiter(ip);
+        }
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            ip,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 120,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+    });
+    options.AddPolicy("PublicFlagMapBySubmitter", httpContext =>
+    {
+        var ip = PublicFlagMapClientIp.Resolve(httpContext);
+        return RateLimitPartition.GetFixedWindowLimiter(
+            ip,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+    });
+    options.AddPolicy("PublicFlagMapKioskExit", httpContext =>
+    {
+        var ip = PublicFlagMapClientIp.Resolve(httpContext);
+        return RateLimitPartition.GetFixedWindowLimiter(
+            ip,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+    });
+});
 
 var app = builder.Build();
+
+app.Use(async (context, next) =>
+{
+    if (SubmitterLookupPrivacy.IsLookupPath(context.Request.Path))
+    {
+        context.Response.OnStarting(() =>
+        {
+            SubmitterLookupPrivacy.ApplyResponseHeaders(context.Response);
+            return Task.CompletedTask;
+        });
+    }
+
+    await next();
+});
 
 //using (var scope = app.Services.CreateScope())
 //{
@@ -114,9 +181,21 @@ app.UseHttpsRedirection();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseRouting();
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? string.Empty;
+    if (path.Equals("/flag-map", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/api/public/flag-map", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
+    }
+
+    await next();
+});
 app.UseCors("frontend");
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "PFOH.Api" })).AllowAnonymous();
 app.MapControllers();
 app.MapFallbackToFile("index.html");

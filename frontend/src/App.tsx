@@ -36,6 +36,17 @@ import {
   profileApi
 } from "./api";
 import { decideAdminLoad } from "./adminAccess.js";
+import PublicFlagMap from "./PublicFlagMap";
+import {
+  clearKioskSession,
+  kioskBackTarget,
+  kioskBlocksNavigationKey,
+  kioskChrome,
+  kioskLinkLeavesMap,
+  kioskSessionOn,
+  kioskStayHref,
+  rememberKioskSession
+} from "./kioskSession.js";
 import { createBlobUrlCache } from "./blobUrlCache.js";
 import { shouldCompressHonoreePhoto, withDeadline } from "./prepareHonoreePhoto.js";
 import { createProfileLoadGate } from "./profileLoad.js";
@@ -149,7 +160,7 @@ const publicCopy = {
   loginRequired: "Login required to submit.",
   loginPrompt:
     "Log in or create an account to submit an honoree record or suggest a change. You can search and view records without an account.",
-  aboveSubmit: "Your submission will be reviewed by an administrator before it appears publicly.",
+  aboveSubmit: "Your submission will be reviewed by an administrator before it appears publicly. Your name can be used to look up flags you submitted at the event kiosk.",
   newRecordConfirmation:
     "Your honoree record has been submitted for review. It will appear publicly after administrator approval.",
   editConfirmation:
@@ -186,12 +197,13 @@ const blankForm: SaveHonoreeChangeRequest = {
   submitterEmailAddress: ""
 };
 
-type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/admin/review" | "/admin/flag-map" | "/admin/printing";
+type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/flag-map" | "/admin/printing";
 
 const appRoutes: AppRoute[] = [
   "/find",
   "/my-flags",
   "/honor-a-hero",
+  "/flag-map",
   "/admin/review",
   "/admin/flag-map",
   "/admin/printing"
@@ -435,7 +447,12 @@ export default function App() {
   const [flagSpotNotice, setFlagSpotNotice] = useState("");
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [activeRoute, setActiveRoute] = useState<AppRoute>(() => normalizeAppRoute(window.location.pathname));
+  const [kioskLocked, setKioskLocked] = useState(() => rememberKioskSession(window.sessionStorage, window.location.search));
+  const kioskLockedRef = useRef(kioskLocked);
+  kioskLockedRef.current = kioskLocked;
+  const [activeRoute, setActiveRoute] = useState<AppRoute>(() =>
+    kioskSessionOn(window.sessionStorage) ? "/flag-map" : normalizeAppRoute(window.location.pathname)
+  );
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [authPrompt, setAuthPrompt] = useState<ReturnIntent | null>(null);
   const confirmResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
@@ -498,12 +515,19 @@ export default function App() {
   );
 
   const isFindRoute = activeRoute === "/find";
+  const isPublicFlagMapRoute = activeRoute === "/flag-map";
   const isMyFlagsRoute = activeRoute === "/my-flags";
   const isHonorHeroRoute = activeRoute === "/honor-a-hero";
   const isAdminReviewRoute = activeRoute === "/admin/review";
   const isFlagMapRoute = activeRoute === "/admin/flag-map";
+  const siteNav: { route: AppRoute; label: string; show: boolean }[] = [
+    { route: "/find", label: "Search", show: true },
+    { route: "/my-flags", label: publicCopy.mySubmissions, show: true },
+    { route: "/flag-map", label: "Flag Map", show: false }
+  ];
   const isPrintingRoute = activeRoute === "/admin/printing";
   const isAdminRoute = activeRoute.startsWith("/admin");
+  const chrome = kioskChrome(kioskLocked, isAdmin);
 
   const adminAlertItems = useMemo(
     () =>
@@ -703,6 +727,7 @@ export default function App() {
   }, [form.serviceBranchCategoryId, serviceBranches]);
 
   useEffect(() => subscribeSignInError((message) => {
+    if (kioskLockedRef.current) return;
     if (message) setError(message);
   }), []);
 
@@ -720,7 +745,7 @@ export default function App() {
   profileInstanceRef.current = instance;
 
   useEffect(() => {
-    if (!isAuthenticated || !accountKey) {
+    if (kioskLocked || !isAuthenticated || !accountKey) {
       profileLoadGate.current.reset();
       setSavedDisplayName("");
       return;
@@ -761,10 +786,10 @@ export default function App() {
       cancelled = true;
       profileLoadGate.current.release(accountKey);
     };
-  }, [isAuthenticated, accountKey]);
+  }, [isAuthenticated, accountKey, kioskLocked]);
 
   async function openProfile() {
-    if (!account) return;
+    if (kioskLockedRef.current || !account) return;
 
     setProfileOpen(true);
     setProfileError("");
@@ -851,6 +876,8 @@ export default function App() {
   }
 
   async function signIn(mode: "login" | "create" = "login", intent?: ReturnIntent | null) {
+    if (kioskLockedRef.current) return;
+
     if (intent) {
       sessionStorage.setItem(RETURN_INTENT_KEY, JSON.stringify(intent));
     } else {
@@ -872,10 +899,29 @@ export default function App() {
   }
 
   async function signOut() {
+    if (kioskLockedRef.current) return;
     await instance.logoutRedirect();
   }
 
+  function leaveKiosk() {
+    clearKioskSession(window.sessionStorage);
+    kioskLockedRef.current = false;
+    setKioskLocked(false);
+    setActiveRoute("/find");
+    setMobileNavOpen(false);
+    window.history.pushState(null, "", "/find");
+  }
+
   function navigateToRoute(route: AppRoute, options?: { replace?: boolean }) {
+    if (kioskLockedRef.current) {
+      setActiveRoute("/flag-map");
+      setMobileNavOpen(false);
+      if ((window.location.pathname.replace(/\/$/, "") || "/") !== "/flag-map") {
+        window.history.replaceState({ pfohKiosk: 1 }, "", "/flag-map");
+      }
+      return;
+    }
+
     setActiveRoute(route);
     setMobileNavOpen(false);
 
@@ -934,6 +980,14 @@ export default function App() {
 
   useEffect(() => {
     const handlePopState = () => {
+      if (kioskLockedRef.current) {
+        const stay = kioskBackTarget(window.location.pathname, true) ?? "/flag-map";
+        window.history.pushState({ pfohKiosk: 1 }, "", stay);
+        setActiveRoute("/flag-map");
+        setMobileNavOpen(false);
+        return;
+      }
+
       const nextRoute = normalizeAppRoute(window.location.pathname);
       setActiveRoute(nextRoute);
       setMobileNavOpen(false);
@@ -952,6 +1006,57 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!kioskLocked) return;
+    const stay = kioskStayHref(window.location.href);
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current !== stay) {
+      window.history.replaceState({ pfohKiosk: 1 }, "", stay);
+    }
+    window.history.pushState({ pfohKiosk: 1 }, "", stay || "/flag-map");
+    setActiveRoute("/flag-map");
+  }, [kioskLocked]);
+
+  useEffect(() => {
+    if (!kioskLocked) return;
+    const onClick = (event: globalThis.MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest("a");
+      if (!anchor) return;
+      const href = anchor.href || anchor.getAttribute("href") || "";
+      if (!kioskLinkLeavesMap(href, window.location.href)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setActiveRoute("/flag-map");
+      if ((window.location.pathname.replace(/\/$/, "") || "/") !== "/flag-map") {
+        window.history.replaceState({ pfohKiosk: 1 }, "", "/flag-map");
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      const typing = target instanceof HTMLElement && Boolean(target.closest("input, textarea"));
+      if (kioskBlocksNavigationKey(event.key, event.altKey, typing)) event.preventDefault();
+    };
+    document.addEventListener("click", onClick, true);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("click", onClick, true);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [kioskLocked]);
+
+  useEffect(() => {
+    if (activeRoute !== "/flag-map") return;
+    const meta = document.createElement("meta");
+    meta.name = "robots";
+    meta.content = "noindex, nofollow";
+    document.head.appendChild(meta);
+    return () => {
+      meta.remove();
+    };
+  }, [activeRoute]);
+
+  useEffect(() => {
     if (activeRoute !== "/honor-a-hero" || !account || selectedClaim || isNominating) {
       return;
     }
@@ -966,7 +1071,7 @@ export default function App() {
   }, [activeRoute, account, selectedClaim, isNominating, submitterContact.email, submitterContact.phone]);
 
   useEffect(() => {
-    if (!isAuthenticated || !account) return;
+    if (kioskLocked || !isAuthenticated || !account) return;
 
     const raw = sessionStorage.getItem(RETURN_INTENT_KEY);
     if (!raw) return;
@@ -1002,7 +1107,7 @@ export default function App() {
 
     // The return intent is read once after sign-in. The handlers below close over the signed-in account.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, account?.homeAccountId]);
+  }, [isAuthenticated, account?.homeAccountId, kioskLocked]);
 
   async function loadAdminPanel<T>(name: string, fallback: string, load: () => Promise<T>) {
     try {
@@ -1099,12 +1204,13 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (!kioskChrome(kioskLocked, true).loadSignedInData) return;
     if (isAuthenticated && account) {
       loadData();
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, account?.homeAccountId]);
+  }, [isAuthenticated, account?.homeAccountId, kioskLocked]);
 
   useEffect(() => {
     const timers: number[] = [];
@@ -2545,14 +2651,68 @@ export default function App() {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  function renderCardPreview() {
+    if (!cardPreview) return null;
+    return (
+      <div
+        className="modalOverlay appConfirmOverlay cardPreviewOverlay"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="card-preview-title"
+        onClick={closeCardPreview}
+      >
+        <div className="modalCard appConfirmModal cardPreviewModal" onClick={(event) => event.stopPropagation()} aria-busy={cardPreview.phase === "loading"}>
+          <h2 id="card-preview-title">{cardPreview.heading}</h2>
+          <p className="helperText">{cardPreview.title}</p>
+          {cardPreview.phase === "ready" && cardPreview.url ? (
+            <iframe
+              ref={cardPreviewFrameRef}
+              className="cardPreviewFrame"
+              title={cardPreview.heading === printCenterHeading ? `${cardPreview.heading}, ${cardPreview.title}` : `Honoree card for ${cardPreview.title}`}
+              src={honoreeCardViewUrl(cardPreview.url)}
+            />
+          ) : (
+            <p className={`cardPreviewStatus${cardPreview.phase === "error" ? " error" : ""}`} role={cardPreview.phase === "error" ? "alert" : "status"}>
+              {cardPreview.phase === "error" ? cardPreview.message : cardPreviewLoadingMessage(cardPreview.heading)}
+            </p>
+          )}
+          <div className="modalActions">
+            <button type="button" onClick={downloadCardPreview} disabled={cardPreview.phase !== "ready"}>
+              Download
+            </button>
+            <button type="button" className="secondary" onClick={printCardPreview} disabled={cardPreview.phase !== "ready"}>
+              Print
+            </button>
+            <button type="button" className="secondary" onClick={closeCardPreview}>
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (chrome.shell === "map") {
+    return (
+      <main className="kioskLock" data-kiosk-lock="1">
+        <PublicFlagMap
+          kiosk
+          onPreviewCard={(honoreeId, title) => { void openPublicHonoreeCard(honoreeId, title); }}
+          onExitKiosk={leaveKiosk}
+        />
+        {renderCardPreview()}
+      </main>
+    );
+  }
+
   return (
     <main>
-      <header className={mobileNavOpen ? "hero mobileMenuOpen" : "hero"}>
+      <header className={mobileNavOpen ? "hero mobileMenuOpen" : isPublicFlagMapRoute ? "hero publicMapHero" : "hero"}>
         <div className="heroContent">
 
           <p className="eyebrow">Plano Flags of Honor</p>
-          <h1>{publicCopy.title}</h1>
-          <p className="heroLead">{publicCopy.subtitle}</p>
+          <h1>{isPublicFlagMapRoute ? "Public Flag Map" : publicCopy.title}</h1>
+          {isPublicFlagMapRoute ? null : <p className="heroLead">{publicCopy.subtitle}</p>}
         </div>
 
         <div className="authBox">
@@ -2581,11 +2741,12 @@ export default function App() {
         </div>
 
           <nav id="hero-navigation" className="heroNav desktopHeroNav" aria-label="Main navigation">
-            <a className={activeRoute === "/find" ? "isActive" : ""} href="/find" onClick={(event) => handleRouteLink(event, "/find")}>Search</a>
-            <a className={activeRoute === "/my-flags" ? "isActive" : ""} href="/my-flags" onClick={(event) => handleRouteLink(event, "/my-flags")}>{publicCopy.mySubmissions}</a>
-            {isAdmin ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
-            {isAdmin ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
-            {isAdmin ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
+            {siteNav.filter((item) => item.show).map((item) => (
+              <a key={item.route} className={activeRoute === item.route ? "isActive" : ""} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
+            ))}
+            {chrome.adminLinks ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
+            {chrome.adminLinks ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
+            {chrome.adminLinks ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
             <a
               className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
               href="/honor-a-hero"
@@ -2626,11 +2787,12 @@ export default function App() {
                 </p>
 
                 <nav className="mobileDrawerNav" aria-label="Mobile navigation">
-                  <a className={activeRoute === "/find" ? "isActive" : ""} href="/find" onClick={(event) => handleRouteLink(event, "/find")}>Search</a>
-                  <a className={activeRoute === "/my-flags" ? "isActive" : ""} href="/my-flags" onClick={(event) => handleRouteLink(event, "/my-flags")}>{publicCopy.mySubmissions}</a>
-                  {isAdmin ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
-                  {isAdmin ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
-                  {isAdmin ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
+                  {siteNav.filter((item) => item.show).map((item) => (
+                    <a key={item.route} className={activeRoute === item.route ? "isActive" : ""} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
+                  ))}
+                  {chrome.adminLinks ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
+                  {chrome.adminLinks ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
+                  {chrome.adminLinks ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
                   <a
                     className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
                     href="/honor-a-hero"
@@ -2694,7 +2856,10 @@ export default function App() {
           </Dialog.Root>
       </header>
 
-          {isAdmin && adminAlertItems.length > 0 ? (
+          {!isPublicFlagMapRoute ? (
+          <>
+
+          {chrome.adminBanner && adminAlertItems.length > 0 ? (
             <section className="adminAlertBanner" aria-label="Administrator notifications">
               <div className="adminAlertBannerText">
                 <strong>Admin attention needed</strong>
@@ -2742,43 +2907,13 @@ export default function App() {
             </div>
           ) : null}
 
-          {cardPreview ? (
-            <div
-              className="modalOverlay appConfirmOverlay cardPreviewOverlay"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="card-preview-title"
-              onClick={closeCardPreview}
-            >
-              <div className="modalCard appConfirmModal cardPreviewModal" onClick={(event) => event.stopPropagation()} aria-busy={cardPreview.phase === "loading"}>
-                <h2 id="card-preview-title">{cardPreview.heading}</h2>
-                <p className="helperText">{cardPreview.title}</p>
-                {cardPreview.phase === "ready" && cardPreview.url ? (
-                  <iframe
-                    ref={cardPreviewFrameRef}
-                    className="cardPreviewFrame"
-                    title={cardPreview.heading === printCenterHeading ? `${cardPreview.heading}, ${cardPreview.title}` : `Honoree card for ${cardPreview.title}`}
-                    src={honoreeCardViewUrl(cardPreview.url)}
-                  />
-                ) : (
-                  <p className={`cardPreviewStatus${cardPreview.phase === "error" ? " error" : ""}`} role={cardPreview.phase === "error" ? "alert" : "status"}>
-                    {cardPreview.phase === "error" ? cardPreview.message : cardPreviewLoadingMessage(cardPreview.heading)}
-                  </p>
-                )}
-                <div className="modalActions">
-                  <button type="button" onClick={downloadCardPreview} disabled={cardPreview.phase !== "ready"}>
-                    Download
-                  </button>
-                  <button type="button" className="secondary" onClick={printCardPreview} disabled={cardPreview.phase !== "ready"}>
-                    Print
-                  </button>
-                  <button type="button" className="secondary" onClick={closeCardPreview}>
-                    Close
-                  </button>
-                </div>
-              </div>
-            </div>
+          </>
           ) : null}
+
+          {renderCardPreview()}
+
+          {!isPublicFlagMapRoute ? (
+          <>
 
           {(error || notice) && (
             <section className="messageStack" aria-live="polite" aria-atomic="true">
@@ -3351,7 +3486,7 @@ export default function App() {
                         <div className="honoreeTitleRow">
                           <h3>{displayNameWithNickname(honoree.fullName, honoree.nickname)}</h3>
                           {honoree.kia ? <span className="status status-submitted">KIA</span> : null}
-                          {isAdmin && claimantsByHonoreeId[honoree.id]?.length ? (
+                          {chrome.adminLinks && claimantsByHonoreeId[honoree.id]?.length ? (
                             <span className="status claimedStatus">Claimed</span>
                           ) : null}
                         </div>
@@ -3396,7 +3531,7 @@ export default function App() {
                               {publicCopy.suggestChange}
                             </button>
 
-                            {isAdmin ? (
+                            {chrome.adminLinks ? (
                               <details
                                 className="adminActionsMenu"
                                 onBlur={(event) => {
@@ -3666,7 +3801,7 @@ export default function App() {
             </section>
           ) : null}
 
-          {isAdminRoute && !isAdmin ? (
+          {isAdminRoute && !kioskLocked && !isAdmin ? (
             <section className="card guestNotice">
               <h2>Administrator access required</h2>
               <p>Sign in with an account assigned the PFOH.Admin role to use review, flag map, and printing tools.</p>
@@ -3683,7 +3818,7 @@ export default function App() {
             </section>
           ) : null}
 
-          {isAdminRoute && isAdmin ? (
+          {isAdminRoute && chrome.adminLinks ? (
             <div id="admin" className="adminSectionStack" aria-label="Administrator tools">
               {isAdminReviewRoute ? (
               <section className="card adminCard adminReviewCard">
@@ -4543,6 +4678,11 @@ export default function App() {
               </form>
             </section>
           ) : null}
+
+          </>
+          ) : (
+            <PublicFlagMap onPreviewCard={(honoreeId, title) => { void openPublicHonoreeCard(honoreeId, title); }} />
+          )}
 
       <footer className="appFooter" aria-label="Plano Flags of Honor footer">
         <div className="appFooterInner">

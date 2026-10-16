@@ -48,7 +48,8 @@ test("the profile effect does not depend on the account object", () => {
   const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const match = source.match(/profileApi\.get\([\s\S]*?\}, \[([^\]]*)\]\);/);
   assert.ok(match, "profile load effect was not found");
-  assert.equal(match[1].replace(/\s+/g, " ").trim(), "isAuthenticated, accountKey");
+  assert.equal(match[1].replace(/\s+/g, " ").trim(), "isAuthenticated, accountKey, kioskLocked");
+  assert.doesNotMatch(match[1], /\baccount\b/);
 });
 
 test("search and lookups are public and do not wait on a token", () => {
