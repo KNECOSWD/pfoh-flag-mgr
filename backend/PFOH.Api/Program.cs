@@ -284,6 +284,8 @@ app.MapGet("/flag-map", async (HttpContext context, CancellationToken ct) =>
     await context.Response.WriteAsync(FlagMapDocument.WithPreload(html), ct);
 }).AllowAnonymous();
 app.MapControllers();
+app.MapFallback("/api", UnknownApi.Respond);
+app.MapFallback("/api/{**path}", UnknownApi.Respond);
 app.MapFallbackToFile("index.html");
 
 try
@@ -324,6 +326,21 @@ catch (Exception ex)
 }
 
 app.Run();
+
+static class UnknownApi
+{
+    public static IResult Respond(HttpContext context)
+    {
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            context.Response.Headers.Pragma = "no-cache";
+            context.Response.Headers.Remove("ETag");
+            return Task.CompletedTask;
+        });
+        return Results.Problem(title: "Not found", statusCode: StatusCodes.Status404NotFound);
+    }
+}
 
 public partial class Program
 {

@@ -317,6 +317,34 @@ public class PublicFlagMapHtmlTests : IClassFixture<PublicFlagMapHtmlTests.HtmlF
         Assert.Contains("max-age=31536000", asset.Headers.CacheControl?.ToString(), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Unknown_api_paths_return_404_and_not_the_spa()
+    {
+        var client = factory.CreateClient();
+        foreach (var path in new[] { "/api/public/flag-map/mine", "/api/does-not-exist", "/api" })
+        {
+            var response = await client.GetAsync(path);
+            var body = await response.Content.ReadAsStringAsync();
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+            Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+            Assert.Contains("Not found", body, StringComparison.Ordinal);
+            Assert.DoesNotContain("<html", body, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("<!doctype", body, StringComparison.OrdinalIgnoreCase);
+            var cache = response.Headers.NonValidated["Cache-Control"].ToString();
+            Assert.Contains("no-store", cache, StringComparison.OrdinalIgnoreCase);
+            Assert.Null(response.Headers.ETag);
+            Assert.False(response.Headers.TryGetValues("ETag", out _));
+        }
+
+        var page = await client.GetAsync("/flag-map");
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        Assert.Contains("text/html", page.Content.Headers.ContentType?.MediaType, StringComparison.OrdinalIgnoreCase);
+
+        var sections = await client.GetAsync("/api/public/flag-map/sections");
+        Assert.Equal(HttpStatusCode.OK, sections.StatusCode);
+        Assert.Contains("json", sections.Content.Headers.ContentType?.MediaType, StringComparison.OrdinalIgnoreCase);
+    }
+
     public sealed class HtmlFactory : PfohApiFactory
     {
         private readonly string root = Path.Combine(Path.GetTempPath(), "pfoh-flag-map-" + Guid.NewGuid().ToString("N"));

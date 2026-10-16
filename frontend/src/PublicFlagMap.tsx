@@ -15,6 +15,8 @@ import {
   cullRects,
   filterFlagMapSuggestions,
   fitView,
+  fitWholeField,
+  flagMapPageBands,
   flagDeepLink,
   flagMapDetailGates,
   flagMapLayerOpacities,
@@ -457,7 +459,7 @@ export default function PublicFlagMap({
   }
 
   function fitWorld() {
-    const fitted = fitView(worldBounds(), viewportSize());
+    const fitted = fitWholeField(worldBounds(), viewportSize());
     fitScaleRef.current = fitted.scale;
     return fitted;
   }
@@ -719,14 +721,39 @@ export default function PublicFlagMap({
 
   useLayoutEffect(() => {
     const root = document.documentElement;
-    if (!kiosk) return;
-    root.classList.add("flagMapKiosk");
-    const meta = document.querySelector('meta[name="viewport"]');
-    const previous = meta?.getAttribute("content") ?? "";
-    meta?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no");
+    const bandNames = ["--flag-map-header", "--flag-map-tools", "--flag-map-bottom", "--flag-map-side", "--flag-map-pad-top", "--flag-map-pad-bottom"];
+    const clearBands = () => {
+      for (const name of bandNames) root.style.removeProperty(name);
+    };
+    if (kiosk) {
+      root.classList.remove("flagMapPage");
+      clearBands();
+      root.classList.add("flagMapKiosk");
+      const meta = document.querySelector('meta[name="viewport"]');
+      const previous = meta?.getAttribute("content") ?? "";
+      meta?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no");
+      return () => {
+        root.classList.remove("flagMapKiosk");
+        if (previous) meta?.setAttribute("content", previous);
+      };
+    }
+    root.classList.remove("flagMapKiosk");
+    root.classList.add("flagMapPage");
+    const applyBands = () => {
+      const bands = flagMapPageBands({ width: window.innerWidth, height: window.innerHeight });
+      root.style.setProperty("--flag-map-header", `${bands.header}px`);
+      root.style.setProperty("--flag-map-tools", `${bands.tools}px`);
+      root.style.setProperty("--flag-map-bottom", `${bands.bottom}px`);
+      root.style.setProperty("--flag-map-side", `${bands.side}px`);
+      root.style.setProperty("--flag-map-pad-top", `${bands.mapPadTop}px`);
+      root.style.setProperty("--flag-map-pad-bottom", `${bands.mapPadBottom}px`);
+    };
+    applyBands();
+    window.addEventListener("resize", applyBands);
     return () => {
-      root.classList.remove("flagMapKiosk");
-      if (previous) meta?.setAttribute("content", previous);
+      root.classList.remove("flagMapPage");
+      clearBands();
+      window.removeEventListener("resize", applyBands);
     };
   }, [kiosk]);
 

@@ -11822,3 +11822,100 @@ html.flagMapKiosk a {
     padding: 12px;
   }
 }
+
+html.flagMapPage main {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+html.flagMapPage .hero.publicMapHero {
+  height: var(--flag-map-header, 92px) !important;
+  min-height: 0 !important;
+  max-height: var(--flag-map-header, 92px) !important;
+  margin: 0 !important;
+  padding: 8px 16px !important;
+  overflow: hidden;
+  align-items: center;
+  flex-wrap: nowrap;
+  row-gap: 0.35rem;
+}
+
+html.flagMapPage .hero.publicMapHero h1 {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.1;
+}
+
+html.flagMapPage .hero.publicMapHero .heroNav {
+  flex: 1 1 auto;
+  order: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+html.flagMapPage .hero.publicMapHero .authBox {
+  position: static;
+  margin-left: auto;
+}
+
+html.flagMapPage .hero.publicMapHero .authBox button {
+  min-height: 36px;
+  padding: 4px 10px;
+}
+
+html.flagMapPage .publicFlagMap {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--flag-map-header, 92px) - var(--flag-map-bottom, 28px));
+  max-width: none;
+  margin: 0;
+  padding: var(--flag-map-pad-top, 6px) var(--flag-map-side, 16px) var(--flag-map-pad-bottom, 4px);
+  box-sizing: border-box;
+}
+
+html.flagMapPage .publicFlagChrome {
+  flex: 0 0 var(--flag-map-tools, 104px);
+  height: var(--flag-map-tools, 104px);
+  max-height: var(--flag-map-tools, 104px);
+  overflow: hidden;
+}
+
+html.flagMapPage .publicFlagHeading {
+  display: none;
+}
+
+html.flagMapPage .publicFlagSearch {
+  margin: 0 0 4px;
+}
+
+html.flagMapPage .publicFlagSearch label {
+  font-size: 0.78rem;
+  line-height: 1.1;
+}
+
+html.flagMapPage .publicFlagSearch input,
+html.flagMapPage .publicFlagToolbar button {
+  min-height: 36px;
+  height: 36px;
+}
+
+html.flagMapPage .publicFlagToolbar {
+  margin: 0;
+}
+
+html.flagMapPage .publicFlagStage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+html.flagMapPage .publicFlagViewport {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none;
+}

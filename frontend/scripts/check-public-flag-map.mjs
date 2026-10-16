@@ -12,6 +12,10 @@ import {
   cullRects,
   filterFlagMapSuggestions,
   fitView,
+  fitWholeField,
+  flagMapPageBands,
+  initialOverviewPlacement,
+  boxInsideViewport,
   flagDeepLink,
   countFlagsOnScreen,
   flagMapDetailGates,
@@ -233,6 +237,44 @@ test("the field is laid out as seen from the pavilion", () => {
   assert.equal(empty.sections.length, PAVILION_COLUMNS_LEFT_TO_RIGHT.length);
   assert.equal(empty.cells.filter((cell) => cell.section === "Z" && cell.status === "Reserved").length, FIELD_MAP_Z_ROWS);
   assert.equal(empty.cells.some((cell) => cell.flagGridName === "Z-10"), false);
+});
+
+test("the opening fit keeps row 1 and the pavilion inside the window", () => {
+  const field = layoutFlagField([]);
+  const sizes = [
+    { width: 1440, height: 900 },
+    { width: 1024, height: 768 },
+    { width: 390, height: 844 },
+    { width: 320, height: 568 },
+    { width: 1920, height: 1080, kiosk: true }
+  ];
+  for (const size of sizes) {
+    const placed = initialOverviewPlacement(field, size, { kiosk: Boolean(size.kiosk) });
+    assert.equal(boxInsideViewport(placed.frame, size), true, `canvas ${size.width}`);
+    assert.equal(boxInsideViewport(placed.row40, size), true, `row 40 ${size.width}`);
+    assert.equal(boxInsideViewport(placed.row1, size), true, `row 1 ${size.width}`);
+    assert.equal(boxInsideViewport(placed.pavilion, size), true, `pavilion ${size.width}`);
+    assert.ok(placed.pavilion.top < size.height, `pavilion top ${size.width}`);
+    assert.ok(placed.row1.bottom <= size.height + 0.5, `row 1 bottom ${size.width}`);
+    assert.ok(placed.row40.top >= -0.5, `row 40 top ${size.width}`);
+    assert.ok(placed.pavilion.bottom > placed.row1.top);
+  }
+  assert.match(page, /fitWholeField/);
+  assert.match(page, /flagMapPageBands/);
+  assert.match(page, /flagMapPage/);
+  assert.match(css, /html\.flagMapPage \.publicFlagViewport/);
+  assert.match(css, /--flag-map-header/);
+  assert.match(css, /min-height:\s*0\s*!important/);
+  const desktop = flagMapPageBands({ width: 1440, height: 900 });
+  assert.ok(desktop.header > 0 && desktop.bottom > 0 && desktop.tools > 0);
+  assert.equal(flagMapPageBands({ width: 1920, height: 1080 }, { kiosk: true }).header, 0);
+  const fitted = fitWholeField(
+    { x: 0, y: 0, width: field.worldWidth, height: field.worldHeight },
+    { width: 280, height: 120 }
+  );
+  assert.ok(fitted.scale < FLAG_MAP_ZOOM.minScale);
+  assert.ok(fitted.y >= 0);
+  assert.ok(fitted.y + field.worldHeight * fitted.scale <= 120.5);
 });
 
 test("submitter suggestions share the honoree search and wave every match", () => {

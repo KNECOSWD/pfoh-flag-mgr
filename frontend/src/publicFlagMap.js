@@ -234,6 +234,86 @@ export function fitView(bounds, viewport, padding = 36) {
   };
 }
 
+export function fitWholeField(bounds, viewport, padding = 36) {
+  const innerWidth = Math.max(1, viewport.width - padding * 2);
+  const innerHeight = Math.max(1, viewport.height - padding * 2);
+  const scale = Math.min(
+    FLAG_MAP_ZOOM.maxScale,
+    innerWidth / Math.max(bounds.width, 1),
+    innerHeight / Math.max(bounds.height, 1)
+  );
+  return {
+    scale,
+    x: (viewport.width - bounds.width * scale) / 2 - bounds.x * scale,
+    y: (viewport.height - bounds.height * scale) / 2 - bounds.y * scale
+  };
+}
+
+export function flagMapPageBands(size, { kiosk = false } = {}) {
+  if (kiosk) {
+    return { header: 0, tools: 196, bottom: 16, side: 22, mapPadTop: 18, mapPadBottom: 0 };
+  }
+  const narrow = size.width <= 760;
+  const short = size.height <= 640 || size.width <= 360;
+  if (short) {
+    return { header: 104, tools: 96, bottom: 24, side: 8, mapPadTop: 4, mapPadBottom: 4 };
+  }
+  if (narrow) {
+    return { header: 120, tools: 108, bottom: 28, side: 12, mapPadTop: 6, mapPadBottom: 4 };
+  }
+  return { header: 92, tools: 104, bottom: 28, side: 16, mapPadTop: 6, mapPadBottom: 4 };
+}
+
+export function projectFieldBox(box, view, frame) {
+  const left = frame.x + view.x + box.x * view.scale;
+  const top = frame.y + view.y + box.y * view.scale;
+  const width = box.width * view.scale;
+  const height = box.height * view.scale;
+  return { left, top, width, height, right: left + width, bottom: top + height };
+}
+
+export function boxInsideViewport(box, viewport, slack = 0.5) {
+  return Boolean(box)
+    && box.left >= -slack
+    && box.top >= -slack
+    && box.right <= viewport.width + slack
+    && box.bottom <= viewport.height + slack;
+}
+
+export function initialOverviewPlacement(field, windowSize, options = {}) {
+  const bands = options.bands ?? flagMapPageBands(windowSize, options);
+  const frame = {
+    x: bands.side,
+    y: bands.header + bands.mapPadTop + bands.tools,
+    width: Math.max(1, windowSize.width - bands.side * 2),
+    height: Math.max(1, windowSize.height - bands.header - bands.mapPadTop - bands.tools - bands.mapPadBottom - bands.bottom)
+  };
+  frame.left = frame.x;
+  frame.top = frame.y;
+  frame.right = frame.x + frame.width;
+  frame.bottom = frame.y + frame.height;
+  const view = fitWholeField(
+    { x: 0, y: 0, width: field.worldWidth, height: field.worldHeight },
+    { width: frame.width, height: frame.height }
+  );
+  const row1 = boundsOf([
+    ...field.cells.filter((cell) => cell.columnNumber === 1),
+    ...field.rowLabels.filter((label) => label.row === 1)
+  ]);
+  const row40 = boundsOf([
+    ...field.cells.filter((cell) => cell.columnNumber === 40),
+    ...field.rowLabels.filter((label) => label.row === 40)
+  ]);
+  return {
+    bands,
+    frame,
+    view,
+    row1: row1 ? projectFieldBox(row1, view, frame) : null,
+    row40: row40 ? projectFieldBox(row40, view, frame) : null,
+    pavilion: field.pavilion ? projectFieldBox(field.pavilion, view, frame) : null
+  };
+}
+
 export function viewportWorldRect(view, viewport, pad = 0) {
   return {
     x: (0 - view.x) / view.scale - pad,
