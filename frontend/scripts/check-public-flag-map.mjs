@@ -3,7 +3,16 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   FLAG_MAP_ZOOM,
+  FIT_PADDING,
   KIOSK_IDLE_MS,
+  SPOT_SIZE,
+  SPOT_TEXT_PX,
+  clampView,
+  closestViewScale,
+  labelFontSize,
+  spotLinesThatFit,
+  spotsViewScale,
+  zoneLabelSizes,
   applyKioskIdleReset,
   attractView,
   createFlagMapLoader,
@@ -110,29 +119,159 @@ test("zoomed-out zones use real ranges and spots stay inside their box", () => {
   assert.match(css, /\.publicFlagSuggestions\s*\{[^}]*z-index:\s*5/);
   assert.match(css, /\.publicFlagStage\s*\{[^}]*z-index:\s*1/);
   assert.doesNotMatch(css, /\.publicFlagDot/);
-  const open = spotContents({ width: 52, height: 28, status: "Open" }, { names: false, seals: false, ranks: false });
-  assert.equal(open.name, "Open");
-  assert.equal(open.seal, 0);
+  const spot = { width: SPOT_SIZE.width, height: SPOT_SIZE.height, flagGridName: "AA-11" };
+  const far = spotContents({ ...spot, status: "Occupied", displayName: "Ada" }, flagMapDetailGates(0.1), 0.1);
+  assert.equal(far.number, "");
+  assert.deepEqual(far.lines, []);
+  const spotsScale = 64 / SPOT_SIZE.width;
+  const numbered = spotContents({ ...spot, status: "Occupied", displayName: "Ada" }, flagMapDetailGates(spotsScale), spotsScale);
+  assert.equal(numbered.number, "AA-11");
+  assert.deepEqual(numbered.lines, []);
+  assert.equal(numbered.seal, 0);
+  const openSpot = spotContents({ ...spot, status: "Open" }, flagMapDetailGates(spotsScale), spotsScale);
+  assert.equal(openSpot.number, "AA-11");
+  const namesScale = 130 / SPOT_SIZE.width;
   const named = spotContents(
-    { width: 52, height: 28, status: "Occupied", displayName: "Ean Howard Sullivan" },
-    { names: true, seals: false, ranks: false }
+    { ...spot, status: "Occupied", displayName: "Ean Howard Sullivan", logoUrl: "/seal.png" },
+    flagMapDetailGates(namesScale, 40),
+    namesScale
   );
-  assert.ok(named.name.length > 0);
-  assert.ok(named.name.length * named.nameSize * 0.56 <= 52);
-  assert.ok(named.nameSize + 4 <= 28);
+  assert.deepEqual(named.lines, ["Ean Howard", "Sullivan"]);
+  assert.equal(named.seal, 0);
+  const closeScale = 300 / SPOT_SIZE.width;
   const sealed = spotContents(
-    { width: 52, height: 28, status: "Occupied", displayName: "Ada", logoUrl: "/seal.png", rank: "Capt" },
-    { names: true, seals: true, ranks: true }
+    { ...spot, status: "Occupied", displayName: "Ada", logoUrl: "/seal.png", rank: "Capt" },
+    flagMapDetailGates(closeScale, 6),
+    closeScale
   );
-  assert.ok(sealed.seal >= 8 && sealed.seal <= 26);
-  assert.ok(sealed.seal + (named.name ? 0 : 0) <= 28);
-  assert.ok(sealed.name.length === 0 || sealed.name.length * sealed.nameSize * 0.56 <= 52);
+  assert.ok(sealed.seal * closeScale >= SPOT_TEXT_PX.seal.min && sealed.seal * closeScale <= SPOT_TEXT_PX.seal.max);
+  assert.deepEqual(sealed.lines, ["Ada"]);
+  assert.equal(sealed.rank, "Capt");
   const hidden = spotContents(
-    { width: 52, height: 28, status: "Occupied", displayName: "Ada", logoUrl: "/seal.png" },
-    { names: true, seals: false, ranks: false }
+    { ...spot, status: "Occupied", displayName: "Ada", logoUrl: "/seal.png" },
+    flagMapDetailGates(closeScale, 10),
+    closeScale
   );
   assert.equal(hidden.seal, 0);
-  assert.equal(hidden.name, "Ada");
+  assert.deepEqual(hidden.lines, ["Ada"]);
+});
+
+test("spot text keeps a readable screen size and stays inside the spot at every zoom", () => {
+  const names = ["Ada", "Ean Howard Sullivan", "Margaret Anne Okonkwo-Brightwater", "Guadalupe Washington-Montgomery Jr.", "Li"];
+  for (let spotPx = 8; spotPx <= SPOT_SIZE.width * FLAG_MAP_ZOOM.maxScale; spotPx *= 1.07) {
+    const scale = spotPx / SPOT_SIZE.width;
+    for (const flagsOnScreen of [4, 40]) {
+      const gates = flagMapDetailGates(scale, flagsOnScreen);
+      for (const [index, displayName] of names.entries()) {
+        const cell = { width: SPOT_SIZE.width, height: SPOT_SIZE.height, flagGridName: index % 2 ? "AA-11" : "C-40", status: "Occupied", displayName, rank: "Lieutenant Commander", logoUrl: "/seal.png" };
+        const spot = spotContents(cell, gates, scale);
+        const width = SPOT_SIZE.width * scale;
+        const height = SPOT_SIZE.height * scale;
+        const inner = width - spot.pad * scale * 2;
+        let used = spot.pad * scale * 2 + spot.seal * scale * 1.08;
+        if (spot.number) {
+          const px = spot.numberSize * scale;
+          assert.ok(px >= SPOT_TEXT_PX.number.min - 0.01 && px <= SPOT_TEXT_PX.number.max + 0.01, `number ${px}px at ${spotPx}`);
+          assert.ok(spot.number.length * px * 0.62 <= inner + 0.01);
+          used += px * 1.15;
+        }
+        if (spot.lines.length) {
+          const px = spot.nameSize * scale;
+          assert.ok(px >= SPOT_TEXT_PX.name.min - 0.01 && px <= SPOT_TEXT_PX.closestName.max + 0.01, `name ${px}px at ${spotPx}`);
+          assert.ok(spot.lines.length <= 2);
+          for (const line of spot.lines) assert.ok(line.length * px * 0.62 <= inner + 0.01, `${line} at ${spotPx}`);
+          used += spot.lines.length * px * 1.15;
+        }
+        if (spot.rank) used += spot.rankSize * scale * 1.15;
+        assert.ok(used <= height + 0.01, `${displayName} uses ${used} of ${height} at ${spotPx}`);
+        if (!gates.names) assert.deepEqual(spot.lines, []);
+        if (!gates.seals) assert.equal(spot.seal, 0);
+      }
+    }
+  }
+  assert.deepEqual(spotLinesThatFit("Sam Okonkwo-Brightwater", 120, 10, 2), ["Sam Okonkwo-", "Brightwater"]);
+  assert.equal(labelFontSize("40", 160, 108, 0.01), 0);
+  assert.ok(labelFontSize("40", 160, 108, 0.12) * 0.12 <= 13);
+  const zone = { section: "C", min: 21, max: 40, width: SPOT_SIZE.width, height: 2388 };
+  const sizes = zoneLabelSizes(zone, 0.12);
+  assert.equal(sizes.range, "21\u201340");
+  assert.ok(sizes.letter > 0 && sizes.rangeSize > 0);
+  assert.equal(sizes.vertical, true);
+});
+
+test("spots never overlap and the global button size cannot stretch them", () => {
+  const field = layoutFlagField([]);
+  const cells = [...field.cells].sort((left, right) => left.x - right.x || left.y - right.y);
+  for (let index = 0; index < cells.length; index += 1) {
+    const a = cells[index];
+    assert.equal(a.width, SPOT_SIZE.width);
+    assert.equal(a.height, SPOT_SIZE.height);
+    for (let next = index + 1; next < cells.length && cells[next].x < a.x + a.width + SPOT_SIZE.gap; next += 1) {
+      const b = cells[next];
+      const apartX = b.x >= a.x + a.width + SPOT_SIZE.gap - 0.001 || a.x >= b.x + b.width + SPOT_SIZE.gap - 0.001;
+      const apartY = b.y >= a.y + a.height + SPOT_SIZE.gap - 0.001 || a.y >= b.y + b.height + SPOT_SIZE.gap - 0.001;
+      assert.ok(apartX || apartY, `${a.flagGridName} touches ${b.flagGridName}`);
+    }
+  }
+  const glyph = css.slice(css.indexOf(".publicFlagTile,\n.publicFlagMarker {"), css.indexOf(".publicFlagTile,\n.publicFlagZone {"));
+  assert.match(glyph, /min-height:\s*0/);
+  assert.match(glyph, /min-width:\s*0/);
+  assert.match(glyph, /padding:\s*0/);
+  assert.match(glyph, /box-sizing:\s*border-box/);
+  assert.doesNotMatch(css, /\.publicFlagMarker\.isHighlighted\s*\{[^}]*box-shadow:\s*0 0 0/);
+  const reveal = css.slice(css.indexOf("@keyframes publicFlagReveal"), css.indexOf("@keyframes publicFlagGlow"));
+  for (const amount of reveal.match(/scale\(([\d.]+)\)/g) || []) {
+    assert.ok(Number(amount.slice(6, -1)) <= 1, `reveal grows a spot to ${amount}`);
+  }
+});
+
+test("the fit shows the whole grid with padding and a pan reaches every edge", () => {
+  const field = layoutFlagField([]);
+  const world = { x: 0, y: 0, width: field.worldWidth, height: field.worldHeight };
+  const everything = boundsOf([...field.cells, ...field.rowLabels, ...field.columnLabels, field.pavilion]);
+  assert.ok(everything.x > 0 && everything.y > 0);
+  assert.ok(everything.x + everything.width < field.worldWidth);
+  assert.ok(everything.y + everything.height < field.worldHeight);
+  for (const viewport of [{ width: 1408, height: 640 }, { width: 366, height: 560 }, { width: 1876, height: 860 }]) {
+    const fitted = fitWholeField(world, viewport, FIT_PADDING);
+    const left = fitted.x + everything.x * fitted.scale;
+    const right = fitted.x + (everything.x + everything.width) * fitted.scale;
+    const top = fitted.y + everything.y * fitted.scale;
+    const bottom = fitted.y + (everything.y + everything.height) * fitted.scale;
+    assert.ok(left >= FIT_PADDING && right <= viewport.width - FIT_PADDING, `fit width ${viewport.width}`);
+    assert.ok(top >= FIT_PADDING && bottom <= viewport.height - FIT_PADDING, `fit height ${viewport.width}`);
+    assert.deepEqual(clampView(fitted, viewport, world, { minScale: fitted.scale }), fitted);
+    const under = clampView({ ...fitted, scale: fitted.scale / 2 }, viewport, world, { minScale: fitted.scale });
+    assert.equal(under.scale, fitted.scale);
+    for (const scale of [fitted.scale * 3, spotsViewScale(), closestViewScale(viewport), FLAG_MAP_ZOOM.maxScale]) {
+      const farLeft = clampView({ x: 1e7, y: 1e7, scale }, viewport, world, { minScale: fitted.scale });
+      assert.ok(farLeft.x + everything.x * scale >= FIT_PADDING - 0.01, `left edge at ${scale}`);
+      assert.ok(farLeft.y + everything.y * scale >= FIT_PADDING - 0.01, `top edge at ${scale}`);
+      if (world.width * scale > viewport.width - FIT_PADDING * 2) assert.ok(Math.abs(farLeft.x - FIT_PADDING) < 0.01);
+      if (world.height * scale > viewport.height - FIT_PADDING * 2) assert.ok(Math.abs(farLeft.y - FIT_PADDING) < 0.01);
+      const farRight = clampView({ x: -1e7, y: -1e7, scale }, viewport, world, { minScale: fitted.scale });
+      assert.ok(farRight.x + (everything.x + everything.width) * scale <= viewport.width - FIT_PADDING + 0.01, `right edge at ${scale}`);
+      assert.ok(farRight.y + (everything.y + everything.height) * scale <= viewport.height - FIT_PADDING + 0.01, `bottom edge at ${scale}`);
+    }
+  }
+  assert.match(page, /limitView\(zoomAt\(/);
+  assert.match(page, /paintView\(limitView\(next\)\)/);
+  assert.match(page, /const target = limitView\(requested\)/);
+});
+
+test("the detail drawer sits above the search bar at every size", () => {
+  const stage = page.slice(page.indexOf('<div className="publicFlagStage">'), page.indexOf("{selected ? ("));
+  assert.doesNotMatch(stage, /<FlagDetail/);
+  assert.match(page, /selected \? "hasDetail" : ""/);
+  const base = css.match(/\n\.publicFlagDetail \{\n  position: absolute;[^}]*\}/)[0];
+  const zIndex = Number(base.match(/z-index:\s*(\d+)/)[1]);
+  assert.ok(zIndex > 30);
+  const phone = css.slice(css.indexOf("@media (max-width: 760px) {\n  .publicFlagMap {"));
+  const phoneDrawer = phone.slice(phone.indexOf(".publicFlagMap:not(.isKiosk) .publicFlagDetail {"), phone.indexOf("}", phone.indexOf(".publicFlagMap:not(.isKiosk) .publicFlagDetail {")));
+  assert.ok(Number(phoneDrawer.match(/z-index:\s*(\d+)/)[1]) > 30);
+  assert.match(css, /\.publicFlagMap\.hasDetail:not\(\.isKiosk\) \.publicFlagChrome \{\s*margin-right:/);
+  assert.match(css, /\.publicFlagMap\.isKiosk\.hasDetail \.publicFlagChrome \{\s*margin-right:/);
+  assert.match(css, /html\.isMapFullscreen \.publicFlagMap\.hasDetail:not\(\.isKiosk\) \.publicFlagChrome \{\s*margin-right:/);
 });
 
 test("search suggestions use the name and stay on the allowlist fields", () => {
@@ -145,45 +284,43 @@ test("search suggestions use the name and stay on the allowlist fields", () => {
   assert.equal(publicFlagMapUrls("").searchIndex, "/api/public/flag-map/search-index");
 });
 
-test("semantic zoom fades section, seal, name, and rank without a jump", () => {
-  const fit = 1;
-  const far = flagMapLayerOpacities(1, fit);
-  assert.equal(far.section, 1);
-  assert.equal(far.seal, 0);
-  assert.equal(far.name, 0);
-  assert.equal(far.rank, 0);
+test("the zoom ladder goes sections, flag numbers, names, then seals", () => {
+  const at = (spotPx, flagsOnScreen) => flagMapDetailGates(spotPx / SPOT_SIZE.width, flagsOnScreen);
+  assert.equal(at(18, 1000).level, "Sections");
+  assert.equal(at(18, 1000).sectionsInteractive, true);
+  assert.equal(at(18, 1000).numbers, false);
+  assert.equal(at(64, 300).level, "Spots");
+  assert.equal(at(64, 300).numbers, true);
+  assert.equal(at(64, 300).names, false);
+  assert.equal(at(64, 300).flagsInteractive, true);
+  assert.equal(at(130, 60).level, "Names");
+  assert.equal(at(130, 60).seals, false);
+  assert.equal(at(130, 4).seals, false);
+  assert.equal(at(300, 20).level, "Names");
+  assert.equal(at(300, 9).level, "Closest");
+  assert.equal(at(300, 9).seals, true);
 
-  const mid = flagMapLayerOpacities((FLAG_MAP_ZOOM.sealFadeStart + FLAG_MAP_ZOOM.sealFadeEnd) / 2, fit);
-  assert.ok(Math.abs(mid.section - 0.5) < 0.001);
-  assert.equal(mid.seal, 0);
-  assert.equal(mid.name, 0);
-  assert.equal(mid.rank, 0);
-
-  const seals = flagMapLayerOpacities(2.05, fit);
-  assert.equal(seals.section, 0);
-  assert.equal(seals.seal, 0);
-  assert.equal(seals.name, 0);
-  assert.equal(seals.rank, 0);
-
-  const names = flagMapLayerOpacities(2.9, fit);
-  assert.equal(names.seal, 0);
-  assert.equal(names.name, 1);
-  assert.equal(names.rank, 0);
-
-  const closest = flagMapLayerOpacities(FLAG_MAP_ZOOM.rankFadeEnd, fit);
-  assert.equal(closest.section, 0);
-  assert.equal(closest.seal, 0);
-  assert.equal(closest.name, 1);
-  assert.equal(closest.rank, 1);
-
-  let previous = far;
-  for (let relative = 1; relative <= 4.2; relative += 0.05) {
-    const next = flagMapLayerOpacities(relative, fit);
-    for (const key of ["section", "seal", "name", "rank"]) {
-      assert.ok(Math.abs(next[key] - previous[key]) < 0.2, `${key} jumped at ${relative}`);
-    }
+  assert.equal(flagMapLayerOpacities(0.05).section, 1);
+  assert.equal(flagMapLayerOpacities(FLAG_MAP_ZOOM.spotsFadeEnd / SPOT_SIZE.width).section, 0);
+  let previous = flagMapLayerOpacities(0.05);
+  for (let spotPx = 8; spotPx <= 600; spotPx += 1) {
+    const next = flagMapLayerOpacities(spotPx / SPOT_SIZE.width);
+    assert.ok(Math.abs(next.section - previous.section) < 0.2, `section jumped at ${spotPx}`);
     previous = next;
   }
+  for (const viewport of [{ width: 1408, height: 640 }, { width: 366, height: 560 }]) {
+    const scale = closestViewScale(viewport);
+    const columns = viewport.width / ((SPOT_SIZE.width + SPOT_SIZE.gap) * scale);
+    const rows = viewport.height / ((SPOT_SIZE.height + SPOT_SIZE.gap) * scale);
+    assert.ok((Math.ceil(columns) + 1) * (Math.ceil(rows) + 1) >= 1);
+    assert.ok(columns <= 2.61 && rows <= 2.61);
+    assert.ok(scale * SPOT_SIZE.width >= FLAG_MAP_ZOOM.closestAt);
+  }
+  assert.ok(spotsViewScale() * SPOT_SIZE.width > FLAG_MAP_ZOOM.spotsFadeEnd);
+  assert.match(page, /closestViewScale\(size\)/);
+  assert.match(page, /spotsViewScale\(\)/);
+  assert.match(page, /className="publicFlagNumber"/);
+  assert.match(page, /className="publicFlagLegend"/);
 });
 
 test("wheel zoom keeps the point under the cursor and a drag is not a tap", () => {
@@ -274,7 +411,7 @@ test("the field is laid out as seen from the pavilion", () => {
   const z01 = field.cells.find((cell) => cell.flagGridName === "Z-01");
   const zSection = field.sections.find((section) => section.section === "Z");
   assert.equal(field.pavilion.label, "Pavilion");
-  assert.equal(field.pavilion.x, zSection.x);
+  assert.equal(field.pavilion.x + field.pavilion.width / 2, zSection.x + zSection.width / 2);
   assert.ok(field.pavilion.y >= z01.y + z01.height);
   assert.ok(field.rowLabels.some((label) => label.row === 1 && label.y === z01.y));
   assert.ok(field.columnLabels.some((label) => label.label === "AA" && label.x === aa.x));
@@ -381,22 +518,22 @@ test("branch seals render only when fewer than 10 flags are on screen", () => {
   assert.equal(sealImagesAllowed(10), false);
   assert.equal(sealImagesAllowed(9), true);
   assert.equal(sealImagesAllowed(0), true);
-  const wide = flagMapDetailGates(12, 1, 40);
+  const wide = flagMapDetailGates(3, 40);
   assert.equal(wide.seals, false);
   assert.equal(wide.names, true);
-  assert.equal(wide.ranks, true);
   assert.equal(wide.flagsInteractive, true);
-  const close = flagMapDetailGates(12, 1, 9);
+  const close = flagMapDetailGates(3, 9);
   assert.equal(close.seals, true);
   assert.equal(close.names, true);
+  assert.equal(close.ranks, true);
   assert.equal(close.flagsInteractive, true);
-  const mid = flagMapDetailGates(1.4, 1, 400);
+  const mid = flagMapDetailGates(0.12, 400);
   assert.equal(mid.seals, false);
   assert.equal(mid.names, false);
   assert.equal(mid.sectionsInteractive, true);
   assert.equal(mid.flagsInteractive, false);
-  assert.equal(flagMapDetailGates(12, 1, 10).seals, false);
-  assert.equal(flagMapDetailGates(12, 1).seals, false);
+  assert.equal(flagMapDetailGates(3, 10).seals, false);
+  assert.equal(flagMapDetailGates(3).seals, false);
 
   const flags = Array.from({ length: 12 }, (_, index) => ({
     x: index * 20,
@@ -485,7 +622,7 @@ test("wheel zoom coalesces each frame and stays under the 45fps bar on a 1,200-f
   const eventsPerFrame = 8;
   const viewport = { width: 1280, height: 800 };
   let view = { x: 0, y: 0, scale: 1 };
-  let gates = flagMapDetailGates(view.scale, 1);
+  let gates = flagMapDetailGates(view.scale);
   let applies = 0;
   let culls = 0;
   const samples = [];
@@ -499,7 +636,7 @@ test("wheel zoom coalesces each frame and stays under the 45fps bar on a 1,200-f
     assert.ok(nextBatch);
     view = zoomAt(view, nextBatch.point.x, nextBatch.point.y, view.scale * wheelScaleFactor(nextBatch.deltaY));
     applies += 1;
-    const nextGates = flagMapDetailGates(view.scale, 1);
+    const nextGates = flagMapDetailGates(view.scale);
     const ended = frame === frames - 1;
     if (wheelFrameShouldCull(gates, nextGates, ended)) {
       cullRects(field.flags, viewportWorldRect(view, viewport, 180));
@@ -537,7 +674,7 @@ test("pinch zoom coalesces each frame and stays under the 45fps bar on a 320-wid
   const origin = { x: 8, y: 12, scale: 1 };
   const startMid = { x: 160, y: 280 };
   let view = { ...origin };
-  let gates = flagMapDetailGates(view.scale, 1);
+  let gates = flagMapDetailGates(view.scale);
   const frames = 40;
   const eventsPerFrame = 8;
   let applies = 0;
@@ -554,7 +691,7 @@ test("pinch zoom coalesces each frame and stays under the 45fps bar on a 320-wid
     assert.ok(next);
     view = next;
     applies += 1;
-    const nextGates = flagMapDetailGates(view.scale, 1);
+    const nextGates = flagMapDetailGates(view.scale);
     const ended = frame === frames - 1;
     if (wheelFrameShouldCull(gates, nextGates, ended)) {
       cullRects(field.flags, viewportWorldRect(view, viewport, 180));

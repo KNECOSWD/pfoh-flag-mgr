@@ -8,6 +8,8 @@ import {
   WHEEL_SETTLE_MS,
   applyKioskIdleReset,
   attractView,
+  clampView,
+  closestViewScale,
   createPinchBatch,
   createWheelBatch,
   boundsOf,
@@ -16,6 +18,7 @@ import {
   cullRects,
   exitDocumentFullscreen,
   filterFlagMapSuggestions,
+  FIT_PADDING,
   fitView,
   fitWholeField,
   flagMapPageBands,
@@ -26,6 +29,7 @@ import {
   resolveSubmitterFlags,
   flagYears,
   gestureTransform,
+  labelFontSize,
   layoutFlagField,
   panView,
   pinchView,
@@ -35,11 +39,13 @@ import {
   readFlagMapLocation,
   requestElementFullscreen,
   spotContents,
+  spotsViewScale,
   springEase,
   viewportWorldRect,
   wheelFrameShouldCull,
   wheelScaleFactor,
   withApiBase,
+  zoneLabelSizes,
   zoomAt
 } from "./publicFlagMap.js";
 import { KIOSK_EXIT_HOLD_MS, kioskSessionOn, requestKioskExit } from "./kioskSession.js";
@@ -92,6 +98,8 @@ type Gates = ReturnType<typeof flagMapDetailGates>;
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
 const urls = publicFlagMapUrls(apiBase);
 const EMPTY_GATES: Gates = {
+  level: "Sections",
+  numbers: false,
   seals: false,
   names: false,
   ranks: false,
@@ -117,6 +125,7 @@ function sameIds(left: number[], right: number[]) {
 
 function sameGates(left: Gates, right: Gates) {
   return left.seals === right.seals
+    && left.numbers === right.numbers
     && left.names === right.names
     && left.ranks === right.ranks
     && left.sectionsInteractive === right.sectionsInteractive
@@ -261,7 +270,7 @@ export default function PublicFlagMap({
   const wheelBatchRef = useRef(createWheelBatch());
   const pinchBatchRef = useRef(createPinchBatch());
   const boxRef = useRef({ left: 0, top: 0, width: 1, height: 1 });
-  const opacityCacheRef = useRef({ section: "", seal: "", name: "", rank: "" });
+  const opacityCacheRef = useRef({ section: "" });
   const layoutRef = useRef<ReturnType<typeof layoutFlagField> | null>(null);
   const summariesRef = useRef<SectionSummary[]>([]);
   const fieldTaskRef = useRef<Promise<void> | null>(null);
@@ -278,6 +287,7 @@ export default function PublicFlagMap({
   const [mapFull, setMapFull] = useState(false);
   const [visibleCellIds, setVisibleCellIds] = useState<number[]>([]);
   const [gates, setGates] = useState<Gates>(EMPTY_GATES);
+  const [renderScale, setRenderScale] = useState(1);
   const [levelText, setLevelText] = useState("Sections");
   const [selected, setSelected] = useState<FlagBox | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
@@ -335,29 +345,33 @@ export default function PublicFlagMap({
     return { x: 0, y: 0, width: layoutRef.current?.worldWidth || 1, height: layoutRef.current?.worldHeight || 1 };
   }
 
+  function limitView(next: View) {
+    return clampView(next, viewportSize(), worldBounds(), {
+      minScale: Math.min(fitScaleRef.current, FLAG_MAP_ZOOM.maxScale),
+      maxScale: FLAG_MAP_ZOOM.maxScale,
+      pad: FIT_PADDING
+    });
+  }
+
   function paintView(next: View) {
-    const scale = Math.min(FLAG_MAP_ZOOM.maxScale, Math.max(FLAG_MAP_ZOOM.minScale, next.scale));
+    const scale = Math.min(FLAG_MAP_ZOOM.maxScale, Math.max(Math.min(FLAG_MAP_ZOOM.minScale, fitScaleRef.current), next.scale));
     const view = { x: next.x, y: next.y, scale };
     viewRef.current = view;
-    const opacity = flagMapLayerOpacities(view.scale, fitScaleRef.current);
+    const opacity = flagMapLayerOpacities(view.scale);
     const layer = layerRef.current;
     if (layer) {
       layer.style.transform = gestureTransform(view);
       writeOpacity(layer, "--section-opacity", "section", opacity.section);
-      writeOpacity(layer, "--seal-opacity", "seal", opacity.seal);
-      writeOpacity(layer, "--name-opacity", "name", opacity.name);
-      writeOpacity(layer, "--rank-opacity", "rank", opacity.rank);
     }
     const viewport = viewportRef.current;
     if (viewport) {
       const sections = opacity.section >= 0.5 ? "on" : "off";
       if (viewport.dataset.sections !== sections) viewport.dataset.sections = sections;
     }
-    const nextLevel = opacity.rank >= 0.85 ? "Closest" : opacity.name >= 0.85 ? "Names" : opacity.section >= 0.85 ? "Sections" : "";
-    return { view, opacity, nextLevel };
+    return { view, opacity };
   }
 
-  function writeOpacity(layer: HTMLDivElement, property: string, key: "section" | "seal" | "name" | "rank", value: number) {
+  function writeOpacity(layer: HTMLDivElement, property: string, key: "section", value: number) {
     const next = value < 0.004 ? "0" : value > 0.996 ? "1" : value.toFixed(3);
     if (opacityCacheRef.current[key] === next) return;
     opacityCacheRef.current[key] = next;
@@ -373,11 +387,13 @@ export default function PublicFlagMap({
       const layout = layoutRef.current;
       if (!layout) return;
       const flagsOnScreen = countFlagsOnScreen(layout.flags, view, size);
-      const nextGates = flagMapDetailGates(view.scale, fitScaleRef.current, flagsOnScreen);
+      const nextGates = flagMapDetailGates(view.scale, flagsOnScreen);
       gatesRef.current = nextGates;
       const zoneKeys = cullRects(layout.zones, seen).map((zone: { label: string }) => zone.label);
       const cellIds = cullRects(layout.cells, seen).map((cell: { flagGridId: number }) => cell.flagGridId);
       setGates((current) => (sameGates(current, nextGates) ? current : nextGates));
+      setRenderScale((current) => (Math.abs(current - view.scale) <= view.scale * 0.004 ? current : view.scale));
+      layerRef.current?.style.setProperty("--px", `${1 / view.scale}px`);
       setVisibleZoneKeys((current) => (current.join("|") === zoneKeys.join("|") ? current : zoneKeys));
       setVisibleCellIds((current) => (sameIds(current, cellIds) ? current : cellIds));
       const viewport = viewportRef.current;
@@ -386,7 +402,7 @@ export default function PublicFlagMap({
         if (viewport.dataset.flags !== flags) viewport.dataset.flags = flags;
       }
       paintView(view);
-      const nextLevel = nextGates.ranks ? "Closest" : nextGates.seals ? "Seals" : nextGates.names ? "Names" : "Sections";
+      const nextLevel = nextGates.level;
       if (nextLevel !== levelRef.current) {
         levelRef.current = nextLevel;
         setLevelText(nextLevel);
@@ -401,8 +417,18 @@ export default function PublicFlagMap({
     cullFrameRef.current = requestAnimationFrame(run);
   }
 
+  function setMoving(moving: boolean) {
+    const layer = layerRef.current;
+    if (!layer) return;
+    if (moving) {
+      if (!layer.classList.contains("isMoving")) layer.classList.add("isMoving");
+    } else {
+      layer.classList.remove("isMoving");
+    }
+  }
+
   function applyView(next: View, cullNow = false) {
-    paintView(next);
+    paintView(limitView(next));
     publishCull(cullNow);
   }
 
@@ -419,19 +445,22 @@ export default function PublicFlagMap({
     pinchBatchRef.current.flush();
   }
 
-  function animateTo(target: View, onDone?: () => void) {
+  function animateTo(requested: View, onDone?: () => void) {
     stopMotion();
+    const target = limitView(requested);
     const from = { ...viewRef.current };
     const unchanged = Math.abs(from.x - target.x) < 0.5
       && Math.abs(from.y - target.y) < 0.5
       && Math.abs(from.scale - target.scale) < 0.0001;
     if (reducedMotionRef.current || unchanged) {
       applyView(target, true);
+      setMoving(false);
       onDone?.();
       return;
     }
+    setMoving(true);
     const started = performance.now();
-    let lastGates = flagMapDetailGates(from.scale, fitScaleRef.current);
+    let lastGates = flagMapDetailGates(from.scale);
     const step = (now: number) => {
       const amount = Math.min(1, (now - started) / 680);
       const eased = springEase(amount);
@@ -441,7 +470,7 @@ export default function PublicFlagMap({
         scale: from.scale + (target.scale - from.scale) * eased
       };
       paintView(next);
-      const nextGates = flagMapDetailGates(next.scale, fitScaleRef.current);
+      const nextGates = flagMapDetailGates(next.scale);
       const done = amount >= 1;
       if (wheelFrameShouldCull(lastGates, nextGates, done)) {
         lastGates = nextGates;
@@ -450,6 +479,7 @@ export default function PublicFlagMap({
       if (!done) {
         animRef.current = requestAnimationFrame(step);
       } else {
+        if (!attractingRef.current) setMoving(false);
         onDone?.();
       }
     };
@@ -457,7 +487,7 @@ export default function PublicFlagMap({
   }
 
   function fitWorld() {
-    const fitted = fitWholeField(worldBounds(), viewportSize());
+    const fitted = fitWholeField(worldBounds(), viewportSize(), FIT_PADDING);
     fitScaleRef.current = fitted.scale;
     return fitted;
   }
@@ -487,17 +517,24 @@ export default function PublicFlagMap({
     setRevealId(options?.celebrate && flag.honoreeId ? flag.flagGridId : null);
     writeFlagParam(flag.flagGridId);
     const size = viewportSize();
-    const closeScale = Math.min(size.width, size.height) / Math.max(flag.height * 3.2, 1);
-    const scale = Math.min(FLAG_MAP_ZOOM.maxScale, Math.max(fitScaleRef.current * FLAG_MAP_ZOOM.rankFadeEnd, closeScale));
+    const scale = closestViewScale(size);
     const centerX = flag.x + flag.width / 2;
     const centerY = flag.y + flag.height / 2;
-    const panelBias = kioskRef.current ? Math.min(size.width * 0.16, 180) : 0;
+    const panelBias = flag.honoreeId ? drawerCover(size) / 2 : 0;
     userAdjustedRef.current = true;
     animateTo({
       scale,
       x: size.width / 2 - panelBias - centerX * scale,
       y: size.height / 2 - centerY * scale
     });
+  }
+
+  function drawerCover(size: { width: number }) {
+    const windowWidth = window.innerWidth;
+    if (windowWidth <= 760) return 0;
+    const drawer = kioskRef.current ? Math.min(460, windowWidth - 32) + 16 : Math.min(420, windowWidth - 24) + 12;
+    const viewportRight = boxRef.current.left + size.width;
+    return Math.max(0, Math.min(size.width, viewportRight - (windowWidth - drawer)));
   }
 
   function goHome() {
@@ -574,6 +611,7 @@ export default function PublicFlagMap({
     const fitted = fitWorld();
     fitScaleRef.current = fitted.scale;
     applyView(fitted, true);
+    setMoving(false);
   }
 
   function armIdle() {
@@ -885,29 +923,34 @@ export default function PublicFlagMap({
       wheelFrameRef.current = 0;
       const batch = wheelBatchRef.current.flush();
       if (!batch) return;
-      const next = zoomAt(
+      const next = limitView(zoomAt(
         viewRef.current,
         batch.point.x,
         batch.point.y,
         viewRef.current.scale * wheelScaleFactor(batch.deltaY)
-      );
+      ));
       viewRef.current = next;
+      setMoving(true);
       if (layerRef.current) layerRef.current.style.transform = gestureTransform(next);
       window.clearTimeout(wheelSettleRef.current);
       wheelSettleRef.current = window.setTimeout(() => {
         publishCull(true);
+        setMoving(false);
       }, WHEEL_SETTLE_MS);
     };
 
     const flushPinchFrame = () => {
       pinchFrameRef.current = 0;
-      const next = pinchBatchRef.current.flush();
-      if (!next) return;
+      const pending = pinchBatchRef.current.flush();
+      if (!pending) return;
+      const next = limitView(pending);
       viewRef.current = next;
+      setMoving(true);
       if (layerRef.current) layerRef.current.style.transform = gestureTransform(next);
       window.clearTimeout(pinchSettleRef.current);
       pinchSettleRef.current = window.setTimeout(() => {
         publishCull(true);
+        setMoving(false);
       }, WHEEL_SETTLE_MS);
     };
 
@@ -957,6 +1000,7 @@ export default function PublicFlagMap({
         node.releasePointerCapture(event.pointerId);
       }
       suppressClickRef.current = !pointerShouldOpen(start, point);
+      if (captured) setMoving(false);
       start = null;
       captured = false;
       moved = false;
@@ -1001,9 +1045,10 @@ export default function PublicFlagMap({
       cancelAnimationFrame(pinchFrameRef.current);
       pinchFrameRef.current = 0;
       const next = pinchBatchRef.current.flush();
-      if (next) paintView(next);
+      if (next) paintView(limitView(next));
       window.clearTimeout(pinchSettleRef.current);
       publishCull(true);
+      setMoving(false);
     };
 
     node.addEventListener("wheel", onWheel, { passive: false });
@@ -1209,7 +1254,7 @@ export default function PublicFlagMap({
 
   return (
     <section
-      className={kiosk ? "publicFlagMap isKiosk" : "publicFlagMap"}
+      className={["publicFlagMap", kiosk ? "isKiosk" : "", selected ? "hasDetail" : ""].filter(Boolean).join(" ")}
       data-kiosk={kiosk ? "1" : "0"}
       data-attract={attracting ? "1" : "0"}
       aria-label="Public Flag Map"
@@ -1222,7 +1267,7 @@ export default function PublicFlagMap({
             <p className="eyebrow">Field</p>
             <h2>Public Flag Map</h2>
             <p id={helpId} className={kiosk ? "helperText srOnly" : "helperText"}>
-              Pinch or use the wheel to zoom. Drag to move around the field. Zooming in shows each spot and the name that fits inside it. Branch seals appear only when fewer than 10 flags are on screen.
+              Pinch or use the wheel to zoom. Drag to move around the field. Zooming in shows each flag number, then the honoree name inside the spot, then the branch seal once fewer than 10 flags are on screen.
             </p>
           </div>
         </div>
@@ -1303,6 +1348,11 @@ export default function PublicFlagMap({
           {kiosk ? null : (
             <button type="button" className="secondary" onClick={goHome} aria-label="Reset view">Reset view</button>
           )}
+          <ul className="publicFlagLegend" aria-label="Spot key">
+            <li><i className="isOccupied" aria-hidden="true" />Occupied</li>
+            <li><i className="isOpen" aria-hidden="true" />Open</li>
+            <li><i className="isReserved" aria-hidden="true" />Reserved</li>
+          </ul>
           <p className="publicFlagLevel" aria-live="polite">{levelText}</p>
         </div>
       </div>
@@ -1330,16 +1380,21 @@ export default function PublicFlagMap({
               style={{ left: cell.x, top: cell.y, width: cell.width, height: cell.height }}
             />
           ))}
-          {field?.rowLabels.map((label) => (
-            <div key={`row-${label.row}`} className="publicFlagRowLabel" style={{ left: label.x, top: label.y, width: label.width, height: label.height }}>{label.label}</div>
-          ))}
+          {field?.rowLabels.map((label) => {
+            const size = labelFontSize(label.label, label.width, label.height, renderScale, { max: 13 });
+            return (
+              <div key={`row-${label.row}`} className="publicFlagRowLabel" style={{ left: label.x, top: label.y, width: label.width, height: label.height, fontSize: size || undefined }}>
+                {size ? label.label : null}
+              </div>
+            );
+          })}
           {field?.pavilion ? (
-            <div className="publicFlagPavilion" style={{ left: field.pavilion.x, top: field.pavilion.y, width: field.pavilion.width, height: field.pavilion.height }}>{field.pavilion.label}</div>
+            <div className="publicFlagPavilion" style={{ left: field.pavilion.x, top: field.pavilion.y, width: field.pavilion.width, height: field.pavilion.height, fontSize: labelFontSize(field.pavilion.label, field.pavilion.width, field.pavilion.height, renderScale, { max: 13 }) || undefined }}>
+              {labelFontSize(field.pavilion.label, field.pavilion.width, field.pavilion.height, renderScale, { max: 13 }) ? field.pavilion.label : null}
+            </div>
           ) : null}
           {visibleZones.map((zone) => {
-            const letterSize = Math.max(8, Math.min(34, Math.floor(zone.height * 0.42), Math.floor(zone.width * 0.62)));
-            const rangeSize = Math.min(13, Math.floor(zone.height * 0.16));
-            const range = zone.min === zone.max ? String(zone.min) : `${zone.min}\u2013${zone.max}`;
+            const sizes = zoneLabelSizes(zone, renderScale);
             return (
               <button
                 key={zone.label}
@@ -1355,19 +1410,25 @@ export default function PublicFlagMap({
                   setRevealId(null);
                   setWaveIds([]);
                   writeFlagParam(null);
-                  animateTo(fitView(zone, viewportSize(), 28));
+                  const zoneView = fitView(zone, viewportSize(), 28);
+                  animateTo(zoneView.scale >= spotsViewScale() ? zoneView : zoomAt(zoneView, viewportSize().width / 2, viewportSize().height / 2, spotsViewScale()));
                 })}
               >
-                <strong style={{ fontSize: letterSize }}>{zone.section}</strong>
-                {rangeSize >= 8 ? <span style={{ fontSize: rangeSize }}>{range}</span> : null}
+                {sizes.letter ? <strong style={{ fontSize: sizes.letter }}>{zone.section}</strong> : null}
+                {sizes.rangeSize ? <span className={sizes.vertical ? "isVertical" : undefined} style={{ fontSize: sizes.rangeSize }}>{sizes.range}</span> : null}
               </button>
             );
           })}
-          {field?.columnLabels.map((label) => (
-            <div key={`col-${label.section}`} className="publicFlagColumnLabel" style={{ left: label.x, top: label.y, width: label.width, height: label.height }}>{label.label}</div>
-          ))}
+          {field?.columnLabels.map((label) => {
+            const size = labelFontSize(label.label, label.width, label.height, renderScale, { max: 14, em: 0.7 });
+            return (
+              <div key={`col-${label.section}`} className="publicFlagColumnLabel" style={{ left: label.x, top: label.y, width: label.width, height: label.height, fontSize: size || undefined }}>
+                {size ? label.label : null}
+              </div>
+            );
+          })}
           {visibleCells.map((cell) => {
-            const spot = spotContents(cell, gates);
+            const spot = spotContents(cell, gates, renderScale);
             const interactive = !cell.template && cell.flagGridId > 0;
             const revealed = cell.flagGridId === revealId || waveIds.includes(cell.flagGridId);
             const highlighted = cell.flagGridId === highlightId;
@@ -1378,12 +1439,13 @@ export default function PublicFlagMap({
               revealed ? "isRevealed" : ""
             ].filter(Boolean).join(" ");
             const label = [cell.flagGridName, cell.displayName || cell.status, cell.rank, cell.serviceBranchName].filter(Boolean).join(", ");
+            const box = { left: cell.x, top: cell.y, width: cell.width, height: cell.height, padding: spot.pad || undefined };
             const body = (
               <>
                 {spot.seal > 0 && cell.logoUrl ? (
                   <img
                     className="publicFlagSealImg"
-                    src={sealUrl(cell.logoUrl, 128, true)}
+                    src={sealUrl(cell.logoUrl, spot.seal * renderScale > 64 ? 256 : 128, true)}
                     alt=""
                     width={spot.seal}
                     height={spot.seal}
@@ -1393,7 +1455,12 @@ export default function PublicFlagMap({
                     draggable={false}
                   />
                 ) : null}
-                {spot.name ? <em style={{ fontSize: spot.nameSize }}>{spot.name}</em> : null}
+                {spot.number ? <b className="publicFlagNumber" style={{ fontSize: spot.numberSize }}>{spot.number}</b> : null}
+                {spot.lines.length ? (
+                  <em style={{ fontSize: spot.nameSize }}>
+                    {spot.lines.map((line, lineIndex) => <span key={lineIndex}>{line}</span>)}
+                  </em>
+                ) : null}
                 {spot.rank ? <small style={{ fontSize: spot.rankSize }}>{spot.rank}</small> : null}
               </>
             );
@@ -1403,7 +1470,7 @@ export default function PublicFlagMap({
                 key={cell.flagGridId}
                 type="button"
                 className={className}
-                style={{ left: cell.x, top: cell.y, width: cell.width, height: cell.height }}
+                style={box}
                 aria-current={highlighted ? "true" : undefined}
                 aria-label={label}
                 onClick={() => acceptClick(() => openFlag(cell as FlagBox))}
@@ -1414,7 +1481,7 @@ export default function PublicFlagMap({
               <div
                 key={cell.flagGridId}
                 className={className}
-                style={{ left: cell.x, top: cell.y, width: cell.width, height: cell.height }}
+                style={box}
                 aria-hidden="true"
               >
                 {body}
@@ -1422,6 +1489,7 @@ export default function PublicFlagMap({
             );
           })}
         </div>
+      </div>
       </div>
       {selected ? (
         <FlagDetail
@@ -1437,7 +1505,6 @@ export default function PublicFlagMap({
           }}
         />
       ) : null}
-      </div>
       {kiosk ? (
         <button
           type="button"
