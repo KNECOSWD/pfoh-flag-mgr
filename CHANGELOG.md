@@ -3,8 +3,8 @@
 ## 2.0.0
 
 - A public Flag Map is available at /flag-map by direct link. It is not in the navigation, footer, or home page. The page asks search engines not to index it.
-- The map shows sections from flag grid names, then each flag in a section. Approved active honorees show their name, rank, branch, and branch seal. Open and reserved grids stay visible without private notes.
-- Search suggests honorees as you type and highlights the matching flag. Preview card opens the Honoree Card window.
+- The map is one field you can pan and zoom. Zoomed out, it shows each section and how many flags are filled. Zooming in fades in the branch seal, then the name, then the rank. A section click zooms to that section. A flag click opens the detail, and Preview card opens the Honoree Card window.
+- Search suggests honorees as you type. Choosing one zooms to that flag and outlines it in gold.
 - The admin Flag Map is unchanged.
 
 ## 1.5.2
