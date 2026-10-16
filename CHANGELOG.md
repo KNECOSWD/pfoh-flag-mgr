@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.1
+
+- The public Flag Map loads one field snapshot instead of a separate request for every section. That snapshot is cached in memory for a short time and dropped when a honoree, flag spot, or branch changes.
+- Branch seals are served as 128 and 256 pixel WebP images, with a PNG fallback, and they can be cached for a year. The Merchant Marine seal uses the stored file that ships with the app when the storage account does not have it.
+- Honoree photos on the map are reduced to a display size. Their cache header stays no-cache, no-store, must-revalidate.
+- HTML, CSS, JavaScript, and JSON responses can be compressed with Brotli or gzip. Hashed files under /assets can be cached for a year. The flag map page itself stays uncached and preloads the section list and the search index.
+- The search index no longer repeats the separate name parts. Search still matches the display name, including a middle name or suffix when those words are in it.
+- On the public Flag Map, the small navy, gold, and cream flag mark next to the title is gone. Other pages are unchanged.
+- The field is drawn as you see it from the pavilion: row 1 is nearest the bottom of the screen, an aisle sits between rows 20 and 21 when both are present, and the columns run YY through Z to AA from left to right. Labels are not mirrored. Seats come only from the data.
+- Branch seals and logos are not drawn or requested unless fewer than 10 flags are on screen. Farther out, each flag is a colored dot. The seal fades in once that close view is reached. During a wheel or pinch, the map only moves the existing picture and redraws when the gesture ends.
+
 ## 2.0.0
 
 - A public Flag Map is available at /flag-map by direct link. It is not in the navigation, footer, or home page. The page asks search engines not to index it.

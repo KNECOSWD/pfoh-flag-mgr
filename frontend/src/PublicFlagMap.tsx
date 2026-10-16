@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { qrModules, qrPath } from "./qrCode.js";
 import {
   FLAG_MAP_ZOOM,
@@ -8,6 +8,8 @@ import {
   attractView,
   createPinchBatch,
   createWheelBatch,
+  branchDotColor,
+  countFlagsOnScreen,
   createFlagMapLoader,
   cullRects,
   filterFlagMapSuggestions,
@@ -17,6 +19,7 @@ import {
   lookupSubmittedFlags,
   flagMapLayerOpacities,
   flagYears,
+  gestureTransform,
   layoutFlagField,
   panView,
   pinchView,
@@ -90,6 +93,12 @@ const EMPTY_GATES: Gates = {
 
 const loadJson = createFlagMapLoader() as <T>(url: string) => Promise<T>;
 
+function sealUrl(logoUrl: string, edge: number, webp: boolean) {
+  const url = withApiBase(apiBase, logoUrl);
+  const join = url.includes("?") ? "&" : "?";
+  return `${url}${join}w=${edge}${webp ? "&fmt=webp" : ""}`;
+}
+
 function sameIds(left: number[], right: number[]) {
   if (left.length !== right.length) return false;
   for (let index = 0; index < left.length; index += 1) {
@@ -136,13 +145,15 @@ function FlagDetail({
   revealed,
   shareUrl,
   onPreview,
-  onClose
+  onClose,
+  showSeal
 }: {
   flag: FlagBox;
   revealed: boolean;
   shareUrl: string;
   onPreview: (honoreeId: number, title: string) => void;
   onClose: () => void;
+  showSeal: boolean;
 }) {
   const [showPhoto, setShowPhoto] = useState(Boolean(flag.photoUrl));
   useEffect(() => {
@@ -166,7 +177,7 @@ function FlagDetail({
         {flag.rank ? <p className="publicFlagRank">{flag.rank}</p> : null}
         {flag.serviceBranchName ? (
           <p className="publicFlagBranch">
-            {flag.logoUrl ? <img className="publicFlagSeal" src={withApiBase(apiBase, flag.logoUrl)} alt="" draggable={false} /> : null}
+            {showSeal && flag.logoUrl ? <img className="publicFlagSeal" src={sealUrl(flag.logoUrl, 256, false)} alt="" width={64} height={64} loading="lazy" decoding="async" draggable={false} /> : null}
             <span>
               {flag.serviceBranchName}
               {flag.serviceBranchCategoryName ? ` · ${flag.serviceBranchCategoryName}` : ""}
@@ -235,6 +246,8 @@ export default function PublicFlagMap({
   const boxRef = useRef({ left: 0, top: 0, width: 1, height: 1 });
   const opacityCacheRef = useRef({ section: "", seal: "", name: "", rank: "" });
   const layoutRef = useRef<ReturnType<typeof layoutFlagField> | null>(null);
+  const summariesRef = useRef<SectionSummary[]>([]);
+  const fieldTaskRef = useRef<Promise<void> | null>(null);
   const [field, setField] = useState<ReturnType<typeof layoutFlagField> | null>(null);
   const [index, setIndex] = useState<SearchHit[]>([]);
   const [query, setQuery] = useState("");
@@ -270,10 +283,10 @@ export default function PublicFlagMap({
   }, [field, visibleSectionKeys]);
 
   const visibleFlags = useMemo(() => {
-    if (!field || !gates.seals) return [];
+    if (!field) return [];
     const ids = new Set(visibleFlagIds);
     return (field.flags as FlagBox[]).filter((flag) => ids.has(flag.flagGridId));
-  }, [field, gates.seals, visibleFlagIds]);
+  }, [field, visibleFlagIds]);
 
   function syncViewportBox() {
     const rect = viewportRef.current?.getBoundingClientRect();
@@ -304,7 +317,7 @@ export default function PublicFlagMap({
     const opacity = flagMapLayerOpacities(view.scale, fitScaleRef.current);
     const layer = layerRef.current;
     if (layer) {
-      layer.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+      layer.style.transform = gestureTransform(view);
       writeOpacity(layer, "--section-opacity", "section", opacity.section);
       writeOpacity(layer, "--seal-opacity", "seal", opacity.seal);
       writeOpacity(layer, "--name-opacity", "name", opacity.name);
@@ -313,11 +326,9 @@ export default function PublicFlagMap({
     const viewport = viewportRef.current;
     if (viewport) {
       const sections = opacity.section >= 0.5 ? "on" : "off";
-      const flags = opacity.seal > 0.5 ? "on" : "off";
       if (viewport.dataset.sections !== sections) viewport.dataset.sections = sections;
-      if (viewport.dataset.flags !== flags) viewport.dataset.flags = flags;
     }
-    const nextLevel = opacity.rank >= 0.85 ? "Closest" : opacity.name >= 0.85 ? "Names" : opacity.seal >= 0.85 ? "Seals" : opacity.section >= 0.85 ? "Sections" : "";
+    const nextLevel = opacity.rank >= 0.85 ? "Closest" : opacity.name >= 0.85 ? "Names" : opacity.section >= 0.85 ? "Sections" : "";
     return { view, opacity, nextLevel };
   }
 
@@ -336,19 +347,24 @@ export default function PublicFlagMap({
       const seen = viewportWorldRect(view, size, 180);
       const layout = layoutRef.current;
       if (!layout) return;
-      const nextGates = flagMapDetailGates(view.scale, fitScaleRef.current);
+      const flagsOnScreen = countFlagsOnScreen(layout.flags, view, size);
+      const nextGates = flagMapDetailGates(view.scale, fitScaleRef.current, flagsOnScreen);
       gatesRef.current = nextGates;
       const sectionKeys = cullRects(layout.sections, seen).map((section: Box) => section.section as string);
-      const flagIds = nextGates.seals
-        ? cullRects(layout.flags, seen).map((flag: FlagBox) => flag.flagGridId)
-        : [];
+      const flagIds = cullRects(layout.flags, seen).map((flag: FlagBox) => flag.flagGridId);
       setGates((current) => (sameGates(current, nextGates) ? current : nextGates));
       setVisibleSectionKeys((current) => (current.join("|") === sectionKeys.join("|") ? current : sectionKeys));
       setVisibleFlagIds((current) => (sameIds(current, flagIds) ? current : flagIds));
-      const painted = paintView(view);
-      if (painted.nextLevel && painted.nextLevel !== levelRef.current) {
-        levelRef.current = painted.nextLevel;
-        setLevelText(painted.nextLevel);
+      const viewport = viewportRef.current;
+      if (viewport) {
+        const flags = nextGates.flagsInteractive ? "on" : "off";
+        if (viewport.dataset.flags !== flags) viewport.dataset.flags = flags;
+      }
+      paintView(view);
+      const nextLevel = nextGates.ranks ? "Closest" : nextGates.names ? "Names" : nextGates.seals ? "Seals" : "Sections";
+      if (nextLevel !== levelRef.current) {
+        levelRef.current = nextLevel;
+        setLevelText(nextLevel);
       }
     };
     if (immediate) {
@@ -445,7 +461,8 @@ export default function PublicFlagMap({
     setRevealId(options?.celebrate && flag.honoreeId ? flag.flagGridId : null);
     writeFlagParam(flag.flagGridId);
     const size = viewportSize();
-    const scale = Math.min(FLAG_MAP_ZOOM.maxScale, fitScaleRef.current * FLAG_MAP_ZOOM.rankFadeEnd);
+    const closeScale = Math.min(size.width, size.height) / Math.max(flag.height * 3.2, 1);
+    const scale = Math.min(FLAG_MAP_ZOOM.maxScale, Math.max(fitScaleRef.current * FLAG_MAP_ZOOM.rankFadeEnd, closeScale));
     const centerX = flag.x + flag.width / 2;
     const centerY = flag.y + flag.height / 2;
     const panelBias = kioskRef.current ? Math.min(size.width * 0.16, 180) : 0;
@@ -546,6 +563,33 @@ export default function PublicFlagMap({
   exitAttractRef.current = exitAttract;
   armIdleRef.current = armIdle;
 
+  function rememberLayout() {
+    const seatsBySection = new Map<string, PublicSeat[]>();
+    for (const flag of (layoutRef.current?.flags ?? []) as FlagBox[]) {
+      const seats = seatsBySection.get(flag.section) ?? [];
+      seats.push(flag);
+      seatsBySection.set(flag.section, seats);
+    }
+    const nextField = layoutFlagField(summariesRef.current.map((summary) => ({
+      ...summary,
+      seats: seatsBySection.get(summary.section) ?? []
+    })));
+    layoutRef.current = nextField;
+    setField(nextField);
+  }
+
+  function loadField() {
+    if (fieldTaskRef.current) return fieldTaskRef.current;
+    const task = loadJson<{ sections: Array<SectionSummary & { seats: PublicSeat[] }> }>(urls.field)
+      .then((payload) => {
+        const nextField = layoutFlagField(payload.sections ?? []);
+        layoutRef.current = nextField;
+        setField(nextField);
+      });
+    fieldTaskRef.current = task;
+    return task;
+  }
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -554,16 +598,16 @@ export default function PublicFlagMap({
       loadJson<SearchHit[]>(urls.searchIndex)
     ])
       .then(async ([summaries, nextIndex]) => {
-        const seats = await Promise.all(summaries.map(async (summary) => {
-          const payload = await loadJson<{ seats: PublicSeat[] }>(urls.section(summary.section));
-          return { ...summary, seats: payload.seats };
-        }));
         if (cancelled) return;
-        const nextField = layoutFlagField(seats);
-        layoutRef.current = nextField;
-        setField(nextField);
+        summariesRef.current = summaries;
         setIndex(nextIndex);
-        setError("");
+        if (pendingFlagRef.current == null) {
+          rememberLayout();
+          void loadField();
+        } else {
+          await loadField();
+        }
+        if (!cancelled) setError("");
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "The flag map could not be loaded.");
@@ -729,12 +773,8 @@ export default function PublicFlagMap({
         batch.point.y,
         viewRef.current.scale * wheelScaleFactor(batch.deltaY)
       );
-      paintView(next);
-      const nextGates = flagMapDetailGates(next.scale, fitScaleRef.current);
-      if (wheelFrameShouldCull(gatesRef.current, nextGates, false)) {
-        gatesRef.current = nextGates;
-        publishCull(true);
-      }
+      viewRef.current = next;
+      if (layerRef.current) layerRef.current.style.transform = gestureTransform(next);
       window.clearTimeout(wheelSettleRef.current);
       wheelSettleRef.current = window.setTimeout(() => {
         publishCull(true);
@@ -745,12 +785,8 @@ export default function PublicFlagMap({
       pinchFrameRef.current = 0;
       const next = pinchBatchRef.current.flush();
       if (!next) return;
-      paintView(next);
-      const nextGates = flagMapDetailGates(next.scale, fitScaleRef.current);
-      if (wheelFrameShouldCull(gatesRef.current, nextGates, false)) {
-        gatesRef.current = nextGates;
-        publishCull(true);
-      }
+      viewRef.current = next;
+      if (layerRef.current) layerRef.current.style.transform = gestureTransform(next);
       window.clearTimeout(pinchSettleRef.current);
       pinchSettleRef.current = window.setTimeout(() => {
         publishCull(true);
@@ -1038,12 +1074,11 @@ export default function PublicFlagMap({
     >
       <div className="publicFlagChrome">
         <div className="sectionHeader publicFlagHeading">
-          <span className="publicFlagWave" aria-hidden="true" />
           <div>
             <p className="eyebrow">Field</p>
             <h2>Public Flag Map</h2>
             <p id={helpId} className={kiosk ? "helperText srOnly" : "helperText"}>
-              Pinch or use the wheel to zoom. Drag to move around the field. Zooming in reveals seals, then names, then ranks.
+              Pinch or use the wheel to zoom. Drag to move around the field. Branch seals appear only when fewer than 10 flags are on screen, then names, then ranks.
             </p>
           </div>
         </div>
@@ -1207,12 +1242,24 @@ export default function PublicFlagMap({
                 key={flag.flagGridId}
                 type="button"
                 className={className}
-                style={{ left: flag.x, top: flag.y, width: flag.width, height: flag.height }}
+                style={{
+                  left: flag.x,
+                  top: flag.y,
+                  width: flag.width,
+                  height: flag.height,
+                  "--branch-dot": branchDotColor(flag.serviceBranchName, flag.status)
+                } as CSSProperties}
                 aria-current={highlighted ? "true" : undefined}
                 aria-label={[flag.flagGridName, flag.displayName || flag.status, flag.rank, flag.serviceBranchName].filter(Boolean).join(", ")}
                 onClick={() => acceptClick(() => openFlag(flag))}
               >
-                {flag.logoUrl ? <img src={withApiBase(apiBase, flag.logoUrl)} alt="" draggable={false} /> : <span className="publicFlagMarkerStatus">{flag.status === "Reserved" ? "Reserved" : flag.status === "Open" ? "Open" : ""}</span>}
+                <span className="publicFlagDot" />
+                {gates.seals && flag.logoUrl ? (
+                  <picture>
+                    <source type="image/webp" srcSet={`${sealUrl(flag.logoUrl, 128, true)} 128w, ${sealUrl(flag.logoUrl, 256, true)} 256w`} sizes="64px" />
+                    <img className="publicFlagSealImg" src={sealUrl(flag.logoUrl, 256, false)} alt="" width={64} height={64} loading="lazy" decoding="async" draggable={false} />
+                  </picture>
+                ) : null}
                 {gates.names ? <em>{flag.displayName || flag.flagGridName}</em> : null}
                 {gates.ranks && flag.rank ? <small>{flag.rank}</small> : null}
               </button>
@@ -1226,6 +1273,7 @@ export default function PublicFlagMap({
           revealed={selected.flagGridId === revealId}
           shareUrl={shareUrl}
           onPreview={onPreviewCard}
+          showSeal={gates.seals}
           onClose={() => {
             setSelected(null);
             setRevealId(null);

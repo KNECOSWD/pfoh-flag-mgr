@@ -632,9 +632,10 @@ public class PfohApiFactory : WebApplicationFactory<Program>
                 services.Remove(descriptor);
             }
 
-            services.AddDbContext<PfohDbContext>(options => options
+            services.AddDbContext<PfohDbContext>((sp, options) => options
                 .UseInMemoryDatabase(databaseName)
-                .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning)));
+                .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+                .AddInterceptors(sp.GetRequiredService<PublicFlagMapCacheInvalidator>()));
 
             services.RemoveAll<HonoreeFileStorage>();
             services.AddSingleton<HonoreeFileStorage, PendingReviewTestFileStorage>();

@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
@@ -9,6 +11,104 @@ namespace PFOH.Api.Services;
 
 public class PublicFlagMap(PfohDbContext db)
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    public async Task<PublicFlagMapSnapshot> BuildSnapshotAsync(CancellationToken ct)
+    {
+        var grids = await LiveGridsAsync(ct);
+        var honorees = await EligibleHonoreesAsync(ct);
+        var occupiedByGrid = OccupiedByGrid(honorees);
+        var storedLogos = await db.ServiceBranches
+            .AsNoTracking()
+            .Where(branch => branch.DeletedDate == null)
+            .Select(branch => branch.LogoFileName)
+            .ToListAsync(ct);
+
+        var sections = new List<(PublicFlagSectionDto Summary, IReadOnlyList<PublicFlagSeatDto> Seats)>();
+        foreach (var group in grids.GroupBy(grid => SectionLabel(grid.FlagGridName), StringComparer.OrdinalIgnoreCase))
+        {
+            var seats = group
+                .Select(grid =>
+                {
+                    occupiedByGrid.TryGetValue(grid.Id, out var honoree);
+                    return ToSeat(grid, honoree);
+                })
+                .OrderBy(seat => seat.ColumnNumber ?? int.MaxValue)
+                .ThenBy(seat => seat.FlagGridName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var summary = new PublicFlagSectionDto(
+                seats[0].Section,
+                seats.Count,
+                seats.Count(seat => seat.Status == "Occupied"));
+            sections.Add((summary, seats));
+        }
+
+        sections.Sort((left, right) => SectionComparer.Instance.Compare(left.Summary.Section, right.Summary.Section));
+        var summaries = sections.Select(section => section.Summary).ToList();
+        var sectionPayloads = new Dictionary<string, (string Json, string Etag)>(StringComparer.OrdinalIgnoreCase);
+        var fieldSections = new List<object>(sections.Count);
+        foreach (var (summary, seats) in sections)
+        {
+            var payload = new { section = summary.Section, seats };
+            var (json, etag) = JsonAndEtag(payload);
+            sectionPayloads[summary.Section] = (json, etag);
+            fieldSections.Add(new
+            {
+                section = summary.Section,
+                flagCount = summary.FlagCount,
+                occupiedCount = summary.OccupiedCount,
+                seats
+            });
+        }
+
+        var search = honorees
+            .Where(honoree => honoree.FlagGrid is not null)
+            .OrderBy(honoree => honoree.LastName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(honoree => honoree.FirstName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(honoree => honoree.FlagGrid?.FlagGridName, StringComparer.OrdinalIgnoreCase)
+            .Select(ToSearch)
+            .ToList();
+
+        var (sectionsJson, sectionsEtag) = JsonAndEtag(summaries);
+        var (searchJson, searchEtag) = JsonAndEtag(search);
+        var (fieldJson, fieldEtag) = JsonAndEtag(new { sections = fieldSections });
+        return new PublicFlagMapSnapshot
+        {
+            SectionsJson = sectionsJson,
+            SectionsEtag = sectionsEtag,
+            SearchJson = searchJson,
+            SearchEtag = searchEtag,
+            FieldJson = fieldJson,
+            FieldEtag = fieldEtag,
+            Sections = sectionPayloads,
+            StoredLogoFileNames = storedLogos
+        };
+    }
+
+    public static bool IsPublishedLogo(string fileName, IEnumerable<string?> storedNames)
+    {
+        if (!HonoreeFileStorage.IsPublicLogoFileName(fileName))
+        {
+            return false;
+        }
+
+        if (HonoreeFileStorage.FallbackLogoFileNames.Contains(fileName))
+        {
+            return true;
+        }
+
+        return storedNames.Any(name =>
+            string.Equals(name?.Trim(), fileName, StringComparison.OrdinalIgnoreCase) &&
+            HonoreeFileStorage.IsPublicLogoFileName(name));
+    }
+
+    private static (string Json, string Etag) JsonAndEtag(object payload)
+    {
+        var json = JsonSerializer.Serialize(payload, JsonOptions);
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(json)));
+        return (json, $"\"{hash}\"");
+    }
+
     public async Task<IReadOnlyList<PublicFlagSectionDto>> SectionsAsync(CancellationToken ct)
     {
         var grids = await LiveGridsAsync(ct);
@@ -56,10 +156,10 @@ public class PublicFlagMap(PfohDbContext db)
         var honorees = await EligibleHonoreesAsync(ct);
         return honorees
             .Where(honoree => honoree.FlagGrid is not null)
-            .Select(honoree => ToSearch(honoree))
-            .OrderBy(hit => hit.LastName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(hit => hit.FirstName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(hit => hit.FlagGridName, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(honoree => honoree.LastName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(honoree => honoree.FirstName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(honoree => honoree.FlagGrid?.FlagGridName, StringComparer.OrdinalIgnoreCase)
+            .Select(ToSearch)
             .ToList();
     }
 
@@ -329,11 +429,6 @@ public class PublicFlagMap(PfohDbContext db)
             SectionLabel(honoree.FlagGrid?.FlagGridName),
             ColumnNumber(honoree.FlagGrid?.FlagGridName),
             DisplayName(honoree),
-            BlankToNull(honoree.FirstName),
-            BlankToNull(honoree.MiddleName),
-            BlankToNull(honoree.LastName),
-            BlankToNull(honoree.Suffix),
-            BlankToNull(honoree.Nickname),
             BlankToNull(honoree.Rank),
             BlankToNull(honoree.ServiceBranch?.ServiceBranchName),
             BlankToNull(honoree.ServiceBranch?.ServiceBranchCategory?.ServiceBranchCategoryName),

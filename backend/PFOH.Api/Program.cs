@@ -1,7 +1,9 @@
+using System.IO.Compression;
 using System.Threading.RateLimiting;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Web;
 using PFOH.Api.Data;
@@ -12,6 +14,22 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<BrotliCompressionProvider>();
+    options.Providers.Add<GzipCompressionProvider>();
+    options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
+    [
+        "text/html",
+        "text/css",
+        "application/javascript",
+        "text/javascript",
+        "application/json"
+    ]);
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options => options.Level = CompressionLevel.Optimal);
+builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.Optimal);
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -66,11 +84,15 @@ builder.Services.AddAuthorization(options =>
     });
 });
 
-builder.Services.AddDbContext<PfohDbContext>(options =>
+builder.Services.AddSingleton<PublicFlagMapCache>();
+builder.Services.AddSingleton<PublicFlagMapCacheInvalidator>();
+builder.Services.AddSingleton<PublicLogoCache>();
+builder.Services.AddDbContext<PfohDbContext>((sp, options) =>
 {
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
         ?? throw new InvalidOperationException("Missing DefaultConnection connection string.");
     options.UseSqlServer(connectionString);
+    options.AddInterceptors(sp.GetRequiredService<PublicFlagMapCacheInvalidator>());
 });
 
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
@@ -177,9 +199,46 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseResponseCompression();
 app.UseHttpsRedirection();
+app.Use(async (context, next) =>
+{
+    context.Response.OnStarting(() =>
+    {
+        var path = context.Request.Path.Value ?? string.Empty;
+        var html = path.Equals("/", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/flag-map", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".html", StringComparison.OrdinalIgnoreCase);
+        if (!html)
+        {
+            return Task.CompletedTask;
+        }
+
+        var existing = context.Response.Headers.CacheControl.ToString();
+        if (existing.Contains("no-store", StringComparison.OrdinalIgnoreCase)
+            || existing.Contains("immutable", StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrEmpty(existing))
+        {
+            return Task.CompletedTask;
+        }
+
+        context.Response.Headers.CacheControl = StaticAssetCaching.Html;
+        return Task.CompletedTask;
+    });
+    await next();
+});
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = context =>
+    {
+        var cache = StaticAssetCaching.CacheControlFor(context.Context.Request.Path.Value);
+        if (cache is not null)
+        {
+            context.Context.Response.Headers.CacheControl = cache;
+        }
+    }
+});
 app.UseRouting();
 app.Use(async (context, next) =>
 {
@@ -197,6 +256,20 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "PFOH.Api" })).AllowAnonymous();
+app.MapGet("/flag-map", async (HttpContext context, CancellationToken ct) =>
+{
+    context.Response.Headers.CacheControl = StaticAssetCaching.Html;
+    var indexPath = Path.Combine(app.Environment.WebRootPath ?? string.Empty, "index.html");
+    if (!File.Exists(indexPath))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    var html = await File.ReadAllTextAsync(indexPath, ct);
+    context.Response.ContentType = "text/html; charset=utf-8";
+    await context.Response.WriteAsync(FlagMapDocument.WithPreload(html), ct);
+}).AllowAnonymous();
 app.MapControllers();
 app.MapFallbackToFile("index.html");
 

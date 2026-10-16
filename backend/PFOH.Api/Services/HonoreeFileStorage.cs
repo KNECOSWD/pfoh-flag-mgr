@@ -299,7 +299,40 @@ public class HonoreeFileStorage(IConfiguration configuration)
             }
         }
 
+        var packaged = ReadPackagedServiceLogo(cleanFileName);
+        if (packaged is not null && packaged.Length > 0)
+        {
+            return packaged;
+        }
+
         return null;
+    }
+
+    private static byte[]? ReadPackagedServiceLogo(string fileName)
+    {
+        if (!IsPublicLogoFileName(fileName))
+        {
+            return null;
+        }
+
+        var assembly = typeof(HonoreeFileStorage).Assembly;
+        var suffix = "." + fileName;
+        var name = assembly.GetManifestResourceNames()
+            .FirstOrDefault(resource => resource.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+        if (name is null)
+        {
+            return null;
+        }
+
+        using var stream = assembly.GetManifestResourceStream(name);
+        if (stream is null)
+        {
+            return null;
+        }
+
+        using var memory = new MemoryStream();
+        stream.CopyTo(memory);
+        return memory.ToArray();
     }
 
     public virtual async Task<HonoreeImageProbeResult> ProbeHonoreeImageAsync(string? photoFileName, CancellationToken ct)

@@ -13,9 +13,12 @@ import {
   filterFlagMapSuggestions,
   fitView,
   flagDeepLink,
+  countFlagsOnScreen,
   flagMapDetailGates,
   flagMapLayerOpacities,
   layoutFlagField,
+  sealImagesAllowed,
+  SEAL_ON_SCREEN_LIMIT,
   pointerDragCapture,
   pointerIsTap,
   pinchView,
@@ -65,7 +68,7 @@ test("the public page does not start a sign-in redirect", () => {
   assert.match(page, /Preview card/);
   assert.match(page, /aria-label="Zoom in"/);
   assert.match(page, /aria-label="Reset view"/);
-  assert.match(page, /translate\(/);
+  assert.match(page, /gestureTransform\(/);
   assert.match(page, /onWheel|addEventListener\("wheel"/);
   assert.match(page, /touchmove/);
 });
@@ -96,25 +99,24 @@ test("semantic zoom fades section, seal, name, and rank without a jump", () => {
 
   const mid = flagMapLayerOpacities((FLAG_MAP_ZOOM.sealFadeStart + FLAG_MAP_ZOOM.sealFadeEnd) / 2, fit);
   assert.ok(Math.abs(mid.section - 0.5) < 0.001);
-  assert.ok(Math.abs(mid.seal - 0.5) < 0.001);
-  assert.equal(mid.section + mid.seal, 1);
+  assert.equal(mid.seal, 0);
   assert.equal(mid.name, 0);
   assert.equal(mid.rank, 0);
 
   const seals = flagMapLayerOpacities(2.05, fit);
   assert.equal(seals.section, 0);
-  assert.equal(seals.seal, 1);
+  assert.equal(seals.seal, 0);
   assert.equal(seals.name, 0);
   assert.equal(seals.rank, 0);
 
   const names = flagMapLayerOpacities(2.9, fit);
-  assert.equal(names.seal, 1);
+  assert.equal(names.seal, 0);
   assert.equal(names.name, 1);
   assert.equal(names.rank, 0);
 
   const closest = flagMapLayerOpacities(FLAG_MAP_ZOOM.rankFadeEnd, fit);
   assert.equal(closest.section, 0);
-  assert.equal(closest.seal, 1);
+  assert.equal(closest.seal, 0);
   assert.equal(closest.name, 1);
   assert.equal(closest.rank, 1);
 
@@ -157,6 +159,104 @@ test("the field layout culls flags outside the viewport", () => {
   const seen = viewportWorldRect(fitted, { width: 800, height: 600 });
   assert.equal(cullRects(field.flags, seen).length, 2);
   assert.equal(cullRects(field.flags, { x: field.worldWidth + 10, y: 0, width: 20, height: 20 }).length, 0);
+});
+
+test("the field is laid out as seen from the pavilion", () => {
+  const field = layoutFlagField([
+    {
+      section: "AA",
+      flagCount: 2,
+      occupiedCount: 0,
+      seats: [
+        { flagGridId: 1, flagGridName: "AA-01", columnNumber: 1, section: "AA", status: "Open" },
+        { flagGridId: 2, flagGridName: "AA-21", columnNumber: 21, section: "AA", status: "Open" }
+      ]
+    },
+    {
+      section: "Z",
+      flagCount: 1,
+      occupiedCount: 0,
+      seats: [{ flagGridId: 3, flagGridName: "Z-01", columnNumber: 1, section: "Z", status: "Reserved" }]
+    },
+    {
+      section: "YY",
+      flagCount: 1,
+      occupiedCount: 0,
+      seats: [{ flagGridId: 4, flagGridName: "YY-40", columnNumber: 40, section: "YY", status: "Open" }]
+    },
+    {
+      section: "QQ",
+      flagCount: 1,
+      occupiedCount: 0,
+      seats: [{ flagGridId: 5, flagGridName: "QQ-01", columnNumber: 1, section: "QQ", status: "Open" }]
+    }
+  ]);
+  assert.deepEqual(field.sections.map((section) => section.section), ["YY", "Z", "AA", "QQ"]);
+  const row1 = field.flags.find((flag) => flag.flagGridId === 1);
+  const row21 = field.flags.find((flag) => flag.flagGridId === 2);
+  const row40 = field.flags.find((flag) => flag.flagGridId === 4);
+  assert.ok(row1.y > row21.y);
+  assert.ok(row40.y < row1.y);
+  assert.ok(row1.y - row21.y > 20 * 31);
+  const unknown = field.sections.find((section) => section.section === "QQ");
+  const aa = field.sections.find((section) => section.section === "AA");
+  assert.ok(unknown.x > aa.x);
+  assert.equal(field.flags.length, 5);
+  assert.equal(field.flags.some((flag) => flag.flagGridName === "Z-10"), false);
+});
+
+test("branch seals render only when fewer than 10 flags are on screen", () => {
+  assert.equal(SEAL_ON_SCREEN_LIMIT, 10);
+  assert.equal(sealImagesAllowed(10), false);
+  assert.equal(sealImagesAllowed(9), true);
+  assert.equal(sealImagesAllowed(0), true);
+  const wide = flagMapDetailGates(12, 1, 40);
+  assert.equal(wide.seals, false);
+  assert.equal(wide.names, false);
+  assert.equal(wide.ranks, false);
+  assert.equal(wide.flagsInteractive, false);
+  const close = flagMapDetailGates(12, 1, 9);
+  assert.equal(close.seals, true);
+  assert.equal(close.names, true);
+  assert.equal(close.flagsInteractive, true);
+  assert.equal(flagMapDetailGates(12, 1, 10).seals, false);
+  assert.equal(flagMapDetailGates(12, 1).seals, false);
+
+  const flags = Array.from({ length: 12 }, (_, index) => ({
+    x: index * 20,
+    y: 0,
+    width: 20,
+    height: 20
+  }));
+  assert.equal(countFlagsOnScreen(flags, { x: 0, y: 0, scale: 1 }, { width: 100, height: 40 }), 5);
+  assert.equal(countFlagsOnScreen(flags, { x: 0, y: 0, scale: 1 }, { width: 1000, height: 40 }), 12);
+
+  const markerStart = page.indexOf("visibleFlags.map");
+  const marker = page.slice(markerStart, page.indexOf("selected ?", markerStart));
+  assert.match(marker, /gates\.seals && flag\.logoUrl/);
+  assert.match(marker, /publicFlagDot/);
+  assert.match(marker, /branchDotColor/);
+  assert.match(marker, /publicFlagSealImg/);
+  assert.match(marker, /loading="lazy"/);
+  assert.match(marker, /decoding="async"/);
+  assert.match(page, /countFlagsOnScreen\(layout\.flags, view, size\)/);
+  assert.doesNotMatch(page, /publicFlagWave/);
+  assert.match(page, /showSeal=\{gates\.seals\}/);
+
+  const flush = page.slice(page.indexOf("const flushWheelFrame"), page.indexOf("const flushPinchFrame"));
+  const beforeSettle = flush.slice(0, flush.indexOf("setTimeout"));
+  assert.match(beforeSettle, /gestureTransform/);
+  assert.doesNotMatch(beforeSettle, /publishCull|paintView|setGates|setVisibleFlagIds/);
+  assert.match(flush.slice(flush.indexOf("setTimeout")), /publishCull\(true\)/);
+
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  assert.match(css, /@keyframes publicFlagSealFade/);
+  assert.match(css, /from \{ opacity: 0; \}/);
+  assert.doesNotMatch(css, /publicFlagWave/);
+  const load = page.slice(page.indexOf("setLoading(true);"), page.indexOf("useLayoutEffect(() => {"));
+  assert.doesNotMatch(load, /summaries\.map/);
+  assert.match(load, /loadField\(/);
+  assert.match(page, /urls\.field/);
 });
 
 test("a click opens the target and a drag does not capture until the pointer leaves the slop", () => {
@@ -336,6 +436,7 @@ test("a kiosk attract loop does not request the flag map again", async () => {
   const load = page.slice(page.indexOf("setLoading(true);"), page.indexOf("useLayoutEffect(() => {"));
   assert.equal((load.match(/searchIndex/g) || []).length, 1);
   assert.match(load, /\}, \[\]\);/);
+  assert.doesNotMatch(load, /summaries\.map/);
 
   let calls = 0;
   const loader = createFlagMapLoader(async (url, init) => {

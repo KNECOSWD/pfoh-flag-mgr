@@ -2,6 +2,7 @@ export function publicFlagMapUrls(apiBase = "") {
   const base = String(apiBase || "").replace(/\/$/, "");
   return {
     sections: `${base}/api/public/flag-map/sections`,
+    field: `${base}/api/public/flag-map/field`,
     section: (section) => `${base}/api/public/flag-map/sections/${encodeURIComponent(section)}`,
     searchIndex: `${base}/api/public/flag-map/search-index`,
     bySubmitter: () => `${base}/api/public/flag-map/by-submitter`
@@ -41,7 +42,7 @@ export function filterFlagMapSuggestions(index, query, limit = 8) {
 
   return index
     .filter((item) => {
-      const haystack = [item?.displayName, item?.firstName, item?.lastName, item?.nickname]
+      const haystack = [item?.displayName, item?.firstName, item?.middleName, item?.lastName, item?.suffix, item?.nickname]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -79,11 +80,24 @@ export const KIOSK_IDLE_MS = 60_000;
 export const WHEEL_ZOOM_SENSITIVITY = 0.0015;
 export const WHEEL_SETTLE_MS = 120;
 
-const FLAG_WIDTH = 148;
-const FLAG_HEIGHT = 108;
-const FLAG_GAP = 12;
-const SECTION_PAD = 28;
-const SECTION_GAP = 56;
+const FLAG_WIDTH = 52;
+const FLAG_HEIGHT = 28;
+const FLAG_GAP = 3;
+const SECTION_GAP = 8;
+const LABEL_BAND = 36;
+const FIELD_AISLE_AFTER_ROW = 20;
+const FIELD_AISLE = 22;
+
+function seatRow(seat) {
+  if (Number.isFinite(seat?.columnNumber) && seat.columnNumber > 0) return seat.columnNumber;
+  const digits = String(seat?.flagGridName || "").match(/(\d+)/);
+  return digits ? Number(digits[1]) : null;
+}
+
+function rowTop(row, maxRow, aisle) {
+  const fromTop = Math.max(0, maxRow - row);
+  return fromTop * (FLAG_HEIGHT + FLAG_GAP) + (row <= FIELD_AISLE_AFTER_ROW ? aisle : 0);
+}
 
 export function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -105,27 +119,58 @@ export function relativeFlagScale(scale, fitScale) {
   return scale / base;
 }
 
+export const SEAL_ON_SCREEN_LIMIT = 10;
+
+export const PAVILION_COLUMNS_LEFT_TO_RIGHT = Object.freeze([
+  "YY", "Y", "X", "W", "V", "U", "T", "S", "R", "Q", "P", "O", "N",
+  "Z",
+  "M", "L", "K", "J", "I", "H", "G", "F", "E", "D", "C", "B", "A", "AA"
+]);
+
+export function sealImagesAllowed(flagsOnScreen) {
+  return Number(flagsOnScreen) < SEAL_ON_SCREEN_LIMIT;
+}
+
+export function pavilionColumnIndex(section) {
+  const key = String(section || "").trim().toUpperCase();
+  const known = PAVILION_COLUMNS_LEFT_TO_RIGHT.indexOf(key);
+  return known === -1 ? PAVILION_COLUMNS_LEFT_TO_RIGHT.length : known;
+}
+
+export function branchDotColor(branchName, status) {
+  if (status === "Reserved") return "#e1b84a";
+  if (status !== "Occupied") return "#f4efe4";
+  const value = String(branchName || "").toLowerCase();
+  if (value.includes("air force")) return "#00308f";
+  if (value.includes("navy")) return "#0a3161";
+  if (value.includes("marine")) return "#ba0c2f";
+  if (value.includes("coast")) return "#f26522";
+  if (value.includes("space")) return "#5b7c99";
+  if (value.includes("army")) return "#4b5320";
+  return "#8a6a12";
+}
+
 export function flagMapLayerOpacities(scale, fitScale) {
   const relative = relativeFlagScale(scale, fitScale);
-  const seal = fadeIn(relative, FLAG_MAP_ZOOM.sealFadeStart, FLAG_MAP_ZOOM.sealFadeEnd);
   return {
     relative,
     section: 1 - fadeIn(relative, FLAG_MAP_ZOOM.sectionFadeStart, FLAG_MAP_ZOOM.sectionFadeEnd),
-    seal,
+    seal: 0,
     name: fadeIn(relative, FLAG_MAP_ZOOM.nameFadeStart, FLAG_MAP_ZOOM.nameFadeEnd),
     rank: fadeIn(relative, FLAG_MAP_ZOOM.rankFadeStart, FLAG_MAP_ZOOM.rankFadeEnd)
   };
 }
 
-export function flagMapDetailGates(scale, fitScale) {
+export function flagMapDetailGates(scale, fitScale, flagsOnScreen = Number.POSITIVE_INFINITY) {
   const relative = relativeFlagScale(scale, fitScale);
   const opacity = flagMapLayerOpacities(scale, fitScale);
+  const seals = sealImagesAllowed(flagsOnScreen);
   return {
-    seals: relative >= FLAG_MAP_ZOOM.sealFadeStart - 0.02,
-    names: relative >= FLAG_MAP_ZOOM.nameFadeStart - 0.02,
-    ranks: relative >= FLAG_MAP_ZOOM.rankFadeStart - 0.02,
-    sectionsInteractive: opacity.section > 0.2,
-    flagsInteractive: opacity.seal > 0.35
+    seals,
+    names: seals && relative >= FLAG_MAP_ZOOM.nameFadeStart - 0.02,
+    ranks: seals && relative >= FLAG_MAP_ZOOM.rankFadeStart - 0.02,
+    sectionsInteractive: opacity.section > 0.2 && !seals,
+    flagsInteractive: seals
   };
 }
 
@@ -176,68 +221,81 @@ export function cullRects(items, viewRect) {
   return items.filter((item) => rectsIntersect(item, viewRect));
 }
 
+export function countFlagsOnScreen(flags, view, viewport) {
+  return cullRects(flags, viewportWorldRect(view, viewport, 0)).length;
+}
+
 export function pointerIsTap(start, end, slop = FLAG_MAP_ZOOM.tapSlop) {
   if (!start || !end) return false;
   return Math.hypot(end.x - start.x, end.y - start.y) <= slop;
 }
 
 export function layoutFlagField(sections) {
-  const columns = Math.max(1, Math.ceil(Math.sqrt(sections?.length || 1)));
+  const source = Array.isArray(sections) ? sections : [];
+  const ordered = source
+    .map((section, index) => ({ section, index }))
+    .sort((left, right) => {
+      const order = pavilionColumnIndex(left.section.section) - pavilionColumnIndex(right.section.section);
+      if (order !== 0) return order;
+      const name = String(left.section.section || "").localeCompare(String(right.section.section || ""));
+      return name !== 0 ? name : left.index - right.index;
+    })
+    .map((entry) => entry.section);
+
+  let maxRow = 1;
+  let hasLow = false;
+  let hasHigh = false;
+  for (const section of ordered) {
+    const seats = Array.isArray(section.seats) ? section.seats : [];
+    if (seats.length === 0) maxRow = Math.max(maxRow, section.flagCount || 1);
+    for (const seat of seats) {
+      const row = seatRow(seat);
+      if (!row) continue;
+      maxRow = Math.max(maxRow, row);
+      if (row <= FIELD_AISLE_AFTER_ROW) hasLow = true;
+      if (row > FIELD_AISLE_AFTER_ROW) hasHigh = true;
+    }
+  }
+  const aisle = hasLow && hasHigh ? FIELD_AISLE : 0;
+  const fieldHeight = rowTop(1, maxRow, aisle) + FLAG_HEIGHT;
   const placedSections = [];
   const placedFlags = [];
-  let cursorX = 0;
-  let cursorY = 0;
-  let rowHeight = 0;
-  let columnIndex = 0;
 
-  for (const section of sections || []) {
+  ordered.forEach((section, index) => {
     const seats = Array.isArray(section.seats) ? section.seats : [];
-    const count = Math.max(seats.length, section.flagCount || 0, 1);
-    const flagColumns = Math.max(1, Math.ceil(Math.sqrt(count)));
-    const flagRows = Math.ceil(count / flagColumns);
-    const width = SECTION_PAD * 2 + flagColumns * FLAG_WIDTH + Math.max(0, flagColumns - 1) * FLAG_GAP;
-    const height = SECTION_PAD * 2 + flagRows * FLAG_HEIGHT + Math.max(0, flagRows - 1) * FLAG_GAP;
-
-    if (columnIndex >= columns) {
-      columnIndex = 0;
-      cursorX = 0;
-      cursorY += rowHeight + SECTION_GAP;
-      rowHeight = 0;
-    }
-
+    const x = index * (FLAG_WIDTH + SECTION_GAP);
     placedSections.push({
       section: section.section,
       flagCount: section.flagCount ?? seats.length,
       occupiedCount: section.occupiedCount ?? seats.filter((seat) => seat.status === "Occupied").length,
-      x: cursorX,
-      y: cursorY,
-      width,
-      height
+      x,
+      y: 0,
+      width: FLAG_WIDTH,
+      height: fieldHeight + LABEL_BAND
     });
-
-    seats.forEach((seat, index) => {
-      const column = index % flagColumns;
-      const row = Math.floor(index / flagColumns);
+    for (const seat of seats) {
+      const row = seatRow(seat);
+      if (!row) continue;
       placedFlags.push({
         ...seat,
-        x: cursorX + SECTION_PAD + column * (FLAG_WIDTH + FLAG_GAP),
-        y: cursorY + SECTION_PAD + row * (FLAG_HEIGHT + FLAG_GAP),
+        x,
+        y: rowTop(row, maxRow, aisle),
         width: FLAG_WIDTH,
         height: FLAG_HEIGHT
       });
-    });
-
-    rowHeight = Math.max(rowHeight, height);
-    cursorX += width + SECTION_GAP;
-    columnIndex += 1;
-  }
+    }
+  });
 
   return {
     sections: placedSections,
     flags: placedFlags,
-    worldWidth: Math.max(1, ...placedSections.map((section) => section.x + section.width), 1),
-    worldHeight: Math.max(1, ...placedSections.map((section) => section.y + section.height), 1)
+    worldWidth: Math.max(1, ...placedSections.map((section) => section.x + section.width)),
+    worldHeight: Math.max(1, ...placedSections.map((section) => section.y + section.height))
   };
+}
+
+export function gestureTransform(view) {
+  return `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
 }
 
 export function readFlagMapLocation(search = "") {
