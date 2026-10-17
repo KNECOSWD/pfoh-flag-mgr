@@ -1105,6 +1105,14 @@ export function initialMapFullScreen(kiosk) {
   return !kiosk;
 }
 
+// Each Esc closes only the topmost open thing; full screen exits last.
+export function flagMapEscapeTarget({ cardOpen, listOpen, mapFull }) {
+  if (cardOpen) return "card";
+  if (listOpen) return "list";
+  if (mapFull) return "fullscreen";
+  return null;
+}
+
 export function mapFullscreenSupported(element) {
   if (!element) return false;
   return typeof element.requestFullscreen === "function" || typeof element.webkitRequestFullscreen === "function";

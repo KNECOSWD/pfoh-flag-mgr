@@ -15,6 +15,7 @@ import {
   spotsViewScale,
   zoneLabelSizes,
   initialMapFullScreen,
+  flagMapEscapeTarget,
   sectionLabelSizes,
   applyKioskIdleReset,
   attractView,
@@ -1474,4 +1475,22 @@ test("2.0.7: field sections show letters only, the list keeps ranges, and the ma
   assert.match(page, /if \(mapFullRef\.current\) document\.documentElement\.classList\.add\(MAP_FULLSCREEN_CLASS\)/);
   const opening = page.slice(page.indexOf("const mapFullRef"), page.indexOf("async function enterMapFull"));
   assert.doesNotMatch(opening, /requestElementFullscreen\(/, "no browser Fullscreen API call on load");
+});
+
+test("Esc closes the topmost open thing before leaving full screen", () => {
+  const press = (state) => {
+    const target = flagMapEscapeTarget(state);
+    if (target === "card") return { ...state, cardOpen: false };
+    if (target === "list") return { ...state, listOpen: false };
+    if (target === "fullscreen") return { ...state, mapFull: false };
+    return state;
+  };
+  const drawer = press({ cardOpen: true, listOpen: true, mapFull: true });
+  assert.deepEqual(drawer, { cardOpen: false, listOpen: true, mapFull: true }, "drawer closes, still full screen");
+  const list = press(drawer);
+  assert.deepEqual(list, { cardOpen: false, listOpen: false, mapFull: true }, "suggestions close, still full screen");
+  assert.deepEqual(press(list), { cardOpen: false, listOpen: false, mapFull: false }, "nothing open exits full screen");
+  assert.equal(flagMapEscapeTarget({ cardOpen: false, listOpen: false, mapFull: false }), null);
+  assert.match(page, /flagMapEscapeTarget\(\{ \.\.\.escapeStateRef\.current, mapFull: mapFullRef\.current \}\)/);
+  assert.match(page, /listOpen: \(open && searchRows\.length > 0\) \|\| Boolean\(jumpPending\)/);
 });

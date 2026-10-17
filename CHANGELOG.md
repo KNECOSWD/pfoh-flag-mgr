@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.8
+
+- On the public Flag Map in full screen, each press of Esc closes only the topmost open thing. An open flag card closes first. Next, the search suggestions or the in-view list close, and a pending jump is canceled. Only when nothing is open does Esc leave full screen. The toolbar's full-screen button and kiosk mode are unchanged.
+
 ## 2.0.7
 
 - Section labels on the public Flag Map field show only their letter, such as Y, AA, or Z. The flag-number range no longer sits under the letter. Every letter keeps the same size and weight. The Service Flags label and the in-view list entries, such as "C 21–40", are unchanged.

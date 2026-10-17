@@ -57,7 +57,8 @@ import {
   withApiBase,
   zoneLabelSizes,
   sectionLabelSizes,
-  zoomAt
+  zoomAt,
+  flagMapEscapeTarget
 } from "./publicFlagMap.js";
 import { KIOSK_EXIT_HOLD_MS, kioskSessionOn, requestKioskExit } from "./kioskSession.js";
 
@@ -342,6 +343,8 @@ export default function PublicFlagMap({
     ...suggestions.map((hit) => ({ kind: "honoree" as const, hit })),
     ...submitterSuggestions.map((item) => ({ kind: "submitter" as const, label: item.label, token: item.token }))
   ];
+  const escapeStateRef = useRef({ cardOpen: false, listOpen: false });
+  escapeStateRef.current = { cardOpen: Boolean(selected), listOpen: (open && searchRows.length > 0) || Boolean(jumpPending) };
   const activeRow = searchRows[active];
   const activeDescendant = !open || !activeRow
     ? undefined
@@ -954,9 +957,18 @@ export default function PublicFlagMap({
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || !mapFullRef.current) return;
+      const target = flagMapEscapeTarget({ ...escapeStateRef.current, mapFull: mapFullRef.current });
       event.preventDefault();
       event.stopPropagation();
-      void exitMapFull();
+      if (target === "card") {
+        setSelected(null);
+        setRevealId(null);
+      } else if (target === "list") {
+        setOpen(false);
+        setJumpPending("");
+      } else {
+        void exitMapFull();
+      }
     };
     document.addEventListener("fullscreenchange", onChange);
     document.addEventListener("webkitfullscreenchange", onChange);
