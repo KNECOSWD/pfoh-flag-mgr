@@ -22,6 +22,7 @@ import {
   filterFlagMapSuggestions,
   FIT_PADDING,
   fitView,
+  fieldFitBounds,
   fitWholeField,
   flagMapPageBands,
   flagDeepLink,
@@ -387,7 +388,7 @@ export default function PublicFlagMap({
   }
 
   function worldBounds() {
-    return { x: 0, y: 0, width: layoutRef.current?.worldWidth || 1, height: layoutRef.current?.worldHeight || 1 };
+    return fieldFitBounds(layoutRef.current);
   }
 
   function visibleSize() {
@@ -1708,6 +1709,11 @@ export default function PublicFlagMap({
               </div>
             );
           })}
+        </div>
+        <div className="publicFlagAxisGutters" aria-hidden="true">
+          <div className="publicFlagAxisGutter isLeft" />
+          <div className="publicFlagAxisGutter isRight" />
+          <div className="publicFlagAxisGutter isBottom" />
         </div>
         <div ref={axisRef} className="publicFlagAxis" aria-hidden="true">
           {field?.rowLabels.map((label) => (
