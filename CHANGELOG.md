@@ -8,7 +8,7 @@
 - The opening fit holds the whole grid, including the row numbers, the column letters, and the Pavilion marker, with padding on every side. The map cannot be zoomed out past that fit. A pan stops with the edge of the field just inside the window, so the left column and every other edge can always be reached, and the field cannot be dragged out of view.
 - The flag detail opens above the search bar. On a desktop and the kiosk the search box and toolbar narrow to leave room for it, and on a desktop the panel starts below the site header. On a phone the panel covers the search bar. Opening a flag zooms close enough for the seal and keeps the flag clear of the panel.
 - Section blocks use one flat fill with no gradient.
-- The reserved block at the start of Z, such as Z1–Z10, is left plain at every zoom: no section block, no label, no fill, and no flag number. The rest of Z is drawn like any other column.
+- Z1–Z10 are the Service Flags. That area is now one flat, solid block labeled "Service Flags" at every zoom, with no per-spot flag numbers. It is no longer part of the Z section block; the rest of Z, from Z11 up, is its own section.
 - Column Z has the same visible gap on both sides, between N and Z and between Z and M, the same width as the aisle between rows 20 and 21.
 - Zoomed-in text is drawn sharp again after an animated zoom.
 

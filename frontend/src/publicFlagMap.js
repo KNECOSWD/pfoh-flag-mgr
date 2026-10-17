@@ -377,7 +377,15 @@ export function pointerIsTap(start, end, slop = FLAG_MAP_ZOOM.tapSlop) {
 }
 
 export const FIELD_MAP_ROWS = 40;
-export const FIELD_MAP_Z_ROWS = 9;
+export const FIELD_MAP_Z_ROWS = 10;
+export const SERVICE_FLAGS_SECTION = "Z";
+export const SERVICE_FLAGS_LABEL = "Service Flags";
+
+export function isServiceFlagSeat(seat) {
+  const row = Number(seat?.columnNumber);
+  return String(seat?.section || "").toUpperCase() === SERVICE_FLAGS_SECTION
+    && Number.isFinite(row) && row >= 1 && row <= FIELD_MAP_Z_ROWS;
+}
 
 function templateFlagId(section, row) {
   return -((pavilionColumnIndex(section) + 1) * 1000 + row);
@@ -501,15 +509,17 @@ export function layoutFlagField(sections) {
       const row = seatRow(seat);
       if (!row) continue;
       rows.add(row);
+      const serviceFlag = isServiceFlagSeat({ section: section.section, columnNumber: row });
       const placed = {
         ...seat,
+        serviceFlag,
         x,
         y: rowTop(row, maxRow, aisleGap),
         width: FLAG_WIDTH,
         height: FLAG_HEIGHT
       };
       placedCells.push(placed);
-      if (!seat.template) placedFlags.push(placed);
+      if (!seat.template && !serviceFlag) placedFlags.push(placed);
     }
   });
 
@@ -550,6 +560,8 @@ export function layoutFlagField(sections) {
       }
     : null;
   const bottom = pavilion ? pavilion.y + pavilion.height : labelTop + LABEL_BAND;
+  const serviceBox = boundsOf(placedCells.filter((cell) => cell.serviceFlag));
+  const serviceFlags = serviceBox ? { ...serviceBox, label: SERVICE_FLAGS_LABEL } : null;
 
   return {
     sections: placedSections,
@@ -559,6 +571,7 @@ export function layoutFlagField(sections) {
     columnLabels,
     aisle,
     pavilion,
+    serviceFlags,
     zones: flagZones(placedCells),
     worldWidth: contentRight + SECTION_PAD,
     worldHeight: Math.max(bottom + SECTION_PAD, 1)
@@ -571,6 +584,7 @@ export function flagZones(cells) {
     const section = String(cell?.section || "");
     const row = Number(cell?.columnNumber);
     if (!section || !Number.isFinite(row) || row <= 0) continue;
+    if (isServiceFlagSeat(cell)) continue;
     const list = groups.get(section) ?? [];
     list.push(cell);
     groups.set(section, list);
@@ -777,6 +791,19 @@ export function zoneLabelSizes(zone, scale) {
   if (across) return { range, letter, rangeSize: across, vertical: false };
   const down = Math.min(12, zone.width * s * 0.8, (zone.height * s * 0.55) / (range.length * CHAR_EM));
   return { range, letter, rangeSize: down >= 7 ? down / s : 0, vertical: true };
+}
+
+export function serviceFlagsLabelSize(box, scale) {
+  const s = Number(scale) > 0 ? Number(scale) : 1;
+  const words = String(box?.label || SERVICE_FLAGS_LABEL).split(" ");
+  const longest = Math.max(...words.map((word) => word.length));
+  const width = (Number(box?.width) || 0) * s;
+  const height = (Number(box?.height) || 0) * s;
+  const stacked = Math.min(20, (width * 0.84) / (longest * CHAR_EM), (height * 0.5) / (words.length * LINE_HEIGHT));
+  if (stacked >= 10) return { size: stacked / s, vertical: false };
+  const label = words.join(" ");
+  const down = Math.min(16, width * 0.6, (height * 0.84) / (label.length * CHAR_EM));
+  return { size: down >= 6 ? down / s : 0, vertical: true };
 }
 
 export function mapFullscreenSupported(element) {

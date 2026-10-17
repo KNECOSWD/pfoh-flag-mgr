@@ -11451,6 +11451,35 @@ html.flagMapKiosk a {
   font-weight: 750;
 }
 
+.publicFlagServiceFlags {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  overflow: hidden;
+  pointer-events: none;
+  background: #7a1f2b;
+  color: #fff8e8;
+  border: calc(var(--px, 1px) * 1.5) solid rgba(243, 226, 167, 0.85);
+  border-radius: calc(var(--px, 1px) * 4);
+  font-weight: 750;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.publicFlagServiceFlags > span {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.publicFlagServiceFlags > span.isVertical {
+  writing-mode: vertical-rl;
+}
+
 .publicFlagTile,
 .publicFlagMarker {
   position: absolute;

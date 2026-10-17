@@ -32,6 +32,9 @@ import {
   boundsOf,
   FIELD_MAP_ROWS,
   FIELD_MAP_Z_ROWS,
+  SERVICE_FLAGS_LABEL,
+  isServiceFlagSeat,
+  serviceFlagsLabelSize,
   layoutFlagField,
   MAP_FULLSCREEN_CLASS,
   PAVILION_COLUMNS_LEFT_TO_RIGHT,
@@ -259,14 +262,26 @@ test("the fit shows the whole grid with padding and a pan reaches every edge", (
   assert.match(page, /const target = limitView\(requested\)/);
 });
 
-test("section blocks are flat, the reserved Z block is plain, and Z has an aisle on both sides", () => {
+test("section blocks are flat, Z1–Z10 is one flat Service Flags block, and Z has an aisle on both sides", () => {
   const zoneBlock = css.slice(css.indexOf(".publicFlagTile,\n.publicFlagZone {"), css.indexOf(".publicFlagZone strong"));
   assert.match(zoneBlock, /background:\s*#[0-9a-f]{6};/i);
   assert.doesNotMatch(zoneBlock, /gradient/);
+  const serviceBlock = css.slice(css.indexOf(".publicFlagServiceFlags {"), css.indexOf(".publicFlagServiceFlags > span {"));
+  assert.match(serviceBlock, /background:\s*#[0-9a-f]{6};/i);
+  assert.doesNotMatch(serviceBlock, /gradient/);
   assert.match(css, /\.publicFlagSeat\.isReserved \{\s*background: transparent;\s*border-color: transparent;/);
   assert.match(css, /\.publicFlagMarker\.isReserved \{\s*background: transparent;\s*color: transparent;\s*border-color: transparent;/);
   assert.doesNotMatch(page, /<li><i className="isReserved"/);
   assert.match(page, /cell\.status !== "Reserved"/);
+  assert.match(page, /className="publicFlagServiceFlags"/);
+  assert.match(page, /!cell\.serviceFlag && ids\.has/);
+
+  assert.equal(FIELD_MAP_Z_ROWS, 10);
+  assert.equal(SERVICE_FLAGS_LABEL, "Service Flags");
+  assert.equal(isServiceFlagSeat({ section: "Z", columnNumber: 1 }), true);
+  assert.equal(isServiceFlagSeat({ section: "Z", columnNumber: 10 }), true);
+  assert.equal(isServiceFlagSeat({ section: "Z", columnNumber: 11 }), false);
+  assert.equal(isServiceFlagSeat({ section: "M", columnNumber: 5 }), false);
 
   const field = layoutFlagField([
     {
@@ -281,13 +296,39 @@ test("section blocks are flat, the reserved Z block is plain, and Z has an aisle
     }
   ]);
   assert.deepEqual(field.zones.filter((zone) => zone.section === "Z").map((zone) => zone.label), ["Z 11\u201312"]);
-  const reserved = field.cells.find((cell) => cell.flagGridName === "Z-10");
-  const gates = flagMapDetailGates(300 / SPOT_SIZE.width, 4);
-  const plain = spotContents(reserved, gates, 300 / SPOT_SIZE.width);
-  assert.equal(plain.number, "");
-  assert.deepEqual(plain.lines, []);
-  assert.equal(plain.seal, 0);
-  assert.equal(spotContents(field.cells.find((cell) => cell.flagGridName === "Z-11"), gates, 300 / SPOT_SIZE.width).lines.join(" "), "Ada Lovelace");
+  assert.equal(field.flags.some((flag) => flag.flagGridName === "Z-10"), false);
+  assert.ok(field.flags.some((flag) => flag.flagGridName === "Z-11"));
+  const service = field.cells.filter((cell) => cell.serviceFlag);
+  assert.equal(service.length, FIELD_MAP_Z_ROWS);
+  assert.deepEqual(service.map((cell) => cell.columnNumber).sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  assert.ok(service.every((cell) => cell.section === "Z"));
+  assert.equal(field.cells.filter((cell) => cell.section !== "Z" && cell.serviceFlag).length, 0);
+  assert.equal(field.cells.find((cell) => cell.flagGridName === "Z-11").serviceFlag, false);
+
+  const box = field.serviceFlags;
+  assert.equal(box.label, "Service Flags");
+  assert.deepEqual({ x: box.x, y: box.y, width: box.width, height: box.height }, boundsOf(service));
+  const z11 = field.cells.find((cell) => cell.flagGridName === "Z-11");
+  assert.ok(box.y >= z11.y + z11.height, "Service Flags sits below Z11");
+  const zZone = field.zones.find((zone) => zone.section === "Z");
+  assert.ok(zZone.y + zZone.height <= box.y, "Z section block does not overlap Service Flags");
+
+  for (const scale of [0.03, 0.08, 0.2, 0.6, 1.5, 4]) {
+    const label = serviceFlagsLabelSize(box, scale);
+    if (!label.size) continue;
+    const px = label.size * scale;
+    assert.ok(px >= 6 && px <= 20, `service flags label ${px}px at ${scale}`);
+    const words = box.label.split(" ");
+    if (label.vertical) {
+      assert.ok(box.label.length * px * 0.62 <= box.height * scale);
+      assert.ok(px <= box.width * scale);
+    } else {
+      assert.ok(Math.max(...words.map((word) => word.length)) * px * 0.62 <= box.width * scale);
+      assert.ok(words.length * px * 1.15 <= box.height * scale);
+    }
+  }
+  assert.ok(serviceFlagsLabelSize(box, 0.08).size > 0, "label shows when fully zoomed out");
+  assert.equal(serviceFlagsLabelSize(box, 1.5).vertical, false);
 
   const x = Object.fromEntries(field.sections.map((section) => [section.section, section]));
   const gapBefore = x.Z.x - (x.N.x + x.N.width);
@@ -436,12 +477,12 @@ test("the field is laid out as seen from the pavilion", () => {
   const unknown = field.sections.find((section) => section.section === "QQ");
   const aa = field.sections.find((section) => section.section === "AA");
   assert.ok(unknown.x > aa.x);
-  assert.equal(field.flags.length, 6);
-  assert.equal(field.flags.some((flag) => flag.flagGridName === "Z-10"), false);
-  assert.equal(field.cells.some((cell) => cell.flagGridName === "Z-10"), false);
+  assert.equal(field.flags.length, 5);
+  assert.equal(field.flags.some((flag) => flag.flagGridName === "Z-01"), false);
+  assert.equal(field.cells.some((cell) => cell.flagGridName === "Z-11"), false);
   const zCells = field.cells.filter((cell) => cell.section === "Z");
   assert.equal(zCells.length, FIELD_MAP_Z_ROWS + 1);
-  assert.ok(zCells.filter((cell) => cell.columnNumber <= FIELD_MAP_Z_ROWS).every((cell) => cell.status === "Reserved"));
+  assert.ok(zCells.filter((cell) => cell.columnNumber <= FIELD_MAP_Z_ROWS).every((cell) => cell.status === "Reserved" && cell.serviceFlag));
   assert.equal(field.cells.filter((cell) => cell.section === "QQ").length, 1);
   assert.equal(field.cells.filter((cell) => cell.section === "AA").length, FIELD_MAP_ROWS);
   assert.ok(field.aisle);
@@ -458,7 +499,9 @@ test("the field is laid out as seen from the pavilion", () => {
   assert.equal(empty.flags.length, 0);
   assert.equal(empty.sections.length, PAVILION_COLUMNS_LEFT_TO_RIGHT.length);
   assert.equal(empty.cells.filter((cell) => cell.section === "Z" && cell.status === "Reserved").length, FIELD_MAP_Z_ROWS);
-  assert.equal(empty.cells.some((cell) => cell.flagGridName === "Z-10"), false);
+  assert.ok(empty.cells.some((cell) => cell.flagGridName === "Z-10" && cell.serviceFlag));
+  assert.equal(empty.cells.some((cell) => cell.flagGridName === "Z-11"), false);
+  assert.equal(empty.serviceFlags.label, "Service Flags");
   assert.deepEqual(empty.zones.filter((zone) => zone.section === "C").map((zone) => zone.label), ["C 21\u201340", "C 1\u201320"]);
   assert.deepEqual(empty.zones.filter((zone) => zone.section === "Z").map((zone) => zone.label), []);
   const partial = layoutFlagField([

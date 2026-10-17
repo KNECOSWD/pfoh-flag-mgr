@@ -30,6 +30,7 @@ import {
   flagYears,
   gestureTransform,
   labelFontSize,
+  FIELD_MAP_Z_ROWS,
   layoutFlagField,
   panView,
   pinchView,
@@ -38,6 +39,8 @@ import {
   publicFlagMapUrls,
   readFlagMapLocation,
   requestElementFullscreen,
+  SERVICE_FLAGS_SECTION,
+  serviceFlagsLabelSize,
   spotContents,
   spotsViewScale,
   springEase,
@@ -320,7 +323,7 @@ export default function PublicFlagMap({
   const visibleCells = useMemo(() => {
     if (!field) return [];
     const ids = new Set(visibleCellIds);
-    return field.cells.filter((cell) => ids.has(cell.flagGridId));
+    return field.cells.filter((cell) => !cell.serviceFlag && ids.has(cell.flagGridId));
   }, [field, visibleCellIds]);
 
   function syncViewportBox() {
@@ -1418,6 +1421,19 @@ export default function PublicFlagMap({
               </button>
             );
           })}
+          {field?.serviceFlags ? (() => {
+            const box = field.serviceFlags;
+            const label = serviceFlagsLabelSize(box, renderScale);
+            return (
+              <div className="publicFlagServiceFlags" role="img" aria-label={`${box.label}, ${SERVICE_FLAGS_SECTION} 1\u2013${FIELD_MAP_Z_ROWS}`} style={{ left: box.x, top: box.y, width: box.width, height: box.height }}>
+                {label.size ? (
+                  <span className={label.vertical ? "isVertical" : undefined} style={{ fontSize: label.size }}>
+                    {label.vertical ? box.label : box.label.split(" ").map((word) => <span key={word}>{word}</span>)}
+                  </span>
+                ) : null}
+              </div>
+            );
+          })() : null}
           {field?.columnLabels.map((label) => {
             const size = labelFontSize(label.label, label.width, label.height, renderScale, { max: 14, em: 0.7 });
             return (
