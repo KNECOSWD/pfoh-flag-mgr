@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.4
+
+- On a 320-pixel phone, the fully zoomed-out Flag Map labels every section block. A block too narrow for the letter and flag numbers side by side shows the letter with the numbers stacked under it, one character per line. YY and AA stack their two letters. A block too short for the numbers, such as Z 11–16, shows its letter only. The Service Flags block shows "Service Flags" turned on its side, or "Service" when the full name does not fit. Every label stays inside its block, and the edge of a block that narrow is drawn thinner to leave room for the letter. Wider windows keep the 2.0.3 labels, except that W and M are no longer clipped at the edge of their block.
+- At the names zoom and closer, a zoom from the buttons, a section click, a submitter fit, a wheel zoom, or a pinch ends with no spot cut by the edge of the window when more than half of it is on screen. The view moves less than one spot to bring that spot fully inside, 12 pixels from the edge, or to slide it mostly off screen. Dragging, the arrow keys, and opening a flag are unchanged.
+
 ## 2.0.3
 
 - Public Flag Map spots never overlap at any zoom, on a desktop, a phone, or the kiosk. Each spot uses the 2.0.0 size, 148 by 108 with a 12 gap, and the global button height no longer stretches a spot past its row.
