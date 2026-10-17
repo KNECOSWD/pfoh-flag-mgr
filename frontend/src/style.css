@@ -11875,7 +11875,7 @@ html.flagMapKiosk a {
   bottom: 12px;
   width: min(420px, calc(100% - 24px));
   max-height: calc(100% - 24px);
-  overflow: auto;
+  overflow: hidden;
   color: #102033;
   background: #fffdf8;
   border: 1px solid rgba(212, 175, 55, 0.55);
@@ -11893,11 +11893,32 @@ html.flagMapKiosk a {
   animation: publicFlagPanel 0.7s ease;
 }
 
+.publicFlagDetailScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .publicFlagDetailBody {
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 16px;
+}
+
+/* Pinned below the scroll area so the buttons stay reachable with a long bio. */
+.publicFlagDetailActions {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  background: #fffdf8;
+  border-top: 1px solid rgba(212, 175, 55, 0.35);
+  box-shadow: 0 -6px 14px rgba(7, 21, 38, 0.06);
 }
 
 .publicFlagDetail h3 {

@@ -194,39 +194,43 @@ function FlagDetail({
 
   return (
     <aside className={revealed ? "publicFlagDetail isRevealed" : "publicFlagDetail"} aria-label="Flag detail">
-      {showPhoto && flag.photoUrl ? (
-        <div className="publicFlagPhotoFrame">
-          <img
-            className="publicFlagPhoto"
-            src={withApiBase(apiBase, flag.photoUrl)}
-            alt=""
-            draggable={false}
-            onError={() => setShowPhoto(false)}
-          />
-        </div>
-      ) : null}
-      <div className="publicFlagDetailBody">
-        {flag.displayName ? <h3>{flag.displayName}</h3> : null}
-        {flag.rank ? <p className="publicFlagRank">{flag.rank}</p> : null}
-        {flag.serviceBranchName ? (
-          <p className="publicFlagBranch">
-            {showSeal && flag.logoUrl ? <img className="publicFlagSeal" src={sealUrl(flag.logoUrl, 256, false)} alt="" width={64} height={64} loading="lazy" decoding="async" draggable={false} /> : null}
-            <span>
-              {flag.serviceBranchName}
-              {flag.serviceBranchCategoryName ? ` · ${flag.serviceBranchCategoryName}` : ""}
-            </span>
-          </p>
+      <div className="publicFlagDetailScroll">
+        {showPhoto && flag.photoUrl ? (
+          <div className="publicFlagPhotoFrame">
+            <img
+              className="publicFlagPhoto"
+              src={withApiBase(apiBase, flag.photoUrl)}
+              alt=""
+              draggable={false}
+              onError={() => setShowPhoto(false)}
+            />
+          </div>
         ) : null}
-        <p className="publicFlagSpot">{flag.flagGridName} · Section {flag.section}</p>
-        {years ? <p>{years}</p> : null}
-        {flag.kia ? <p>Killed in action</p> : null}
-        {flag.description ? <p className="publicFlagBio">{flag.description}</p> : null}
-        {flag.conflictsServed ? <p>Conflicts served: {flag.conflictsServed}</p> : null}
-        {flag.awards ? <p>Awards: {flag.awards}</p> : null}
-        <div className="publicFlagQrBlock">
-          <FlagQr value={shareUrl} />
-          <p>Scan to open this flag</p>
+        <div className="publicFlagDetailBody">
+          {flag.displayName ? <h3>{flag.displayName}</h3> : null}
+          {flag.rank ? <p className="publicFlagRank">{flag.rank}</p> : null}
+          {flag.serviceBranchName ? (
+            <p className="publicFlagBranch">
+              {showSeal && flag.logoUrl ? <img className="publicFlagSeal" src={sealUrl(flag.logoUrl, 256, false)} alt="" width={64} height={64} loading="lazy" decoding="async" draggable={false} /> : null}
+              <span>
+                {flag.serviceBranchName}
+                {flag.serviceBranchCategoryName ? ` · ${flag.serviceBranchCategoryName}` : ""}
+              </span>
+            </p>
+          ) : null}
+          <p className="publicFlagSpot">{flag.flagGridName} · Section {flag.section}</p>
+          {years ? <p>{years}</p> : null}
+          {flag.kia ? <p>Killed in action</p> : null}
+          {flag.description ? <p className="publicFlagBio">{flag.description}</p> : null}
+          {flag.conflictsServed ? <p>Conflicts served: {flag.conflictsServed}</p> : null}
+          {flag.awards ? <p>Awards: {flag.awards}</p> : null}
+          <div className="publicFlagQrBlock">
+            <FlagQr value={shareUrl} />
+            <p>Scan to open this flag</p>
+          </div>
         </div>
+      </div>
+      <div className="publicFlagDetailActions">
         {flag.honoreeId ? (
           <button type="button" onClick={() => onPreview(flag.honoreeId!, flag.displayName || "Honoree")}>
             Preview card
