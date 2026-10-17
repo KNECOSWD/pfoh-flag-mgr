@@ -55,6 +55,7 @@ import {
   wheelScaleFactor,
   withApiBase,
   zoneLabelSizes,
+  sectionLabelSizes,
   zoomAt
 } from "./publicFlagMap.js";
 import { KIOSK_EXIT_HOLD_MS, kioskSessionOn, requestKioskExit } from "./kioskSession.js";
@@ -347,6 +348,7 @@ export default function PublicFlagMap({
       : `${listId}-submitter-${activeRow.token}`;
   const shareUrl = selected ? flagDeepLink(window.location.href, selected.flagGridId) : "";
 
+  const sectionLabels = useMemo(() => (field ? sectionLabelSizes(field.zones, renderScale) : null), [field, renderScale]);
   const visibleZones = useMemo(() => {
     if (!field) return [];
     const keys = new Set(visibleZoneKeys);
@@ -1582,29 +1584,33 @@ export default function PublicFlagMap({
             </div>
           ) : null}
           {visibleZones.map((zone) => {
-            const sizes = zoneLabelSizes(zone, renderScale);
+            const sizes = zoneLabelSizes(zone, renderScale, sectionLabels);
             return (
               <button
                 key={zone.label}
                 type="button"
                 className={["publicFlagTile publicFlagZone", sizes.narrow ? "isNarrow" : "", sizes.tiny ? "isTiny" : ""].filter(Boolean).join(" ")}
-                style={{ left: zone.x, top: zone.y, width: zone.width, height: zone.height }}
+                style={{ left: zone.x, top: zone.y, width: zone.width, height: zone.height, paddingTop: sizes.top || undefined }}
                 aria-label={`${zone.label}, ${zone.occupiedCount} of ${zone.flagCount} flags`}
                 onClick={() => acceptClick(() => zoomToZone(zone))}
               >
-                {sizes.letter ? <strong className={sizes.letterStacked ? "isUpright" : undefined} style={{ fontSize: sizes.letter }}>{zone.section}</strong> : null}
-                {sizes.rangeSize ? <span className={sizes.stacked ? "isUpright" : sizes.vertical ? "isVertical" : undefined} style={{ fontSize: sizes.rangeSize }}>{sizes.range}</span> : null}
+                {sizes.letter ? <strong className={sizes.letterStacked ? "isUpright" : undefined} style={{ fontSize: sizes.letter, minHeight: sizes.letterBlock || undefined }}>{zone.section}</strong> : null}
+                {sizes.rangeSize ? (
+                  <span className={sizes.stacked ? "isUpright" : sizes.rangeParts ? "isLines" : undefined} style={{ fontSize: sizes.rangeSize, marginTop: sizes.letter * 0.3 }}>
+                    {sizes.rangeParts ? sizes.rangeParts.map((part, index) => <span key={index}>{part}</span>) : sizes.range}
+                  </span>
+                ) : null}
               </button>
             );
           })}
           {field?.serviceFlags ? (() => {
             const box = field.serviceFlags;
             const area = serviceLabelBox ?? serviceFlagsLabelBox(box, null);
-            const label = area ? serviceFlagsLabelSize(area, renderScale) : { size: 0, vertical: false, text: "", narrow: false };
+            const label = area ? serviceFlagsLabelSize(area, renderScale, sectionLabels) : { size: 0, vertical: false, text: "", narrow: false, top: 0 };
             return (
               <div className={label.narrow ? "publicFlagServiceFlags isNarrow" : "publicFlagServiceFlags"} role="img" aria-label={`${box.label}, ${SERVICE_FLAGS_SECTION} 1\u2013${FIELD_MAP_Z_ROWS}`} style={{ left: box.x, top: box.y, width: box.width, height: box.height }}>
                 {area && label.size ? (
-                  <span style={{ left: area.x, top: area.y, width: area.width, height: area.height, fontSize: label.size }}>
+                  <span style={{ left: area.x, top: area.y, width: area.width, height: area.height, fontSize: label.size, paddingTop: label.top || undefined }}>
                     {label.vertical ? <span className="isVertical">{label.text}</span> : label.text.split(" ").map((word) => <span key={word}>{word}</span>)}
                   </span>
                 ) : null}

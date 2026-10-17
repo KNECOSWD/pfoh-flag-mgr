@@ -927,66 +927,110 @@ function blockInnerPx(widthPx) {
   return Math.max(0, widthPx - blockEdgePx(widthPx) * 2 - 0.2);
 }
 
-export function zoneLabelSizes(zone, scale) {
+// Section labels share one layout per zoom: the same letter size, range size, weight,
+// and top offset in every block, sized so the widest name fits the narrowest column.
+export const SECTION_LABEL_PX = Object.freeze({ letterMax: 22, acrossLetterMin: 7, rangeMax: 13, uprightRangeMax: 9, rangeToLetter: 0.8 });
+
+function zoneRange(zone) {
+  return zone.min === zone.max ? String(zone.min) : `${zone.min}\u2013${zone.max}`;
+}
+
+function textEm(text) {
+  return [...String(text || "")].reduce((sum, char) => sum + glyphEm(char), 0);
+}
+
+export function sectionLabelSizes(zones, scale) {
   const s = Number(scale) > 0 ? Number(scale) : 1;
-  const range = zone.min === zone.max ? String(zone.min) : `${zone.min}\u2013${zone.max}`;
-  const widthPx = zone.width * s;
-  const heightPx = zone.height * s;
+  const list = (zones ?? []).filter((zone) => zone && zone.width > 0 && zone.height > 0);
+  if (!list.length) return null;
+  const widthPx = Math.min(...list.map((zone) => zone.width)) * s;
   const narrow = widthPx < NARROW_BLOCK_PX;
   const inner = blockInnerPx(widthPx);
-  const chars = [...String(zone.section || "")];
-  const emSum = (floor) => chars.reduce((sum, char) => sum + Math.max(glyphEm(char), floor), 0) || 1;
-  const wide = (widthPx - 2) / (Math.max(chars.length, 1) * 0.7);
-  const fitAcross = narrow
-    ? inner / emSum(CAPITAL_EM)
-    : /[WM]/.test(zone.section) || chars.length > 1 ? Math.min(wide, inner / emSum(0)) : wide;
-  let letterPx = Math.min(22, heightPx * 0.3 * 0.72, fitAcross);
-  let letterStacked = false;
-  if (chars.length > 1 && (narrow || letterPx < ZONE_TEXT_PX.letter)) {
-    const widest = Math.max(...chars.map(glyphEm), CAPITAL_EM, UPRIGHT_LINE);
-    const stacked = Math.min(22, inner / widest, (heightPx * 0.4) / (chars.length * UPRIGHT_ADVANCE));
-    if (stacked > letterPx) {
-      letterPx = stacked;
-      letterStacked = true;
+  const ranges = list.map(zoneRange);
+  const widestName = Math.max(...list.map((zone) => textEm(zone.section)), CAPITAL_EM);
+  const widestGlyph = Math.max(UPRIGHT_LINE, CAPITAL_EM, ...list.flatMap((zone) => [...String(zone.section || "")].map(glyphEm)));
+  const widestRange = Math.max(...ranges.map(textEm));
+  const widestEnd = Math.max(...list.map((zone) => Math.max(textEm(String(zone.min)), textEm(String(zone.max)))));
+  const longestRange = Math.max(...ranges.map((range) => [...range].length));
+  const top = (letterPx) => Math.max(blockEdgePx(widthPx) + 1, letterPx * 0.35);
+  const longestName = Math.max(...list.map((zone) => [...String(zone.section || "")].length), 1);
+  const need = (zone, layout, letterPx, rangePx) => {
+    // Upright letters reserve the longest name's lines in every block so the ranges line up.
+    const chars = [...String(zone.section || "")].length;
+    const letters = layout.letters === "across" ? letterPx : Math.max(chars * UPRIGHT_ADVANCE, longestName) * letterPx;
+    const rangeChars = [...zoneRange(zone)].length;
+    const range = !rangePx ? 0
+      : layout.range === "across" ? rangePx * LINE_HEIGHT
+        : layout.range === "lines" ? 3 * rangePx * LINE_HEIGHT
+          : rangeChars * rangePx * UPRIGHT_ADVANCE;
+    return top(letterPx) + letters + (rangePx ? letterPx * 0.3 : 0) + range;
+  };
+  const fits = (layout, letterPx, rangePx) => list.every((zone) => need(zone, layout, letterPx, rangePx) <= zone.height * s * 0.94);
+
+  let layout;
+  let letterPx;
+  let rangePx;
+  const across = Math.min(SECTION_LABEL_PX.letterMax, inner / widestName);
+  if (across >= SECTION_LABEL_PX.acrossLetterMin) {
+    letterPx = across;
+    const target = Math.min(SECTION_LABEL_PX.rangeMax, letterPx * SECTION_LABEL_PX.rangeToLetter);
+    layout = target * widestRange <= inner ? { letters: "across", range: "across" } : { letters: "across", range: "lines" };
+    rangePx = layout.range === "across" ? target : Math.min(target, inner / widestEnd);
+  } else {
+    // Narrow columns (the 320 fallback): one glyph per line for the letter and the range.
+    layout = { letters: "upright", range: "upright" };
+    letterPx = Math.min(SECTION_LABEL_PX.letterMax, inner / widestGlyph);
+    rangePx = Math.min(SECTION_LABEL_PX.uprightRangeMax, inner / UPRIGHT_LINE);
+  }
+  while (rangePx - 0.1 >= ZONE_TEXT_PX.stackedRange && !fits(layout, letterPx, rangePx)) rangePx -= 0.1;
+  while (letterPx - 0.1 >= ZONE_TEXT_PX.letter && rangePx >= ZONE_TEXT_PX.stackedRange && !fits(layout, letterPx, rangePx)) letterPx -= 0.1;
+  if (rangePx < ZONE_TEXT_PX.stackedRange || !fits(layout, letterPx, rangePx)) rangePx = 0;
+  let tiny = false;
+  if (!rangePx) {
+    // Letter only, still one size for every block.
+    layout = { ...layout, range: "none" };
+    const tall = Math.min(...list.map((zone) => (zone.height * s * 0.8) / (UPRIGHT_ADVANCE * (layout.letters === "across" ? 1 : [...String(zone.section || "")].length))));
+    letterPx = Math.min(letterPx || SECTION_LABEL_PX.letterMax, tall);
+    if (letterPx < ZONE_TEXT_PX.letter) {
+      // Below the floor the letter still draws, edge to edge over an inset stroke (.isTiny).
+      layout = { letters: "upright", range: "none" };
+      const full = Math.max(0, widthPx - 0.2);
+      letterPx = Math.min(SECTION_LABEL_PX.letterMax, full / widestGlyph, ...list.map((zone) => (zone.height * s * 0.8) / (UPRIGHT_ADVANCE * Math.max(1, [...String(zone.section || "")].length))));
+      tiny = true;
     }
   }
-  let tiny = false;
-  if (letterPx < ZONE_TEXT_PX.letter) {
-    // Below the floor the letter still draws, edge to edge over an inset stroke
-    // (.isTiny), so no section is ever left blank.
-    const full = Math.max(0, widthPx - 0.2);
-    const tall = (heightPx * 0.8) / UPRIGHT_ADVANCE;
-    const across = Math.min(22, tall, full / emSum(CAPITAL_EM));
-    const stacked = chars.length > 1
-      ? Math.min(22, full / Math.max(...chars.map(glyphEm), CAPITAL_EM, UPRIGHT_LINE), tall / chars.length)
-      : 0;
-    letterStacked = stacked > across;
-    letterPx = Math.max(across, stacked);
-    tiny = true;
-  }
-  const letter = letterPx > 0 ? letterPx / s : 0;
-  const base = { range, letter, letterStacked, narrow, tiny };
+  return {
+    scale: s,
+    narrow,
+    tiny,
+    letters: layout.letters,
+    letterLines: layout.letters === "across" ? 1 : longestName,
+    rangeLayout: layout.range,
+    letterPx: Math.max(0, letterPx),
+    rangePx: Math.max(0, rangePx),
+    topPx: top(letterPx)
+  };
+}
 
-  const rangeAcross = labelFontSize(range, zone.width, zone.height * 0.2, s, { min: 9, max: 13 });
-  if (rangeAcross) return { ...base, rangeSize: rangeAcross, vertical: false, stacked: false };
-  const down = Math.min(12, widthPx * 0.8, (heightPx * 0.55) / (range.length * CHAR_EM));
-  if (down >= 7) return { ...base, rangeSize: down / s, vertical: true, stacked: false };
-
-  const letterTall = letterPx * (letterStacked ? chars.length : 1) * UPRIGHT_ADVANCE;
-  const widestDigit = Math.max(...[...range].map(glyphEm), UPRIGHT_LINE);
-  const upright = Math.min(
-    ZONE_TEXT_PX.stackedRangeMax,
-    inner / widestDigit,
-    (heightPx * 0.86 - letterTall - letterPx * 0.3) / (range.length * UPRIGHT_ADVANCE)
-  );
-  if (upright >= ZONE_TEXT_PX.stackedRange) return { ...base, rangeSize: upright / s, vertical: false, stacked: true };
-  // A short block such as Z 11–20 gives up some letter height so the range fits.
-  const lines = (letterStacked ? chars.length : 1) * UPRIGHT_ADVANCE + 0.3;
-  const shrunk = Math.min(letterPx, (heightPx * 0.86 - ZONE_TEXT_PX.stackedRange * range.length * UPRIGHT_ADVANCE) / lines);
-  if (!tiny && shrunk >= ZONE_TEXT_PX.letter && inner / widestDigit >= ZONE_TEXT_PX.stackedRange) {
-    return { ...base, letter: shrunk / s, rangeSize: ZONE_TEXT_PX.stackedRange / s, vertical: false, stacked: true };
-  }
-  return { ...base, rangeSize: 0, vertical: false, stacked: false };
+export function zoneLabelSizes(zone, scale, uniform = sectionLabelSizes([zone], scale)) {
+  const s = uniform?.scale ?? (Number(scale) > 0 ? Number(scale) : 1);
+  const range = zoneRange(zone);
+  const chars = [...String(zone.section || "")];
+  const letter = uniform && uniform.letterPx > 0 ? uniform.letterPx / s : 0;
+  const rangeSize = uniform && uniform.rangePx > 0 ? uniform.rangePx / s : 0;
+  return {
+    range,
+    rangeParts: uniform?.rangeLayout === "lines" ? [String(zone.min), "\u2013", String(zone.max)].filter((part, index) => zone.min !== zone.max || index === 0) : null,
+    letter,
+    letterStacked: uniform?.letters === "upright" && chars.length > 1,
+    letterBlock: uniform?.letters === "upright" && uniform.rangePx > 0 ? (uniform.letterLines * uniform.letterPx) / s : 0,
+    narrow: Boolean(uniform?.narrow),
+    tiny: Boolean(uniform?.tiny),
+    rangeSize,
+    vertical: false,
+    stacked: uniform?.rangeLayout === "upright" && rangeSize > 0,
+    top: uniform ? uniform.topPx / s : 0
+  };
 }
 
 export function serviceFlagsLabelBox(box, seen) {
@@ -1000,33 +1044,33 @@ export function serviceFlagsLabelBox(box, seen) {
   return { x: left - box.x, y: top - box.y, width: right - left, height: bottom - top, label: box.label };
 }
 
-export function serviceFlagsLabelSize(box, scale) {
+// The Service Flags label uses the section range size (the letter size when ranges are
+// off), so it reads as one of the section labels.
+export function serviceFlagsLabelSize(box, scale, uniform) {
   const s = Number(scale) > 0 ? Number(scale) : 1;
   const words = String(box?.label || SERVICE_FLAGS_LABEL).split(" ");
-  const longest = Math.max(...words.map((word) => word.length));
+  const label = words.join(" ");
   const width = (Number(box?.width) || 0) * s;
   const height = (Number(box?.height) || 0) * s;
-  const label = words.join(" ");
   const narrow = width < NARROW_BLOCK_PX;
-  const stacked = Math.min(20, (width * 0.84) / (longest * CHAR_EM), (height * 0.5) / (words.length * LINE_HEIGHT));
-  if (stacked >= 10) return { size: stacked / s, vertical: false, text: label, narrow };
-  const down = Math.min(16, width * 0.6, (height * 0.84) / (label.length * CHAR_EM));
-  if (down >= 6) return { size: down / s, vertical: true, text: label, narrow };
-  // A rotated line is one font size wide at line-height 1 (see .isNarrow).
+  const shared = uniform ?? sectionLabelSizes([{ section: SERVICE_FLAGS_SECTION, min: 1, max: FIELD_MAP_Z_ROWS, width: Number(box?.width) || 0, height: Number(box?.height) || 0 }], s);
+  const empty = { size: 0, vertical: true, text: "", narrow, top: 0 };
+  if (!shared || !(width > 0 && height > 0)) return empty;
+  const base = Math.min(shared.rangePx > 0 ? shared.rangePx : shared.letterPx, 20);
+  const top = shared.topPx;
+  const room = Math.min((height - top) * 0.9, height * 0.84);
   const inner = blockInnerPx(width);
-  for (const { text, min } of [{ text: label, min: 5.5 }, { text: SERVICE_FLAGS_SHORT_LABEL, min: 5 }]) {
-    const size = Math.min(16, inner, (height * 0.84) / (text.length * CHAR_EM));
-    if (size >= min) return { size: size / s, vertical: true, text, narrow };
+  const longest = Math.max(...words.map((word) => word.length));
+  if (base > 0 && longest * base * CHAR_EM <= inner && words.length * base * LINE_HEIGHT <= room) {
+    return { size: base / s, vertical: false, text: label, narrow, top: top / s };
   }
-  const edgeToEdge = Math.max(0, width - 0.2);
-  const [whole, short] = [label, SERVICE_FLAGS_SHORT_LABEL].map((text) => ({
-    text,
-    size: Math.min(16, edgeToEdge, (height * 0.84) / (text.length * CHAR_EM))
-  }));
-  const last = whole.size >= short.size ? whole : short;
-  return last.size > 0
-    ? { size: last.size / s, vertical: true, text: last.text, narrow }
-    : { size: 0, vertical: true, text: "", narrow };
+  const edge = shared.tiny ? Math.max(0, width - 0.2) : inner;
+  for (const text of [label, SERVICE_FLAGS_SHORT_LABEL]) {
+    const size = Math.min(base, edge);
+    if (size > 0 && text.length * size * CHAR_EM <= room) return { size: size / s, vertical: true, text, narrow, top: top / s };
+  }
+  const size = Math.min(base, edge, room / (SERVICE_FLAGS_SHORT_LABEL.length * CHAR_EM));
+  return size > 0 ? { size: size / s, vertical: true, text: SERVICE_FLAGS_SHORT_LABEL, narrow, top: top / s } : empty;
 }
 
 export function mapFullscreenSupported(element) {

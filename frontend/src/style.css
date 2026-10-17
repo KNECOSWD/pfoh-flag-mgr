@@ -11568,7 +11568,7 @@ html.flagMapKiosk a {
   color: #fff8e8;
   box-shadow: inset 0 0 0 calc(var(--px, 1px) * 1.5) rgba(243, 226, 167, 0.85);
   border-radius: calc(var(--px, 1px) * 4);
-  font-weight: 750;
+  font-weight: 650;
   line-height: 1.15;
   text-align: center;
 }
@@ -11578,7 +11578,8 @@ html.flagMapKiosk a {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
   overflow: hidden;
   white-space: nowrap;
 }
@@ -11618,7 +11619,7 @@ html.flagMapKiosk a {
 
 .publicFlagTile,
 .publicFlagZone {
-  justify-content: center;
+  justify-content: flex-start;
   opacity: var(--section-opacity, 1);
   background: #24569a;
   color: #fff8e8;
@@ -11632,6 +11633,7 @@ html.flagMapKiosk a {
   max-width: 100%;
   overflow: hidden;
   font-size: 34px;
+  font-weight: 800;
   line-height: 0.85;
   color: #ffe7a3;
 }
@@ -11643,6 +11645,20 @@ html.flagMapKiosk a {
   line-height: 1;
   color: #fff8e8;
   white-space: nowrap;
+}
+
+.publicFlagZone span.isLines {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.1;
+}
+
+.publicFlagZone span.isLines > span {
+  max-width: none;
+  overflow: visible;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .publicFlagZone span.isVertical {
