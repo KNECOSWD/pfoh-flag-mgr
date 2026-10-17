@@ -240,6 +240,48 @@ export function clampView(view, viewport, world, options = {}) {
   };
 }
 
+// Each spot is either fully inside (with room) or less than half on screen.
+// The shifts that allow that are a union of intervals per spot, so the
+// smallest allowed shift is 0 or one of their endpoints. A settle never moves
+// more than a spot, so it cannot jump to a far part of the field.
+function snapAxis(offset, size, starts, length, scale, pad) {
+  const span = length * scale;
+  const items = [...new Set(starts)].map((start) => offset + start * scale);
+  for (const room of [pad, 0]) {
+    if (span > size - room * 2) return offset;
+    const allowed = items.map((from) => [
+      [-Infinity, span / 2 - (from + span) - 0.01],
+      [room - from, size - room - (from + span)],
+      [size - span / 2 - from + 0.01, Infinity]
+    ]);
+    const candidates = [0, ...allowed.flat(2).filter((shift) => Math.abs(shift) <= span + pad)]
+      .sort((left, right) => Math.abs(left) - Math.abs(right));
+    const fits = (shift) => allowed.every((ranges) => ranges.some(([low, high]) => shift >= low - 1e-6 && shift <= high + 1e-6));
+    const shift = candidates.find(fits);
+    if (shift !== undefined) return offset + shift;
+  }
+  return offset;
+}
+
+// At the names zoom and closer a spot is a large part of a phone window, so a
+// view that settles there never leaves a mostly visible spot cut by the edge.
+export function snapEdgeSpots(view, viewport, cells, pad = FIT_PADDING) {
+  if (spotScreenWidth(view.scale) < FLAG_MAP_ZOOM.namesAt) return view;
+  const width = Math.max(1, viewport.width);
+  const height = Math.max(1, viewport.height);
+  const seen = viewportWorldRect(view, { width, height }, 0);
+  const spots = (Array.isArray(cells) ? cells : []).filter((cell) => cell.serviceFlag || cell.status !== "Reserved");
+  const band = (cell, start, size, key) => cell[key] < start + size && cell[key] + cell[key === "x" ? "width" : "height"] > start;
+  const columns = spots.filter((cell) => band(cell, seen.y, seen.height, "y")).map((cell) => cell.x);
+  const rows = spots.filter((cell) => band(cell, seen.x, seen.width, "x")).map((cell) => cell.y);
+  if (!columns.length || !rows.length) return view;
+  return {
+    x: snapAxis(view.x, width, columns, FLAG_WIDTH, view.scale, pad),
+    y: snapAxis(view.y, height, rows, FLAG_HEIGHT, view.scale, pad),
+    scale: view.scale
+  };
+}
+
 export function zoomAt(view, originX, originY, nextScale) {
   const scale = clamp(nextScale, FLAG_MAP_ZOOM.minScale, FLAG_MAP_ZOOM.maxScale);
   const worldX = (originX - view.x) / view.scale;
@@ -783,14 +825,74 @@ export function labelFontSize(text, boxWidth, boxHeight, scale, options = {}) {
   return px >= min ? px / s : 0;
 }
 
+// Bold capitals and digits are measured wide so a narrow block never spills a
+// glyph past its edge in any of the fonts in the stack.
+const GLYPH_EM = Object.freeze({ W: 1.04, M: 0.94, I: 0.32, J: 0.62 });
+const CAPITAL_EM = 0.78;
+const DIGIT_EM = 0.7;
+const UPRIGHT_ADVANCE = 1.25;
+const UPRIGHT_LINE = 0.8;
+export const NARROW_BLOCK_PX = 10;
+export const BLOCK_EDGE_PX = Object.freeze({ normal: 1.5, narrow: 0.5 });
+export const ZONE_TEXT_PX = Object.freeze({ letter: 5, stackedRange: 6, stackedRangeMax: 9 });
+export const SERVICE_FLAGS_SHORT_LABEL = "Service";
+
+function glyphEm(char) {
+  return GLYPH_EM[char] ?? (/[0-9\u2013-]/.test(char) ? DIGIT_EM : CAPITAL_EM);
+}
+
+export function blockEdgePx(widthPx) {
+  return widthPx < NARROW_BLOCK_PX ? BLOCK_EDGE_PX.narrow : BLOCK_EDGE_PX.normal;
+}
+
+function blockInnerPx(widthPx) {
+  return Math.max(0, widthPx - blockEdgePx(widthPx) * 2 - 0.2);
+}
+
 export function zoneLabelSizes(zone, scale) {
   const s = Number(scale) > 0 ? Number(scale) : 1;
   const range = zone.min === zone.max ? String(zone.min) : `${zone.min}\u2013${zone.max}`;
-  const letter = labelFontSize(zone.section, zone.width, zone.height * 0.3, s, { min: 5, max: 22, em: 0.7 });
-  const across = labelFontSize(range, zone.width, zone.height * 0.2, s, { min: 9, max: 13 });
-  if (across) return { range, letter, rangeSize: across, vertical: false };
-  const down = Math.min(12, zone.width * s * 0.8, (zone.height * s * 0.55) / (range.length * CHAR_EM));
-  return { range, letter, rangeSize: down >= 7 ? down / s : 0, vertical: true };
+  const widthPx = zone.width * s;
+  const heightPx = zone.height * s;
+  const narrow = widthPx < NARROW_BLOCK_PX;
+  const inner = blockInnerPx(widthPx);
+  const chars = [...String(zone.section || "")];
+  const emSum = (floor) => chars.reduce((sum, char) => sum + Math.max(glyphEm(char), floor), 0) || 1;
+  const wide = (widthPx - 2) / (Math.max(chars.length, 1) * 0.7);
+  const fitAcross = narrow
+    ? inner / emSum(CAPITAL_EM)
+    : /[WM]/.test(zone.section) ? Math.min(wide, inner / emSum(0)) : wide;
+  let letterPx = Math.min(22, heightPx * 0.3 * 0.72, fitAcross);
+  let letterStacked = false;
+  if (chars.length > 1 && (narrow || letterPx < ZONE_TEXT_PX.letter)) {
+    const widest = Math.max(...chars.map(glyphEm), CAPITAL_EM, UPRIGHT_LINE);
+    const stacked = Math.min(22, inner / widest, (heightPx * 0.4) / (chars.length * UPRIGHT_ADVANCE));
+    if (stacked > letterPx) {
+      letterPx = stacked;
+      letterStacked = true;
+    }
+  }
+  if (letterPx < ZONE_TEXT_PX.letter) {
+    letterPx = 0;
+    letterStacked = false;
+  }
+  const letter = letterPx ? letterPx / s : 0;
+  const base = { range, letter, letterStacked, narrow };
+
+  const rangeAcross = labelFontSize(range, zone.width, zone.height * 0.2, s, { min: 9, max: 13 });
+  if (rangeAcross) return { ...base, rangeSize: rangeAcross, vertical: false, stacked: false };
+  const down = Math.min(12, widthPx * 0.8, (heightPx * 0.55) / (range.length * CHAR_EM));
+  if (down >= 7) return { ...base, rangeSize: down / s, vertical: true, stacked: false };
+
+  const letterTall = letterPx * (letterStacked ? chars.length : 1) * UPRIGHT_ADVANCE;
+  const widestDigit = Math.max(...[...range].map(glyphEm), UPRIGHT_LINE);
+  const upright = Math.min(
+    ZONE_TEXT_PX.stackedRangeMax,
+    inner / widestDigit,
+    (heightPx * 0.86 - letterTall - letterPx * 0.3) / (range.length * UPRIGHT_ADVANCE)
+  );
+  if (upright >= ZONE_TEXT_PX.stackedRange) return { ...base, rangeSize: upright / s, vertical: false, stacked: true };
+  return { ...base, rangeSize: 0, vertical: false, stacked: false };
 }
 
 export function serviceFlagsLabelBox(box, seen) {
@@ -810,11 +912,19 @@ export function serviceFlagsLabelSize(box, scale) {
   const longest = Math.max(...words.map((word) => word.length));
   const width = (Number(box?.width) || 0) * s;
   const height = (Number(box?.height) || 0) * s;
-  const stacked = Math.min(20, (width * 0.84) / (longest * CHAR_EM), (height * 0.5) / (words.length * LINE_HEIGHT));
-  if (stacked >= 10) return { size: stacked / s, vertical: false };
   const label = words.join(" ");
+  const narrow = width < NARROW_BLOCK_PX;
+  const stacked = Math.min(20, (width * 0.84) / (longest * CHAR_EM), (height * 0.5) / (words.length * LINE_HEIGHT));
+  if (stacked >= 10) return { size: stacked / s, vertical: false, text: label, narrow };
   const down = Math.min(16, width * 0.6, (height * 0.84) / (label.length * CHAR_EM));
-  return { size: down >= 6 ? down / s : 0, vertical: true };
+  if (down >= 6) return { size: down / s, vertical: true, text: label, narrow };
+  // A rotated line is one font size wide at line-height 1 (see .isNarrow).
+  const inner = blockInnerPx(width);
+  for (const { text, min } of [{ text: label, min: 5.5 }, { text: SERVICE_FLAGS_SHORT_LABEL, min: 5 }]) {
+    const size = Math.min(16, inner, (height * 0.84) / (text.length * CHAR_EM));
+    if (size >= min) return { size: size / s, vertical: true, text, narrow };
+  }
+  return { size: 0, vertical: true, text: "", narrow };
 }
 
 export function mapFullscreenSupported(element) {
