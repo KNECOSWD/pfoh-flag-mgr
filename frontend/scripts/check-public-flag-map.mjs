@@ -1497,7 +1497,7 @@ test("Esc closes the topmost open thing before leaving full screen", () => {
   assert.match(page, /listOpen: \(open && searchRows\.length > 0\) \|\| Boolean\(jumpPending\)/);
 });
 
-test("row numbers and section letters stay pinned to the viewport edges and track pan and zoom", () => {
+test("row numbers and section letters stay pinned in their viewport-edge gutters and track pan and zoom", () => {
   const field = pavilionField(40);
   const viewport = { width: 600, height: 400 };
   const view = { x: -900, y: -700, scale: 0.6 };
@@ -1510,15 +1510,15 @@ test("row numbers and section letters stay pinned to the viewport edges and trac
     const source = field.rowLabels.find((item) => `row-${item.side}-${item.row}` === label.key);
     assert.equal(label.y, view.y + source.y * view.scale, "each row number lines up with its row");
     assert.equal(label.height, source.height * view.scale);
-    assert.ok(label.x >= 0 && label.x + label.width <= viewport.width, "clamped inside the viewport");
-    if (label.side === "left") assert.equal(label.x, 0, "panned past the left labels, they stay on the left edge");
+    if (label.side === "left") assert.ok(label.x >= 0 && label.x + label.width <= AXIS_STRIP.row, "left numbers sit inside the left gutter");
+    else assert.ok(label.x >= viewport.width - AXIS_STRIP.row && label.x + label.width <= viewport.width, "right numbers sit inside the right gutter");
     const middle = label.y + label.height / 2;
     assert.equal(label.hidden, middle < 0 || middle > viewport.height - columns[0].height || !label.fontSize);
   }
   for (const label of columns) {
     const source = field.columnLabels.find((item) => item.section === label.label);
     assert.equal(label.x, view.x + source.x * view.scale, "each letter lines up with its column");
-    assert.equal(label.y, viewport.height - label.height, "panned above the letters, they stay on the bottom edge");
+    assert.ok(label.y >= viewport.height - AXIS_STRIP.column && label.y + label.height <= viewport.height, "letters sit inside the bottom gutter");
     const middle = label.x + label.width / 2;
     assert.equal(label.hidden, middle < 0 || middle > viewport.width || !label.fontSize);
   }
@@ -1530,9 +1530,24 @@ test("row numbers and section letters stay pinned to the viewport edges and trac
   const whole = pinnedAxisLabels(field, fitted, { width: 1406, height: 618 });
   const left = whole.find((label) => label.key === `row-left-1`);
   const source = field.rowLabels.find((item) => item.side === "left" && item.row === 1);
-  assert.equal(left.x + left.width, fitted.x + (source.x + source.width) * fitted.scale, "with the whole field in view, labels keep their field place");
+  assert.equal(left.y, fitted.y + source.y * fitted.scale, "with the whole field in view, numbers still line up with their rows");
+  assert.ok(left.x >= 0 && left.x + left.width <= AXIS_STRIP.row, "and stay inside the left gutter");
   assert.match(page, /<div ref=\{axisRef\} className="publicFlagAxis" aria-hidden="true">/);
   assert.match(css, /\.publicFlagAxis \{[^}]*z-index: 3;[^}]*pointer-events: none;/);
+});
+
+test("pinned axis labels sit on solid navy gutter strips that taps pass through", () => {
+  const gutters = page.slice(page.indexOf('className="publicFlagAxisGutters"'), page.indexOf('<div ref={axisRef}'));
+  assert.match(page, /<div className="publicFlagAxisGutters" aria-hidden="true">/);
+  for (const side of ["isLeft", "isRight", "isBottom"]) {
+    assert.match(gutters, new RegExp(`<div className="publicFlagAxisGutter ${side}" />`));
+  }
+  assert.ok(page.indexOf('className="publicFlagAxisGutters"') < page.indexOf("<div ref={axisRef}"), "gutters paint under the labels");
+  assert.match(css, /\.publicFlagAxisGutters \{[^}]*z-index: 3;[^}]*pointer-events: none;/);
+  assert.match(css, /\.publicFlagAxisGutter \{[^}]*background: rgba\(11, 31, 58, 0\.9\d?\);[^}]*pointer-events: none;/);
+  assert.match(css, /\.publicFlagAxisGutter\.isLeft,\s*\.publicFlagAxisGutter\.isRight \{[^}]*bottom: 28px;[^}]*width: 36px;/);
+  assert.match(css, /\.publicFlagAxisGutter\.isBottom \{[^}]*height: 28px;/);
+  assert.match(css, /\.publicFlagAxis \.publicFlagRowLabel,\s*\.publicFlagAxis \.publicFlagColumnLabel \{[^}]*pointer-events: none;/);
 });
 
 test("the in-view list sits inside the map controls toolbar group", () => {

@@ -11547,12 +11547,52 @@ html.flagMapKiosk a {
   pointer-events: none;
 }
 
+.publicFlagAxisGutters {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.publicFlagAxisGutter {
+  position: absolute;
+  background: rgba(11, 31, 58, 0.92);
+  pointer-events: none;
+}
+
+.publicFlagAxisGutter.isLeft,
+.publicFlagAxisGutter.isRight {
+  top: 0;
+  bottom: 28px;
+  width: 36px;
+}
+
+.publicFlagAxisGutter.isLeft {
+  left: 0;
+  border-right: 1px solid rgba(212, 175, 55, 0.25);
+}
+
+.publicFlagAxisGutter.isRight {
+  right: 0;
+  border-left: 1px solid rgba(212, 175, 55, 0.25);
+}
+
+.publicFlagAxisGutter.isBottom {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28px;
+  border-top: 1px solid rgba(212, 175, 55, 0.25);
+}
+
 .publicFlagAxis .publicFlagRowLabel,
 .publicFlagAxis .publicFlagColumnLabel {
   top: 0;
   left: 0;
   padding: 0 2px;
-  text-shadow: 0 1px 2px rgba(7, 21, 38, 0.9);
+  pointer-events: none;
+  text-shadow: none;
 }
 
 .publicFlagAisle {

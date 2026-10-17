@@ -496,8 +496,8 @@ export function viewportWorldRect(view, viewport, pad = 0) {
 
 export const AXIS_STRIP = Object.freeze({ row: 36, column: 28 });
 
-// Row numbers and section letters sit at their field position until an edge of
-// the viewport would push them off, then they stay on that edge. A label whose
+// Row numbers and section letters sit in solid gutter strips on the left, right
+// and bottom viewport edges, lined up with their row or column. A label whose
 // row or column is out of view hides so labels never pile up in a corner.
 export function pinnedAxisLabels(field, view, viewport, strip = AXIS_STRIP) {
   const s = view.scale > 0 ? view.scale : 1;
@@ -507,10 +507,9 @@ export function pinnedAxisLabels(field, view, viewport, strip = AXIS_STRIP) {
     const width = Math.min(strip.row, label.width * s);
     const height = label.height * s;
     const y = view.y + label.y * s;
-    const natural = view.x + label.x * s;
     const x = label.side === "right"
-      ? clamp(natural, 0, viewport.width - width)
-      : clamp(natural + label.width * s - width, 0, viewport.width - width);
+      ? clamp(viewport.width - strip.row + (strip.row - width) / 2, 0, viewport.width - width)
+      : clamp((strip.row - width) / 2, 0, viewport.width - width);
     const middle = y + height / 2;
     const fontSize = labelFontSize(label.label, width, height, 1, { max: 13 });
     return { kind: "row", key: `row-${label.side}-${label.row}`, label: label.label, side: label.side, x, y, width, height, fontSize, hidden: middle < 0 || middle > viewport.height - columnHeight || !fontSize };
@@ -518,7 +517,7 @@ export function pinnedAxisLabels(field, view, viewport, strip = AXIS_STRIP) {
   const columns = field.columnLabels.map((label) => {
     const width = label.width * s;
     const x = view.x + label.x * s;
-    const y = clamp(view.y + label.y * s, 0, viewport.height - columnHeight);
+    const y = clamp(viewport.height - strip.column + (strip.column - columnHeight) / 2, 0, viewport.height - columnHeight);
     const middle = x + width / 2;
     const fontSize = labelFontSize(label.label, width, columnHeight, 1, { max: 14, em: 0.7 });
     return { kind: "column", key: `col-${label.section}`, label: label.label, x, y, width, height: columnHeight, fontSize, hidden: middle < 0 || middle > viewport.width || !fontSize };

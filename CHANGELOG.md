@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.9
+
+- On the public Flag Map, the pinned row numbers and section letters each sit on a solid navy strip along the left, right, and bottom edges of the map, so they are readable when zoomed in instead of sitting on top of the white spot cards. The map moves under the strips. Each number still lines up with its row and each letter with its column, and a label whose row or column is out of view still hides. Taps pass through the strips, and the flag card, toolbar, list, and key still sit above them. Label sizes are unchanged. Kiosk mode, Esc, and the toolbar list are unchanged.
+
 ## 2.0.8
 
 - On the public Flag Map in full screen, each press of Esc closes only the topmost open thing. An open flag card closes first. Next, the search suggestions or the in-view list close, and a pending jump is canceled. Only when nothing is open does Esc leave full screen. The toolbar's full-screen button and kiosk mode are unchanged.

@@ -1709,6 +1709,11 @@ export default function PublicFlagMap({
             );
           })}
         </div>
+        <div className="publicFlagAxisGutters" aria-hidden="true">
+          <div className="publicFlagAxisGutter isLeft" />
+          <div className="publicFlagAxisGutter isRight" />
+          <div className="publicFlagAxisGutter isBottom" />
+        </div>
         <div ref={axisRef} className="publicFlagAxis" aria-hidden="true">
           {field?.rowLabels.map((label) => (
             <div key={`row-${label.side}-${label.row}`} className={label.side === "right" ? "publicFlagRowLabel isRight" : "publicFlagRowLabel"}>{label.label}</div>
