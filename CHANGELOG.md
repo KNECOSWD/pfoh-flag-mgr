@@ -3,6 +3,8 @@
 ## 2.0.8
 
 - On the public Flag Map in full screen, each press of Esc closes only the topmost open thing. An open flag card closes first. Next, the search suggestions or the in-view list close, and a pending jump is canceled. Only when nothing is open does Esc leave full screen. The toolbar's full-screen button and kiosk mode are unchanged.
+- The row numbers 1–40 stay on the left and right edges of the map, and the section letters stay along the bottom edge, however far the map is panned or zoomed. Each number lines up with its row and each letter with its column. A label whose row or column is out of view hides. The labels never block a tap on a spot, and the flag card, toolbar, list, and key sit above them. Label sizes and the letter-only look are unchanged, and the kiosk works the same way.
+- The Sections or Spots list is part of the map toolbar, in the same group as Zoom out, Zoom in, Full screen, and Reset view, on one row. It works as before: sorted, limited to what is in view, and choosing an entry zooms to it. On a narrow phone the list text may be cut short, but the toolbar stays on one row.
 
 ## 2.0.7
 

@@ -58,7 +58,8 @@ import {
   zoneLabelSizes,
   sectionLabelSizes,
   zoomAt,
-  flagMapEscapeTarget
+  flagMapEscapeTarget,
+  pinnedAxisLabels
 } from "./publicFlagMap.js";
 import { KIOSK_EXIT_HOLD_MS, kioskSessionOn, requestKioskExit } from "./kioskSession.js";
 
@@ -276,6 +277,7 @@ export default function PublicFlagMap({
   const kiosk = kioskLocked || location.kiosk || kioskSessionOn(window.sessionStorage);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const layerRef = useRef<HTMLDivElement | null>(null);
+  const axisRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<View>({ x: 0, y: 0, scale: 1 });
   const fitScaleRef = useRef(1);
   const userAdjustedRef = useRef(false);
@@ -439,12 +441,29 @@ export default function PublicFlagMap({
       layer.style.transform = gestureTransform(view);
       writeOpacity(layer, "--section-opacity", "section", opacity.section);
     }
+    paintAxis(view);
     const viewport = viewportRef.current;
     if (viewport) {
       const sections = opacity.section >= 0.5 ? "on" : "off";
       if (viewport.dataset.sections !== sections) viewport.dataset.sections = sections;
     }
     return { view, opacity };
+  }
+
+  function paintAxis(view: View) {
+    const axis = axisRef.current;
+    const field = layoutRef.current;
+    if (!axis || !field) return;
+    const labels = pinnedAxisLabels(field, view, viewportSize());
+    labels.forEach((label, index) => {
+      const node = axis.children[index] as HTMLElement | undefined;
+      if (!node) return;
+      node.style.transform = `translate(${label.x}px, ${label.y}px)`;
+      node.style.width = `${label.width}px`;
+      node.style.height = `${label.height}px`;
+      node.style.fontSize = `${label.fontSize}px`;
+      node.style.visibility = label.hidden ? "hidden" : "";
+    });
   }
 
   function writeOpacity(layer: HTMLDivElement, property: string, key: "section", value: number) {
@@ -944,6 +963,10 @@ export default function PublicFlagMap({
     if (mapFullRef.current) document.documentElement.classList.add(MAP_FULLSCREEN_CLASS);
   }, []);
 
+  useLayoutEffect(() => {
+    paintAxis(viewRef.current);
+  });
+
   useEffect(() => {
     const root = document.documentElement;
     const active = () => Boolean(document.fullscreenElement || (document as Document & { webkitFullscreenElement?: Element }).webkitFullscreenElement);
@@ -1131,6 +1154,7 @@ export default function PublicFlagMap({
       viewRef.current = next;
       setMoving(true);
       if (layerRef.current) layerRef.current.style.transform = gestureTransform(next);
+      paintAxis(next);
       window.clearTimeout(wheelSettleRef.current);
       wheelSettleRef.current = window.setTimeout(settleGesture, WHEEL_SETTLE_MS);
     };
@@ -1143,6 +1167,7 @@ export default function PublicFlagMap({
       viewRef.current = next;
       setMoving(true);
       if (layerRef.current) layerRef.current.style.transform = gestureTransform(next);
+      paintAxis(next);
       window.clearTimeout(pinchSettleRef.current);
       pinchSettleRef.current = window.setTimeout(settleGesture, WHEEL_SETTLE_MS);
     };
@@ -1553,13 +1578,13 @@ export default function PublicFlagMap({
                 <ToolIcon name="reset" />
               </button>
             )}
-          </div>
-          <div className="publicFlagJump">
-            <label htmlFor={jumpId} className="srOnly">{inView.kind === "sections" ? "Go to a section in view" : "Go to a spot in view"}</label>
-            <select id={jumpId} value={jumpPending} onChange={onJumpChange} onKeyDown={onJumpKeyDown} onBlur={() => setJumpPending("")}>
-              <option value="">{flagMapItemsSummary(inView)}</option>
-              {inView.items.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
-            </select>
+            <div className="publicFlagJump">
+              <label htmlFor={jumpId} className="srOnly">{inView.kind === "sections" ? "Go to a section in view" : "Go to a spot in view"}</label>
+              <select id={jumpId} value={jumpPending} onChange={onJumpChange} onKeyDown={onJumpKeyDown} onBlur={() => setJumpPending("")}>
+                <option value="">{flagMapItemsSummary(inView)}</option>
+                {inView.items.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+              </select>
+            </div>
           </div>
           <p className="publicFlagLevel srOnly" aria-live="polite">{levelText}</p>
         </div>
@@ -1588,14 +1613,6 @@ export default function PublicFlagMap({
               style={{ left: cell.x, top: cell.y, width: cell.width, height: cell.height }}
             />
           ))}
-          {field?.rowLabels.map((label) => {
-            const size = labelFontSize(label.label, label.width, label.height, renderScale, { max: 13 });
-            return (
-              <div key={`row-${label.side}-${label.row}`} className={label.side === "right" ? "publicFlagRowLabel isRight" : "publicFlagRowLabel"} style={{ left: label.x, top: label.y, width: label.width, height: label.height, fontSize: size || undefined }}>
-                {size ? label.label : null}
-              </div>
-            );
-          })}
           {field?.pavilion ? (
             <div className="publicFlagPavilion" style={{ left: field.pavilion.x, top: field.pavilion.y, width: field.pavilion.width, height: field.pavilion.height, fontSize: labelFontSize(field.pavilion.label, field.pavilion.width, field.pavilion.height, renderScale, { max: 13 }) || undefined }}>
               {labelFontSize(field.pavilion.label, field.pavilion.width, field.pavilion.height, renderScale, { max: 13 }) ? field.pavilion.label : null}
@@ -1630,14 +1647,6 @@ export default function PublicFlagMap({
               </div>
             );
           })() : null}
-          {field?.columnLabels.map((label) => {
-            const size = labelFontSize(label.label, label.width, label.height, renderScale, { max: 14, em: 0.7 });
-            return (
-              <div key={`col-${label.section}`} className="publicFlagColumnLabel" style={{ left: label.x, top: label.y, width: label.width, height: label.height, fontSize: size || undefined }}>
-                {size ? label.label : null}
-              </div>
-            );
-          })}
           {visibleCells.map((cell) => {
             const spot = spotContents(cell, gates, renderScale);
             const interactive = !cell.template && cell.flagGridId > 0 && cell.status !== "Reserved";
@@ -1699,6 +1708,14 @@ export default function PublicFlagMap({
               </div>
             );
           })}
+        </div>
+        <div ref={axisRef} className="publicFlagAxis" aria-hidden="true">
+          {field?.rowLabels.map((label) => (
+            <div key={`row-${label.side}-${label.row}`} className={label.side === "right" ? "publicFlagRowLabel isRight" : "publicFlagRowLabel"}>{label.label}</div>
+          ))}
+          {field?.columnLabels.map((label) => (
+            <div key={`col-${label.section}`} className="publicFlagColumnLabel">{label.label}</div>
+          ))}
         </div>
       </div>
       <ul className="publicFlagLegend" aria-label="Spot key">
