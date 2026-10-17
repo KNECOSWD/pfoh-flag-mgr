@@ -494,12 +494,17 @@ export default function PublicFlagMap({
     cullFrameRef.current = requestAnimationFrame(run);
   }
 
-  // The list trails the view so a drag or an animated zoom does not rebuild it every frame.
-  function scheduleInView() {
+  // The list trails the view and waits for motion to stop, so a drag or an animated
+  // zoom (which can swing far out on the way) never lists a passing view.
+  function scheduleInView(waited = 0) {
     window.clearTimeout(inViewTimerRef.current);
     inViewTimerRef.current = window.setTimeout(() => {
       const layout = layoutRef.current;
       if (!layout) return;
+      if (waited < 12 && layerRef.current?.classList.contains("isMoving")) {
+        scheduleInView(waited + 1);
+        return;
+      }
       const next = flagMapItemsInView(layout, viewRef.current, visibleSize(), gatesRef.current) as InViewList;
       setInView((current) => (current.kind === next.kind && current.items.map((item) => item.key).join("|") === next.items.map((item) => item.key).join("|") ? current : next));
     }, 120);
@@ -531,6 +536,7 @@ export default function PublicFlagMap({
     pinchFrameRef.current = 0;
     window.clearTimeout(pinchSettleRef.current);
     pinchBatchRef.current.flush();
+    setMoving(false);
   }
 
   function animateTo(requested: View, onDone?: () => void) {
