@@ -938,6 +938,12 @@ export function zoneLabelSizes(zone, scale) {
     (heightPx * 0.86 - letterTall - letterPx * 0.3) / (range.length * UPRIGHT_ADVANCE)
   );
   if (upright >= ZONE_TEXT_PX.stackedRange) return { ...base, rangeSize: upright / s, vertical: false, stacked: true };
+  // A short block such as Z 11–20 gives up some letter height so the range fits.
+  const lines = (letterStacked ? chars.length : 1) * UPRIGHT_ADVANCE + 0.3;
+  const shrunk = Math.min(letterPx, (heightPx * 0.86 - ZONE_TEXT_PX.stackedRange * range.length * UPRIGHT_ADVANCE) / lines);
+  if (!tiny && shrunk >= ZONE_TEXT_PX.letter && inner / widestDigit >= ZONE_TEXT_PX.stackedRange) {
+    return { ...base, letter: shrunk / s, rangeSize: ZONE_TEXT_PX.stackedRange / s, vertical: false, stacked: true };
+  }
   return { ...base, rangeSize: 0, vertical: false, stacked: false };
 }
 

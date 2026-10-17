@@ -363,13 +363,16 @@ function fieldWithZ(rows) {
 }
 
 test("at a 320 fit every section shows its letter and Service Flags shows a label inside the block", () => {
-  const field = fieldWithZ(16);
+  // Live: 40 rows, Z1–Z10 is Service Flags, and Z splits only at the aisle.
+  const field = fieldWithZ(40);
+  assert.equal(field.zones.length, 56);
+  assert.deepEqual(field.zones.filter((zone) => zone.section === "Z").map((zone) => zone.label).sort(), ["Z 11–20", "Z 21–40"]);
   const em = { W: 1.04, M: 0.94 };
-  // 6.5–9.9px columns cover a 320 window with any page chrome; 2.0.3 drew no
-  // range, no YY/AA letter, and no Service Flags label there.
-  for (const columnPx of [6.5, 7, 7.2, 8, 8.7, 9.9]) {
+  // 6.6–9.9px columns cover a 320 window with page chrome (the live fit is
+  // 7.1–7.2px); 2.0.3 drew no range, no YY/AA letter, and no Service Flags
+  // label there.
+  for (const columnPx of [6.6, 7, 7.09, 7.17, 7.2, 8, 8.7, 9.9]) {
     const scale = columnPx / SPOT_SIZE.width;
-    assert.equal(field.zones.length, 55);
     let ranges = 0;
     for (const zone of field.zones) {
       const sizes = zoneLabelSizes(zone, scale);
@@ -401,7 +404,7 @@ test("at a 320 fit every section shows its letter and Service Flags shows a labe
       }
       assert.ok(tall <= height, `${zone.label} label ${tall} tall in ${height}`);
     }
-    if (columnPx >= 7) assert.ok(ranges >= 54, `${ranges} ranges at ${columnPx}px`);
+    assert.equal(ranges, 56, `${ranges} ranges at ${columnPx}px`);
 
     const label = serviceFlagsLabelSize(serviceFlagsLabelBox(field.serviceFlags, null), scale);
     const px = label.size * scale;
@@ -418,7 +421,7 @@ test("at a 320 fit every section shows its letter and Service Flags shows a labe
     const fits = [fitWholeField({ x: 0, y: 0, width: tall.worldWidth, height: tall.worldHeight }, { width: 284, height: 268 }, FIT_PADDING).scale];
     if (rows === 60) assert.ok(fits[0] * SPOT_SIZE.width < 5, "the 60-row fit is under 5px a column");
     for (const scale of [...fits, 3 / SPOT_SIZE.width, 4 / SPOT_SIZE.width, 4.87 / SPOT_SIZE.width, 5.5 / SPOT_SIZE.width, 7.2 / SPOT_SIZE.width]) {
-      assert.equal(tall.zones.length, 55);
+      assert.equal(tall.zones.length, 56);
       for (const zone of tall.zones) {
         const sizes = zoneLabelSizes(zone, scale);
         const width = zone.width * scale;
@@ -442,9 +445,11 @@ test("at a 320 fit every section shows its letter and Service Flags shows a labe
   }
   assert.match(css, /\.publicFlagZone\.isTiny \{\s*border-width: 0;\s*box-shadow: inset/);
   const fit320 = initialOverviewPlacement(field, { width: 320, height: 568 });
-  const zones320 = field.zones.map((zone) => zoneLabelSizes(zone, fit320.view.scale));
-  assert.ok(zones320.every((sizes) => sizes.letter > 0));
-  assert.ok(zones320.filter((sizes) => sizes.rangeSize > 0).length >= 54);
+  const padded320 = fitWholeField({ x: 0, y: 0, width: field.worldWidth, height: field.worldHeight }, { width: 284, height: 268 }, FIT_PADDING).scale;
+  for (const scale of [fit320.view.scale, padded320]) {
+    const zones320 = field.zones.map((zone) => [zone.label, zoneLabelSizes(zone, scale)]);
+    assert.deepEqual(zones320.filter(([, sizes]) => !(sizes.letter > 0 && sizes.rangeSize > 0)).map(([label]) => label), [], `every zone shows its range at ${scale}`);
+  }
   assert.ok(serviceFlagsLabelSize(field.serviceFlags, fit320.view.scale).size > 0);
 
   for (const scale of [0.0765, 0.29, 0.39]) {
@@ -453,6 +458,7 @@ test("at a 320 fit every section shows its letter and Service Flags shows a labe
       assert.equal(sizes.narrow, false);
       assert.equal(sizes.stacked, false);
       assert.equal(sizes.letterStacked, false);
+      assert.ok(sizes.rangeSize > 0, `${zone.label} range at ${scale}`);
       if (!/[WM]/.test(zone.section)) assert.equal(sizes.letter, labelFontSize(zone.section, zone.width, zone.height * 0.3, scale, { min: 5, max: 22, em: 0.7 }));
     }
     assert.equal(serviceFlagsLabelSize(field.serviceFlags, scale).text, SERVICE_FLAGS_LABEL);
@@ -470,7 +476,7 @@ test("at a 320 fit every section shows its letter and Service Flags shows a labe
 function pavilionField(rows) {
   return layoutFlagField(PAVILION_COLUMNS_LEFT_TO_RIGHT.map((section) => ({
     section,
-    seats: Array.from({ length: section === "Z" ? 16 : rows }, (_, index) => ({
+    seats: Array.from({ length: rows }, (_, index) => ({
       flagGridId: pavilionSeatId(section, index + 1),
       flagGridName: `${section}-${index + 1}`,
       columnNumber: index + 1,
