@@ -121,6 +121,21 @@ const SECTION_GAP = 56;
 export const SPOT_SIZE = Object.freeze({ width: FLAG_WIDTH, height: FLAG_HEIGHT, gap: FLAG_GAP });
 export const FIELD_AISLE_AFTER_ROW = 20;
 export const FIT_PADDING = 12;
+export const AXIS_STRIP = Object.freeze({ row: 36, column: 28 });
+
+// The pinned row numbers and section letters live in solid gutters on the left,
+// right and bottom edges, so fits, clamps and snaps keep content inside them.
+export function gutterInsets(pad = FIT_PADDING, strip = AXIS_STRIP) {
+  if (pad && typeof pad === "object") return pad;
+  const room = Number.isFinite(pad) ? pad : FIT_PADDING;
+  return { left: strip.row + room, right: strip.row + room, top: room, bottom: strip.column + room };
+}
+
+// The world without its row-label columns and letter band, which now sit in the gutters.
+export function fieldFitBounds(field) {
+  const box = boundsOf([...(field?.cells ?? []), field?.pavilion].filter(Boolean));
+  return box ?? { x: 0, y: 0, width: Math.max(1, field?.worldWidth || 1), height: Math.max(1, field?.worldHeight || 1) };
+}
 const ROW_LABEL_WIDTH = 160;
 const LABEL_BAND = 96;
 export const PAVILION_SIZE = Object.freeze({ width: (FLAG_WIDTH * 3 + FLAG_GAP * 2) * 4, height: 84 * 2 });
@@ -219,7 +234,7 @@ export function spotsViewScale() {
 export function clampView(view, viewport, world, options = {}) {
   const minScale = Number(options.minScale) > 0 ? Number(options.minScale) : FLAG_MAP_ZOOM.minScale;
   const maxScale = Math.max(minScale, Number(options.maxScale) || FLAG_MAP_ZOOM.maxScale);
-  const pad = Number.isFinite(options.pad) ? options.pad : FIT_PADDING;
+  const inset = gutterInsets(options.pad);
   const width = Math.max(1, viewport.width);
   const height = Math.max(1, viewport.height);
   let { x, y } = view;
@@ -228,14 +243,14 @@ export function clampView(view, viewport, world, options = {}) {
     x = width / 2 - ((width / 2 - view.x) / view.scale) * scale;
     y = height / 2 - ((height / 2 - view.y) / view.scale) * scale;
   }
-  const axis = (position, size, start, length) => {
+  const axis = (position, size, start, length, low, high) => {
     const content = length * scale;
-    if (content + pad * 2 <= size + 0.5) return (size - content) / 2 - start * scale;
-    return clamp(position, size - pad - (start + length) * scale, pad - start * scale);
+    if (content + low + high <= size + 0.5) return low + (size - low - high - content) / 2 - start * scale;
+    return clamp(position, size - high - (start + length) * scale, low - start * scale);
   };
   return {
-    x: axis(x, width, world.x, world.width),
-    y: axis(y, height, world.y, world.height),
+    x: axis(x, width, world.x, world.width, inset.left, inset.right),
+    y: axis(y, height, world.y, world.height, inset.top, inset.bottom),
     scale
   };
 }
@@ -244,14 +259,15 @@ export function clampView(view, viewport, world, options = {}) {
 // screen. The shifts that allow that are a union of intervals per spot, so
 // the smallest allowed shift is 0 or one of their endpoints. A settle never
 // moves more than a spot, so it cannot jump to a far part of the field.
-function axisShift(offset, size, starts, span, room, hidden, limits = [-Infinity, Infinity]) {
-  if (span > size - room * 2) return null;
+function axisShift(offset, size, starts, span, room, hidden, limits = [-Infinity, Infinity], gutters = [0, 0]) {
+  const [lowEdge, highEdge] = gutters;
+  if (span > size - lowEdge - highEdge - room * 2) return null;
   const allowed = [[limits], ...starts.map((start) => {
     const from = offset + start;
     return [
-      [-Infinity, span * hidden - (from + span)],
-      [room - from, size - room - (from + span)],
-      [size - span * hidden - from, Infinity]
+      [-Infinity, lowEdge + span * hidden - (from + span)],
+      [lowEdge + room - from, size - highEdge - room - (from + span)],
+      [size - highEdge - span * hidden - from, Infinity]
     ];
   })];
   const candidates = [0, ...allowed.flat(2).filter((shift) => Math.abs(shift) <= span + room)]
@@ -266,7 +282,8 @@ const SNAP_SCALE_STEPS = Object.freeze([1, 1.01, 0.99, 1.02, 0.98, 1.03, 0.97, 1
 // On a phone the closest zoom stops where one spot still fits with padding,
 // but never before the Closest level.
 export function spotFitMaxScale(viewport, pad = FIT_PADDING) {
-  const fit = Math.min((viewport.width - pad * 2) / FLAG_WIDTH, (viewport.height - pad * 2) / FLAG_HEIGHT);
+  const inset = gutterInsets(pad);
+  const fit = Math.min((viewport.width - inset.left - inset.right) / FLAG_WIDTH, (viewport.height - inset.top - inset.bottom) / FLAG_HEIGHT);
   return clamp(fit, (FLAG_MAP_ZOOM.closestAt + 1) / FLAG_WIDTH, FLAG_MAP_ZOOM.maxScale);
 }
 
@@ -286,10 +303,12 @@ export function snapEdgeSpots(view, viewport, cells, pad = FIT_PADDING, options 
   const world = options.world;
   const clampSize = options.clampViewport ?? { width, height };
   // The shifts clampView would keep, so a settle is never undone by the clamp.
-  const limits = (position, size, start, length, scale) => {
+  const inset = gutterInsets(pad);
+  const strip = { left: inset.left - pad, right: inset.right - pad, top: inset.top - pad, bottom: inset.bottom - pad };
+  const limits = (position, size, start, length, scale, low, high) => {
     if (!world) return [-Infinity, Infinity];
-    if (length * scale + pad * 2 <= size + 0.5) return [0, 0];
-    return [size - pad - (start + length) * scale - position, pad - start * scale - position];
+    if (length * scale + low + high <= size + 0.5) return [0, 0];
+    return [size - high - (start + length) * scale - position, low - start * scale - position];
   };
   const attempt = (scale, room, hidden) => {
     const at = scale === view.scale ? view : zoomAt(view, width / 2, height / 2, scale);
@@ -298,11 +317,15 @@ export function snapEdgeSpots(view, viewport, cells, pad = FIT_PADDING, options 
     const rows = unique(spots.filter((cell) => cell.x < seen.x + seen.width && cell.x + cell.width > seen.x).map((cell) => cell.y * at.scale));
     if (!columns.length || !rows.length) return null;
     const dx = axisShift(at.x, width, columns, FLAG_WIDTH * at.scale, room, hidden,
-      limits(at.x, clampSize.width, world?.x ?? 0, world?.width ?? 0, at.scale));
+      limits(at.x, clampSize.width, world?.x ?? 0, world?.width ?? 0, at.scale, inset.left, inset.right), [strip.left, strip.right]);
     const dy = dx === null ? null : axisShift(at.y, height, rows, FLAG_HEIGHT * at.scale, room, hidden,
-      limits(at.y, clampSize.height, world?.y ?? 0, world?.height ?? 0, at.scale));
+      limits(at.y, clampSize.height, world?.y ?? 0, world?.height ?? 0, at.scale, inset.top, inset.bottom), [strip.top, strip.bottom]);
     return dy === null ? null : { x: at.x + dx, y: at.y + dy, scale: at.scale };
   };
+  for (const hidden of [0.45, 0.5]) {
+    const here = attempt(view.scale, pad, hidden);
+    if (here && here.x === view.x && here.y === view.y) return here;
+  }
   for (const hidden of [0.45, 0.5]) {
     for (const step of SNAP_SCALE_STEPS) {
       const scale = view.scale * step;
@@ -311,11 +334,13 @@ export function snapEdgeSpots(view, viewport, cells, pad = FIT_PADDING, options 
       if (settled) return settled;
     }
   }
+  const tighter = [];
   for (let room = pad - 1; room >= 0; room -= 1) {
     const settled = attempt(view.scale, room, 0.5);
-    if (settled) return settled;
+    if (settled && settled.x === view.x && settled.y === view.y) return settled;
+    if (settled) tighter.push(settled);
   }
-  return view;
+  return tighter[0] ?? view;
 }
 
 export function zoomAt(view, originX, originY, nextScale) {
@@ -349,8 +374,9 @@ export function fitView(bounds, viewport, padding = 36) {
 }
 
 export function fitWholeField(bounds, viewport, padding = FIT_PADDING) {
-  const innerWidth = Math.max(1, viewport.width - padding * 2);
-  const innerHeight = Math.max(1, viewport.height - padding * 2);
+  const inset = gutterInsets(padding);
+  const innerWidth = Math.max(1, viewport.width - inset.left - inset.right);
+  const innerHeight = Math.max(1, viewport.height - inset.top - inset.bottom);
   const scale = Math.min(
     FLAG_MAP_ZOOM.maxScale,
     innerWidth / Math.max(bounds.width, 1),
@@ -358,8 +384,8 @@ export function fitWholeField(bounds, viewport, padding = FIT_PADDING) {
   );
   return {
     scale,
-    x: (viewport.width - bounds.width * scale) / 2 - bounds.x * scale,
-    y: (viewport.height - bounds.height * scale) / 2 - bounds.y * scale
+    x: inset.left + (innerWidth - bounds.width * scale) / 2 - bounds.x * scale,
+    y: inset.top + (innerHeight - bounds.height * scale) / 2 - bounds.y * scale
   };
 }
 
@@ -464,7 +490,7 @@ export function initialOverviewPlacement(field, windowSize, options = {}) {
   frame.right = frame.x + frame.width;
   frame.bottom = frame.y + frame.height;
   const view = fitWholeField(
-    { x: 0, y: 0, width: field.worldWidth, height: field.worldHeight },
+    fieldFitBounds(field),
     { width: frame.width, height: frame.height }
   );
   const row1 = boundsOf([
@@ -494,10 +520,8 @@ export function viewportWorldRect(view, viewport, pad = 0) {
   };
 }
 
-export const AXIS_STRIP = Object.freeze({ row: 36, column: 28 });
-
-// Row numbers and section letters sit at their field position until an edge of
-// the viewport would push them off, then they stay on that edge. A label whose
+// Row numbers and section letters sit in solid gutter strips on the left, right
+// and bottom viewport edges, lined up with their row or column. A label whose
 // row or column is out of view hides so labels never pile up in a corner.
 export function pinnedAxisLabels(field, view, viewport, strip = AXIS_STRIP) {
   const s = view.scale > 0 ? view.scale : 1;
@@ -507,21 +531,20 @@ export function pinnedAxisLabels(field, view, viewport, strip = AXIS_STRIP) {
     const width = Math.min(strip.row, label.width * s);
     const height = label.height * s;
     const y = view.y + label.y * s;
-    const natural = view.x + label.x * s;
     const x = label.side === "right"
-      ? clamp(natural, 0, viewport.width - width)
-      : clamp(natural + label.width * s - width, 0, viewport.width - width);
+      ? clamp(viewport.width - strip.row + (strip.row - width) / 2, 0, viewport.width - width)
+      : clamp((strip.row - width) / 2, 0, viewport.width - width);
     const middle = y + height / 2;
     const fontSize = labelFontSize(label.label, width, height, 1, { max: 13 });
-    return { kind: "row", key: `row-${label.side}-${label.row}`, label: label.label, side: label.side, x, y, width, height, fontSize, hidden: middle < 0 || middle > viewport.height - columnHeight || !fontSize };
+    return { kind: "row", key: `row-${label.side}-${label.row}`, label: label.label, side: label.side, x, y, width, height, fontSize, hidden: middle < 0 || middle > viewport.height - strip.column || !fontSize };
   });
   const columns = field.columnLabels.map((label) => {
     const width = label.width * s;
     const x = view.x + label.x * s;
-    const y = clamp(view.y + label.y * s, 0, viewport.height - columnHeight);
+    const y = clamp(viewport.height - strip.column + (strip.column - columnHeight) / 2, 0, viewport.height - columnHeight);
     const middle = x + width / 2;
     const fontSize = labelFontSize(label.label, width, columnHeight, 1, { max: 14, em: 0.7 });
-    return { kind: "column", key: `col-${label.section}`, label: label.label, x, y, width, height: columnHeight, fontSize, hidden: middle < 0 || middle > viewport.width || !fontSize };
+    return { kind: "column", key: `col-${label.section}`, label: label.label, x, y, width, height: columnHeight, fontSize, hidden: middle < strip.row || middle > viewport.width - strip.row || !fontSize };
   });
   return [...rows, ...columns];
 }
