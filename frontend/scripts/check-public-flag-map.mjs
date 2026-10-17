@@ -66,7 +66,8 @@ import {
   viewportWorldRect,
   wheelFrameShouldCull,
   wheelScaleFactor,
-  zoomAt
+  zoomAt,
+  compareInViewItems
 } from "../src/publicFlagMap.js";
 import { qrModules } from "../src/qrCode.js";
 import {
@@ -1431,3 +1432,14 @@ function assertFinder(modules, x0, y0) {
     }
   }
 }
+
+test("the in-view list sorts sections by letter and range, and spots naturally", () => {
+  const zone = (label) => ({ kind: "zone", label });
+  const spot = (name) => ({ kind: "spot", name, label: `${name} \u00b7 Open` });
+  const service = { kind: "service", label: "Service Flags, Z 1\u201310" };
+  const sections = [zone("Z 21\u201340"), zone("B 1\u201320"), zone("AA 1\u201320"), zone("Z 11\u201320"), service, zone("A 21\u201340"), zone("A 1\u201320"), zone("YY 1\u201320")]
+    .sort(compareInViewItems).map((item) => item.label);
+  assert.deepEqual(sections, ["A 1\u201320", "A 21\u201340", "AA 1\u201320", "B 1\u201320", "YY 1\u201320", "Service Flags, Z 1\u201310", "Z 11\u201320", "Z 21\u201340"]);
+  const spots = [spot("B-1"), spot("A-10"), spot("AA-3"), spot("A-2")].sort(compareInViewItems).map((item) => item.name);
+  assert.deepEqual(spots, ["A-2", "A-10", "AA-3", "B-1"]);
+});
