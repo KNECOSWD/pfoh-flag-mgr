@@ -11115,7 +11115,7 @@ html.flagMapKiosk a {
   position: fixed;
   left: 0;
   bottom: 0;
-  z-index: 70;
+  z-index: 9600;
   width: 56px;
   height: 56px;
   min-width: 56px;
@@ -11131,7 +11131,7 @@ html.flagMapKiosk a {
 .kioskPinOverlay {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: 9700;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11220,6 +11220,7 @@ html.flagMapKiosk a {
 .publicFlagMap.isKiosk a,
 .publicFlagMap.isKiosk .publicFlagSuggestions li,
 .publicFlagMap.isKiosk .publicFlagSuggestions button,
+.publicFlagDetailLayer.isKiosk button,
 .publicFlagSearchTabs button,
 .kioskPinKeys button,
 .kioskPinPad > button {
@@ -11671,9 +11672,26 @@ html.flagMapKiosk a {
   touch-action: pan-y;
 }
 
+.publicFlagDetailLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  pointer-events: none;
+}
+
+.publicFlagDetailLayer > * {
+  pointer-events: auto;
+}
+
+.publicFlagDetailBackdrop {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(7, 21, 38, 0.6);
+}
+
 .publicFlagDetail {
   position: absolute;
-  z-index: 40;
   right: 12px;
   bottom: 12px;
   width: min(420px, calc(100% - 24px));
@@ -11794,7 +11812,7 @@ html.flagMapKiosk a {
 .publicFlagMap.isKiosk .publicFlagSearch input,
 .publicFlagMap.isKiosk .publicFlagSuggestions li,
 .publicFlagMap.isKiosk .publicFlagToolbar button,
-.publicFlagMap.isKiosk .publicFlagDetail button {
+.publicFlagDetailLayer.isKiosk .publicFlagDetail button {
   min-height: 56px;
   min-width: 56px;
 }
@@ -11816,7 +11834,7 @@ html.flagMapKiosk a {
   font-size: 1.05rem;
 }
 
-.publicFlagMap.isKiosk .publicFlagDetail {
+.publicFlagDetailLayer.isKiosk .publicFlagDetail {
   top: 16px;
   right: 16px;
   bottom: 16px;
@@ -11824,7 +11842,7 @@ html.flagMapKiosk a {
   max-height: none;
 }
 
-.publicFlagMap:not(.isKiosk) .publicFlagDetail {
+.publicFlagDetailLayer:not(.isKiosk) .publicFlagDetail {
   position: fixed;
   top: 12px;
   right: 12px;
@@ -11835,10 +11853,6 @@ html.flagMapKiosk a {
 }
 
 @media (min-width: 761px) {
-  html.flagMapPage:not(.isMapFullscreen) .publicFlagMap:not(.isKiosk) .publicFlagDetail {
-    top: calc(var(--flag-map-header, 92px) + 8px);
-  }
-
   .publicFlagMap.hasDetail:not(.isKiosk) .publicFlagChrome {
     margin-right: calc(min(420px, 100vw - 24px) + 24px - var(--flag-map-side, 16px));
   }
@@ -11894,17 +11908,17 @@ html.isMapFullscreen .publicFlagLegend {
   color: #f3e2a7;
 }
 
-.publicFlagMap.isKiosk .publicFlagDetail h3 {
+.publicFlagDetailLayer.isKiosk .publicFlagDetail h3 {
   font-size: 2.15rem;
 }
 
-.publicFlagMap.isKiosk .publicFlagDetail p,
-.publicFlagMap.isKiosk .publicFlagDetail button {
+.publicFlagDetailLayer.isKiosk .publicFlagDetail p,
+.publicFlagDetailLayer.isKiosk .publicFlagDetail button {
   font-size: 1.15rem;
 }
 
-.publicFlagMap.isKiosk .publicFlagPhotoFrame,
-.publicFlagMap.isKiosk .publicFlagPhoto {
+.publicFlagDetailLayer.isKiosk .publicFlagPhotoFrame,
+.publicFlagDetailLayer.isKiosk .publicFlagPhoto {
   max-height: min(38vh, 340px);
 }
 
@@ -11961,7 +11975,7 @@ html.isMapFullscreen .publicFlagLegend {
     padding: 0 12px;
   }
 
-  .publicFlagMap:not(.isKiosk) .publicFlagDetail {
+  .publicFlagDetailLayer:not(.isKiosk) .publicFlagDetail {
     position: fixed;
     top: 12px;
     right: 12px;
@@ -11969,11 +11983,14 @@ html.isMapFullscreen .publicFlagLegend {
     left: 12px;
     width: auto;
     max-height: none;
-    z-index: 40;
   }
 
-  .publicFlagMap:not(.isKiosk) .publicFlagPhotoFrame,
-  .publicFlagMap:not(.isKiosk) .publicFlagPhoto {
+  .publicFlagDetailLayer:not(.isKiosk) .publicFlagDetailBackdrop {
+    display: block;
+  }
+
+  .publicFlagDetailLayer:not(.isKiosk) .publicFlagPhotoFrame,
+  .publicFlagDetailLayer:not(.isKiosk) .publicFlagPhoto {
     max-height: min(32vh, 220px);
     height: auto;
   }

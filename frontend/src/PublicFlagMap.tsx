@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { qrModules, qrPath } from "./qrCode.js";
 import {
   FLAG_MAP_ZOOM,
@@ -1516,21 +1517,25 @@ export default function PublicFlagMap({
         </div>
       </div>
       </div>
-      {selected ? (
-        <FlagDetail
-          flag={selected}
-          revealed={selected.flagGridId === revealId}
-          shareUrl={shareUrl}
-          onPreview={onPreviewCard}
-          showSeal={gates.seals}
-          onClose={() => {
-            setSelected(null);
-            setRevealId(null);
-            writeFlagParam(null);
-          }}
-        />
+      {selected ? createPortal(
+        <div className={kiosk ? "publicFlagDetailLayer isKiosk" : "publicFlagDetailLayer"}>
+          <div className="publicFlagDetailBackdrop" aria-hidden="true" />
+          <FlagDetail
+            flag={selected}
+            revealed={selected.flagGridId === revealId}
+            shareUrl={shareUrl}
+            onPreview={onPreviewCard}
+            showSeal={gates.seals}
+            onClose={() => {
+              setSelected(null);
+              setRevealId(null);
+              writeFlagParam(null);
+            }}
+          />
+        </div>,
+        document.body
       ) : null}
-      {kiosk ? (
+      {kiosk ? createPortal(<>
         <button
           type="button"
           className="kioskExitZone"
@@ -1542,26 +1547,26 @@ export default function PublicFlagMap({
           onPointerLeave={cancelExitHold}
           onContextMenu={(event) => event.preventDefault()}
         />
-      ) : null}
-      {kiosk && pinOpen ? (
-        <div className="kioskPinOverlay" role="dialog" aria-modal="true" aria-label="Exit code">
-          <div className="kioskPinPad">
-            <p className="kioskPinDots" aria-live="polite">{pinDigits ? "•".repeat(pinDigits.length) : "Enter the code"}</p>
-            {pinMessage ? <p className="message error" role="alert">{pinMessage}</p> : null}
-            <div className="kioskPinKeys">
-              {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => (
-                <button key={digit} type="button" onClick={() => appendPinDigit(digit)}>{digit}</button>
-              ))}
-              <button type="button" className="secondary" onClick={() => { setPinDigits(""); setPinMessage(""); }}>Clear</button>
-              <button type="button" onClick={() => appendPinDigit("0")}>0</button>
-              <button type="button" onClick={() => { setPinOpen(false); setPinDigits(""); setPinMessage(""); }}>Cancel</button>
+        {pinOpen ? (
+          <div className="kioskPinOverlay" role="dialog" aria-modal="true" aria-label="Exit code">
+            <div className="kioskPinPad">
+              <p className="kioskPinDots" aria-live="polite">{pinDigits ? "•".repeat(pinDigits.length) : "Enter the code"}</p>
+              {pinMessage ? <p className="message error" role="alert">{pinMessage}</p> : null}
+              <div className="kioskPinKeys">
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((digit) => (
+                  <button key={digit} type="button" onClick={() => appendPinDigit(digit)}>{digit}</button>
+                ))}
+                <button type="button" className="secondary" onClick={() => { setPinDigits(""); setPinMessage(""); }}>Clear</button>
+                <button type="button" onClick={() => appendPinDigit("0")}>0</button>
+                <button type="button" onClick={() => { setPinOpen(false); setPinDigits(""); setPinMessage(""); }}>Cancel</button>
+              </div>
+              <button type="button" disabled={pinBusy || pinDigits.length === 0} onClick={() => { void submitExitPin(); }}>
+                {pinBusy ? "Checking…" : "Continue"}
+              </button>
             </div>
-            <button type="button" disabled={pinBusy || pinDigits.length === 0} onClick={() => { void submitExitPin(); }}>
-              {pinBusy ? "Checking…" : "Continue"}
-            </button>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </>, document.body) : null}
     </section>
   );
 }

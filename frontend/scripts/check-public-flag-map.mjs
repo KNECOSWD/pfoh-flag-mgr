@@ -349,16 +349,45 @@ test("section blocks are flat, Z1–Z10 is one flat Service Flags block, and Z h
   assert.equal(usual, SPOT_SIZE.gap);
 });
 
-test("the detail drawer sits above the search bar at every size", () => {
-  const stage = page.slice(page.indexOf('<div className="publicFlagStage">'), page.indexOf("{selected ? ("));
+test("the detail drawer is portaled to body and layers above every page layer", () => {
+  const stage = page.slice(page.indexOf('<div className="publicFlagStage">'), page.indexOf("{selected ? createPortal("));
   assert.doesNotMatch(stage, /<FlagDetail/);
+  assert.match(page, /import \{ createPortal \} from "react-dom";/);
+  const portal = page.slice(page.indexOf("{selected ? createPortal("), page.indexOf("{kiosk ? createPortal("));
+  assert.match(portal, /<div className=\{kiosk \? "publicFlagDetailLayer isKiosk" : "publicFlagDetailLayer"\}>/);
+  assert.match(portal, /<div className="publicFlagDetailBackdrop" aria-hidden="true" \/>/);
+  assert.match(portal, /<FlagDetail/);
+  assert.match(portal, /document\.body\s*\)/);
+  assert.doesNotMatch(portal, /publicFlagDetailBackdrop"[^>]*onClick/);
+  const kioskPortal = page.slice(page.indexOf("{kiosk ? createPortal("), page.indexOf("</section>", page.indexOf("{kiosk ? createPortal(")));
+  assert.match(kioskPortal, /kioskExitZone/);
+  assert.match(kioskPortal, /kioskPinOverlay/);
+  assert.match(kioskPortal, /document\.body\) : null\}/);
   assert.match(page, /selected \? "hasDetail" : ""/);
-  const base = css.match(/\n\.publicFlagDetail \{\n  position: absolute;[^}]*\}/)[0];
-  const zIndex = Number(base.match(/z-index:\s*(\d+)/)[1]);
-  assert.ok(zIndex > 30);
+
+  const zOf = (selector) => {
+    const block = css.slice(css.indexOf(`${selector} {`), css.indexOf("}", css.indexOf(`${selector} {`)));
+    return Number(block.match(/z-index:\s*(\d+)/)[1]);
+  };
+  const layer = css.slice(css.indexOf(".publicFlagDetailLayer {"), css.indexOf("}", css.indexOf(".publicFlagDetailLayer {")));
+  assert.match(layer, /position: fixed;/);
+  assert.match(layer, /inset: 0;/);
+  assert.match(layer, /pointer-events: none;/);
+  const drawerZ = zOf(".publicFlagDetailLayer");
+  const pageLayers = [...css.matchAll(/([^{}]+)\{[^{}]*?z-index:\s*(\d+)/g)]
+    .map((match) => ({ selector: match[1].trim(), z: Number(match[2]) }))
+    .filter((rule) => !/modal|Modal|Overlay|overlay|mobileDrawer|kioskPin|kioskExit|publicFlagDetailLayer/.test(rule.selector));
+  for (const rule of pageLayers) assert.ok(rule.z < drawerZ, `${rule.selector} z-index ${rule.z} is not below the drawer ${drawerZ}`);
+  assert.ok(drawerZ > 9200, "above the phone menu button");
+  assert.ok(drawerZ < zOf(".appConfirmOverlay,\n.modalOverlay.appConfirmOverlay"), "the card preview opened from the drawer still sits above it");
+  assert.ok(zOf(".kioskExitZone") > drawerZ);
+  assert.ok(zOf(".kioskPinOverlay") > zOf(".kioskExitZone"));
+  assert.doesNotMatch(css, /\.publicFlagMap[^,{]*\.publicFlagDetail/);
+  assert.doesNotMatch(css, /--flag-map-header, 92px\) \+ 8px\);\s*\}\s*\n\s*\.publicFlagMap\.hasDetail/);
+
   const phone = css.slice(css.indexOf("@media (max-width: 760px) {\n  .publicFlagMap {"));
-  const phoneDrawer = phone.slice(phone.indexOf(".publicFlagMap:not(.isKiosk) .publicFlagDetail {"), phone.indexOf("}", phone.indexOf(".publicFlagMap:not(.isKiosk) .publicFlagDetail {")));
-  assert.ok(Number(phoneDrawer.match(/z-index:\s*(\d+)/)[1]) > 30);
+  assert.match(phone, /\.publicFlagDetailLayer:not\(\.isKiosk\) \.publicFlagDetailBackdrop \{\s*display: block;/);
+  assert.match(css, /\.publicFlagDetailBackdrop \{\s*display: none;/);
   assert.match(css, /\.publicFlagMap\.hasDetail:not\(\.isKiosk\) \.publicFlagChrome \{\s*margin-right:/);
   assert.match(css, /\.publicFlagMap\.isKiosk\.hasDetail \.publicFlagChrome \{\s*margin-right:/);
   assert.match(css, /html\.isMapFullscreen \.publicFlagMap\.hasDetail:not\(\.isKiosk\) \.publicFlagChrome \{\s*margin-right:/);
@@ -601,7 +630,7 @@ test("the flag detail photo shows the whole picture", () => {
   assert.match(page, /publicFlagPhotoFrame/);
   assert.match(css, /\.publicFlagPhoto \{[^}]*object-fit:\s*contain/);
   assert.doesNotMatch(css, /\.publicFlagPhoto \{[^}]*object-fit:\s*cover/);
-  assert.match(css, /\.publicFlagMap\.isKiosk \.publicFlagPhotoFrame/);
+  assert.match(css, /\.publicFlagDetailLayer\.isKiosk \.publicFlagPhotoFrame/);
   assert.match(css, /max-height:\s*min\(32vh, 220px\)/);
 });
 
