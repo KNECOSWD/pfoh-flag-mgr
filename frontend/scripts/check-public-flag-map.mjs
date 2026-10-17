@@ -1513,8 +1513,8 @@ test("row numbers and section letters stay pinned in their viewport-edge gutters
   assert.equal(columns.length, field.columnLabels.length);
   for (const label of rows) {
     const source = field.rowLabels.find((item) => `row-${item.side}-${item.row}` === label.key);
-    assert.equal(label.y, view.y + source.y * view.scale, "each row number lines up with its row");
-    assert.equal(label.height, source.height * view.scale);
+    assert.ok(Math.abs(label.y - (view.y + source.y * view.scale)) < 1e-6, "each row number lines up with its row");
+    assert.ok(Math.abs(label.height - source.height * view.scale) < 1e-6);
     if (label.side === "left") assert.ok(label.x >= 0 && label.x + label.width <= AXIS_STRIP.row, "left numbers sit inside the left gutter");
     else assert.ok(label.x >= viewport.width - AXIS_STRIP.row && label.x + label.width <= viewport.width, "right numbers sit inside the right gutter");
     const middle = label.y + label.height / 2;
@@ -1522,7 +1522,7 @@ test("row numbers and section letters stay pinned in their viewport-edge gutters
   }
   for (const label of columns) {
     const source = field.columnLabels.find((item) => item.section === label.label);
-    assert.equal(label.x, view.x + source.x * view.scale, "each letter lines up with its column");
+    assert.ok(Math.abs(label.x + label.width / 2 - (view.x + (source.x + source.width / 2) * view.scale)) < 1e-6, "each letter centres on its column");
     assert.ok(label.y >= viewport.height - AXIS_STRIP.column && label.y + label.height <= viewport.height, "letters sit inside the bottom gutter");
     const middle = label.x + label.width / 2;
     const endRoom = AXIS_STRIP.row + AXIS_LABEL_PAD + label.fontSize / 2;
@@ -1603,37 +1603,99 @@ test("left and right row numbers have the same inner padding and mirror each oth
   assert.match(page, /pinnedAxisLabels\(field, view, \{\s*width: axis\.clientWidth \|\| size\.width,\s*height: axis\.clientHeight \|\| size\.height\s*\}\)/, "labels are placed in the overlay's own box, not the bordered viewport rect");
 });
 
-test("at the whole-field fit every axis shows its end labels plus thinned middles, readable, unclipped and lined up (2.0.11)", () => {
+// Spot-tile maths, independent of the label code: a row's centre is the middle of
+// its spots and a column's centre is the middle of its section's spots, both
+// taken through the same translate-then-scale transform as .publicFlagLayer.
+function spotRowCentre(field, view, row) {
+  const box = boundsOf(field.cells.filter((cell) => cell.columnNumber === row));
+  return view.y + (box.y + box.height / 2) * view.scale;
+}
+function spotColumnCentre(field, view, section) {
+  const box = boundsOf(field.cells.filter((cell) => cell.section === section));
+  return view.x + (box.x + box.width / 2) * view.scale;
+}
+const AXIS_MAPS = [
+  { width: 284, height: 567, name: "320 phone map" },
+  { width: 346, height: 567, name: "390 phone map" },
+  { width: 1406, height: 618, name: "1440x618 map" },
+  { width: 320, height: 567, name: "320x567" },
+  { width: 390, height: 567, name: "390x567" },
+  { width: 1440, height: 618, name: "1440x618" }
+];
+
+test("every axis label sits at its true row or column centre, at the fit and zoomed in (2.0.12)", () => {
   const field = pavilionField(40);
-  const lastRow = Math.max(...field.rowLabels.map((label) => label.row));
-  for (const viewport of [{ width: 1920, height: 900 }, { width: 1440, height: 618 }, { width: 390, height: 567 }, { width: 320, height: 567 }]) {
-    const view = fitWholeField(fieldFitBounds(field), viewport, FIT_PADDING);
-    const labels = pinnedAxisLabels(field, view, viewport);
-    const where = `${viewport.width}x${viewport.height}`;
-    for (const side of ["left", "right"]) {
-      const shown = labels.filter((label) => label.kind === "row" && label.side === side && !label.hidden);
-      const rows = shown.map((label) => label.row);
-      assert.ok(rows.includes(1) && rows.includes(lastRow), `rows 1 and ${lastRow} show on the ${side} at ${where}`);
-      assert.ok(shown.length >= 4, `thinned middle rows show at ${where}`);
-      for (const label of shown) {
-        const source = field.rowLabels.find((item) => item.side === side && item.row === label.row);
-        assert.ok(Math.abs(label.y + label.height / 2 - (view.y + (source.y + source.height / 2) * view.scale)) < 1e-6, `row ${label.row} centres on its row at ${where}`);
-        assert.ok(label.fontSize >= AXIS_MIN_FONT_PX && label.width - AXIS_LABEL_PAD * 2 >= String(label.label).length * 0.72 * label.fontSize, `row ${label.row} is readable and unclipped at ${where}`);
+  const box = fieldFitBounds(field);
+  for (const viewport of AXIS_MAPS) {
+    const fitted = clampView(fitWholeField(box, viewport, FIT_PADDING), viewport, box, { pad: FIT_PADDING });
+    const zoomed = clampView(zoomAt(fitted, viewport.width / 2, viewport.height / 2, fitted.scale * 3), viewport, box, { pad: FIT_PADDING });
+    for (const [level, view] of [["fit", fitted], ["zoomed", zoomed]]) {
+      const where = `${viewport.name} ${level}`;
+      const labels = pinnedAxisLabels(field, view, viewport).filter((label) => !label.hidden);
+      assert.ok(labels.length > 0, `labels show at ${where}`);
+      for (const label of labels) {
+        if (label.kind === "row") assert.ok(Math.abs(label.y + label.height / 2 - spotRowCentre(field, view, label.row)) <= 1, `row ${label.row} (${label.side}) centres on its spots at ${where}`);
+        else assert.ok(Math.abs(label.x + label.width / 2 - spotColumnCentre(field, view, label.label)) <= 1, `${label.label} centres on its spots at ${where}`);
       }
-      const sorted = [...shown].sort((a, b) => a.y - b.y);
+      const z = labels.find((label) => label.label === "Z");
+      const m = labels.find((label) => label.label === "M");
+      if (z && m) {
+        const gap = spotColumnCentre(field, view, "M") - spotColumnCentre(field, view, "Z");
+        assert.ok(Math.abs((m.x + m.width / 2) - (z.x + z.width / 2) - gap) <= 1, `the Z|M aisle shows at its true width at ${where}`);
+      }
+    }
+  }
+});
+
+test("at full zoom-out every row number and every letter shows, one font per axis, with no overlaps (2.0.12)", () => {
+  const field = pavilionField(40);
+  const box = fieldFitBounds(field);
+  const letters = field.columnLabels.map((label) => label.label);
+  assert.equal(letters.length, PAVILION_COLUMNS_LEFT_TO_RIGHT.length);
+  const report = [];
+  for (const viewport of AXIS_MAPS) {
+    const view = clampView(fitWholeField(box, viewport, FIT_PADDING), viewport, box, { pad: FIT_PADDING });
+    const labels = pinnedAxisLabels(field, view, viewport);
+    const where = viewport.name;
+    for (const side of ["left", "right"]) {
+      const rows = labels.filter((label) => label.kind === "row" && label.side === side && !label.hidden);
+      assert.equal(rows.length, 40, `all 40 rows show on the ${side} at ${where}`);
+      assert.deepEqual(rows.map((label) => label.row).sort((a, b) => a - b), Array.from({ length: 40 }, (_, i) => i + 1));
+      assert.equal(new Set(rows.map((label) => label.fontSize)).size, 1, `one row font at ${where}`);
+      const sorted = [...rows].sort((a, b) => a.y - b.y);
       sorted.slice(1).forEach((label, i) => assert.ok(sorted[i].y + sorted[i].height <= label.y + 1e-6, `rows ${sorted[i].label} and ${label.label} do not overlap at ${where}`));
+      const pitch = Math.min(...sorted.slice(1).map((label, i) => spotRowCentre(field, view, label.row) - spotRowCentre(field, view, sorted[i].row)).map(Math.abs));
+      for (const label of rows) {
+        assert.ok(label.fontSize <= label.height + 1e-6 && label.width - AXIS_LABEL_PAD * 2 >= String(label.label).length * 0.72 * label.fontSize, `row ${label.row} fits its box at ${where}`);
+        assert.ok(label.fontSize >= AXIS_MIN_FONT_PX || Math.abs(label.fontSize - pitch) < 1e-6, `row font is at the ${AXIS_MIN_FONT_PX}px floor or, below it, the full row pitch at ${where}`);
+      }
     }
     const columns = labels.filter((label) => label.kind === "column" && !label.hidden);
-    const letters = columns.map((label) => label.label);
-    assert.ok(letters.includes("YY") && letters.includes("AA") && columns.length >= 4, `YY, AA and thinned middles show at ${where}: ${letters.join(",")}`);
-    for (const label of columns) {
-      const source = field.columnLabels.find((item) => item.label === label.label);
-      assert.ok(Math.abs(label.x + label.width / 2 - (view.x + (source.x + source.width / 2) * view.scale)) < 1e-6, `${label.label} centres on its column at ${where}`);
-      assert.ok(label.fontSize >= AXIS_MIN_FONT_PX && label.width - AXIS_LABEL_PAD * 2 >= String(label.label).length * 0.7 * label.fontSize, `${label.label} is readable and unclipped at ${where}`);
-    }
+    assert.deepEqual(columns.map((label) => label.label), letters, `every letter shows, in order, at ${where}`);
+    assert.equal(new Set(columns.map((label) => label.fontSize)).size, 1, `one letter font at ${where}`);
     columns.slice(1).forEach((label, i) => assert.ok(columns[i].x + columns[i].width <= label.x + 1e-6, `${columns[i].label} and ${label.label} do not overlap at ${where}`));
-    assert.deepEqual(pinnedAxisLabels(field, view, viewport), labels, "thinning is deterministic");
+    for (const label of columns) assert.ok(label.width >= String(label.label).length * 0.7 * label.fontSize, `${label.label} fits its box at ${where}`);
+    const columnFont = columns[0].fontSize;
+    const tightest = Math.min(...columns.slice(1).map((label, i) => {
+      const distance = spotColumnCentre(field, view, label.label) - spotColumnCentre(field, view, columns[i].label);
+      return (distance - 1) / (0.7 * (label.label.length + columns[i].label.length) / 2);
+    }));
+    assert.ok(columnFont >= AXIS_MIN_FONT_PX || Math.abs(columnFont - tightest) < 1e-6, `letter font is at the floor or, below it, the largest that keeps letters apart at ${where}`);
+    if (Math.min(14, tightest) >= AXIS_MIN_FONT_PX) assert.ok(columnFont >= AXIS_MIN_FONT_PX, `letters that fit at ${AXIS_MIN_FONT_PX}px are not shrunk below it at ${where}`);
+    report.push(`${where}: rows ${labels.find((label) => label.kind === "row").fontSize.toFixed(2)}px, letters ${columnFont.toFixed(2)}px`);
+    assert.deepEqual(pinnedAxisLabels(field, view, viewport), labels, "labels are deterministic");
   }
+  assert.ok(report.length === AXIS_MAPS.length, report.join("; "));
+});
+
+test("letters fit at the floor on a wide map and none are dropped (2.0.12)", () => {
+  const field = pavilionField(40);
+  const box = fieldFitBounds(field);
+  const viewport = { width: 1874, height: 858 };
+  const view = clampView(fitWholeField(box, viewport, FIT_PADDING), viewport, box, { pad: FIT_PADDING });
+  const columns = pinnedAxisLabels(field, view, viewport).filter((label) => label.kind === "column");
+  assert.ok(columns.every((label) => !label.hidden && label.fontSize >= AXIS_MIN_FONT_PX), "every letter shows at or above the floor");
+  assert.equal(columns.length, field.columnLabels.length);
 });
 
 test("at the fit the label strips sit just outside the field and pin back to the window edges once it overflows (2.0.11)", () => {

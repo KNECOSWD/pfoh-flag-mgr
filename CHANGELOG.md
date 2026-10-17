@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.12
+
+- On the public Flag Map, every row number 1–40 on both sides and every section letter YY to AA now shows at every zoom level, including the whole-field view. Labels are no longer skipped. Each label sits exactly at the centre of its row or column, using the same position maths as the spots, so the aisle between Z and M and the aisle between rows 20 and 21 show at their true size. When the field is small, the labels get smaller instead. All row numbers share one size, and all letters share another, picked so that no two neighbouring labels overlap. On the 1440-wide map, rows are 13px and letters 14px. On the 390-wide phone map, letters are about 7.5px and rows about 6.7px. On the 320-wide phone map, letters are about 5.4px and rows about 5px. The label strips, the whole-field view, zoom limits, edge snapping, the toolbar, the flag card, Esc, and kiosk mode are unchanged.
+
 ## 2.0.11
 
 - On the public Flag Map, the row numbers 1–40 and the section letters YY to AA now show at every zoom level, including the whole-field view. When the rows or columns are too small for every label, the labels keep a readable size and only some of them show: the first and last row and the first and last letter always show, plus every second, fifth or tenth row and every second or third letter, so labels never overlap. Each label still lines up with its row or column.

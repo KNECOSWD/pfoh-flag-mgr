@@ -523,74 +523,76 @@ export function viewportWorldRect(view, viewport, pad = 0) {
 }
 
 // Row numbers and section letters sit in solid gutter strips on the left, right
-// and bottom viewport edges, lined up with their row or column. A label whose
-// row or column is out of view hides so labels never pile up in a corner.
+// and bottom viewport edges, each centred on its row or column through the same
+// transform as the spots. Every label always shows: when the field is small the
+// axis font shrinks (one size per axis) until neighbours stop overlapping. Only
+// a label whose row or column is scrolled out of view hides.
 export function pinnedAxisLabels(field, view, viewport, strip = AXIS_STRIP) {
   const s = view.scale > 0 ? view.scale : 1;
   const clamp = (value, low, high) => Math.min(Math.max(value, low), Math.max(low, high));
   const frame = axisStripFrame(field, view, viewport, strip);
-  const columnHeight = Math.min(strip.column, (field.columnLabels[0]?.height ?? 0) * s);
-  const rowSample = field.rowLabels[0];
-  const room = AXIS_LABEL_PAD * 2;
-  const thinRows = Boolean(rowSample) && labelFontSize(rowSample.label, strip.row - room, rowSample.height * s, 1, { max: 13, min: 0 }) < AXIS_MIN_FONT_PX;
-  const columnSample = field.columnLabels.reduce((wide, label) => (String(label.label).length > String(wide?.label ?? "").length ? label : wide), null);
-  const thinColumns = Boolean(columnSample) && labelFontSize(columnSample.label, columnSample.width * s - room, columnHeight, 1, { max: 14, em: 0.7, min: 0 }) < AXIS_MIN_FONT_PX;
+  const rowFont = axisRowFont(field, s, strip);
+  const columnFont = axisColumnFont(field, s, strip);
+  const rowPitch = axisPitch(field.rowLabels.filter((label) => label.side === "left"), "y", "height") * s;
   const rows = field.rowLabels.map((label) => {
-    const rowHeight = label.height * s;
-    const middle = view.y + label.y * s + rowHeight / 2;
+    const middle = view.y + (label.y + label.height / 2) * s;
     const width = strip.row;
-    const height = thinRows ? Math.max(rowHeight, AXIS_MIN_FONT_PX * AXIS_THIN_LINE) : rowHeight;
-    const y = thinRows ? middle - height / 2 : view.y + label.y * s;
+    const height = Math.min(rowPitch, Math.max(label.height * s, rowFont));
     const x = label.side === "right"
       ? clamp(frame.right + (strip.row - width) / 2, 0, viewport.width - width)
       : clamp(frame.left + (strip.row - width) / 2, 0, viewport.width - width);
-    const fontSize = thinRows ? AXIS_MIN_FONT_PX : labelFontSize(label.label, width - room, height, 1, { max: 13 });
-    return { kind: "row", key: `row-${label.side}-${label.row}`, label: label.label, side: label.side, row: label.row, x, y, width, height, fontSize, hidden: middle < 0 || middle > frame.bottom || !fontSize };
+    return { kind: "row", key: `row-${label.side}-${label.row}`, label: label.label, side: label.side, row: label.row, x, y: middle - height / 2, width, height, fontSize: rowFont, hidden: middle < 0 || middle > frame.bottom || !rowFont };
   });
-  const thinHeight = Math.min(strip.column, Math.max(columnHeight, AXIS_MIN_FONT_PX * AXIS_THIN_LINE));
+  const height = Math.min(strip.column, Math.max((field.columnLabels[0]?.height ?? 0) * s, columnFont));
+  const y = clamp(frame.bottom + (strip.column - height) / 2, 0, viewport.height - height);
   const columns = field.columnLabels.map((label, index) => {
-    const columnWidth = label.width * s;
-    const middle = view.x + label.x * s + columnWidth / 2;
-    const width = thinColumns ? Math.max(columnWidth, String(label.label).length * 0.7 * AXIS_MIN_FONT_PX + AXIS_LABEL_PAD * 2 + 2) : columnWidth;
-    const height = thinColumns ? thinHeight : columnHeight;
-    const x = thinColumns ? middle - width / 2 : view.x + label.x * s;
-    const y = clamp(frame.bottom + (strip.column - height) / 2, 0, viewport.height - height);
-    const fontSize = thinColumns ? AXIS_MIN_FONT_PX : labelFontSize(label.label, width - room, height, 1, { max: 14, em: 0.7 });
-    const endRoom = strip.row + AXIS_LABEL_PAD + fontSize / 2;
-    return { kind: "column", key: `col-${label.section}`, label: label.label, index, x, y, width, height, fontSize, hidden: middle < frame.left + endRoom || middle > frame.right + strip.row - endRoom || !fontSize };
+    const middle = view.x + (label.x + label.width / 2) * s;
+    const width = axisTextWidth(label.label, columnFont) + AXIS_LABEL_GAP;
+    const endRoom = strip.row + AXIS_LABEL_PAD + columnFont / 2;
+    return { kind: "column", key: `col-${label.section}`, label: label.label, index, x: middle - width / 2, y, width, height, fontSize: columnFont, hidden: middle < frame.left + endRoom || middle > frame.right + strip.row - endRoom || !columnFont };
   });
-  if (thinRows) {
-    for (const side of ["left", "right"]) thinAxis(rows.filter((label) => label.side === side), "y", "height", AXIS_ROW_STEPS, (label, step) => label.row % step === 0);
-  }
-  if (thinColumns) thinAxis(columns, "x", "width", null, (label, step) => label.index % step === 0);
   return [...rows, ...columns];
 }
 
-// Below this size the pinned labels are thinned rather than shrunk or hidden.
-export const AXIS_MIN_FONT_PX = 10;
-const AXIS_THIN_LINE = 1.4;
-const AXIS_ROW_STEPS = Object.freeze([1, 2, 5, 10, 20]);
-const AXIS_THIN_GAP = 2;
+// Legible floor for the axis font. Below it the font still shrinks to the
+// largest size that keeps neighbours apart, because no label is ever dropped.
+export const AXIS_MIN_FONT_PX = 7;
+export const AXIS_LABEL_GAP = 1;
+const AXIS_EM = { row: 0.72, column: 0.7 };
 
-// Keeps the first and last labels, then every Nth one, with N the smallest
-// step whose on-screen pitch clears a label box, dropping any that would still
-// touch a kept neighbour.
-function thinAxis(labels, at, size, steps, onStep) {
-  const shown = labels.filter((label) => !label.hidden);
-  if (shown.length < 2) return;
-  const pitch = Math.min(...labels.slice(1).map((label, i) => Math.abs((label[at] + label[size] / 2) - (labels[i][at] + labels[i][size] / 2))));
-  const need = Math.max(...labels.map((label) => label[size])) + AXIS_THIN_GAP;
-  const raw = Math.max(1, Math.ceil(need / Math.max(pitch, 1e-6)));
-  const step = steps ? (steps.find((value) => value >= raw) ?? steps[steps.length - 1]) : raw;
-  const first = shown[0];
-  const last = shown[shown.length - 1];
-  const clears = (a, b) => a[at] + a[size] + AXIS_THIN_GAP <= b[at] || b[at] + b[size] + AXIS_THIN_GAP <= a[at];
-  let kept = first;
-  for (const label of shown) {
-    if (label === first || label === last) continue;
-    if (onStep(label, step) && clears(label, kept) && clears(label, last)) kept = label;
-    else label.hidden = true;
+function axisTextWidth(text, fontSize, em = AXIS_EM.column) {
+  return String(text).length * em * fontSize;
+}
+
+function axisPitch(labels, at, size) {
+  const centres = labels.map((label) => label[at] + label[size] / 2).sort((a, b) => a - b);
+  const gaps = centres.slice(1).map((centre, i) => centre - centres[i]);
+  return gaps.length ? Math.min(...gaps) : Infinity;
+}
+
+// One size for every row number: no taller than the tightest row pitch (line
+// height 1) and narrow enough for the widest number inside the side strip.
+function axisRowFont(field, s, strip) {
+  if (!field.rowLabels.length) return 0;
+  const pitch = axisPitch(field.rowLabels.filter((label) => label.side === "left"), "y", "height") * s;
+  const widest = Math.max(...field.rowLabels.map((label) => String(label.label).length));
+  return Math.max(0, Math.min(13, pitch, (strip.row - AXIS_LABEL_PAD * 2) / (widest * AXIS_EM.row)));
+}
+
+// One size for every letter: the largest at which each pair of neighbouring
+// letters, centred on their columns, leaves a gap, and which fits the strip.
+function axisColumnFont(field, s, strip) {
+  const labels = field.columnLabels;
+  if (!labels.length) return 0;
+  let font = Math.min(14, strip.column - AXIS_LABEL_GAP);
+  for (let i = 1; i < labels.length; i += 1) {
+    const a = labels[i - 1];
+    const b = labels[i];
+    const distance = Math.abs((b.x + b.width / 2) - (a.x + a.width / 2)) * s;
+    const chars = (String(a.label).length + String(b.label).length) / 2;
+    font = Math.min(font, (distance - AXIS_LABEL_GAP) / (chars * AXIS_EM.column));
   }
+  return Math.max(0, font);
 }
 
 // The left, right and bottom label strips sit just outside the field while it
