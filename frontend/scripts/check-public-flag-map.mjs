@@ -6,6 +6,7 @@ import {
   FIT_PADDING,
   KIOSK_IDLE_MS,
   SPOT_SIZE,
+  blockEdgePx,
   SPOT_TEXT_PX,
   clampView,
   closestViewScale,
@@ -13,6 +14,7 @@ import {
   spotLinesThatFit,
   spotsViewScale,
   zoneLabelSizes,
+  sectionLabelSizes,
   applyKioskIdleReset,
   attractView,
   createFlagMapLoader,
@@ -28,7 +30,10 @@ import {
   flagDeepLink,
   countFlagsOnScreen,
   flagMapDetailGates,
+  flagMapItemsInView,
+  flagMapItemsSummary,
   flagMapLayerOpacities,
+  PAVILION_SIZE,
   boundsOf,
   FIELD_MAP_ROWS,
   FIELD_MAP_Z_ROWS,
@@ -205,7 +210,7 @@ test("spot text keeps a readable screen size and stays inside the spot at every 
   const sizes = zoneLabelSizes(zone, 0.12);
   assert.equal(sizes.range, "21\u201340");
   assert.ok(sizes.letter > 0 && sizes.rangeSize > 0);
-  assert.equal(sizes.vertical, true);
+  assert.deepEqual(sizes.rangeParts, ["21", "\u2013", "40"]);
 });
 
 test("spots never overlap and the global button size cannot stretch them", () => {
@@ -268,7 +273,7 @@ test("the fit shows the whole grid with padding and a pan reaches every edge", (
   assert.match(page, /const target = limitView\(requested\)/);
 });
 
-test("section blocks are flat, Z1–Z10 is one flat Service Flags block, and Z has an aisle on both sides", () => {
+test("section blocks are flat, Z1–Z10 is one flat Service Flags block, and Z sits against N with the aisle before M", () => {
   const zoneBlock = css.slice(css.indexOf(".publicFlagTile,\n.publicFlagZone {"), css.indexOf(".publicFlagZone strong"));
   assert.match(zoneBlock, /background:\s*#[0-9a-f]{6};/i);
   assert.doesNotMatch(zoneBlock, /gradient/);
@@ -349,9 +354,90 @@ test("section blocks are flat, Z1–Z10 is one flat Service Flags block, and Z h
   const gapBefore = x.Z.x - (x.N.x + x.N.width);
   const gapAfter = x.M.x - (x.Z.x + x.Z.width);
   const usual = x.L.x - (x.M.x + x.M.width);
-  assert.equal(gapAfter, gapBefore);
-  assert.ok(gapBefore > usual * 3, `Z gap ${gapBefore} vs ${usual}`);
+  assert.equal(gapBefore, usual, "no aisle between N and Z");
+  assert.equal(x.N.x - (x.O.x + x.O.width), usual);
+  assert.ok(gapAfter > usual * 3, `Z to M gap ${gapAfter} vs ${usual}`);
   assert.equal(usual, SPOT_SIZE.gap);
+  const aisles = PAVILION_COLUMNS_LEFT_TO_RIGHT.slice(1).filter((section, index) => x[section].x - (x[PAVILION_COLUMNS_LEFT_TO_RIGHT[index]].x + SPOT_SIZE.width) !== usual);
+  assert.deepEqual(aisles, ["M"], "the only column aisle is Z to M");
+});
+
+test("row numbers run down both sides, the pavilion is four times wider and twice as tall, and the key sits under the field", () => {
+  const field = layoutFlagField([]);
+  const left = field.rowLabels.filter((label) => label.side === "left");
+  const right = field.rowLabels.filter((label) => label.side === "right");
+  assert.equal(left.length, FIELD_MAP_ROWS);
+  assert.equal(right.length, FIELD_MAP_ROWS);
+  const contentRight = Math.max(...field.sections.map((section) => section.x + section.width));
+  const gridLeft = Math.min(...field.sections.map((section) => section.x));
+  for (const label of right) {
+    const twin = left.find((other) => other.row === label.row);
+    assert.equal(label.y, twin.y, `row ${label.row} lines up`);
+    assert.equal(label.height, twin.height);
+    assert.equal(label.width, twin.width);
+    assert.equal(label.x - contentRight, gridLeft - (twin.x + twin.width), "same gap from the grid on both sides");
+    assert.ok(label.x + label.width < field.worldWidth);
+  }
+  assert.equal(PAVILION_SIZE.width, (SPOT_SIZE.width * 3 + SPOT_SIZE.gap * 2) * 4);
+  assert.equal(PAVILION_SIZE.height, 84 * 2);
+  assert.equal(field.pavilion.width, PAVILION_SIZE.width);
+  assert.equal(field.pavilion.height, PAVILION_SIZE.height);
+  assert.ok(field.pavilion.x > 0 && field.pavilion.x + field.pavilion.width < field.worldWidth);
+  assert.ok(field.pavilion.y + field.pavilion.height < field.worldHeight);
+  assert.match(page, /label\.side === "right" \? "publicFlagRowLabel isRight"/);
+  assert.match(css, /\.publicFlagRowLabel\.isRight \{\s*justify-content: flex-start;/);
+
+  const stage = page.slice(page.indexOf('<div className="publicFlagStage">'), page.indexOf("{selected ? createPortal("));
+  assert.match(stage, /<ul className="publicFlagLegend" aria-label="Spot key">/);
+  const toolbar = page.slice(page.indexOf('<div className="publicFlagToolbar">'), page.indexOf('<div className="publicFlagStage">'));
+  assert.doesNotMatch(toolbar, /publicFlagLegend/);
+  assert.ok(stage.indexOf("publicFlagLegend") > stage.indexOf('className="publicFlagViewport"'), "the key follows the field");
+  assert.match(css, /\.publicFlagLegend \{[^}]*align-self: flex-end;[^}]*height: var\(--flag-map-legend, 20px\);/);
+  for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, { width: 320, height: 568 }]) {
+    assert.ok(flagMapPageBands(size).legend > 0);
+  }
+  assert.ok(flagMapPageBands({ width: 1920, height: 1080 }, { kiosk: true }).legend >= 30);
+});
+
+test("the map controls are one icon toolbar and the in-view list follows the zoom", () => {
+  const toolbar = page.slice(page.indexOf('className="publicFlagControls" role="toolbar"'), page.indexOf('<div className="publicFlagJump">'));
+  assert.match(toolbar, /aria-label="Map controls"/);
+  for (const name of ["Zoom out", "Zoom in", "Reset view"]) {
+    assert.match(toolbar, new RegExp(`aria-label="${name}" data-tooltip="${name}"`));
+  }
+  assert.match(toolbar, /aria-label=\{mapFull \? "Exit full screen" : "Full screen"\}/);
+  assert.match(toolbar, /data-tooltip=\{mapFull \? "Exit full screen" : "Full screen"\}/);
+  assert.equal((toolbar.match(/<ToolIcon /g) || []).length, 4);
+  assert.doesNotMatch(toolbar, />\s*(−|\+|Full screen|Reset view)\s*</, "no text labels inside the icon buttons");
+  assert.match(page, /<svg viewBox="0 0 24 24"[^>]*aria-hidden="true" focusable="false"/);
+  assert.match(css, /\.publicFlagIconButton::after \{[^}]*content: attr\(data-tooltip\);/);
+  assert.match(css, /\.publicFlagIconButton:focus-visible::after/);
+  assert.doesNotMatch(page, /className="publicFlagLevel" aria-live/);
+  assert.match(page, /<label htmlFor=\{jumpId\} className="srOnly">/);
+  assert.match(page, /event\.target instanceof HTMLSelectElement\) return;/);
+
+  const field = pavilionField(40);
+  const viewport = { width: 1406, height: 618 };
+  const fitted = fitWholeField({ x: 0, y: 0, width: field.worldWidth, height: field.worldHeight }, viewport, FIT_PADDING);
+  const out = flagMapItemsInView(field, fitted, viewport, flagMapDetailGates(fitted.scale, 1000));
+  assert.equal(out.kind, "sections");
+  assert.equal(out.items.filter((item) => item.kind === "zone").length, 56);
+  assert.equal(out.items.filter((item) => item.kind === "service").length, 1);
+  assert.equal(flagMapItemsSummary(out), "Sections (57)");
+  const zone = field.zones.find((item) => item.label === "C 21\u201340");
+  const scale = 64 / SPOT_SIZE.width;
+  const near = { scale, x: viewport.width / 2 - (zone.x + zone.width / 2) * scale, y: viewport.height / 2 - (zone.y + zone.height / 2) * scale };
+  const spots = flagMapItemsInView(field, near, viewport, flagMapDetailGates(scale, 300));
+  assert.equal(spots.kind, "spots");
+  assert.ok(spots.items.length > 0 && spots.items.every((item) => item.kind === "spot" || item.kind === "service"));
+  assert.ok(spots.items.some((item) => item.label.startsWith("C-")));
+  const seen = viewportWorldRect(near, viewport, 0);
+  for (const item of spots.items) {
+    const box = item.box;
+    assert.ok(box.x < seen.x + seen.width && box.x + box.width > seen.x && box.y < seen.y + seen.height && box.y + box.height > seen.y, `${item.label} is in view`);
+  }
+  assert.equal(spots.items.some((item) => /Z-0?[1-9]\b|Z-10\b/.test(item.label)), false, "Service Flags spots are not listed one by one");
+  assert.match(flagMapItemsSummary(spots), /^Spots \(\d+\)$/);
 });
 
 function fieldWithZ(rows) {
@@ -374,8 +460,9 @@ test("at a 320 fit every section shows its letter and Service Flags shows a labe
   for (const columnPx of [6.6, 7, 7.09, 7.17, 7.2, 8, 8.7, 9.9]) {
     const scale = columnPx / SPOT_SIZE.width;
     let ranges = 0;
+    const uniform = sectionLabelSizes(field.zones, scale);
     for (const zone of field.zones) {
-      const sizes = zoneLabelSizes(zone, scale);
+      const sizes = zoneLabelSizes(zone, scale, uniform);
       const width = zone.width * scale;
       const height = zone.height * scale;
       assert.equal(sizes.narrow, width < NARROW_BLOCK_PX);
@@ -404,9 +491,10 @@ test("at a 320 fit every section shows its letter and Service Flags shows a labe
       }
       assert.ok(tall <= height, `${zone.label} label ${tall} tall in ${height}`);
     }
-    assert.equal(ranges, 56, `${ranges} ranges at ${columnPx}px`);
+    // Below ~7px columns every block falls back to its letter alone, together.
+    assert.equal(ranges, columnPx >= 7 ? 56 : 0, `${ranges} ranges at ${columnPx}px`);
 
-    const label = serviceFlagsLabelSize(serviceFlagsLabelBox(field.serviceFlags, null), scale);
+    const label = serviceFlagsLabelSize(serviceFlagsLabelBox(field.serviceFlags, null), scale, uniform);
     const px = label.size * scale;
     assert.ok(px >= 5, `Service Flags label ${px}px at ${columnPx}px`);
     assert.ok([SERVICE_FLAGS_LABEL, SERVICE_FLAGS_SHORT_LABEL].includes(label.text));
@@ -422,8 +510,9 @@ test("at a 320 fit every section shows its letter and Service Flags shows a labe
     if (rows === 60) assert.ok(fits[0] * SPOT_SIZE.width < 5, "the 60-row fit is under 5px a column");
     for (const scale of [...fits, 3 / SPOT_SIZE.width, 4 / SPOT_SIZE.width, 4.87 / SPOT_SIZE.width, 5.5 / SPOT_SIZE.width, 7.2 / SPOT_SIZE.width]) {
       assert.equal(tall.zones.length, 56);
+      const uniform = sectionLabelSizes(tall.zones, scale);
       for (const zone of tall.zones) {
-        const sizes = zoneLabelSizes(zone, scale);
+        const sizes = zoneLabelSizes(zone, scale, uniform);
         const width = zone.width * scale;
         const letterPx = sizes.letter * scale;
         const where = `${rows} rows ${zone.label} at ${width.toFixed(2)}px`;
@@ -437,7 +526,7 @@ test("at a 320 fit every section shows its letter and Service Flags shows a labe
         if (sizes.rangeSize) used += sizes.rangeSize * scale * sizes.range.length * 1.25;
         assert.ok(used <= zone.height * scale, `${where} label too tall`);
       }
-      const label = serviceFlagsLabelSize(tall.serviceFlags, scale);
+      const label = serviceFlagsLabelSize(tall.serviceFlags, scale, uniform);
       assert.ok(label.size > 0 && [SERVICE_FLAGS_LABEL, SERVICE_FLAGS_SHORT_LABEL].includes(label.text), `${rows} rows Service Flags at ${scale}`);
       assert.ok(label.size * scale <= tall.serviceFlags.width * scale + 0.01);
       assert.ok(label.text.length * label.size * scale * 0.62 <= tall.serviceFlags.height * scale * 0.84 + 0.01);
@@ -447,21 +536,24 @@ test("at a 320 fit every section shows its letter and Service Flags shows a labe
   const fit320 = initialOverviewPlacement(field, { width: 320, height: 568 });
   const padded320 = fitWholeField({ x: 0, y: 0, width: field.worldWidth, height: field.worldHeight }, { width: 284, height: 268 }, FIT_PADDING).scale;
   for (const scale of [fit320.view.scale, padded320]) {
-    const zones320 = field.zones.map((zone) => [zone.label, zoneLabelSizes(zone, scale)]);
-    assert.deepEqual(zones320.filter(([, sizes]) => !(sizes.letter > 0 && sizes.rangeSize > 0)).map(([label]) => label), [], `every zone shows its range at ${scale}`);
+    const zones320 = field.zones.map((zone) => [zone.label, zoneLabelSizes(zone, scale, sectionLabelSizes(field.zones, scale))]);
+    assert.ok(zones320.every(([, sizes]) => sizes.letter > 0), `every zone shows its letter at ${scale}`);
+    const withRange = zones320.filter(([, sizes]) => sizes.rangeSize > 0).length;
+    assert.equal(withRange, SPOT_SIZE.width * scale >= 7 ? zones320.length : 0, `${withRange} ranges at ${(SPOT_SIZE.width * scale).toFixed(2)}px columns`);
   }
   assert.ok(serviceFlagsLabelSize(field.serviceFlags, fit320.view.scale).size > 0);
 
-  for (const scale of [0.0765, 0.29, 0.39]) {
+  for (const scale of [0.12, 0.29, 0.39]) {
+    const uniform = sectionLabelSizes(field.zones, scale);
     for (const zone of field.zones) {
-      const sizes = zoneLabelSizes(zone, scale);
+      const sizes = zoneLabelSizes(zone, scale, uniform);
       assert.equal(sizes.narrow, false);
       assert.equal(sizes.stacked, false);
-      assert.equal(sizes.letterStacked, false);
+      assert.equal(sizes.letterStacked, false, `${zone.label} letter on one line at ${scale}`);
       assert.ok(sizes.rangeSize > 0, `${zone.label} range at ${scale}`);
-      if (!/[WM]/.test(zone.section)) assert.equal(sizes.letter, labelFontSize(zone.section, zone.width, zone.height * 0.3, scale, { min: 5, max: 22, em: 0.7 }));
+      assert.ok(sizes.letter * scale * 0.78 * zone.section.length <= zone.width * scale - 3.2 + 0.01, `${zone.label} letter wider than its tile`);
     }
-    assert.equal(serviceFlagsLabelSize(field.serviceFlags, scale).text, SERVICE_FLAGS_LABEL);
+    assert.equal(serviceFlagsLabelSize(field.serviceFlags, scale, uniform).text, SERVICE_FLAGS_LABEL);
   }
   assert.match(page, /sizes\.narrow \? "isNarrow" : ""/);
   assert.match(page, /sizes\.tiny \? "isTiny" : ""/);
@@ -485,6 +577,42 @@ function pavilionField(rows) {
     }))
   })));
 }
+
+test("every section label shares one size, weight, and top placement at a zoom, sized for the widest name", () => {
+  const em = { W: 1.04, M: 0.94 };
+  const glyph = (char) => Math.max(em[char] ?? 0.78, 0.78);
+  // 40 rows is live; 60 rows fits the kiosk at about 14.6px columns.
+  for (const field of [fieldWithZ(40), fieldWithZ(60)]) for (const columnPx of [3, 4.87, 5.5, 6.6, 7.2, 8.8, 9.8, 12, 14.1, 14.59, 15, 17.8, 21.4, 30, 42, 60, 120]) {
+    const scale = columnPx / SPOT_SIZE.width;
+    const uniform = sectionLabelSizes(field.zones, scale);
+    const all = field.zones.map((zone) => zoneLabelSizes(zone, scale, uniform));
+    const one = (key) => new Set(all.map((sizes) => sizes[key].toFixed(6))).size === 1;
+    assert.ok(one("letter") && one("rangeSize") && one("top"), `one letter size, range size, and top offset at ${columnPx}px`);
+    assert.equal(new Set(all.map((sizes) => `${sizes.stacked}|${Boolean(sizes.rangeParts)}`)).size, 1, `one range layout at ${columnPx}px`);
+    const letterPx = uniform.letterPx;
+    const inner = columnPx - (columnPx < NARROW_BLOCK_PX ? 1 : 3) - 0.2;
+    if (uniform.letters === "across") {
+      assert.ok(Math.max(...field.zones.map((zone) => [...zone.section].reduce((sum, char) => sum + glyph(char), 0))) * letterPx <= inner + 0.01, `widest name fits at ${columnPx}px`);
+      assert.ok(all.every((sizes) => !sizes.letterStacked));
+    } else {
+      assert.ok(Math.max(...field.zones.flatMap((zone) => [...zone.section].map(glyph))) * letterPx <= (uniform.tiny ? columnPx : inner) + 0.01, `widest glyph fits at ${columnPx}px`);
+    }
+    if (columnPx >= 7) assert.ok(uniform.rangePx >= 6, `range drawn at ${columnPx}px`);
+    if (columnPx < 5.5) assert.equal(uniform.rangePx, 0, `letter only at ${columnPx}px`);
+    const service = serviceFlagsLabelSize(field.serviceFlags, scale, uniform);
+    assert.ok(service.size > 0, `Service Flags label at ${columnPx}px`);
+    const sharedPx = uniform.rangePx > 0 ? uniform.rangePx : Math.min(uniform.letterPx, 20);
+    assert.ok(Math.abs(service.size * scale - sharedPx) < 1e-6, `Service Flags ${service.size * scale}px matches the ${sharedPx}px section label at ${columnPx}px`);
+    assert.ok(Math.abs(service.top * scale - (uniform.topPx + (uniform.tiny ? 0 : blockEdgePx(columnPx)))) < 1e-6, `Service Flags top lines up with the letters at ${columnPx}px`);
+  }
+  assert.match(css, /\.publicFlagZone \{\s*justify-content: flex-start;/);
+  assert.match(css, /\.publicFlagZone strong \{[^}]*font-weight: 800;/);
+  assert.match(css, /\.publicFlagServiceFlags \{[^}]*font-weight: 650;/);
+  assert.match(css, /\.publicFlagServiceFlags > span \{[^}]*justify-content: flex-start;/);
+  assert.match(page, /sectionLabelSizes\(field\.zones, renderScale\)/);
+  assert.match(page, /zoneLabelSizes\(zone, renderScale, sectionLabels\)/);
+  assert.match(page, /serviceFlagsLabelSize\(area, renderScale, sectionLabels\)/);
+});
 
 test("a view that settles from the names zoom to the closest keeps every mostly visible spot inside with padding", () => {
   const level = (scale) => (spotScreenWidth(scale) >= FLAG_MAP_ZOOM.closestAt ? "Closest" : "Names");
