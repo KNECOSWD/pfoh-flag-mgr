@@ -20,6 +20,7 @@ import {
   gutterInsets,
   fieldFitBounds,
   AXIS_STRIP,
+  AXIS_LABEL_PAD,
   sectionLabelSizes,
   applyKioskIdleReset,
   attractView,
@@ -1522,7 +1523,8 @@ test("row numbers and section letters stay pinned in their viewport-edge gutters
     assert.equal(label.x, view.x + source.x * view.scale, "each letter lines up with its column");
     assert.ok(label.y >= viewport.height - AXIS_STRIP.column && label.y + label.height <= viewport.height, "letters sit inside the bottom gutter");
     const middle = label.x + label.width / 2;
-    assert.equal(label.hidden, middle < AXIS_STRIP.row || middle > viewport.width - AXIS_STRIP.row || !label.fontSize, "(a) no letter stacks behind a side gutter");
+    const endRoom = AXIS_STRIP.row + AXIS_LABEL_PAD + label.fontSize / 2;
+    assert.equal(label.hidden, middle < endRoom || middle > viewport.width - endRoom || !label.fontSize, "(a) no letter stacks behind a side gutter or sits flush with its corner");
   }
   assert.ok(rows.some((label) => label.hidden) && rows.some((label) => !label.hidden));
   assert.ok(columns.some((label) => label.hidden) && columns.some((label) => !label.hidden));

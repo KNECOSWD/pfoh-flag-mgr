@@ -122,6 +122,8 @@ export const SPOT_SIZE = Object.freeze({ width: FLAG_WIDTH, height: FLAG_HEIGHT,
 export const FIELD_AISLE_AFTER_ROW = 20;
 export const FIT_PADDING = 12;
 export const AXIS_STRIP = Object.freeze({ row: 36, column: 28 });
+// Matches the inline padding on .publicFlagAxis labels in style.css.
+export const AXIS_LABEL_PAD = 4;
 
 // The pinned row numbers and section letters live in solid gutters on the left,
 // right and bottom edges, so fits, clamps and snaps keep content inside them.
@@ -544,7 +546,8 @@ export function pinnedAxisLabels(field, view, viewport, strip = AXIS_STRIP) {
     const y = clamp(viewport.height - strip.column + (strip.column - columnHeight) / 2, 0, viewport.height - columnHeight);
     const middle = x + width / 2;
     const fontSize = labelFontSize(label.label, width, columnHeight, 1, { max: 14, em: 0.7 });
-    return { kind: "column", key: `col-${label.section}`, label: label.label, x, y, width, height: columnHeight, fontSize, hidden: middle < strip.row || middle > viewport.width - strip.row || !fontSize };
+    const endRoom = strip.row + AXIS_LABEL_PAD + fontSize / 2;
+    return { kind: "column", key: `col-${label.section}`, label: label.label, x, y, width, height: columnHeight, fontSize, hidden: middle < endRoom || middle > viewport.width - endRoom || !fontSize };
   });
   return [...rows, ...columns];
 }

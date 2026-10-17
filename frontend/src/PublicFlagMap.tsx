@@ -455,7 +455,12 @@ export default function PublicFlagMap({
     const axis = axisRef.current;
     const field = layoutRef.current;
     if (!axis || !field) return;
-    const labels = pinnedAxisLabels(field, view, viewportSize());
+    // The overlay's client box excludes the viewport border that viewportSize() includes.
+    const size = viewportSize();
+    const labels = pinnedAxisLabels(field, view, {
+      width: axis.clientWidth || size.width,
+      height: axis.clientHeight || size.height
+    });
     labels.forEach((label, index) => {
       const node = axis.children[index] as HTMLElement | undefined;
       if (!node) return;

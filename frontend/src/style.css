@@ -11594,7 +11594,8 @@ html.flagMapKiosk a {
 .publicFlagAxis .publicFlagColumnLabel {
   top: 0;
   left: 0;
-  padding: 0 2px;
+  justify-content: center;
+  padding: 0 4px;
   pointer-events: none;
   text-shadow: none;
 }
