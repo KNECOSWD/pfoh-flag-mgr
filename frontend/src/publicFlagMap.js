@@ -939,7 +939,7 @@ export function zoneLabelSizes(zone, scale) {
   const wide = (widthPx - 2) / (Math.max(chars.length, 1) * 0.7);
   const fitAcross = narrow
     ? inner / emSum(CAPITAL_EM)
-    : /[WM]/.test(zone.section) ? Math.min(wide, inner / emSum(0)) : wide;
+    : /[WM]/.test(zone.section) || chars.length > 1 ? Math.min(wide, inner / emSum(0)) : wide;
   let letterPx = Math.min(22, heightPx * 0.3 * 0.72, fitAcross);
   let letterStacked = false;
   if (chars.length > 1 && (narrow || letterPx < ZONE_TEXT_PX.letter)) {

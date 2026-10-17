@@ -543,7 +543,11 @@ test("at a 320 fit every section shows its letter and Service Flags shows a labe
       assert.equal(sizes.stacked, false);
       assert.equal(sizes.letterStacked, false);
       assert.ok(sizes.rangeSize > 0, `${zone.label} range at ${scale}`);
-      if (!/[WM]/.test(zone.section)) assert.equal(sizes.letter, labelFontSize(zone.section, zone.width, zone.height * 0.3, scale, { min: 5, max: 22, em: 0.7 }));
+      const across = labelFontSize(zone.section, zone.width, zone.height * 0.3, scale, { min: 5, max: 22, em: 0.7 });
+      if (zone.section.length > 1) {
+        assert.ok(sizes.letter <= across + 1e-9, `${zone.label} letter grew`);
+        assert.ok(sizes.letter * scale * 0.78 * zone.section.length <= zone.width * scale - 3.2 + 0.01, `${zone.label} letter wider than its tile`);
+      } else if (!/[WM]/.test(zone.section)) assert.equal(sizes.letter, across);
     }
     assert.equal(serviceFlagsLabelSize(field.serviceFlags, scale).text, SERVICE_FLAGS_LABEL);
   }
