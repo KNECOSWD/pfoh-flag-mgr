@@ -11342,7 +11342,14 @@ html.flagMapKiosk a {
   flex: 0 0 auto;
 }
 
-.publicFlagControls .publicFlagIconButton[aria-pressed="true"] {
+.publicFlagControls .publicFlagIconButton:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+  background: rgba(23, 59, 115, 0.1);
+}
+
+.publicFlagControls .publicFlagIconButton[aria-pressed="true"],
+.publicFlagControls .publicFlagIconButton[aria-pressed="true"]:hover:not(:disabled) {
   background: #173b73;
   color: #fff;
 }
