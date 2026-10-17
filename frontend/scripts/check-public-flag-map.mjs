@@ -17,6 +17,8 @@ import {
   initialMapFullScreen,
   flagMapEscapeTarget,
   pinnedAxisLabels,
+  axisStripFrame,
+  AXIS_MIN_FONT_PX,
   gutterInsets,
   fieldFitBounds,
   AXIS_STRIP,
@@ -1534,8 +1536,9 @@ test("row numbers and section letters stay pinned in their viewport-edge gutters
   const whole = pinnedAxisLabels(field, fitted, { width: 1406, height: 618 });
   const left = whole.find((label) => label.key === `row-left-1`);
   const source = field.rowLabels.find((item) => item.side === "left" && item.row === 1);
-  assert.equal(left.y, fitted.y + source.y * fitted.scale, "with the whole field in view, numbers still line up with their rows");
-  assert.ok(left.x >= 0 && left.x + left.width <= AXIS_STRIP.row, "and stay inside the left gutter");
+  assert.ok(Math.abs(left.y + left.height / 2 - (fitted.y + (source.y + source.height / 2) * fitted.scale)) < 1e-6, "with the whole field in view, numbers still centre on their rows");
+  const frame = axisStripFrame(field, fitted, { width: 1406, height: 618 });
+  assert.ok(left.x >= frame.left && left.x + left.width <= frame.left + AXIS_STRIP.row, "and stay inside the left strip");
   assert.match(page, /<div ref=\{axisRef\} className="publicFlagAxis" aria-hidden="true">/);
   assert.match(css, /\.publicFlagAxis \{[^}]*z-index: 3;[^}]*pointer-events: none;/);
 });
@@ -1567,7 +1570,7 @@ test("on the live field the fit keeps YY, AA and the pavilion inside the gutter 
 
 test("pinned axis labels sit on solid navy gutter strips that taps pass through", () => {
   const gutters = page.slice(page.indexOf('className="publicFlagAxisGutters"'), page.indexOf('<div ref={axisRef}'));
-  assert.match(page, /<div className="publicFlagAxisGutters" aria-hidden="true">/);
+  assert.match(page, /<div ref=\{guttersRef\} className="publicFlagAxisGutters" aria-hidden="true">/);
   for (const side of ["isLeft", "isRight", "isBottom"]) {
     assert.match(gutters, new RegExp(`<div className="publicFlagAxisGutter ${side}" />`));
   }
@@ -1598,6 +1601,60 @@ test("left and right row numbers have the same inner padding and mirror each oth
   assert.match(axisRule, new RegExp(`padding: 0 ${AXIS_LABEL_PAD}px;`), "equal inline padding on both sides");
   assert.ok(css.indexOf(".publicFlagAxis .publicFlagRowLabel,") > css.indexOf(".publicFlagRowLabel.isRight {"), "the axis rule wins over the one-sided isRight padding");
   assert.match(page, /pinnedAxisLabels\(field, view, \{\s*width: axis\.clientWidth \|\| size\.width,\s*height: axis\.clientHeight \|\| size\.height\s*\}\)/, "labels are placed in the overlay's own box, not the bordered viewport rect");
+});
+
+test("at the whole-field fit every axis shows its end labels plus thinned middles, readable, unclipped and lined up (2.0.11)", () => {
+  const field = pavilionField(40);
+  const lastRow = Math.max(...field.rowLabels.map((label) => label.row));
+  for (const viewport of [{ width: 1920, height: 900 }, { width: 1440, height: 618 }, { width: 390, height: 567 }, { width: 320, height: 567 }]) {
+    const view = fitWholeField(fieldFitBounds(field), viewport, FIT_PADDING);
+    const labels = pinnedAxisLabels(field, view, viewport);
+    const where = `${viewport.width}x${viewport.height}`;
+    for (const side of ["left", "right"]) {
+      const shown = labels.filter((label) => label.kind === "row" && label.side === side && !label.hidden);
+      const rows = shown.map((label) => label.row);
+      assert.ok(rows.includes(1) && rows.includes(lastRow), `rows 1 and ${lastRow} show on the ${side} at ${where}`);
+      assert.ok(shown.length >= 4, `thinned middle rows show at ${where}`);
+      for (const label of shown) {
+        const source = field.rowLabels.find((item) => item.side === side && item.row === label.row);
+        assert.ok(Math.abs(label.y + label.height / 2 - (view.y + (source.y + source.height / 2) * view.scale)) < 1e-6, `row ${label.row} centres on its row at ${where}`);
+        assert.ok(label.fontSize >= AXIS_MIN_FONT_PX && label.width - AXIS_LABEL_PAD * 2 >= String(label.label).length * 0.72 * label.fontSize, `row ${label.row} is readable and unclipped at ${where}`);
+      }
+      const sorted = [...shown].sort((a, b) => a.y - b.y);
+      sorted.slice(1).forEach((label, i) => assert.ok(sorted[i].y + sorted[i].height <= label.y + 1e-6, `rows ${sorted[i].label} and ${label.label} do not overlap at ${where}`));
+    }
+    const columns = labels.filter((label) => label.kind === "column" && !label.hidden);
+    const letters = columns.map((label) => label.label);
+    assert.ok(letters.includes("YY") && letters.includes("AA") && columns.length >= 4, `YY, AA and thinned middles show at ${where}: ${letters.join(",")}`);
+    for (const label of columns) {
+      const source = field.columnLabels.find((item) => item.label === label.label);
+      assert.ok(Math.abs(label.x + label.width / 2 - (view.x + (source.x + source.width / 2) * view.scale)) < 1e-6, `${label.label} centres on its column at ${where}`);
+      assert.ok(label.fontSize >= AXIS_MIN_FONT_PX && label.width - AXIS_LABEL_PAD * 2 >= String(label.label).length * 0.7 * label.fontSize, `${label.label} is readable and unclipped at ${where}`);
+    }
+    columns.slice(1).forEach((label, i) => assert.ok(columns[i].x + columns[i].width <= label.x + 1e-6, `${columns[i].label} and ${label.label} do not overlap at ${where}`));
+    assert.deepEqual(pinnedAxisLabels(field, view, viewport), labels, "thinning is deterministic");
+  }
+});
+
+test("at the fit the label strips sit just outside the field and pin back to the window edges once it overflows (2.0.11)", () => {
+  const field = pavilionField(40);
+  const box = fieldFitBounds(field);
+  for (const viewport of [{ width: 1920, height: 900 }, { width: 1440, height: 618 }, { width: 390, height: 567 }, { width: 320, height: 567 }]) {
+    const view = fitWholeField(box, viewport, FIT_PADDING);
+    const frame = axisStripFrame(field, view, viewport);
+    const left = view.x + box.x * view.scale;
+    const right = view.x + (box.x + box.width) * view.scale;
+    const bottom = view.y + (box.y + box.height) * view.scale;
+    const where = `${viewport.width}x${viewport.height}`;
+    assert.ok(Math.abs(frame.left + AXIS_STRIP.row + FIT_PADDING - left) < 1e-6, `left strip hugs the field at ${where}`);
+    assert.ok(Math.abs(frame.right - FIT_PADDING - right) < 1e-6, `right strip hugs the field at ${where}`);
+    assert.ok(Math.abs(frame.bottom - FIT_PADDING - bottom) < 1e-6, `bottom strip hugs the field at ${where}`);
+    assert.ok(frame.left >= 0 && frame.right <= viewport.width - AXIS_STRIP.row && frame.bottom <= viewport.height - AXIS_STRIP.column, `strips stay inside the window at ${where}`);
+    assert.ok(Math.abs(frame.left - (viewport.width - AXIS_STRIP.row - frame.right)) < 1e-6, "side strips mirror each other");
+    const zoomed = zoomAt(view, viewport.width / 2, viewport.height / 2, view.scale * 4);
+    assert.deepEqual(axisStripFrame(field, zoomed, viewport), { left: 0, right: viewport.width - AXIS_STRIP.row, bottom: viewport.height - AXIS_STRIP.column }, `overflowing field pins strips to the edges at ${where}`);
+  }
+  assert.match(page, /const frame = axisStripFrame\(field, view, box\);/);
 });
 
 test("the flag detail keeps its action row pinned below a scrolling body with safe-area padding (2.0.10)", () => {

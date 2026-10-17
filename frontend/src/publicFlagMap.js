@@ -528,28 +528,84 @@ export function viewportWorldRect(view, viewport, pad = 0) {
 export function pinnedAxisLabels(field, view, viewport, strip = AXIS_STRIP) {
   const s = view.scale > 0 ? view.scale : 1;
   const clamp = (value, low, high) => Math.min(Math.max(value, low), Math.max(low, high));
+  const frame = axisStripFrame(field, view, viewport, strip);
   const columnHeight = Math.min(strip.column, (field.columnLabels[0]?.height ?? 0) * s);
+  const rowSample = field.rowLabels[0];
+  const room = AXIS_LABEL_PAD * 2;
+  const thinRows = Boolean(rowSample) && labelFontSize(rowSample.label, strip.row - room, rowSample.height * s, 1, { max: 13, min: 0 }) < AXIS_MIN_FONT_PX;
+  const columnSample = field.columnLabels.reduce((wide, label) => (String(label.label).length > String(wide?.label ?? "").length ? label : wide), null);
+  const thinColumns = Boolean(columnSample) && labelFontSize(columnSample.label, columnSample.width * s - room, columnHeight, 1, { max: 14, em: 0.7, min: 0 }) < AXIS_MIN_FONT_PX;
   const rows = field.rowLabels.map((label) => {
-    const width = Math.min(strip.row, label.width * s);
-    const height = label.height * s;
-    const y = view.y + label.y * s;
+    const rowHeight = label.height * s;
+    const middle = view.y + label.y * s + rowHeight / 2;
+    const width = strip.row;
+    const height = thinRows ? Math.max(rowHeight, AXIS_MIN_FONT_PX * AXIS_THIN_LINE) : rowHeight;
+    const y = thinRows ? middle - height / 2 : view.y + label.y * s;
     const x = label.side === "right"
-      ? clamp(viewport.width - strip.row + (strip.row - width) / 2, 0, viewport.width - width)
-      : clamp((strip.row - width) / 2, 0, viewport.width - width);
-    const middle = y + height / 2;
-    const fontSize = labelFontSize(label.label, width, height, 1, { max: 13 });
-    return { kind: "row", key: `row-${label.side}-${label.row}`, label: label.label, side: label.side, x, y, width, height, fontSize, hidden: middle < 0 || middle > viewport.height - strip.column || !fontSize };
+      ? clamp(frame.right + (strip.row - width) / 2, 0, viewport.width - width)
+      : clamp(frame.left + (strip.row - width) / 2, 0, viewport.width - width);
+    const fontSize = thinRows ? AXIS_MIN_FONT_PX : labelFontSize(label.label, width - room, height, 1, { max: 13 });
+    return { kind: "row", key: `row-${label.side}-${label.row}`, label: label.label, side: label.side, row: label.row, x, y, width, height, fontSize, hidden: middle < 0 || middle > frame.bottom || !fontSize };
   });
-  const columns = field.columnLabels.map((label) => {
-    const width = label.width * s;
-    const x = view.x + label.x * s;
-    const y = clamp(viewport.height - strip.column + (strip.column - columnHeight) / 2, 0, viewport.height - columnHeight);
-    const middle = x + width / 2;
-    const fontSize = labelFontSize(label.label, width, columnHeight, 1, { max: 14, em: 0.7 });
+  const thinHeight = Math.min(strip.column, Math.max(columnHeight, AXIS_MIN_FONT_PX * AXIS_THIN_LINE));
+  const columns = field.columnLabels.map((label, index) => {
+    const columnWidth = label.width * s;
+    const middle = view.x + label.x * s + columnWidth / 2;
+    const width = thinColumns ? Math.max(columnWidth, String(label.label).length * 0.7 * AXIS_MIN_FONT_PX + AXIS_LABEL_PAD * 2 + 2) : columnWidth;
+    const height = thinColumns ? thinHeight : columnHeight;
+    const x = thinColumns ? middle - width / 2 : view.x + label.x * s;
+    const y = clamp(frame.bottom + (strip.column - height) / 2, 0, viewport.height - height);
+    const fontSize = thinColumns ? AXIS_MIN_FONT_PX : labelFontSize(label.label, width - room, height, 1, { max: 14, em: 0.7 });
     const endRoom = strip.row + AXIS_LABEL_PAD + fontSize / 2;
-    return { kind: "column", key: `col-${label.section}`, label: label.label, x, y, width, height: columnHeight, fontSize, hidden: middle < endRoom || middle > viewport.width - endRoom || !fontSize };
+    return { kind: "column", key: `col-${label.section}`, label: label.label, index, x, y, width, height, fontSize, hidden: middle < frame.left + endRoom || middle > frame.right + strip.row - endRoom || !fontSize };
   });
+  if (thinRows) {
+    for (const side of ["left", "right"]) thinAxis(rows.filter((label) => label.side === side), "y", "height", AXIS_ROW_STEPS, (label, step) => label.row % step === 0);
+  }
+  if (thinColumns) thinAxis(columns, "x", "width", null, (label, step) => label.index % step === 0);
   return [...rows, ...columns];
+}
+
+// Below this size the pinned labels are thinned rather than shrunk or hidden.
+export const AXIS_MIN_FONT_PX = 10;
+const AXIS_THIN_LINE = 1.4;
+const AXIS_ROW_STEPS = Object.freeze([1, 2, 5, 10, 20]);
+const AXIS_THIN_GAP = 2;
+
+// Keeps the first and last labels, then every Nth one, with N the smallest
+// step whose on-screen pitch clears a label box, dropping any that would still
+// touch a kept neighbour.
+function thinAxis(labels, at, size, steps, onStep) {
+  const shown = labels.filter((label) => !label.hidden);
+  if (shown.length < 2) return;
+  const pitch = Math.min(...labels.slice(1).map((label, i) => Math.abs((label[at] + label[size] / 2) - (labels[i][at] + labels[i][size] / 2))));
+  const need = Math.max(...labels.map((label) => label[size])) + AXIS_THIN_GAP;
+  const raw = Math.max(1, Math.ceil(need / Math.max(pitch, 1e-6)));
+  const step = steps ? (steps.find((value) => value >= raw) ?? steps[steps.length - 1]) : raw;
+  const first = shown[0];
+  const last = shown[shown.length - 1];
+  const clears = (a, b) => a[at] + a[size] + AXIS_THIN_GAP <= b[at] || b[at] + b[size] + AXIS_THIN_GAP <= a[at];
+  let kept = first;
+  for (const label of shown) {
+    if (label === first || label === last) continue;
+    if (onStep(label, step) && clears(label, kept) && clears(label, last)) kept = label;
+    else label.hidden = true;
+  }
+}
+
+// The left, right and bottom label strips sit just outside the field while it
+// fits inside the map window, and pin to the window edges once it overflows.
+// The side strips move in by the same amount so they still mirror each other.
+export function axisStripFrame(field, view, viewport, strip = AXIS_STRIP, pad = FIT_PADDING) {
+  const fixed = { left: 0, right: viewport.width - strip.row, bottom: viewport.height - strip.column };
+  const box = field ? fieldFitBounds(field) : null;
+  if (!box || !(view?.scale > 0)) return fixed;
+  const s = view.scale;
+  const gapLeft = view.x + box.x * s - pad - strip.row;
+  const gapRight = viewport.width - (view.x + (box.x + box.width) * s) - pad - strip.row;
+  const inset = Math.min(Math.max(0, Math.min(gapLeft, gapRight)), Math.max(0, (viewport.width - strip.row * 2) / 2));
+  const bottom = Math.max(Math.min(fixed.bottom, view.y + (box.y + box.height) * s + pad), 0);
+  return { left: inset, right: fixed.right - inset, bottom };
 }
 
 export function rectsIntersect(a, b) {

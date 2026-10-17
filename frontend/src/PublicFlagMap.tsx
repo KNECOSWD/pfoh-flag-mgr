@@ -60,7 +60,9 @@ import {
   sectionLabelSizes,
   zoomAt,
   flagMapEscapeTarget,
-  pinnedAxisLabels
+  pinnedAxisLabels,
+  axisStripFrame,
+  AXIS_STRIP
 } from "./publicFlagMap.js";
 import { KIOSK_EXIT_HOLD_MS, kioskSessionOn, requestKioskExit } from "./kioskSession.js";
 
@@ -281,6 +283,7 @@ export default function PublicFlagMap({
   const location = useMemo(() => readFlagMapLocation(window.location.search), []);
   const kiosk = kioskLocked || location.kiosk || kioskSessionOn(window.sessionStorage);
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const guttersRef = useRef<HTMLDivElement | null>(null);
   const layerRef = useRef<HTMLDivElement | null>(null);
   const axisRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<View>({ x: 0, y: 0, scale: 1 });
@@ -461,10 +464,20 @@ export default function PublicFlagMap({
     if (!axis || !field) return;
     // The overlay's client box excludes the viewport border that viewportSize() includes.
     const size = viewportSize();
+    const box = { width: axis.clientWidth || size.width, height: axis.clientHeight || size.height };
     const labels = pinnedAxisLabels(field, view, {
       width: axis.clientWidth || size.width,
       height: axis.clientHeight || size.height
     });
+    const gutters = guttersRef.current;
+    if (gutters) {
+      const frame = axisStripFrame(field, view, box);
+      const [left, right, bottom] = Array.from(gutters.children) as HTMLElement[];
+      const lift = `${box.height - AXIS_STRIP.column - frame.bottom}px`;
+      if (left) { left.style.left = `${frame.left}px`; left.style.bottom = `calc(${AXIS_STRIP.column}px + ${lift})`; }
+      if (right) { right.style.right = `${box.width - AXIS_STRIP.row - frame.right}px`; right.style.bottom = `calc(${AXIS_STRIP.column}px + ${lift})`; }
+      if (bottom) { bottom.style.left = `${frame.left}px`; bottom.style.right = `${box.width - AXIS_STRIP.row - frame.right}px`; bottom.style.bottom = lift; }
+    }
     labels.forEach((label, index) => {
       const node = axis.children[index] as HTMLElement | undefined;
       if (!node) return;
@@ -1719,7 +1732,7 @@ export default function PublicFlagMap({
             );
           })}
         </div>
-        <div className="publicFlagAxisGutters" aria-hidden="true">
+        <div ref={guttersRef} className="publicFlagAxisGutters" aria-hidden="true">
           <div className="publicFlagAxisGutter isLeft" />
           <div className="publicFlagAxisGutter isRight" />
           <div className="publicFlagAxisGutter isBottom" />
