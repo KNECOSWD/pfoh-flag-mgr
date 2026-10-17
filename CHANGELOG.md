@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.0.3
+
+- Public Flag Map spots never overlap at any zoom, on a desktop, a phone, or the kiosk. Each spot uses the 2.0.0 size, 148 by 108 with a 12 gap, and the global button height no longer stretches a spot past its row.
+- Zoomed out, the field shows each section by letter and the flag numbers in it, such as "C 21–40". The next step in shows each spot with only its flag number, such as "AA-11", filled when the spot is occupied and outlined with a dashed edge when it is open. A key under the search box names Occupied and Open. Closer in, the honoree name is fitted inside the spot on up to two lines. Closest adds the branch seal and rank once fewer than 10 flags are on screen. The level is set by how large a spot is on screen, so a desktop and a phone reach each level at the same spot size.
+- Text inside a spot stays between 9 and 20 pixels on screen at every zoom. It is shortened with an ellipsis and never drawn past the spot edge. A long hyphenated surname can wrap at the hyphen. Row, column, section, and Pavilion labels are also sized for the screen, and they are left out when they cannot fit.
+- The opening fit holds the whole grid, including the row numbers, the column letters, and the Pavilion marker, with padding on every side. The map cannot be zoomed out past that fit. A pan stops with the edge of the field just inside the window, so the left column and every other edge can always be reached, and the field cannot be dragged out of view.
+- The flag detail panel sits above everything on the page at every size, including the site header and menu, the search bar, the zoom and full-screen controls, and the footer. On a phone it fills the screen over a dimmed backdrop. On a desktop and the kiosk the search box and toolbar narrow to leave room for it. Close and Escape work as before. A card preview opened from the panel, and the kiosk exit code pad, still open on top of it. Opening a flag zooms close enough for the seal and keeps the flag clear of the panel.
+- Section blocks use one flat fill with no gradient.
+- Z1–Z10 are the Service Flags. That area is now one flat, solid block labeled "Service Flags" at every zoom, with no per-spot flag numbers. It is no longer part of the Z section block; the rest of Z, from Z11 up, is its own section.
+- Column Z has the same visible gap on both sides, between N and Z and between Z and M, the same width as the aisle between rows 20 and 21.
+- Zoomed-in text is drawn sharp again after an animated zoom.
+
 ## 2.0.2
 
 - Public Flag Map search suggestions sit on top of the field on a desktop, a phone, and the kiosk.

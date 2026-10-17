@@ -93,33 +93,40 @@ export function flagYears(seat) {
 export const SUBMITTER_SUGGESTION_DEBOUNCE_MS = 150;
 export const MAP_FULLSCREEN_CLASS = "isMapFullscreen";
 
+// Zoom thresholds are the on-screen width of one spot in CSS pixels, so every
+// window size reaches the same level when a spot is the same size on screen.
 export const FLAG_MAP_ZOOM = {
-  minScale: 0.05,
-  maxScale: 12,
-  zoomStep: 1.2,
+  minScale: 0.02,
+  maxScale: 4,
+  zoomStep: 1.25,
   panStep: 72,
   tapSlop: 8,
-  sectionFadeStart: 1.2,
-  sectionFadeEnd: 1.9,
-  sealFadeStart: 1.2,
-  sealFadeEnd: 1.9,
-  nameFadeStart: 2.2,
-  nameFadeEnd: 2.8,
-  rankFadeStart: 3.15,
-  rankFadeEnd: 4
+  spotsFadeStart: 30,
+  spotsFadeEnd: 42,
+  namesAt: 100,
+  closestAt: 180
 };
+
+export const FLAG_MAP_LEVELS = Object.freeze(["Sections", "Spots", "Names", "Closest"]);
 
 export const KIOSK_IDLE_MS = 60_000;
 export const WHEEL_ZOOM_SENSITIVITY = 0.0015;
 export const WHEEL_SETTLE_MS = 120;
 
-const FLAG_WIDTH = 52;
-const FLAG_HEIGHT = 28;
-const FLAG_GAP = 3;
-const SECTION_GAP = 8;
-const LABEL_BAND = 36;
+const FLAG_WIDTH = 148;
+const FLAG_HEIGHT = 108;
+const FLAG_GAP = 12;
+const SECTION_PAD = 28;
+const SECTION_GAP = 56;
+export const SPOT_SIZE = Object.freeze({ width: FLAG_WIDTH, height: FLAG_HEIGHT, gap: FLAG_GAP });
 export const FIELD_AISLE_AFTER_ROW = 20;
-const FIELD_AISLE = 22;
+export const FIT_PADDING = 12;
+const ROW_LABEL_WIDTH = 160;
+const LABEL_BAND = 96;
+const PAVILION_BAND = 84;
+const CHAR_EM = 0.62;
+const NUMBER_EM = 0.72;
+const LINE_HEIGHT = 1.15;
 
 function seatRow(seat) {
   if (Number.isFinite(seat?.columnNumber) && seat.columnNumber > 0) return seat.columnNumber;
@@ -129,7 +136,7 @@ function seatRow(seat) {
 
 function rowTop(row, maxRow, aisle) {
   const fromTop = Math.max(0, maxRow - row);
-  return fromTop * (FLAG_HEIGHT + FLAG_GAP) + (row <= FIELD_AISLE_AFTER_ROW ? aisle : 0);
+  return SECTION_PAD + fromTop * (FLAG_HEIGHT + FLAG_GAP) + (row <= FIELD_AISLE_AFTER_ROW ? aisle : 0);
 }
 
 export function clamp(value, min, max) {
@@ -147,9 +154,8 @@ function fadeIn(relative, start, end) {
   return smoothstep((relative - start) / (end - start));
 }
 
-export function relativeFlagScale(scale, fitScale) {
-  const base = fitScale > 0 ? fitScale : 1;
-  return scale / base;
+export function spotScreenWidth(scale) {
+  return FLAG_WIDTH * (Number(scale) > 0 ? Number(scale) : 0);
 }
 
 export const SEAL_ON_SCREEN_LIMIT = 10;
@@ -170,28 +176,67 @@ export function pavilionColumnIndex(section) {
   return known === -1 ? PAVILION_COLUMNS_LEFT_TO_RIGHT.length : known;
 }
 
-export function flagMapLayerOpacities(scale, fitScale) {
-  const relative = relativeFlagScale(scale, fitScale);
+export function flagMapLayerOpacities(scale) {
+  const spotPx = spotScreenWidth(scale);
   return {
-    relative,
-    section: 1 - fadeIn(relative, FLAG_MAP_ZOOM.sectionFadeStart, FLAG_MAP_ZOOM.sectionFadeEnd),
-    seal: 0,
-    name: fadeIn(relative, FLAG_MAP_ZOOM.nameFadeStart, FLAG_MAP_ZOOM.nameFadeEnd),
-    rank: fadeIn(relative, FLAG_MAP_ZOOM.rankFadeStart, FLAG_MAP_ZOOM.rankFadeEnd)
+    spotPx,
+    section: 1 - fadeIn(spotPx, FLAG_MAP_ZOOM.spotsFadeStart, FLAG_MAP_ZOOM.spotsFadeEnd)
   };
 }
 
-export function flagMapDetailGates(scale, fitScale, flagsOnScreen = Number.POSITIVE_INFINITY) {
-  const relative = relativeFlagScale(scale, fitScale);
-  const opacity = flagMapLayerOpacities(scale, fitScale);
-  const seals = sealImagesAllowed(flagsOnScreen);
+export function flagMapDetailGates(scale, flagsOnScreen = Number.POSITIVE_INFINITY) {
+  const opacity = flagMapLayerOpacities(scale);
   const spotsVisible = opacity.section <= 0.5;
+  const names = spotsVisible && opacity.spotPx >= FLAG_MAP_ZOOM.namesAt;
+  const seals = names && opacity.spotPx >= FLAG_MAP_ZOOM.closestAt && sealImagesAllowed(flagsOnScreen);
   return {
+    level: seals ? "Closest" : names ? "Names" : spotsVisible ? "Spots" : "Sections",
+    numbers: spotsVisible,
+    names,
     seals,
-    names: relative >= FLAG_MAP_ZOOM.nameFadeStart - 0.02,
-    ranks: relative >= FLAG_MAP_ZOOM.rankFadeStart - 0.02,
-    sectionsInteractive: opacity.section > 0.5,
+    ranks: seals,
+    sectionsInteractive: !spotsVisible,
     flagsInteractive: spotsVisible
+  };
+}
+
+export function closestViewScale(viewport) {
+  const width = Math.max(1, Number(viewport?.width) || 1);
+  const height = Math.max(1, Number(viewport?.height) || 1);
+  const across = 2.6;
+  const scale = Math.max(
+    width / ((FLAG_WIDTH + FLAG_GAP) * across),
+    height / ((FLAG_HEIGHT + FLAG_GAP) * across),
+    (FLAG_MAP_ZOOM.closestAt + 1) / FLAG_WIDTH
+  );
+  return clamp(scale, FLAG_MAP_ZOOM.minScale, FLAG_MAP_ZOOM.maxScale);
+}
+
+export function spotsViewScale() {
+  return (FLAG_MAP_ZOOM.spotsFadeEnd + 2) / FLAG_WIDTH;
+}
+
+export function clampView(view, viewport, world, options = {}) {
+  const minScale = Number(options.minScale) > 0 ? Number(options.minScale) : FLAG_MAP_ZOOM.minScale;
+  const maxScale = Math.max(minScale, Number(options.maxScale) || FLAG_MAP_ZOOM.maxScale);
+  const pad = Number.isFinite(options.pad) ? options.pad : FIT_PADDING;
+  const width = Math.max(1, viewport.width);
+  const height = Math.max(1, viewport.height);
+  let { x, y } = view;
+  const scale = clamp(view.scale, minScale, maxScale);
+  if (scale !== view.scale && view.scale > 0) {
+    x = width / 2 - ((width / 2 - view.x) / view.scale) * scale;
+    y = height / 2 - ((height / 2 - view.y) / view.scale) * scale;
+  }
+  const axis = (position, size, start, length) => {
+    const content = length * scale;
+    if (content + pad * 2 <= size + 0.5) return (size - content) / 2 - start * scale;
+    return clamp(position, size - pad - (start + length) * scale, pad - start * scale);
+  };
+  return {
+    x: axis(x, width, world.x, world.width),
+    y: axis(y, height, world.y, world.height),
+    scale
   };
 }
 
@@ -225,7 +270,7 @@ export function fitView(bounds, viewport, padding = 36) {
   };
 }
 
-export function fitWholeField(bounds, viewport, padding = 36) {
+export function fitWholeField(bounds, viewport, padding = FIT_PADDING) {
   const innerWidth = Math.max(1, viewport.width - padding * 2);
   const innerHeight = Math.max(1, viewport.height - padding * 2);
   const scale = Math.min(
@@ -332,9 +377,15 @@ export function pointerIsTap(start, end, slop = FLAG_MAP_ZOOM.tapSlop) {
 }
 
 export const FIELD_MAP_ROWS = 40;
-export const FIELD_MAP_Z_ROWS = 9;
-const ROW_LABEL_WIDTH = 28;
-const PAVILION_BAND = 22;
+export const FIELD_MAP_Z_ROWS = 10;
+export const SERVICE_FLAGS_SECTION = "Z";
+export const SERVICE_FLAGS_LABEL = "Service Flags";
+
+export function isServiceFlagSeat(seat) {
+  const row = Number(seat?.columnNumber);
+  return String(seat?.section || "").toUpperCase() === SERVICE_FLAGS_SECTION
+    && Number.isFinite(row) && row >= 1 && row <= FIELD_MAP_Z_ROWS;
+}
 
 function templateFlagId(section, row) {
   return -((pavilionColumnIndex(section) + 1) * 1000 + row);
@@ -430,16 +481,21 @@ export function layoutFlagField(sections) {
       if (row > FIELD_AISLE_AFTER_ROW) hasHigh = true;
     }
   }
-  const aisleGap = hasLow && hasHigh ? FIELD_AISLE : 0;
+  const aisleGap = hasLow && hasHigh ? SECTION_GAP - FLAG_GAP : 0;
   const fieldHeight = rowTop(1, maxRow, aisleGap) + FLAG_HEIGHT;
+  const gridLeft = SECTION_PAD + ROW_LABEL_WIDTH + FLAG_GAP;
+  const labelTop = fieldHeight + FLAG_GAP;
   const placedSections = [];
   const placedCells = [];
   const placedFlags = [];
   const rows = new Set();
 
+  let nextX = gridLeft;
   ordered.forEach((section, index) => {
     const seats = Array.isArray(section.seats) ? section.seats : [];
-    const x = ROW_LABEL_WIDTH + index * (FLAG_WIDTH + SECTION_GAP);
+    const besideZ = section.section === "Z" || ordered[index - 1]?.section === "Z";
+    const x = index === 0 ? nextX : nextX + (besideZ ? SECTION_GAP : FLAG_GAP);
+    nextX = x + FLAG_WIDTH;
     placedSections.push({
       section: section.section,
       flagCount: section.flagCount ?? seats.length,
@@ -447,53 +503,65 @@ export function layoutFlagField(sections) {
       x,
       y: 0,
       width: FLAG_WIDTH,
-      height: fieldHeight + LABEL_BAND
+      height: labelTop + LABEL_BAND
     });
     for (const seat of seats) {
       const row = seatRow(seat);
       if (!row) continue;
       rows.add(row);
+      const serviceFlag = isServiceFlagSeat({ section: section.section, columnNumber: row });
       const placed = {
         ...seat,
+        serviceFlag,
         x,
         y: rowTop(row, maxRow, aisleGap),
         width: FLAG_WIDTH,
         height: FLAG_HEIGHT
       };
       placedCells.push(placed);
-      if (!seat.template) placedFlags.push(placed);
+      if (!seat.template && !serviceFlag) placedFlags.push(placed);
     }
   });
 
-  const contentRight = Math.max(ROW_LABEL_WIDTH + 1, ...placedSections.map((section) => section.x + section.width));
+  const contentRight = Math.max(gridLeft + 1, ...placedSections.map((section) => section.x + section.width));
   const zSection = placedSections.find((section) => section.section === "Z") ?? null;
+  const pavilionWidth = FLAG_WIDTH * 3 + FLAG_GAP * 2;
   const pavilion = zSection
-    ? { x: zSection.x, y: fieldHeight + LABEL_BAND, width: zSection.width, height: PAVILION_BAND, label: "Pavilion" }
+    ? {
+        x: zSection.x + (zSection.width - pavilionWidth) / 2,
+        y: labelTop + LABEL_BAND + FLAG_GAP,
+        width: pavilionWidth,
+        height: PAVILION_BAND,
+        label: "Pavilion"
+      }
     : null;
   const rowLabels = [...rows].sort((left, right) => right - left).map((row) => ({
     row,
     label: String(row),
-    x: 0,
+    x: SECTION_PAD,
     y: rowTop(row, maxRow, aisleGap),
-    width: ROW_LABEL_WIDTH - 4,
+    width: ROW_LABEL_WIDTH,
     height: FLAG_HEIGHT
   }));
   const columnLabels = placedSections.map((section) => ({
     section: section.section,
     label: section.section,
     x: section.x,
-    y: fieldHeight,
+    y: labelTop,
     width: section.width,
     height: LABEL_BAND
   }));
   const aisle = aisleGap
     ? {
-        x: ROW_LABEL_WIDTH,
+        x: gridLeft,
         y: rowTop(FIELD_AISLE_AFTER_ROW + 1, maxRow, aisleGap) + FLAG_HEIGHT,
-        width: Math.max(1, contentRight - ROW_LABEL_WIDTH),
-        height: aisleGap
+        width: Math.max(1, contentRight - gridLeft),
+        height: SECTION_GAP
       }
     : null;
+  const bottom = pavilion ? pavilion.y + pavilion.height : labelTop + LABEL_BAND;
+  const serviceBox = boundsOf(placedCells.filter((cell) => cell.serviceFlag));
+  const serviceFlags = serviceBox ? { ...serviceBox, label: SERVICE_FLAGS_LABEL } : null;
 
   return {
     sections: placedSections,
@@ -503,9 +571,10 @@ export function layoutFlagField(sections) {
     columnLabels,
     aisle,
     pavilion,
+    serviceFlags,
     zones: flagZones(placedCells),
-    worldWidth: contentRight,
-    worldHeight: Math.max(fieldHeight + LABEL_BAND, pavilion ? pavilion.y + pavilion.height : 0, 1)
+    worldWidth: contentRight + SECTION_PAD,
+    worldHeight: Math.max(bottom + SECTION_PAD, 1)
   };
 }
 
@@ -515,6 +584,7 @@ export function flagZones(cells) {
     const section = String(cell?.section || "");
     const row = Number(cell?.columnNumber);
     if (!section || !Number.isFinite(row) || row <= 0) continue;
+    if (isServiceFlagSeat(cell)) continue;
     const list = groups.get(section) ?? [];
     list.push(cell);
     groups.set(section, list);
@@ -526,6 +596,10 @@ export function flagZones(cells) {
     let bucket = [];
     const flush = () => {
       if (bucket.length === 0) return;
+      if (bucket.every((seat) => seat.status === "Reserved")) {
+        bucket = [];
+        return;
+      }
       const rows = bucket.map((seat) => seat.columnNumber);
       const min = Math.min(...rows);
       const max = Math.max(...rows);
@@ -566,48 +640,181 @@ export function spotTextThatFits(text, width, fontSize, pad = 3) {
   if (!label || !Number.isFinite(size) || size < 6) return "";
   const inner = Number(width) - pad * 2;
   if (!(inner > 0)) return "";
-  const maxChars = Math.floor(inner / (size * 0.56));
+  const maxChars = Math.floor(inner / (size * CHAR_EM));
   if (maxChars < 1) return "";
   if (label.length <= maxChars) return label;
   if (maxChars < 2) return "";
-  return `${label.slice(0, maxChars - 1)}\u2026`;
+  return `${label.slice(0, maxChars - 1).trimEnd()}\u2026`;
 }
 
-export function spotContents(cell, gates = {}) {
-  const width = Number(cell?.width) || 0;
-  const height = Number(cell?.height) || 0;
+export function spotLinesThatFit(text, width, fontSize, maxLines = 2) {
+  const label = String(text || "").replace(/\s+/g, " ").trim();
+  const size = Number(fontSize);
+  const lines = Math.floor(Number(maxLines));
+  if (!label || !(size > 0) || !(lines >= 1)) return [];
+  const maxChars = Math.floor(Number(width) / (size * CHAR_EM));
+  if (maxChars < 3) return [];
+  const pieces = [];
+  for (const word of label.split(" ")) {
+    const parts = word.split(/(?<=-)/);
+    parts.forEach((part, index) => pieces.push({ text: part, space: index === 0 && pieces.length > 0 }));
+  }
+  const join = (line, piece) => (piece.space ? `${line} ${piece.text}` : `${line}${piece.text}`);
+  const out = [];
+  let index = 0;
+  while (index < pieces.length && out.length < lines) {
+    let line = pieces[index].text;
+    index += 1;
+    while (index < pieces.length && join(line, pieces[index]).length <= maxChars) {
+      line = join(line, pieces[index]);
+      index += 1;
+    }
+    out.push(line);
+  }
+  while (index < pieces.length) {
+    out[out.length - 1] = join(out[out.length - 1], pieces[index]);
+    index += 1;
+  }
+  return out.map((line) => (line.length <= maxChars ? line : `${line.slice(0, maxChars - 1).trimEnd()}\u2026`));
+}
+
+function truncated(lines) {
+  return lines.some((line) => line.endsWith("\u2026"));
+}
+
+export const SPOT_TEXT_PX = Object.freeze({
+  number: { min: 9, max: 13 },
+  name: { min: 10, max: 15 },
+  closestName: { min: 12, max: 20 },
+  rank: { min: 10, max: 13 },
+  seal: { min: 18, max: 88 }
+});
+
+// Everything is measured in screen pixels and returned in field units, so the
+// text keeps one readable size on screen at any zoom and never leaves its spot.
+export function spotContents(cell, gates = {}, scale = 1) {
+  const s = Number(scale) > 0 ? Number(scale) : 1;
+  const width = (Number(cell?.width) || 0) * s;
+  const height = (Number(cell?.height) || 0) * s;
   const status = cell?.status || "Open";
-  const pad = 2;
-  let used = pad;
-  const sealBudget = gates.seals && cell?.logoUrl
-    ? Math.floor(Math.min(width - pad * 2, (height - pad * 2) * 0.5))
-    : 0;
-  const seal = sealBudget >= 8 ? sealBudget : 0;
-  if (seal) used += seal + 1;
   const occupied = status === "Occupied";
-  const captionSource = occupied
-    ? (gates.names ? (cell?.displayName || cell?.flagGridName || "") : "")
-    : status === "Reserved" ? "Reserved" : "Open";
-  let name = "";
-  let nameSize = 0;
-  const nameRoom = height - used - pad;
-  if (captionSource && nameRoom >= 7) {
-    nameSize = Math.max(7, Math.min(11, Math.floor(nameRoom * 0.85)));
-    if (nameSize > nameRoom) nameSize = Math.floor(nameRoom);
-    name = spotTextThatFits(captionSource, width, nameSize, pad);
-    if (!name) nameSize = 0;
-    else used += nameSize + 1;
+  const out = { seal: 0, number: "", numberSize: 0, lines: [], nameSize: 0, rank: "", rankSize: 0, pad: 0, status };
+  if (!gates.numbers && !gates.names) return out;
+  const pad = clamp(Math.min(width, height) * 0.08, 2, 12);
+  const innerW = width - pad * 2;
+  const innerH = height - pad * 2;
+  out.pad = pad / s;
+  if (status === "Reserved") return out;
+  if (innerW < 12 || innerH < SPOT_TEXT_PX.number.min * LINE_HEIGHT) return out;
+  const number = String(cell?.flagGridName || "").trim();
+
+  if (!gates.names) {
+    const size = Math.min(SPOT_TEXT_PX.number.max, innerH / LINE_HEIGHT, innerW / (Math.max(number.length, 1) * NUMBER_EM));
+    if (number && size >= SPOT_TEXT_PX.number.min) {
+      out.number = number;
+      out.numberSize = size / s;
+    }
+    return out;
   }
-  let rank = "";
-  let rankSize = 0;
-  const rankRoom = height - used - pad;
-  if (occupied && gates.ranks && cell?.rank && rankRoom >= 6) {
-    rankSize = Math.max(6, Math.min(9, Math.floor(rankRoom)));
-    if (rankSize > rankRoom) rankSize = Math.floor(rankRoom);
-    rank = spotTextThatFits(cell.rank, width, rankSize, pad);
-    if (!rank) rankSize = 0;
+
+  let room = innerH;
+  const closest = Boolean(gates.seals);
+  if (closest && occupied && cell?.logoUrl) {
+    const seal = Math.floor(Math.min(innerH * 0.38, innerW * 0.4, SPOT_TEXT_PX.seal.max));
+    if (seal >= SPOT_TEXT_PX.seal.min) {
+      out.seal = seal / s;
+      room -= seal * 1.08;
+    }
   }
-  return { seal, name, nameSize, rank, rankSize, status };
+
+  const numberSize = clamp(innerH * 0.12, SPOT_TEXT_PX.number.min, closest ? 12 : 11);
+  const nameRange = closest ? SPOT_TEXT_PX.closestName : SPOT_TEXT_PX.name;
+  const caption = occupied ? (cell?.displayName || "") : "Open";
+  if (number && room >= (numberSize + nameRange.min) * LINE_HEIGHT && number.length * numberSize * NUMBER_EM <= innerW) {
+    out.number = number;
+    out.numberSize = numberSize / s;
+    room -= numberSize * LINE_HEIGHT;
+  }
+
+  const startSize = Math.min(nameRange.max, Math.max(nameRange.min, innerH * (closest ? 0.13 : 0.24)));
+  let nameSize = nameRange.min;
+  let lines = [];
+  for (let size = startSize; size >= nameRange.min - 0.001; size -= 1) {
+    const maxLines = Math.min(2, Math.floor(room / (size * LINE_HEIGHT)));
+    if (maxLines < 1) continue;
+    const attempt = spotLinesThatFit(caption, innerW, size, maxLines);
+    if (!attempt.length) continue;
+    lines = attempt;
+    nameSize = size;
+    if (!truncated(attempt)) break;
+  }
+  if (truncated(lines)) {
+    const maxLines = Math.min(2, Math.floor(room / (nameRange.min * LINE_HEIGHT)));
+    const smallest = maxLines >= 1 ? spotLinesThatFit(caption, innerW, nameRange.min, maxLines) : [];
+    if (smallest.length) {
+      lines = smallest;
+      nameSize = nameRange.min;
+    }
+  }
+  if (lines.length) {
+    out.lines = lines;
+    out.nameSize = nameSize / s;
+    room -= lines.length * nameSize * LINE_HEIGHT;
+  }
+
+  if (closest && occupied && cell?.rank) {
+    const rankSize = Math.min(SPOT_TEXT_PX.rank.max, Math.max(SPOT_TEXT_PX.rank.min, innerH * 0.09), room / LINE_HEIGHT);
+    const rank = rankSize >= SPOT_TEXT_PX.rank.min ? spotTextThatFits(cell.rank, innerW, rankSize, 0) : "";
+    if (rank) {
+      out.rank = rank;
+      out.rankSize = rankSize / s;
+    }
+  }
+  return out;
+}
+
+export function labelFontSize(text, boxWidth, boxHeight, scale, options = {}) {
+  const s = Number(scale) > 0 ? Number(scale) : 1;
+  const min = options.min ?? 5;
+  const max = options.max ?? 13;
+  const em = options.em ?? CHAR_EM;
+  const length = Math.max(1, String(text || "").length);
+  const px = Math.min(max, boxHeight * s * 0.72, (boxWidth * s - 2) / (length * em));
+  return px >= min ? px / s : 0;
+}
+
+export function zoneLabelSizes(zone, scale) {
+  const s = Number(scale) > 0 ? Number(scale) : 1;
+  const range = zone.min === zone.max ? String(zone.min) : `${zone.min}\u2013${zone.max}`;
+  const letter = labelFontSize(zone.section, zone.width, zone.height * 0.3, s, { min: 5, max: 22, em: 0.7 });
+  const across = labelFontSize(range, zone.width, zone.height * 0.2, s, { min: 9, max: 13 });
+  if (across) return { range, letter, rangeSize: across, vertical: false };
+  const down = Math.min(12, zone.width * s * 0.8, (zone.height * s * 0.55) / (range.length * CHAR_EM));
+  return { range, letter, rangeSize: down >= 7 ? down / s : 0, vertical: true };
+}
+
+export function serviceFlagsLabelBox(box, seen) {
+  if (!box) return null;
+  const visible = seen ?? box;
+  const left = Math.max(box.x, visible.x);
+  const top = Math.max(box.y, visible.y);
+  const right = Math.min(box.x + box.width, visible.x + visible.width);
+  const bottom = Math.min(box.y + box.height, visible.y + visible.height);
+  if (!(right > left && bottom > top)) return null;
+  return { x: left - box.x, y: top - box.y, width: right - left, height: bottom - top, label: box.label };
+}
+
+export function serviceFlagsLabelSize(box, scale) {
+  const s = Number(scale) > 0 ? Number(scale) : 1;
+  const words = String(box?.label || SERVICE_FLAGS_LABEL).split(" ");
+  const longest = Math.max(...words.map((word) => word.length));
+  const width = (Number(box?.width) || 0) * s;
+  const height = (Number(box?.height) || 0) * s;
+  const stacked = Math.min(20, (width * 0.84) / (longest * CHAR_EM), (height * 0.5) / (words.length * LINE_HEIGHT));
+  if (stacked >= 10) return { size: stacked / s, vertical: false };
+  const label = words.join(" ");
+  const down = Math.min(16, width * 0.6, (height * 0.84) / (label.length * CHAR_EM));
+  return { size: down >= 6 ? down / s : 0, vertical: true };
 }
 
 export function mapFullscreenSupported(element) {
@@ -801,6 +1008,7 @@ export function wheelFrameShouldCull(previousGates, nextGates, gestureEnded) {
   if (gestureEnded) return true;
   if (!previousGates || !nextGates) return true;
   return previousGates.seals !== nextGates.seals
+    || previousGates.numbers !== nextGates.numbers
     || previousGates.names !== nextGates.names
     || previousGates.ranks !== nextGates.ranks
     || previousGates.sectionsInteractive !== nextGates.sectionsInteractive
