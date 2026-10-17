@@ -11638,36 +11638,6 @@ html.flagMapKiosk a {
   color: #ffe7a3;
 }
 
-.publicFlagZone span {
-  max-width: 100%;
-  overflow: hidden;
-  font-size: 13px;
-  line-height: 1;
-  color: #fff8e8;
-  white-space: nowrap;
-}
-
-.publicFlagZone span.isLines {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1.1;
-}
-
-.publicFlagZone span.isLines > span {
-  max-width: none;
-  overflow: visible;
-  font-size: inherit;
-  line-height: inherit;
-}
-
-.publicFlagZone span.isVertical {
-  max-width: none;
-  max-height: 70%;
-  margin-top: 0.4em;
-  writing-mode: vertical-rl;
-}
-
 .publicFlagZone.isNarrow {
   border-width: calc(var(--px, 1px) * 0.5);
 }
@@ -11684,10 +11654,6 @@ html.flagMapKiosk a {
   text-orientation: upright;
   letter-spacing: 0;
   line-height: 0.8;
-}
-
-.publicFlagZone span.isUpright {
-  margin-top: 0.3em;
 }
 
 .publicFlagTile span,

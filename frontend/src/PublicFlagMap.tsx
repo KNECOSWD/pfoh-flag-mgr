@@ -5,6 +5,7 @@ import {
   FLAG_MAP_ZOOM,
   KIOSK_IDLE_MS,
   MAP_FULLSCREEN_CLASS,
+  initialMapFullScreen,
   SUBMITTER_SUGGESTION_DEBOUNCE_MS,
   WHEEL_SETTLE_MS,
   applyKioskIdleReset,
@@ -289,8 +290,9 @@ export default function PublicFlagMap({
   const suppressClickRef = useRef(false);
   const attractingRef = useRef(false);
   const fullscreenTriedRef = useRef(false);
-  const mapFullRef = useRef(false);
-  const cssFallbackRef = useRef(false);
+  // Opening in the app's view state, not the browser Fullscreen API, which needs a user gesture.
+  const mapFullRef = useRef(initialMapFullScreen(kiosk));
+  const cssFallbackRef = useRef(initialMapFullScreen(kiosk));
   const reducedMotionRef = useRef(false);
   const kioskRef = useRef(kiosk);
   const gatesRef = useRef<Gates>(EMPTY_GATES);
@@ -314,7 +316,7 @@ export default function PublicFlagMap({
   const [error, setError] = useState(location.flagRejected ? "That flag is not on the map." : "");
   const [loading, setLoading] = useState(true);
   const [visibleZoneKeys, setVisibleZoneKeys] = useState<string[]>([]);
-  const [mapFull, setMapFull] = useState(false);
+  const [mapFull, setMapFull] = useState(initialMapFullScreen(kiosk));
   const [visibleCellIds, setVisibleCellIds] = useState<number[]>([]);
   const [gates, setGates] = useState<Gates>(EMPTY_GATES);
   const [renderScale, setRenderScale] = useState(1);
@@ -934,6 +936,10 @@ export default function PublicFlagMap({
       window.clearTimeout(timer);
     };
   }, [query]);
+
+  useLayoutEffect(() => {
+    if (mapFullRef.current) document.documentElement.classList.add(MAP_FULLSCREEN_CLASS);
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -1595,11 +1601,6 @@ export default function PublicFlagMap({
                 onClick={() => acceptClick(() => zoomToZone(zone))}
               >
                 {sizes.letter ? <strong className={sizes.letterStacked ? "isUpright" : undefined} style={{ fontSize: sizes.letter, minHeight: sizes.letterBlock || undefined }}>{zone.section}</strong> : null}
-                {sizes.rangeSize ? (
-                  <span className={sizes.stacked ? "isUpright" : sizes.rangeParts ? "isLines" : undefined} style={{ fontSize: sizes.rangeSize, marginTop: sizes.letter * 0.3 }}>
-                    {sizes.rangeParts ? sizes.rangeParts.map((part, index) => <span key={index}>{part}</span>) : sizes.range}
-                  </span>
-                ) : null}
               </button>
             );
           })}

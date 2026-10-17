@@ -1099,6 +1099,12 @@ export function serviceFlagsLabelSize(box, scale, uniform) {
   return size > 0 ? { size: size / s, vertical: true, text: SERVICE_FLAGS_SHORT_LABEL, narrow, top: top / s } : empty;
 }
 
+// The public page opens in the app's full-screen view (header and footer hidden);
+// kiosk mode keeps its own browser fullscreen and lockdown.
+export function initialMapFullScreen(kiosk) {
+  return !kiosk;
+}
+
 export function mapFullscreenSupported(element) {
   if (!element) return false;
   return typeof element.requestFullscreen === "function" || typeof element.webkitRequestFullscreen === "function";

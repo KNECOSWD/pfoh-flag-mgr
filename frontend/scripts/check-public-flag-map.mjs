@@ -14,6 +14,7 @@ import {
   spotLinesThatFit,
   spotsViewScale,
   zoneLabelSizes,
+  initialMapFullScreen,
   sectionLabelSizes,
   applyKioskIdleReset,
   attractView,
@@ -559,7 +560,7 @@ test("at a 320 fit every section shows its letter and Service Flags shows a labe
   assert.match(page, /sizes\.narrow \? "isNarrow" : ""/);
   assert.match(page, /sizes\.tiny \? "isTiny" : ""/);
   assert.match(page, /sizes\.letterStacked \? "isUpright"/);
-  assert.match(page, /sizes\.stacked \? "isUpright"/);
+  assert.doesNotMatch(page, /sizes\.stacked \? "isUpright"/);
   assert.match(page, /label\.narrow \? "publicFlagServiceFlags isNarrow"/);
   assert.match(page, /\{label\.text\}/);
   assert.match(css, /\.publicFlagZone\.isNarrow \{\s*border-width: calc\(var\(--px, 1px\) \* 0\.5\);/);
@@ -1442,4 +1443,35 @@ test("the in-view list sorts sections by letter and range, and spots naturally",
   assert.deepEqual(sections, ["A 1\u201320", "A 21\u201340", "AA 1\u201320", "B 1\u201320", "YY 1\u201320", "Service Flags, Z 1\u201310", "Z 11\u201320", "Z 21\u201340"]);
   const spots = [spot("B-1"), spot("A-10"), spot("AA-3"), spot("A-2")].sort(compareInViewItems).map((item) => item.name);
   assert.deepEqual(spots, ["A-2", "A-10", "AA-3", "B-1"]);
+});
+
+test("2.0.7: field sections show letters only, the list keeps ranges, and the map opens full screen", () => {
+  const zoneButton = page.slice(page.indexOf('className={["publicFlagTile publicFlagZone"'), page.indexOf("{field?.serviceFlags ? ("));
+  assert.match(zoneButton, /<strong [^>]*>\{zone\.section\}<\/strong>/);
+  assert.doesNotMatch(zoneButton, /sizes\.range|rangeSize|<span/, "no flag-number range under the letter");
+  assert.doesNotMatch(css, /\.publicFlagZone span/);
+  assert.match(page, /serviceFlagsLabelSize\(area, renderScale, sectionLabels\)/);
+  assert.match(page, /label\.vertical \? <span className="isVertical">\{label\.text\}<\/span>/);
+
+  const field = pavilionField(40);
+  const viewport = { width: 1406, height: 618 };
+  const fitted = fitWholeField({ x: 0, y: 0, width: field.worldWidth, height: field.worldHeight }, viewport, FIT_PADDING);
+  const uniform = sectionLabelSizes(field.zones, fitted.scale);
+  const letters = new Set(field.zones.map((zone) => zoneLabelSizes(zone, fitted.scale, uniform).letter));
+  assert.equal(letters.size, 1, "every letter is the same size");
+  assert.ok([...letters][0] > 0);
+  const box = field.serviceFlags;
+  assert.equal(serviceFlagsLabelSize(serviceFlagsLabelBox(box, null), fitted.scale, uniform).text.length > 0, true);
+
+  const labels = flagMapItemsInView(field, fitted, viewport, flagMapDetailGates(fitted.scale, 1000)).items.map((item) => item.label);
+  assert.ok(labels.includes("C 21\u201340") && labels.includes("Z 11\u201320") && labels.includes(`${SERVICE_FLAGS_LABEL}, Z 1\u201310`));
+  assert.match(page, /<option key=\{item\.key\} value=\{item\.key\}>\{item\.label\}<\/option>/);
+
+  assert.equal(initialMapFullScreen(false), true);
+  assert.equal(initialMapFullScreen(true), false, "kiosk keeps its own fullscreen and lockdown");
+  assert.match(page, /const mapFullRef = useRef\(initialMapFullScreen\(kiosk\)\)/);
+  assert.match(page, /const \[mapFull, setMapFull\] = useState\(initialMapFullScreen\(kiosk\)\)/);
+  assert.match(page, /if \(mapFullRef\.current\) document\.documentElement\.classList\.add\(MAP_FULLSCREEN_CLASS\)/);
+  const opening = page.slice(page.indexOf("const mapFullRef"), page.indexOf("async function enterMapFull"));
+  assert.doesNotMatch(opening, /requestElementFullscreen\(/, "no browser Fullscreen API call on load");
 });

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.7
+
+- Section labels on the public Flag Map field show only their letter, such as Y, AA, or Z. The flag-number range no longer sits under the letter. Every letter keeps the same size and weight. The Service Flags label and the in-view list entries, such as "C 21–40", are unchanged.
+- The public Flag Map opens in its full-screen view, with the site header and footer hidden. The toolbar's Exit full screen button and Esc leave it, and Full screen brings it back. Kiosk mode and its lockdown are unchanged.
+
 ## 2.0.6
 
 - The public Flag Map's in-view list is sorted. Zoomed out, sections go by letter, A, AA, B, C through Y, YY, Z, with a letter's 1–20 block before its 21–40 block. Service Flags sit with Z, first, as Z 1–10, before Z 11–20. Zoomed in, spots go by letter and then by number, so A-2 comes before A-10 and AA-3 before B-1. Everything else about the list is unchanged.
