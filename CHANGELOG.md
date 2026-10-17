@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.5
+
+- The public Flag Map shows the row numbers 1 through 40 on the right side of the field as well as the left. Each number sits on the same line as its row on both sides.
+- Column Z sits right next to N, the same distance apart as any two columns. The only aisle between columns is the one between Z and M.
+- The "Sections" label is now a list of what is on screen. Zoomed out it lists each section block in view, such as "C 21–40", and Service Flags. Once the zoom shows flag numbers it lists each flag spot in view, such as "A-14 · Occupied" with the honoree name, or "A-14 · Open". The closed list shows the kind and how many, such as "Sections (57)". Choosing a section zooms to it, and choosing a spot zooms to that spot and outlines it in gold. With the keyboard, the arrow keys move through the list and Enter goes there. The list works on a phone, a desktop, and the kiosk.
+- The Pavilion bar under Z is four times wider and twice as tall. The opening fit still holds the whole field, the row numbers, and the Pavilion.
+- Zoom out, Zoom in, Full screen or Exit full screen, and Reset view are one toolbar of icon buttons. Each button has a name for screen readers and a tooltip on hover and keyboard focus. The arrow keys, Home, and End move between the buttons. The kiosk keeps its Home and Back buttons next to the toolbar, without Reset view.
+- The Occupied and Open key sits under the bottom-right corner of the field, so it never covers a spot.
+
 ## 2.0.4
 
 - On a 320-pixel phone, the fully zoomed-out Flag Map labels every section block. A block too narrow for the letter and flag numbers side by side shows the letter with the numbers stacked under it, one character per line. YY and AA stack their two letters. A short block such as Z 11–20 makes its letter a little smaller so the numbers still fit, and on the live 40-row field every one of the 56 sections shows its letter and flag numbers. The Service Flags block shows "Service Flags" turned on its side, or "Service" when the full name does not fit. Every label stays inside its block, and the edge of a block that narrow is drawn thinner to leave room for the letter. On a taller field, such as 60 rows, the fit can make a column narrower than 5 pixels. The letter still draws there, sized to the whole width of the block over an inset edge, and Service Flags still shows "Service", so no section is ever blank. A block that narrow shows its letter only. Wider windows keep the 2.0.3 labels, except that W and M are no longer clipped at the edge of their block.
