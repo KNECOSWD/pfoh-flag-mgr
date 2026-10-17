@@ -1556,5 +1556,9 @@ test("the in-view list sits inside the map controls toolbar group", () => {
   assert.match(group, /<select id=\{jumpId\} value=\{jumpPending\}/);
   assert.match(group, /<\/select>\s*<\/div>\s*<\/div>\s*$/, "the select closes inside the toolbar group");
   assert.match(css, /\.publicFlagControls \{[^}]*flex-wrap: nowrap;[^}]*min-width: 0;/);
+  assert.match(css, /\.publicFlagControls \{[^}]*display: flex;[^}]*flex: 1 1 0%;[^}]*justify-content: space-between;[^}]*width: 100%;/, "the toolbar spans the full width like the search box");
+  assert.match(css, /\.publicFlagControls \.publicFlagIconButton \{[^}]*flex: 0 0 auto;/, "the icon buttons keep their size, grouped on the left");
+  assert.match(css, /\.publicFlagJump \{[^}]*flex: 1 1 116px;[^}]*min-width: 0;[^}]*margin-left: auto;/, "the in-view list is pushed to the right and fills what is left");
+  assert.ok(group.lastIndexOf("publicFlagIconButton") < group.indexOf('<div className="publicFlagJump">'), "the in-view list is the last item in the toolbar");
   assert.match(css, /\.publicFlagJump select \{[^}]*text-overflow: ellipsis;[^}]*border: 0;[^}]*background-color: transparent;/);
 });

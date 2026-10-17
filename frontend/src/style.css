@@ -11318,10 +11318,12 @@ html.flagMapKiosk a {
 }
 
 .publicFlagControls {
-  display: inline-flex;
-  flex: 0 1 auto;
+  display: flex;
+  flex: 1 1 0%;
   flex-wrap: nowrap;
   align-items: stretch;
+  justify-content: space-between;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
   gap: 2px;
@@ -11333,6 +11335,7 @@ html.flagMapKiosk a {
 .publicFlagControls .publicFlagIconButton {
   position: relative;
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   min-width: 38px;
@@ -11393,6 +11396,7 @@ html.flagMapKiosk a {
   flex: 1 1 116px;
   min-width: 0;
   max-width: 280px;
+  margin-left: auto;
 }
 
 .publicFlagJump select {
