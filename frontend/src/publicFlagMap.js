@@ -240,46 +240,82 @@ export function clampView(view, viewport, world, options = {}) {
   };
 }
 
-// Each spot is either fully inside (with room) or less than half on screen.
-// The shifts that allow that are a union of intervals per spot, so the
-// smallest allowed shift is 0 or one of their endpoints. A settle never moves
-// more than a spot, so it cannot jump to a far part of the field.
-function snapAxis(offset, size, starts, length, scale, pad) {
-  const span = length * scale;
-  const items = [...new Set(starts)].map((start) => offset + start * scale);
-  for (const room of [pad, 0]) {
-    if (span > size - room * 2) return offset;
-    const allowed = items.map((from) => [
-      [-Infinity, span / 2 - (from + span) - 0.01],
+// Each spot is either fully inside (with room) or under `hidden` of it on
+// screen. The shifts that allow that are a union of intervals per spot, so
+// the smallest allowed shift is 0 or one of their endpoints. A settle never
+// moves more than a spot, so it cannot jump to a far part of the field.
+function axisShift(offset, size, starts, span, room, hidden, limits = [-Infinity, Infinity]) {
+  if (span > size - room * 2) return null;
+  const allowed = [[limits], ...starts.map((start) => {
+    const from = offset + start;
+    return [
+      [-Infinity, span * hidden - (from + span)],
       [room - from, size - room - (from + span)],
-      [size - span / 2 - from + 0.01, Infinity]
-    ]);
-    const candidates = [0, ...allowed.flat(2).filter((shift) => Math.abs(shift) <= span + pad)]
-      .sort((left, right) => Math.abs(left) - Math.abs(right));
-    const fits = (shift) => allowed.every((ranges) => ranges.some(([low, high]) => shift >= low - 1e-6 && shift <= high + 1e-6));
-    const shift = candidates.find(fits);
-    if (shift !== undefined) return offset + shift;
-  }
-  return offset;
+      [size - span * hidden - from, Infinity]
+    ];
+  })];
+  const candidates = [0, ...allowed.flat(2).filter((shift) => Math.abs(shift) <= span + room)]
+    .sort((left, right) => Math.abs(left) - Math.abs(right));
+  const fits = (shift) => allowed.every((ranges) => ranges.some(([low, high]) => shift >= low - 1e-6 && shift <= high + 1e-6));
+  const shift = candidates.find(fits);
+  return shift === undefined ? null : shift;
 }
 
-// At the names zoom and closer a spot is a large part of a phone window, so a
-// view that settles there never leaves a mostly visible spot cut by the edge.
-export function snapEdgeSpots(view, viewport, cells, pad = FIT_PADDING) {
-  if (spotScreenWidth(view.scale) < FLAG_MAP_ZOOM.namesAt) return view;
+const SNAP_SCALE_STEPS = Object.freeze([1, 1.01, 0.99, 1.02, 0.98, 1.03, 0.97, 1.04, 0.96, 1.05, 0.95, 1.06, 0.94]);
+
+// On a phone the closest zoom stops where one spot still fits with padding,
+// but never before the Closest level.
+export function spotFitMaxScale(viewport, pad = FIT_PADDING) {
+  const fit = Math.min((viewport.width - pad * 2) / FLAG_WIDTH, (viewport.height - pad * 2) / FLAG_HEIGHT);
+  return clamp(fit, (FLAG_MAP_ZOOM.closestAt + 1) / FLAG_WIDTH, FLAG_MAP_ZOOM.maxScale);
+}
+
+// From the names zoom in, a view that settles leaves every spot that is more
+// than half on screen fully inside with `pad` around it. When no pan can do
+// that at the requested scale, the scale moves up to 6% within the same level.
+export function snapEdgeSpots(view, viewport, cells, pad = FIT_PADDING, options = {}) {
+  const spotPx = spotScreenWidth(view.scale);
+  if (spotPx < FLAG_MAP_ZOOM.namesAt) return view;
   const width = Math.max(1, viewport.width);
   const height = Math.max(1, viewport.height);
-  const seen = viewportWorldRect(view, { width, height }, 0);
   const spots = (Array.isArray(cells) ? cells : []).filter((cell) => cell.serviceFlag || cell.status !== "Reserved");
-  const band = (cell, start, size, key) => cell[key] < start + size && cell[key] + cell[key === "x" ? "width" : "height"] > start;
-  const columns = spots.filter((cell) => band(cell, seen.y, seen.height, "y")).map((cell) => cell.x);
-  const rows = spots.filter((cell) => band(cell, seen.x, seen.width, "x")).map((cell) => cell.y);
-  if (!columns.length || !rows.length) return view;
-  return {
-    x: snapAxis(view.x, width, columns, FLAG_WIDTH, view.scale, pad),
-    y: snapAxis(view.y, height, rows, FLAG_HEIGHT, view.scale, pad),
-    scale: view.scale
+  const closest = spotPx >= FLAG_MAP_ZOOM.closestAt;
+  const low = Math.max(Number(options.minScale) || 0, (closest ? FLAG_MAP_ZOOM.closestAt : FLAG_MAP_ZOOM.namesAt) / FLAG_WIDTH);
+  const high = Math.min(Number(options.maxScale) || FLAG_MAP_ZOOM.maxScale, closest ? Infinity : (FLAG_MAP_ZOOM.closestAt - 0.01) / FLAG_WIDTH);
+  const unique = (values) => [...new Set(values)];
+  const world = options.world;
+  const clampSize = options.clampViewport ?? { width, height };
+  // The shifts clampView would keep, so a settle is never undone by the clamp.
+  const limits = (position, size, start, length, scale) => {
+    if (!world) return [-Infinity, Infinity];
+    if (length * scale + pad * 2 <= size + 0.5) return [0, 0];
+    return [size - pad - (start + length) * scale - position, pad - start * scale - position];
   };
+  const attempt = (scale, room, hidden) => {
+    const at = scale === view.scale ? view : zoomAt(view, width / 2, height / 2, scale);
+    const seen = viewportWorldRect(at, { width, height }, 0);
+    const columns = unique(spots.filter((cell) => cell.y < seen.y + seen.height && cell.y + cell.height > seen.y).map((cell) => cell.x * at.scale));
+    const rows = unique(spots.filter((cell) => cell.x < seen.x + seen.width && cell.x + cell.width > seen.x).map((cell) => cell.y * at.scale));
+    if (!columns.length || !rows.length) return null;
+    const dx = axisShift(at.x, width, columns, FLAG_WIDTH * at.scale, room, hidden,
+      limits(at.x, clampSize.width, world?.x ?? 0, world?.width ?? 0, at.scale));
+    const dy = dx === null ? null : axisShift(at.y, height, rows, FLAG_HEIGHT * at.scale, room, hidden,
+      limits(at.y, clampSize.height, world?.y ?? 0, world?.height ?? 0, at.scale));
+    return dy === null ? null : { x: at.x + dx, y: at.y + dy, scale: at.scale };
+  };
+  for (const hidden of [0.45, 0.5]) {
+    for (const step of SNAP_SCALE_STEPS) {
+      const scale = view.scale * step;
+      if (step !== 1 && (scale < low || scale > high)) continue;
+      const settled = attempt(scale, pad, hidden);
+      if (settled) return settled;
+    }
+  }
+  for (let room = pad - 1; room >= 0; room -= 1) {
+    const settled = attempt(view.scale, room, 0.5);
+    if (settled) return settled;
+  }
+  return view;
 }
 
 export function zoomAt(view, originX, originY, nextScale) {
@@ -872,12 +908,22 @@ export function zoneLabelSizes(zone, scale) {
       letterStacked = true;
     }
   }
+  let tiny = false;
   if (letterPx < ZONE_TEXT_PX.letter) {
-    letterPx = 0;
-    letterStacked = false;
+    // Below the floor the letter still draws, edge to edge over an inset stroke
+    // (.isTiny), so no section is ever left blank.
+    const full = Math.max(0, widthPx - 0.2);
+    const tall = (heightPx * 0.8) / UPRIGHT_ADVANCE;
+    const across = Math.min(22, tall, full / emSum(CAPITAL_EM));
+    const stacked = chars.length > 1
+      ? Math.min(22, full / Math.max(...chars.map(glyphEm), CAPITAL_EM, UPRIGHT_LINE), tall / chars.length)
+      : 0;
+    letterStacked = stacked > across;
+    letterPx = Math.max(across, stacked);
+    tiny = true;
   }
-  const letter = letterPx ? letterPx / s : 0;
-  const base = { range, letter, letterStacked, narrow };
+  const letter = letterPx > 0 ? letterPx / s : 0;
+  const base = { range, letter, letterStacked, narrow, tiny };
 
   const rangeAcross = labelFontSize(range, zone.width, zone.height * 0.2, s, { min: 9, max: 13 });
   if (rangeAcross) return { ...base, rangeSize: rangeAcross, vertical: false, stacked: false };
@@ -924,7 +970,15 @@ export function serviceFlagsLabelSize(box, scale) {
     const size = Math.min(16, inner, (height * 0.84) / (text.length * CHAR_EM));
     if (size >= min) return { size: size / s, vertical: true, text, narrow };
   }
-  return { size: 0, vertical: true, text: "", narrow };
+  const edgeToEdge = Math.max(0, width - 0.2);
+  const [whole, short] = [label, SERVICE_FLAGS_SHORT_LABEL].map((text) => ({
+    text,
+    size: Math.min(16, edgeToEdge, (height * 0.84) / (text.length * CHAR_EM))
+  }));
+  const last = whole.size >= short.size ? whole : short;
+  return last.size > 0
+    ? { size: last.size / s, vertical: true, text: last.text, narrow }
+    : { size: 0, vertical: true, text: "", narrow };
 }
 
 export function mapFullscreenSupported(element) {

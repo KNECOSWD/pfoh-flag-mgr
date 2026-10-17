@@ -44,6 +44,7 @@ import {
   serviceFlagsLabelBox,
   serviceFlagsLabelSize,
   snapEdgeSpots,
+  spotFitMaxScale,
   spotContents,
   spotsViewScale,
   springEase,
@@ -352,10 +353,19 @@ export default function PublicFlagMap({
     return { x: 0, y: 0, width: layoutRef.current?.worldWidth || 1, height: layoutRef.current?.worldHeight || 1 };
   }
 
+  function visibleSize() {
+    const node = viewportRef.current;
+    return node && node.clientWidth > 0 ? { width: node.clientWidth, height: node.clientHeight } : viewportSize();
+  }
+
+  function maxViewScale() {
+    return Math.max(fitScaleRef.current, spotFitMaxScale(visibleSize(), FIT_PADDING));
+  }
+
   function limitView(next: View) {
     return clampView(next, viewportSize(), worldBounds(), {
       minScale: Math.min(fitScaleRef.current, FLAG_MAP_ZOOM.maxScale),
-      maxScale: FLAG_MAP_ZOOM.maxScale,
+      maxScale: maxViewScale(),
       pad: FIT_PADDING
     });
   }
@@ -363,7 +373,14 @@ export default function PublicFlagMap({
   function settledView(next: View) {
     const limited = limitView(next);
     const cells = layoutRef.current?.cells;
-    return cells ? limitView(snapEdgeSpots(limited, viewportSize(), cells, FIT_PADDING)) : limited;
+    if (!cells) return limited;
+    const settled = snapEdgeSpots(limited, visibleSize(), cells, FIT_PADDING, {
+      minScale: fitScaleRef.current,
+      maxScale: maxViewScale(),
+      world: worldBounds(),
+      clampViewport: viewportSize()
+    });
+    return limitView(settled);
   }
 
   function settleGesture() {
@@ -1425,7 +1442,7 @@ export default function PublicFlagMap({
               <button
                 key={zone.label}
                 type="button"
-                className={sizes.narrow ? "publicFlagTile publicFlagZone isNarrow" : "publicFlagTile publicFlagZone"}
+                className={["publicFlagTile publicFlagZone", sizes.narrow ? "isNarrow" : "", sizes.tiny ? "isTiny" : ""].filter(Boolean).join(" ")}
                 style={{ left: zone.x, top: zone.y, width: zone.width, height: zone.height }}
                 aria-label={`${zone.label}, ${zone.occupiedCount} of ${zone.flagCount} flags`}
                 onClick={() => acceptClick(() => {
