@@ -25,6 +25,8 @@ import {
   flagMapPageBands,
   flagDeepLink,
   flagMapDetailGates,
+  flagMapItemsInView,
+  flagMapItemsSummary,
   flagMapLayerOpacities,
   lookupSubmitterSuggestions,
   resolveSubmitterFlags,
@@ -231,6 +233,25 @@ function FlagDetail({
   );
 }
 
+const ICON_PATHS = {
+  zoomOut: ["M5 12h14"],
+  zoomIn: ["M12 5v14", "M5 12h14"],
+  fullScreen: ["M4 9V4h5", "M15 4h5v5", "M20 15v5h-5", "M9 20H4v-5"],
+  exitFullScreen: ["M9 4v5H4", "M20 9h-5V4", "M15 20v-5h5", "M4 15h5v5"],
+  reset: ["M4.5 12a7.5 7.5 0 1 0 2.2-5.3", "M4 4.5v4h4"]
+} as const;
+
+function ToolIcon({ name }: { name: keyof typeof ICON_PATHS }) {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      {ICON_PATHS[name].map((d) => <path key={d} d={d} />)}
+    </svg>
+  );
+}
+
+type InViewItem = ReturnType<typeof flagMapItemsInView>["items"][number];
+type InViewList = { kind: string; items: InViewItem[] };
+
 type SubmitterSuggestion = { label: string; token: string };
 type SearchRow =
   | { kind: "honoree"; hit: SearchHit }
@@ -247,6 +268,7 @@ export default function PublicFlagMap({
 }) {
   const listId = useId();
   const helpId = useId();
+  const jumpId = useId();
   const location = useMemo(() => readFlagMapLocation(window.location.search), []);
   const kiosk = kioskLocked || location.kiosk || kioskSessionOn(window.sessionStorage);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -297,6 +319,12 @@ export default function PublicFlagMap({
   const [renderScale, setRenderScale] = useState(1);
   const [serviceLabelBox, setServiceLabelBox] = useState<ReturnType<typeof serviceFlagsLabelBox>>(null);
   const [levelText, setLevelText] = useState("Sections");
+  const [inView, setInView] = useState<InViewList>({ kind: "sections", items: [] });
+  const [jumpPending, setJumpPending] = useState("");
+  const inViewTimerRef = useRef(0);
+  const jumpByArrowRef = useRef(false);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const [toolIndex, setToolIndex] = useState(0);
   const [selected, setSelected] = useState<FlagBox | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
   const [revealId, setRevealId] = useState<number | null>(null);
@@ -455,6 +483,7 @@ export default function PublicFlagMap({
         levelRef.current = nextLevel;
         setLevelText(nextLevel);
       }
+      scheduleInView();
     };
     if (immediate) {
       cancelAnimationFrame(cullFrameRef.current);
@@ -463,6 +492,17 @@ export default function PublicFlagMap({
     }
     if (cullFrameRef.current) return;
     cullFrameRef.current = requestAnimationFrame(run);
+  }
+
+  // The list trails the view so a drag or an animated zoom does not rebuild it every frame.
+  function scheduleInView() {
+    window.clearTimeout(inViewTimerRef.current);
+    inViewTimerRef.current = window.setTimeout(() => {
+      const layout = layoutRef.current;
+      if (!layout) return;
+      const next = flagMapItemsInView(layout, viewRef.current, visibleSize(), gatesRef.current) as InViewList;
+      setInView((current) => (current.kind === next.kind && current.items.map((item) => item.key).join("|") === next.items.map((item) => item.key).join("|") ? current : next));
+    }, 120);
   }
 
   function setMoving(moving: boolean) {
@@ -583,6 +623,88 @@ export default function PublicFlagMap({
     const drawer = kioskRef.current ? Math.min(460, windowWidth - 32) + 16 : Math.min(420, windowWidth - 24) + 12;
     const viewportRight = boxRef.current.left + size.width;
     return Math.max(0, Math.min(size.width, viewportRight - (windowWidth - drawer)));
+  }
+
+  function clearPick() {
+    historyRef.current = [...historyRef.current, { ...viewRef.current }].slice(-16);
+    userAdjustedRef.current = true;
+    setSelected(null);
+    setHighlightId(null);
+    setRevealId(null);
+    setWaveIds([]);
+    writeFlagParam(null);
+  }
+
+  function zoomToZone(zone: { x: number; y: number; width: number; height: number }) {
+    clearPick();
+    const zoneView = fitView(zone, viewportSize(), 28);
+    animateTo(settledView(zoneView.scale >= spotsViewScale() ? zoneView : zoomAt(zoneView, viewportSize().width / 2, viewportSize().height / 2, spotsViewScale())));
+  }
+
+  function zoomToSpot(cell: { flagGridId: number; x: number; y: number; width: number; height: number }) {
+    clearPick();
+    setHighlightId(cell.flagGridId);
+    const size = viewportSize();
+    const scale = Math.min(closestViewScale(size), maxViewScale());
+    animateTo(settledView({
+      scale,
+      x: size.width / 2 - (cell.x + cell.width / 2) * scale,
+      y: size.height / 2 - (cell.y + cell.height / 2) * scale
+    }));
+  }
+
+  function pickInView(key: string) {
+    setJumpPending("");
+    const item = inView.items.find((entry) => entry.key === key);
+    if (!item) return;
+    exitAttract();
+    if (item.kind === "spot") zoomToSpot(item.box as FlagBox);
+    else zoomToZone(item.box);
+  }
+
+  // A closed select changes its value on an arrow key in some browsers. Those
+  // steps wait for Enter so the map only moves on a deliberate choice.
+  function onJumpKeyDown(event: React.KeyboardEvent<HTMLSelectElement>) {
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End"].includes(event.key)) {
+      jumpByArrowRef.current = true;
+      return;
+    }
+    jumpByArrowRef.current = false;
+    if (event.key === "Enter" && jumpPending) {
+      event.preventDefault();
+      pickInView(jumpPending);
+    } else if (event.key === "Escape" && jumpPending) {
+      setJumpPending("");
+    }
+  }
+
+  function onJumpChange(event: React.ChangeEvent<HTMLSelectElement>) {
+    const key = event.target.value;
+    if (!key) {
+      setJumpPending("");
+      return;
+    }
+    if (jumpByArrowRef.current) {
+      setJumpPending(key);
+      return;
+    }
+    pickInView(key);
+  }
+
+  function onToolbarKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    const buttons = [...(toolbarRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
+    const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    if (current < 0 || buttons.length === 0) return;
+    const next = event.key === "ArrowRight" ? (current + 1) % buttons.length
+      : event.key === "ArrowLeft" ? (current - 1 + buttons.length) % buttons.length
+        : event.key === "Home" ? 0
+          : event.key === "End" ? buttons.length - 1
+            : -1;
+    if (next < 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setToolIndex(next);
+    buttons[next].focus();
   }
 
   function goHome() {
@@ -758,6 +880,8 @@ export default function PublicFlagMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [field]);
 
+  useEffect(() => () => window.clearTimeout(inViewTimerRef.current), []);
+
   useEffect(() => {
     if (!revealId) return;
     const timer = window.setTimeout(() => setRevealId((current) => (current === revealId ? null : current)), 1400);
@@ -833,7 +957,7 @@ export default function PublicFlagMap({
 
   useLayoutEffect(() => {
     const root = document.documentElement;
-    const bandNames = ["--flag-map-header", "--flag-map-tools", "--flag-map-bottom", "--flag-map-side", "--flag-map-pad-top", "--flag-map-pad-bottom"];
+    const bandNames = ["--flag-map-header", "--flag-map-tools", "--flag-map-bottom", "--flag-map-side", "--flag-map-pad-top", "--flag-map-pad-bottom", "--flag-map-legend"];
     const clearBands = () => {
       for (const name of bandNames) root.style.removeProperty(name);
     };
@@ -859,6 +983,7 @@ export default function PublicFlagMap({
       root.style.setProperty("--flag-map-side", `${bands.side}px`);
       root.style.setProperty("--flag-map-pad-top", `${bands.mapPadTop}px`);
       root.style.setProperty("--flag-map-pad-bottom", `${bands.mapPadBottom}px`);
+      root.style.setProperty("--flag-map-legend", `${bands.legend}px`);
     };
     applyBands();
     window.addEventListener("resize", applyBands);
@@ -1201,7 +1326,7 @@ export default function PublicFlagMap({
   }
 
   function onMapKeyDown(event: React.KeyboardEvent<HTMLElement>) {
-    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
     if (event.key === "Escape") {
       setSelected(null);
       setRevealId(null);
@@ -1378,25 +1503,39 @@ export default function PublicFlagMap({
         <div className="publicFlagToolbar">
           {kiosk ? <button type="button" onClick={goHome} aria-label="Home">Home</button> : null}
           {kiosk ? <button type="button" className="secondary" onClick={goBack} aria-label="Back">Back</button> : null}
-          <button type="button" className="secondary" onClick={() => zoomBy(1 / FLAG_MAP_ZOOM.zoomStep)} aria-label="Zoom out">−</button>
-          <button type="button" className="secondary" onClick={() => zoomBy(FLAG_MAP_ZOOM.zoomStep)} aria-label="Zoom in">+</button>
-          <button
-            type="button"
-            className="secondary"
-            aria-pressed={mapFull}
-            aria-label={mapFull ? "Exit full screen" : "Full screen"}
-            onClick={toggleMapFull}
-          >
-            {mapFull ? "Exit full screen" : "Full screen"}
-          </button>
-          {kiosk ? null : (
-            <button type="button" className="secondary" onClick={goHome} aria-label="Reset view">Reset view</button>
-          )}
-          <ul className="publicFlagLegend" aria-label="Spot key">
-            <li><i className="isOccupied" aria-hidden="true" />Occupied</li>
-            <li><i className="isOpen" aria-hidden="true" />Open</li>
-          </ul>
-          <p className="publicFlagLevel" aria-live="polite">{levelText}</p>
+          <div ref={toolbarRef} className="publicFlagControls" role="toolbar" aria-label="Map controls" onKeyDown={onToolbarKeyDown}>
+            <button type="button" className="secondary publicFlagIconButton" tabIndex={toolIndex === 0 ? 0 : -1} onFocus={() => setToolIndex(0)} onClick={() => zoomBy(1 / FLAG_MAP_ZOOM.zoomStep)} aria-label="Zoom out" data-tooltip="Zoom out">
+              <ToolIcon name="zoomOut" />
+            </button>
+            <button type="button" className="secondary publicFlagIconButton" tabIndex={toolIndex === 1 ? 0 : -1} onFocus={() => setToolIndex(1)} onClick={() => zoomBy(FLAG_MAP_ZOOM.zoomStep)} aria-label="Zoom in" data-tooltip="Zoom in">
+              <ToolIcon name="zoomIn" />
+            </button>
+            <button
+              type="button"
+              className="secondary publicFlagIconButton"
+              tabIndex={toolIndex === 2 ? 0 : -1}
+              onFocus={() => setToolIndex(2)}
+              aria-pressed={mapFull}
+              aria-label={mapFull ? "Exit full screen" : "Full screen"}
+              data-tooltip={mapFull ? "Exit full screen" : "Full screen"}
+              onClick={toggleMapFull}
+            >
+              <ToolIcon name={mapFull ? "exitFullScreen" : "fullScreen"} />
+            </button>
+            {kiosk ? null : (
+              <button type="button" className="secondary publicFlagIconButton" tabIndex={toolIndex === 3 ? 0 : -1} onFocus={() => setToolIndex(3)} onClick={goHome} aria-label="Reset view" data-tooltip="Reset view">
+                <ToolIcon name="reset" />
+              </button>
+            )}
+          </div>
+          <div className="publicFlagJump">
+            <label htmlFor={jumpId} className="srOnly">{inView.kind === "sections" ? "Go to a section in view" : "Go to a spot in view"}</label>
+            <select id={jumpId} value={jumpPending} onChange={onJumpChange} onKeyDown={onJumpKeyDown} onBlur={() => setJumpPending("")}>
+              <option value="">{flagMapItemsSummary(inView)}</option>
+              {inView.items.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+            </select>
+          </div>
+          <p className="publicFlagLevel srOnly" aria-live="polite">{levelText}</p>
         </div>
       </div>
 
@@ -1426,7 +1565,7 @@ export default function PublicFlagMap({
           {field?.rowLabels.map((label) => {
             const size = labelFontSize(label.label, label.width, label.height, renderScale, { max: 13 });
             return (
-              <div key={`row-${label.row}`} className="publicFlagRowLabel" style={{ left: label.x, top: label.y, width: label.width, height: label.height, fontSize: size || undefined }}>
+              <div key={`row-${label.side}-${label.row}`} className={label.side === "right" ? "publicFlagRowLabel isRight" : "publicFlagRowLabel"} style={{ left: label.x, top: label.y, width: label.width, height: label.height, fontSize: size || undefined }}>
                 {size ? label.label : null}
               </div>
             );
@@ -1445,17 +1584,7 @@ export default function PublicFlagMap({
                 className={["publicFlagTile publicFlagZone", sizes.narrow ? "isNarrow" : "", sizes.tiny ? "isTiny" : ""].filter(Boolean).join(" ")}
                 style={{ left: zone.x, top: zone.y, width: zone.width, height: zone.height }}
                 aria-label={`${zone.label}, ${zone.occupiedCount} of ${zone.flagCount} flags`}
-                onClick={() => acceptClick(() => {
-                  historyRef.current = [...historyRef.current, { ...viewRef.current }].slice(-16);
-                  userAdjustedRef.current = true;
-                  setSelected(null);
-                  setHighlightId(null);
-                  setRevealId(null);
-                  setWaveIds([]);
-                  writeFlagParam(null);
-                  const zoneView = fitView(zone, viewportSize(), 28);
-                  animateTo(settledView(zoneView.scale >= spotsViewScale() ? zoneView : zoomAt(zoneView, viewportSize().width / 2, viewportSize().height / 2, spotsViewScale())));
-                })}
+                onClick={() => acceptClick(() => zoomToZone(zone))}
               >
                 {sizes.letter ? <strong className={sizes.letterStacked ? "isUpright" : undefined} style={{ fontSize: sizes.letter }}>{zone.section}</strong> : null}
                 {sizes.rangeSize ? <span className={sizes.stacked ? "isUpright" : sizes.vertical ? "isVertical" : undefined} style={{ fontSize: sizes.rangeSize }}>{sizes.range}</span> : null}
@@ -1547,6 +1676,10 @@ export default function PublicFlagMap({
           })}
         </div>
       </div>
+      <ul className="publicFlagLegend" aria-label="Spot key">
+        <li><i className="isOccupied" aria-hidden="true" />Occupied</li>
+        <li><i className="isOpen" aria-hidden="true" />Open</li>
+      </ul>
       </div>
       {selected ? createPortal(
         <div className={kiosk ? "publicFlagDetailLayer isKiosk" : "publicFlagDetailLayer"}>

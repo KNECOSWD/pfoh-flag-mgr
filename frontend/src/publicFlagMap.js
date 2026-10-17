@@ -123,7 +123,7 @@ export const FIELD_AISLE_AFTER_ROW = 20;
 export const FIT_PADDING = 12;
 const ROW_LABEL_WIDTH = 160;
 const LABEL_BAND = 96;
-const PAVILION_BAND = 84;
+export const PAVILION_SIZE = Object.freeze({ width: (FLAG_WIDTH * 3 + FLAG_GAP * 2) * 4, height: 84 * 2 });
 const CHAR_EM = 0.62;
 const NUMBER_EM = 0.72;
 const LINE_HEIGHT = 1.15;
@@ -363,19 +363,59 @@ export function fitWholeField(bounds, viewport, padding = FIT_PADDING) {
   };
 }
 
+// `legend` is the Occupied/Open key under the bottom-right corner of the field,
+// so the key never covers a spot.
 export function flagMapPageBands(size, { kiosk = false } = {}) {
   if (kiosk) {
-    return { header: 0, tools: 196, bottom: 16, side: 22, mapPadTop: 18, mapPadBottom: 0 };
+    return { header: 0, tools: 196, bottom: 16, side: 22, mapPadTop: 18, mapPadBottom: 0, legend: 30 };
   }
   const narrow = size.width <= 760;
   const short = size.height <= 640 || size.width <= 360;
   if (short) {
-    return { header: 104, tools: 96, bottom: 24, side: 8, mapPadTop: 4, mapPadBottom: 4 };
+    return { header: 104, tools: 96, bottom: 24, side: 8, mapPadTop: 4, mapPadBottom: 4, legend: 20 };
   }
   if (narrow) {
-    return { header: 120, tools: 108, bottom: 28, side: 12, mapPadTop: 6, mapPadBottom: 4 };
+    return { header: 120, tools: 108, bottom: 28, side: 12, mapPadTop: 6, mapPadBottom: 4, legend: 20 };
   }
-  return { header: 92, tools: 104, bottom: 28, side: 16, mapPadTop: 6, mapPadBottom: 4 };
+  return { header: 92, tools: 104, bottom: 28, side: 16, mapPadTop: 6, mapPadBottom: 4, legend: 20 };
+}
+
+function zoneOrder(left, right) {
+  return left.x - right.x || left.y - right.y;
+}
+
+// What the "in view" list offers: the section blocks while zoomed out, and the
+// flag spots once the zoom shows flag numbers. Anything with part of its box
+// inside the map window counts.
+export function flagMapItemsInView(field, view, viewport, gates = {}) {
+  if (!field || !(view?.scale > 0)) return { kind: "sections", items: [] };
+  const seen = viewportWorldRect(view, viewport, 0);
+  const items = [];
+  const service = field.serviceFlags && rectsIntersect(field.serviceFlags, seen)
+    ? { key: "service", kind: "service", label: `${field.serviceFlags.label}, ${SERVICE_FLAGS_SECTION} 1\u2013${FIELD_MAP_Z_ROWS}`, box: field.serviceFlags }
+    : null;
+  if (!gates.numbers) {
+    for (const zone of [...cullRects(field.zones, seen)].sort(zoneOrder)) {
+      items.push({ key: `zone:${zone.label}`, kind: "zone", label: zone.label, box: zone });
+    }
+    if (service) items.push(service);
+    return { kind: "sections", items };
+  }
+  const spots = cullRects(field.cells, seen)
+    .filter((cell) => !cell.serviceFlag && !cell.template && cell.flagGridId > 0 && cell.status !== "Reserved")
+    .sort(zoneOrder);
+  for (const cell of spots) {
+    const caption = cell.status === "Occupied" ? (cell.displayName || "Occupied") : "Open";
+    items.push({ key: `spot:${cell.flagGridId}`, kind: "spot", label: `${cell.flagGridName} \u00b7 ${caption}`, box: cell, flagGridId: cell.flagGridId });
+  }
+  if (service) items.push(service);
+  return { kind: "spots", items };
+}
+
+// The closed list reads like the old level label, such as "Sections (56)".
+export function flagMapItemsSummary(list) {
+  const count = list?.items?.length ?? 0;
+  return `${list?.kind === "sections" ? "Sections" : "Spots"} (${count})`;
 }
 
 export function projectFieldBox(box, view, frame) {
@@ -400,7 +440,7 @@ export function initialOverviewPlacement(field, windowSize, options = {}) {
     x: bands.side,
     y: bands.header + bands.mapPadTop + bands.tools,
     width: Math.max(1, windowSize.width - bands.side * 2),
-    height: Math.max(1, windowSize.height - bands.header - bands.mapPadTop - bands.tools - bands.mapPadBottom - bands.bottom)
+    height: Math.max(1, windowSize.height - bands.header - bands.mapPadTop - bands.tools - (bands.legend ?? 0) - bands.mapPadBottom - bands.bottom)
   };
   frame.left = frame.x;
   frame.top = frame.y;
@@ -571,8 +611,9 @@ export function layoutFlagField(sections) {
   let nextX = gridLeft;
   ordered.forEach((section, index) => {
     const seats = Array.isArray(section.seats) ? section.seats : [];
-    const besideZ = section.section === "Z" || ordered[index - 1]?.section === "Z";
-    const x = index === 0 ? nextX : nextX + (besideZ ? SECTION_GAP : FLAG_GAP);
+    // Z sits right against N; the only aisle between columns is Z to M.
+    const afterZ = ordered[index - 1]?.section === "Z";
+    const x = index === 0 ? nextX : nextX + (afterZ ? SECTION_GAP : FLAG_GAP);
     nextX = x + FLAG_WIDTH;
     placedSections.push({
       section: section.section,
@@ -603,24 +644,25 @@ export function layoutFlagField(sections) {
 
   const contentRight = Math.max(gridLeft + 1, ...placedSections.map((section) => section.x + section.width));
   const zSection = placedSections.find((section) => section.section === "Z") ?? null;
-  const pavilionWidth = FLAG_WIDTH * 3 + FLAG_GAP * 2;
   const pavilion = zSection
     ? {
-        x: zSection.x + (zSection.width - pavilionWidth) / 2,
+        x: zSection.x + (zSection.width - PAVILION_SIZE.width) / 2,
         y: labelTop + LABEL_BAND + FLAG_GAP,
-        width: pavilionWidth,
-        height: PAVILION_BAND,
+        width: PAVILION_SIZE.width,
+        height: PAVILION_SIZE.height,
         label: "Pavilion"
       }
     : null;
-  const rowLabels = [...rows].sort((left, right) => right - left).map((row) => ({
+  const rightLabelX = contentRight + FLAG_GAP;
+  const rowLabels = [...rows].sort((left, right) => right - left).flatMap((row) => ["left", "right"].map((side) => ({
     row,
+    side,
     label: String(row),
-    x: SECTION_PAD,
+    x: side === "left" ? SECTION_PAD : rightLabelX,
     y: rowTop(row, maxRow, aisleGap),
     width: ROW_LABEL_WIDTH,
     height: FLAG_HEIGHT
-  }));
+  })));
   const columnLabels = placedSections.map((section) => ({
     section: section.section,
     label: section.section,
@@ -651,7 +693,7 @@ export function layoutFlagField(sections) {
     pavilion,
     serviceFlags,
     zones: flagZones(placedCells),
-    worldWidth: contentRight + SECTION_PAD,
+    worldWidth: rightLabelX + ROW_LABEL_WIDTH + SECTION_PAD,
     worldHeight: Math.max(bottom + SECTION_PAD, 1)
   };
 }

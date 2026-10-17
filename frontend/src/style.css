@@ -11317,13 +11317,88 @@ html.flagMapKiosk a {
   margin-bottom: 10px;
 }
 
-.publicFlagLevel {
-  margin: 0 0 0 auto;
-  color: #8a6a12;
-  font-weight: 750;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+.publicFlagControls {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  border-radius: 12px;
+  background: #eef2f8;
+  box-shadow: inset 0 0 0 1px rgba(23, 59, 115, 0.14);
+}
+
+.publicFlagIconButton {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  padding: 0 10px;
+  border-radius: 12px;
+  background: transparent;
+}
+
+.publicFlagIconButton svg {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.publicFlagIconButton[aria-pressed="true"] {
+  background: #173b73;
+  color: #fff;
+}
+
+.publicFlagIconButton::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  z-index: 6;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: #0b1f3a;
+  color: #fff8e8;
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 120ms ease;
+}
+
+.publicFlagControls .publicFlagIconButton:first-child::after {
+  left: 0;
+  transform: none;
+}
+
+.publicFlagIconButton:hover::after,
+.publicFlagIconButton:focus-visible::after {
+  opacity: 1;
+}
+
+.publicFlagJump {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.publicFlagJump select {
+  width: auto;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 0 28px 0 10px;
+  border-color: rgba(212, 175, 55, 0.55);
+  border-radius: 12px;
+  background-color: #fffdf8;
+  color: #5c4b32;
   font-size: 0.82rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.publicFlagLevel {
+  margin: 0;
 }
 
 .publicFlagChrome {
@@ -11335,6 +11410,8 @@ html.flagMapKiosk a {
 .publicFlagStage {
   position: relative;
   z-index: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .publicFlagViewport {
@@ -11428,6 +11505,12 @@ html.flagMapKiosk a {
 .publicFlagRowLabel {
   justify-content: flex-end;
   padding-right: calc(var(--px, 1px) * 4);
+}
+
+.publicFlagRowLabel.isRight {
+  justify-content: flex-start;
+  padding-right: 0;
+  padding-left: calc(var(--px, 1px) * 4);
 }
 
 .publicFlagColumnLabel {
@@ -11899,12 +11982,17 @@ html.flagMapKiosk a {
 
 .publicFlagLegend {
   display: flex;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
+  align-self: flex-end;
+  align-items: center;
+  justify-content: flex-end;
   gap: 4px 12px;
+  height: var(--flag-map-legend, 20px);
   margin: 0;
-  padding: 0;
+  padding: 0 6px 0 0;
   list-style: none;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
+  line-height: 1;
   font-weight: 650;
   color: #5c4b32;
 }
@@ -11958,8 +12046,24 @@ html.isMapFullscreen .publicFlagLegend {
   height: 180px;
 }
 
-.publicFlagMap.isKiosk .publicFlagLevel {
-  color: #f3e2a7;
+.publicFlagMap.isKiosk .publicFlagLegend {
+  height: 30px;
+  font-size: 1rem;
+}
+
+.publicFlagMap.isKiosk .publicFlagLegend i {
+  width: 22px;
+  height: 15px;
+}
+
+.publicFlagMap.isKiosk .publicFlagIconButton svg {
+  width: 28px;
+  height: 28px;
+}
+
+.publicFlagMap.isKiosk .publicFlagJump select {
+  font-size: 1.05rem;
+  padding: 0 34px 0 16px;
 }
 
 @keyframes publicFlagSealFade {

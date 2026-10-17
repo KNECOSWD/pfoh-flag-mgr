@@ -28,7 +28,10 @@ import {
   flagDeepLink,
   countFlagsOnScreen,
   flagMapDetailGates,
+  flagMapItemsInView,
+  flagMapItemsSummary,
   flagMapLayerOpacities,
+  PAVILION_SIZE,
   boundsOf,
   FIELD_MAP_ROWS,
   FIELD_MAP_Z_ROWS,
@@ -268,7 +271,7 @@ test("the fit shows the whole grid with padding and a pan reaches every edge", (
   assert.match(page, /const target = limitView\(requested\)/);
 });
 
-test("section blocks are flat, Z1–Z10 is one flat Service Flags block, and Z has an aisle on both sides", () => {
+test("section blocks are flat, Z1–Z10 is one flat Service Flags block, and Z sits against N with the aisle before M", () => {
   const zoneBlock = css.slice(css.indexOf(".publicFlagTile,\n.publicFlagZone {"), css.indexOf(".publicFlagZone strong"));
   assert.match(zoneBlock, /background:\s*#[0-9a-f]{6};/i);
   assert.doesNotMatch(zoneBlock, /gradient/);
@@ -349,9 +352,90 @@ test("section blocks are flat, Z1–Z10 is one flat Service Flags block, and Z h
   const gapBefore = x.Z.x - (x.N.x + x.N.width);
   const gapAfter = x.M.x - (x.Z.x + x.Z.width);
   const usual = x.L.x - (x.M.x + x.M.width);
-  assert.equal(gapAfter, gapBefore);
-  assert.ok(gapBefore > usual * 3, `Z gap ${gapBefore} vs ${usual}`);
+  assert.equal(gapBefore, usual, "no aisle between N and Z");
+  assert.equal(x.N.x - (x.O.x + x.O.width), usual);
+  assert.ok(gapAfter > usual * 3, `Z to M gap ${gapAfter} vs ${usual}`);
   assert.equal(usual, SPOT_SIZE.gap);
+  const aisles = PAVILION_COLUMNS_LEFT_TO_RIGHT.slice(1).filter((section, index) => x[section].x - (x[PAVILION_COLUMNS_LEFT_TO_RIGHT[index]].x + SPOT_SIZE.width) !== usual);
+  assert.deepEqual(aisles, ["M"], "the only column aisle is Z to M");
+});
+
+test("row numbers run down both sides, the pavilion is four times wider and twice as tall, and the key sits under the field", () => {
+  const field = layoutFlagField([]);
+  const left = field.rowLabels.filter((label) => label.side === "left");
+  const right = field.rowLabels.filter((label) => label.side === "right");
+  assert.equal(left.length, FIELD_MAP_ROWS);
+  assert.equal(right.length, FIELD_MAP_ROWS);
+  const contentRight = Math.max(...field.sections.map((section) => section.x + section.width));
+  const gridLeft = Math.min(...field.sections.map((section) => section.x));
+  for (const label of right) {
+    const twin = left.find((other) => other.row === label.row);
+    assert.equal(label.y, twin.y, `row ${label.row} lines up`);
+    assert.equal(label.height, twin.height);
+    assert.equal(label.width, twin.width);
+    assert.equal(label.x - contentRight, gridLeft - (twin.x + twin.width), "same gap from the grid on both sides");
+    assert.ok(label.x + label.width < field.worldWidth);
+  }
+  assert.equal(PAVILION_SIZE.width, (SPOT_SIZE.width * 3 + SPOT_SIZE.gap * 2) * 4);
+  assert.equal(PAVILION_SIZE.height, 84 * 2);
+  assert.equal(field.pavilion.width, PAVILION_SIZE.width);
+  assert.equal(field.pavilion.height, PAVILION_SIZE.height);
+  assert.ok(field.pavilion.x > 0 && field.pavilion.x + field.pavilion.width < field.worldWidth);
+  assert.ok(field.pavilion.y + field.pavilion.height < field.worldHeight);
+  assert.match(page, /label\.side === "right" \? "publicFlagRowLabel isRight"/);
+  assert.match(css, /\.publicFlagRowLabel\.isRight \{\s*justify-content: flex-start;/);
+
+  const stage = page.slice(page.indexOf('<div className="publicFlagStage">'), page.indexOf("{selected ? createPortal("));
+  assert.match(stage, /<ul className="publicFlagLegend" aria-label="Spot key">/);
+  const toolbar = page.slice(page.indexOf('<div className="publicFlagToolbar">'), page.indexOf('<div className="publicFlagStage">'));
+  assert.doesNotMatch(toolbar, /publicFlagLegend/);
+  assert.ok(stage.indexOf("publicFlagLegend") > stage.indexOf('className="publicFlagViewport"'), "the key follows the field");
+  assert.match(css, /\.publicFlagLegend \{[^}]*align-self: flex-end;[^}]*height: var\(--flag-map-legend, 20px\);/);
+  for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, { width: 320, height: 568 }]) {
+    assert.ok(flagMapPageBands(size).legend > 0);
+  }
+  assert.ok(flagMapPageBands({ width: 1920, height: 1080 }, { kiosk: true }).legend >= 30);
+});
+
+test("the map controls are one icon toolbar and the in-view list follows the zoom", () => {
+  const toolbar = page.slice(page.indexOf('className="publicFlagControls" role="toolbar"'), page.indexOf('<div className="publicFlagJump">'));
+  assert.match(toolbar, /aria-label="Map controls"/);
+  for (const name of ["Zoom out", "Zoom in", "Reset view"]) {
+    assert.match(toolbar, new RegExp(`aria-label="${name}" data-tooltip="${name}"`));
+  }
+  assert.match(toolbar, /aria-label=\{mapFull \? "Exit full screen" : "Full screen"\}/);
+  assert.match(toolbar, /data-tooltip=\{mapFull \? "Exit full screen" : "Full screen"\}/);
+  assert.equal((toolbar.match(/<ToolIcon /g) || []).length, 4);
+  assert.doesNotMatch(toolbar, />\s*(−|\+|Full screen|Reset view)\s*</, "no text labels inside the icon buttons");
+  assert.match(page, /<svg viewBox="0 0 24 24"[^>]*aria-hidden="true" focusable="false"/);
+  assert.match(css, /\.publicFlagIconButton::after \{[^}]*content: attr\(data-tooltip\);/);
+  assert.match(css, /\.publicFlagIconButton:focus-visible::after/);
+  assert.doesNotMatch(page, /className="publicFlagLevel" aria-live/);
+  assert.match(page, /<label htmlFor=\{jumpId\} className="srOnly">/);
+  assert.match(page, /event\.target instanceof HTMLSelectElement\) return;/);
+
+  const field = pavilionField(40);
+  const viewport = { width: 1406, height: 618 };
+  const fitted = fitWholeField({ x: 0, y: 0, width: field.worldWidth, height: field.worldHeight }, viewport, FIT_PADDING);
+  const out = flagMapItemsInView(field, fitted, viewport, flagMapDetailGates(fitted.scale, 1000));
+  assert.equal(out.kind, "sections");
+  assert.equal(out.items.filter((item) => item.kind === "zone").length, 56);
+  assert.equal(out.items.filter((item) => item.kind === "service").length, 1);
+  assert.equal(flagMapItemsSummary(out), "Sections (57)");
+  const zone = field.zones.find((item) => item.label === "C 21\u201340");
+  const scale = 64 / SPOT_SIZE.width;
+  const near = { scale, x: viewport.width / 2 - (zone.x + zone.width / 2) * scale, y: viewport.height / 2 - (zone.y + zone.height / 2) * scale };
+  const spots = flagMapItemsInView(field, near, viewport, flagMapDetailGates(scale, 300));
+  assert.equal(spots.kind, "spots");
+  assert.ok(spots.items.length > 0 && spots.items.every((item) => item.kind === "spot" || item.kind === "service"));
+  assert.ok(spots.items.some((item) => item.label.startsWith("C-")));
+  const seen = viewportWorldRect(near, viewport, 0);
+  for (const item of spots.items) {
+    const box = item.box;
+    assert.ok(box.x < seen.x + seen.width && box.x + box.width > seen.x && box.y < seen.y + seen.height && box.y + box.height > seen.y, `${item.label} is in view`);
+  }
+  assert.equal(spots.items.some((item) => /Z-0?[1-9]\b|Z-10\b/.test(item.label)), false, "Service Flags spots are not listed one by one");
+  assert.match(flagMapItemsSummary(spots), /^Spots \(\d+\)$/);
 });
 
 function fieldWithZ(rows) {
