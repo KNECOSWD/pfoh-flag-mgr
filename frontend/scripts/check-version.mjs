@@ -7,7 +7,8 @@ const version = readFileSync(new URL("../../VERSION", import.meta.url), "utf8").
 test("package.json matches the VERSION file", () => {
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(pkg.version, version);
-  assert.equal(version, "2.0.9");
+  assert.equal(version, "2.0.10");
+  assert.match(version, /^\d+\.\d+\.\d+$/, "major.minor.patch, any number of digits each");
 });
 
 test("the API assembly version is read from VERSION", () => {
@@ -21,26 +22,12 @@ test("the footer stamps the shared version", () => {
   assert.match(app, /Version \{packageInfo\.version\}/);
 });
 
-test("the changelog records 1.0.0 through 2.0.9", () => {
+test("the changelog records 1.0.0 through 2.0.10", () => {
   const changelog = readFileSync(new URL("../../CHANGELOG.md", import.meta.url), "utf8");
-  assert.match(changelog, /## 1\.0\.0/);
-  assert.match(changelog, /## 1\.1\.0/);
-  assert.match(changelog, /## 1\.2\.0/);
-  assert.match(changelog, /## 1\.3\.0/);
-  assert.match(changelog, /## 1\.4\.0/);
-  assert.match(changelog, /## 1\.5\.0/);
-  assert.match(changelog, /## 1\.5\.1/);
-  assert.match(changelog, /## 1\.5\.2/);
-  assert.match(changelog, /## 2\.0\.0/);
-  assert.match(changelog, /## 2\.0\.1/);
-  assert.match(changelog, /## 2\.0\.2/);
-  assert.match(changelog, /## 2\.0\.3/);
-  assert.match(changelog, /## 2\.0\.4/);
-  assert.match(changelog, /## 2\.0\.5/);
-  assert.match(changelog, /## 2\.0\.6/);
-  assert.match(changelog, /## 2\.0\.7/);
-  assert.match(changelog, /## 2\.0\.8/);
-  assert.match(changelog, /## 2\.0\.9/);
-  assert.doesNotMatch(changelog, /## 1\.4\.1/);
-  assert.doesNotMatch(changelog, /## 1\.6\.0/);
+  const headings = [...changelog.matchAll(/^## (\S+)\s*$/gm)].map((match) => match[1]);
+  assert.equal(headings[0], version, "the newest entry is the current version");
+  const expected = ["1.0.0", "1.1.0", "1.2.0", "1.3.0", "1.4.0", "1.5.0", "1.5.1", "1.5.2", "2.0.0", "2.0.1", "2.0.2", "2.0.3", "2.0.4", "2.0.5", "2.0.6", "2.0.7", "2.0.8", "2.0.9", "2.0.10"];
+  for (const entry of expected) assert.ok(headings.includes(entry), `## ${entry} is an exact heading, not a prefix of a longer one`);
+  assert.ok(!headings.includes("1.4.1"));
+  assert.ok(!headings.includes("1.6.0"));
 });

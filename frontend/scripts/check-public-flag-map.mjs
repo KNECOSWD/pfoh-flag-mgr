@@ -20,6 +20,7 @@ import {
   gutterInsets,
   fieldFitBounds,
   AXIS_STRIP,
+  AXIS_LABEL_PAD,
   sectionLabelSizes,
   applyKioskIdleReset,
   attractView,
@@ -1522,7 +1523,8 @@ test("row numbers and section letters stay pinned in their viewport-edge gutters
     assert.equal(label.x, view.x + source.x * view.scale, "each letter lines up with its column");
     assert.ok(label.y >= viewport.height - AXIS_STRIP.column && label.y + label.height <= viewport.height, "letters sit inside the bottom gutter");
     const middle = label.x + label.width / 2;
-    assert.equal(label.hidden, middle < AXIS_STRIP.row || middle > viewport.width - AXIS_STRIP.row || !label.fontSize, "(a) no letter stacks behind a side gutter");
+    const endRoom = AXIS_STRIP.row + AXIS_LABEL_PAD + label.fontSize / 2;
+    assert.equal(label.hidden, middle < endRoom || middle > viewport.width - endRoom || !label.fontSize, "(a) no letter stacks behind a side gutter or sits flush with its corner");
   }
   assert.ok(rows.some((label) => label.hidden) && rows.some((label) => !label.hidden));
   assert.ok(columns.some((label) => label.hidden) && columns.some((label) => !label.hidden));
@@ -1575,6 +1577,42 @@ test("pinned axis labels sit on solid navy gutter strips that taps pass through"
   assert.match(css, /\.publicFlagAxisGutter\.isLeft,\s*\.publicFlagAxisGutter\.isRight \{[^}]*bottom: 28px;[^}]*width: 36px;/);
   assert.match(css, /\.publicFlagAxisGutter\.isBottom \{[^}]*height: 28px;/);
   assert.match(css, /\.publicFlagAxis \.publicFlagRowLabel,\s*\.publicFlagAxis \.publicFlagColumnLabel \{[^}]*pointer-events: none;/);
+});
+
+test("left and right row numbers have the same inner padding and mirror each other's inset from the viewport edge (2.0.10)", () => {
+  const field = pavilionField(40);
+  for (const viewport of [{ width: 284, height: 567 }, { width: 346, height: 567 }, { width: 1406, height: 618 }, { width: 1874, height: 858 }]) {
+    for (const scale of [0.05, 0.2, 0.6, 1.2]) {
+      const labels = pinnedAxisLabels(field, { x: -100, y: -100, scale }, viewport);
+      for (const left of labels.filter((label) => label.kind === "row" && label.side === "left")) {
+        const right = labels.find((label) => label.key === left.key.replace("row-left-", "row-right-"));
+        assert.ok(right, `row ${left.label} has a right-side twin`);
+        assert.ok(Math.abs(left.x - (viewport.width - right.x - right.width)) < 1e-9, `row ${left.label} insets match at ${viewport.width}px, scale ${scale}`);
+        assert.equal(left.width, right.width);
+        assert.equal(left.fontSize, right.fontSize, "label size is the same on both sides");
+      }
+    }
+  }
+  const axisRule = css.match(/\.publicFlagAxis \.publicFlagRowLabel,\s*\.publicFlagAxis \.publicFlagColumnLabel \{([^}]*)\}/)?.[1] ?? "";
+  assert.match(axisRule, /justify-content: center;/, "text is centred in each strip, not pushed to one edge");
+  assert.match(axisRule, new RegExp(`padding: 0 ${AXIS_LABEL_PAD}px;`), "equal inline padding on both sides");
+  assert.ok(css.indexOf(".publicFlagAxis .publicFlagRowLabel,") > css.indexOf(".publicFlagRowLabel.isRight {"), "the axis rule wins over the one-sided isRight padding");
+  assert.match(page, /pinnedAxisLabels\(field, view, \{\s*width: axis\.clientWidth \|\| size\.width,\s*height: axis\.clientHeight \|\| size\.height\s*\}\)/, "labels are placed in the overlay's own box, not the bordered viewport rect");
+});
+
+test("the flag detail keeps its action row pinned below a scrolling body with safe-area padding (2.0.10)", () => {
+  const detail = page.slice(page.indexOf("function FlagDetail("), page.indexOf("const ICON_PATHS"));
+  const scrollAt = detail.indexOf('<div className="publicFlagDetailScroll">');
+  const actionsAt = detail.indexOf('<div className="publicFlagDetailActions">');
+  assert.ok(scrollAt > 0 && actionsAt > scrollAt, "the actions follow the scroll area");
+  const scroll = detail.slice(scrollAt, actionsAt);
+  const actions = detail.slice(actionsAt, detail.indexOf("</aside>"));
+  assert.doesNotMatch(scroll, /<button/, "no action button sits inside the scroll container");
+  assert.ok(scroll.indexOf("publicFlagPhotoFrame") > 0 && scroll.indexOf("publicFlagBio") > 0 && scroll.indexOf("publicFlagQrBlock") > 0, "photo, bio and QR scroll");
+  assert.ok(actions.indexOf("Preview card") > 0 && actions.indexOf("Preview card") < actions.indexOf(">Close</button>"), "Preview card then Close, same order");
+  assert.match(css, /\.publicFlagDetail \{[^}]*overflow: hidden;[^}]*display: flex;[^}]*flex-direction: column;/);
+  assert.match(css, /\.publicFlagDetailScroll \{[^}]*flex: 1 1 auto;[^}]*min-height: 0;[^}]*overflow-y: auto;/);
+  assert.match(css, /\.publicFlagDetailActions \{[^}]*flex: none;[^}]*padding-bottom: max\(16px, env\(safe-area-inset-bottom\)\);[^}]*background: #fffdf8;[^}]*border-top: 1px solid/);
 });
 
 test("the in-view list sits inside the map controls toolbar group", () => {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.10
+
+- On the public Flag Map, the row numbers on the right edge now sit centred in their navy strip, with the same space on each side as the numbers on the left edge, instead of pressing against the right edge of the map. The section letters along the bottom keep a small gap from the corners, so the first and last letters no longer touch a corner. Label sizes, the whole-field view, zoom limits, and edge snapping are unchanged.
+- The Preview card and Close buttons on the Flag Map's flag card always stay visible at the bottom of the card. The photo, name, bio, awards, and QR code scroll above them, so a long bio no longer pushes the buttons out of reach. On phones the buttons clear the home indicator. This works on desktop, phone, and the kiosk. The buttons' labels, sizes, order, and Esc behavior are unchanged.
+
 ## 2.0.9
 
 - On the public Flag Map, the pinned row numbers and section letters each sit on a solid navy strip along the left, right, and bottom edges of the map, so they are readable when zoomed in instead of sitting on top of the white spot cards. The map moves under the strips. Each number still lines up with its row and each letter with its column, and a label whose row or column is out of view still hides. Taps pass through the strips, and the flag card, toolbar, list, and key still sit above them. Label sizes are unchanged. Kiosk mode, Esc, and the toolbar list are unchanged.
