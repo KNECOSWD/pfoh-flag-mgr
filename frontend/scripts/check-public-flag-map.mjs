@@ -579,10 +579,10 @@ function pavilionField(rows) {
 }
 
 test("every section label shares one size, weight, and top placement at a zoom, sized for the widest name", () => {
-  const field = fieldWithZ(40);
   const em = { W: 1.04, M: 0.94 };
   const glyph = (char) => Math.max(em[char] ?? 0.78, 0.78);
-  for (const columnPx of [3, 4.87, 5.5, 6.6, 7.2, 8.8, 9.8, 12, 14.1, 17.8, 21.4, 30, 42, 60, 120]) {
+  // 40 rows is live; 60 rows fits the kiosk at about 14.6px columns.
+  for (const field of [fieldWithZ(40), fieldWithZ(60)]) for (const columnPx of [3, 4.87, 5.5, 6.6, 7.2, 8.8, 9.8, 12, 14.1, 14.59, 15, 17.8, 21.4, 30, 42, 60, 120]) {
     const scale = columnPx / SPOT_SIZE.width;
     const uniform = sectionLabelSizes(field.zones, scale);
     const all = field.zones.map((zone) => zoneLabelSizes(zone, scale, uniform));
@@ -601,8 +601,9 @@ test("every section label shares one size, weight, and top placement at a zoom, 
     if (columnPx < 5.5) assert.equal(uniform.rangePx, 0, `letter only at ${columnPx}px`);
     const service = serviceFlagsLabelSize(field.serviceFlags, scale, uniform);
     assert.ok(service.size > 0, `Service Flags label at ${columnPx}px`);
-    if (uniform.rangePx > 0) assert.ok(Math.abs(service.size * scale - uniform.rangePx) < 1e-6, `Service Flags ${service.size * scale}px matches the ${uniform.rangePx}px range at ${columnPx}px`);
-    assert.ok(Math.abs(service.top * scale - (uniform.topPx + blockEdgePx(columnPx))) < 1e-6, `Service Flags top lines up with the letters at ${columnPx}px`);
+    const sharedPx = uniform.rangePx > 0 ? uniform.rangePx : Math.min(uniform.letterPx, 20);
+    assert.ok(Math.abs(service.size * scale - sharedPx) < 1e-6, `Service Flags ${service.size * scale}px matches the ${sharedPx}px section label at ${columnPx}px`);
+    assert.ok(Math.abs(service.top * scale - (uniform.topPx + (uniform.tiny ? 0 : blockEdgePx(columnPx)))) < 1e-6, `Service Flags top lines up with the letters at ${columnPx}px`);
   }
   assert.match(css, /\.publicFlagZone \{\s*justify-content: flex-start;/);
   assert.match(css, /\.publicFlagZone strong \{[^}]*font-weight: 800;/);

@@ -979,7 +979,8 @@ export function sectionLabelSizes(zones, scale) {
   const across = Math.min(SECTION_LABEL_PX.letterMax, inner / widestName);
   if (across >= SECTION_LABEL_PX.acrossLetterMin) {
     letterPx = across;
-    const target = Math.min(SECTION_LABEL_PX.rangeMax, letterPx * SECTION_LABEL_PX.rangeToLetter);
+    // Never below the range floor while the letter is across: the column has room for it.
+    const target = Math.min(SECTION_LABEL_PX.rangeMax, Math.max(ZONE_TEXT_PX.stackedRange, letterPx * SECTION_LABEL_PX.rangeToLetter));
     layout = target * widestRange <= inner ? { letters: "across", range: "across" } : { letters: "across", range: "lines" };
     rangePx = layout.range === "across" ? target : Math.min(target, inner / widestEnd);
   } else {
@@ -1064,8 +1065,8 @@ export function serviceFlagsLabelSize(box, scale, uniform) {
   const empty = { size: 0, vertical: true, text: "", narrow, top: 0 };
   if (!shared || !(width > 0 && height > 0)) return empty;
   const base = Math.min(shared.rangePx > 0 ? shared.rangePx : shared.letterPx, 20);
-  // Section blocks draw a border and this block an inset shadow, so add the border to line up with the letters.
-  const top = shared.topPx + blockEdgePx(width);
+  // Section blocks draw a border (none when tiny) and this block an inset shadow, so add it to line up with the letters.
+  const top = shared.topPx + (shared.tiny ? 0 : blockEdgePx(width));
   const room = Math.min((height - top) * 0.9, height * 0.84);
   const inner = blockInnerPx(width);
   const longest = Math.max(...words.map((word) => word.length));
