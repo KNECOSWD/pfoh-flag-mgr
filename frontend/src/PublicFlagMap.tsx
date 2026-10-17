@@ -40,6 +40,7 @@ import {
   readFlagMapLocation,
   requestElementFullscreen,
   SERVICE_FLAGS_SECTION,
+  serviceFlagsLabelBox,
   serviceFlagsLabelSize,
   spotContents,
   spotsViewScale,
@@ -291,6 +292,7 @@ export default function PublicFlagMap({
   const [visibleCellIds, setVisibleCellIds] = useState<number[]>([]);
   const [gates, setGates] = useState<Gates>(EMPTY_GATES);
   const [renderScale, setRenderScale] = useState(1);
+  const [serviceLabelBox, setServiceLabelBox] = useState<ReturnType<typeof serviceFlagsLabelBox>>(null);
   const [levelText, setLevelText] = useState("Sections");
   const [selected, setSelected] = useState<FlagBox | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
@@ -399,6 +401,13 @@ export default function PublicFlagMap({
       layerRef.current?.style.setProperty("--px", `${1 / view.scale}px`);
       setVisibleZoneKeys((current) => (current.join("|") === zoneKeys.join("|") ? current : zoneKeys));
       setVisibleCellIds((current) => (sameIds(current, cellIds) ? current : cellIds));
+      const serviceLabel = serviceFlagsLabelBox(layout.serviceFlags, viewportWorldRect(view, size, 0));
+      const slop = 4 / view.scale;
+      setServiceLabelBox((current) => {
+        if (!current || !serviceLabel) return serviceLabel;
+        const same = (["x", "y", "width", "height"] as const).every((key) => Math.abs(current[key] - serviceLabel[key]) <= slop);
+        return same ? current : serviceLabel;
+      });
       const viewport = viewportRef.current;
       if (viewport) {
         const flags = nextGates.flagsInteractive ? "on" : "off";
@@ -1423,12 +1432,13 @@ export default function PublicFlagMap({
           })}
           {field?.serviceFlags ? (() => {
             const box = field.serviceFlags;
-            const label = serviceFlagsLabelSize(box, renderScale);
+            const area = serviceLabelBox ?? serviceFlagsLabelBox(box, null);
+            const label = area ? serviceFlagsLabelSize(area, renderScale) : { size: 0, vertical: false };
             return (
               <div className="publicFlagServiceFlags" role="img" aria-label={`${box.label}, ${SERVICE_FLAGS_SECTION} 1\u2013${FIELD_MAP_Z_ROWS}`} style={{ left: box.x, top: box.y, width: box.width, height: box.height }}>
-                {label.size ? (
-                  <span className={label.vertical ? "isVertical" : undefined} style={{ fontSize: label.size }}>
-                    {label.vertical ? box.label : box.label.split(" ").map((word) => <span key={word}>{word}</span>)}
+                {area && label.size ? (
+                  <span style={{ left: area.x, top: area.y, width: area.width, height: area.height, fontSize: label.size }}>
+                    {label.vertical ? <span className="isVertical">{box.label}</span> : box.label.split(" ").map((word) => <span key={word}>{word}</span>)}
                   </span>
                 ) : null}
               </div>

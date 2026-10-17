@@ -34,6 +34,7 @@ import {
   FIELD_MAP_Z_ROWS,
   SERVICE_FLAGS_LABEL,
   isServiceFlagSeat,
+  serviceFlagsLabelBox,
   serviceFlagsLabelSize,
   layoutFlagField,
   MAP_FULLSCREEN_CLASS,
@@ -329,6 +330,15 @@ test("section blocks are flat, Z1–Z10 is one flat Service Flags block, and Z h
   }
   assert.ok(serviceFlagsLabelSize(box, 0.08).size > 0, "label shows when fully zoomed out");
   assert.equal(serviceFlagsLabelSize(box, 1.5).vertical, false);
+
+  const whole = serviceFlagsLabelBox(box, null);
+  assert.deepEqual(whole, { x: 0, y: 0, width: box.width, height: box.height, label: "Service Flags" });
+  const seen = { x: box.x - 500, y: box.y + box.height - 300, width: 2000, height: 1000 };
+  const part = serviceFlagsLabelBox(box, seen);
+  assert.deepEqual(part, { x: 0, y: box.height - 300, width: box.width, height: 300, label: "Service Flags" });
+  assert.ok(serviceFlagsLabelSize(part, 1.5).size > 0, "label follows the part of the block on screen");
+  assert.equal(serviceFlagsLabelBox(box, { x: box.x, y: box.y + box.height + 10, width: 100, height: 100 }), null);
+  assert.match(page, /serviceFlagsLabelBox\(layout\.serviceFlags, viewportWorldRect\(view, size, 0\)\)/);
 
   const x = Object.fromEntries(field.sections.map((section) => [section.section, section]));
   const gapBefore = x.Z.x - (x.N.x + x.N.width);

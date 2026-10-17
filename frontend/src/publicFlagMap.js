@@ -793,6 +793,17 @@ export function zoneLabelSizes(zone, scale) {
   return { range, letter, rangeSize: down >= 7 ? down / s : 0, vertical: true };
 }
 
+export function serviceFlagsLabelBox(box, seen) {
+  if (!box) return null;
+  const visible = seen ?? box;
+  const left = Math.max(box.x, visible.x);
+  const top = Math.max(box.y, visible.y);
+  const right = Math.min(box.x + box.width, visible.x + visible.width);
+  const bottom = Math.min(box.y + box.height, visible.y + visible.height);
+  if (!(right > left && bottom > top)) return null;
+  return { x: left - box.x, y: top - box.y, width: right - left, height: bottom - top, label: box.label };
+}
+
 export function serviceFlagsLabelSize(box, scale) {
   const s = Number(scale) > 0 ? Number(scale) : 1;
   const words = String(box?.label || SERVICE_FLAGS_LABEL).split(" ");
