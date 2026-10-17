@@ -3,6 +3,7 @@
 ## 2.0.9
 
 - On the public Flag Map, the pinned row numbers and section letters each sit on a solid navy strip along the left, right, and bottom edges of the map, so they are readable when zoomed in instead of sitting on top of the white spot cards. The map moves under the strips. Each number still lines up with its row and each letter with its column, and a label whose row or column is out of view still hides. Taps pass through the strips, and the flag card, toolbar, list, and key still sit above them. Label sizes are unchanged. Kiosk mode, Esc, and the toolbar list are unchanged.
+- The whole-field view, zoom limits, and edge snapping now keep the map inside the label strips. The outer sections YY and AA and the Pavilion are no longer hidden under the strips at 320, 390, or 1440 wide, or on the kiosk. A section letter whose column is behind a side strip hides, and no row number draws into the bottom corners.
 - The public Flag Map toolbar spans the full width of the map, the same width as the search box, on desktop and phone. Zoom out, Zoom in, Full screen, and Reset view sit together on the left, and the Sections or Spots list sits at the far right. On a phone the list fills the space to the right of the buttons and stays on one row, with its text cut short if needed. Button sizes, labels, keyboard arrows, and the kiosk look are unchanged, and the key does not move.
 
 ## 2.0.8

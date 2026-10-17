@@ -17,6 +17,8 @@ import {
   initialMapFullScreen,
   flagMapEscapeTarget,
   pinnedAxisLabels,
+  gutterInsets,
+  fieldFitBounds,
   AXIS_STRIP,
   sectionLabelSizes,
   applyKioskIdleReset,
@@ -244,33 +246,32 @@ test("spots never overlap and the global button size cannot stretch them", () =>
   }
 });
 
-test("the fit shows the whole grid with padding and a pan reaches every edge", () => {
+test("the fit shows the whole grid inside the axis gutters and a pan reaches every edge", () => {
   const field = layoutFlagField([]);
-  const world = { x: 0, y: 0, width: field.worldWidth, height: field.worldHeight };
-  const everything = boundsOf([...field.cells, ...field.rowLabels, ...field.columnLabels, field.pavilion]);
-  assert.ok(everything.x > 0 && everything.y > 0);
-  assert.ok(everything.x + everything.width < field.worldWidth);
-  assert.ok(everything.y + everything.height < field.worldHeight);
+  const world = fieldFitBounds(field);
+  const everything = boundsOf([...field.cells, field.pavilion]);
+  const inset = gutterInsets(FIT_PADDING);
+  assert.deepEqual(world, everything, "the fit leaves out the row-label columns and letter band");
   for (const viewport of [{ width: 1408, height: 640 }, { width: 366, height: 560 }, { width: 1876, height: 860 }]) {
     const fitted = fitWholeField(world, viewport, FIT_PADDING);
     const left = fitted.x + everything.x * fitted.scale;
     const right = fitted.x + (everything.x + everything.width) * fitted.scale;
     const top = fitted.y + everything.y * fitted.scale;
     const bottom = fitted.y + (everything.y + everything.height) * fitted.scale;
-    assert.ok(left >= FIT_PADDING && right <= viewport.width - FIT_PADDING, `fit width ${viewport.width}`);
-    assert.ok(top >= FIT_PADDING && bottom <= viewport.height - FIT_PADDING, `fit height ${viewport.width}`);
+    assert.ok(left >= inset.left - 0.01 && right <= viewport.width - inset.right + 0.01, `fit width ${viewport.width}`);
+    assert.ok(top >= inset.top - 0.01 && bottom <= viewport.height - inset.bottom + 0.01, `fit height ${viewport.width}`);
     assert.deepEqual(clampView(fitted, viewport, world, { minScale: fitted.scale }), fitted);
     const under = clampView({ ...fitted, scale: fitted.scale / 2 }, viewport, world, { minScale: fitted.scale });
     assert.equal(under.scale, fitted.scale);
     for (const scale of [fitted.scale * 3, spotsViewScale(), closestViewScale(viewport), FLAG_MAP_ZOOM.maxScale]) {
       const farLeft = clampView({ x: 1e7, y: 1e7, scale }, viewport, world, { minScale: fitted.scale });
-      assert.ok(farLeft.x + everything.x * scale >= FIT_PADDING - 0.01, `left edge at ${scale}`);
-      assert.ok(farLeft.y + everything.y * scale >= FIT_PADDING - 0.01, `top edge at ${scale}`);
-      if (world.width * scale > viewport.width - FIT_PADDING * 2) assert.ok(Math.abs(farLeft.x - FIT_PADDING) < 0.01);
-      if (world.height * scale > viewport.height - FIT_PADDING * 2) assert.ok(Math.abs(farLeft.y - FIT_PADDING) < 0.01);
+      assert.ok(farLeft.x + everything.x * scale >= inset.left - 0.01, `left edge at ${scale}`);
+      assert.ok(farLeft.y + everything.y * scale >= inset.top - 0.01, `top edge at ${scale}`);
+      if (world.width * scale > viewport.width - inset.left - inset.right) assert.ok(Math.abs(farLeft.x + world.x * scale - inset.left) < 0.01);
+      if (world.height * scale > viewport.height - inset.top - inset.bottom) assert.ok(Math.abs(farLeft.y + world.y * scale - inset.top) < 0.01);
       const farRight = clampView({ x: -1e7, y: -1e7, scale }, viewport, world, { minScale: fitted.scale });
-      assert.ok(farRight.x + (everything.x + everything.width) * scale <= viewport.width - FIT_PADDING + 0.01, `right edge at ${scale}`);
-      assert.ok(farRight.y + (everything.y + everything.height) * scale <= viewport.height - FIT_PADDING + 0.01, `bottom edge at ${scale}`);
+      assert.ok(farRight.x + (everything.x + everything.width) * scale <= viewport.width - inset.right + 0.01, `right edge at ${scale}`);
+      assert.ok(farRight.y + (everything.y + everything.height) * scale <= viewport.height - inset.bottom + 0.01, `bottom edge at ${scale}`);
     }
   }
   assert.match(page, /limitView\(zoomAt\(/);
@@ -619,29 +620,30 @@ test("every section label shares one size, weight, and top placement at a zoom, 
   assert.match(page, /serviceFlagsLabelSize\(area, renderScale, sectionLabels\)/);
 });
 
-test("a view that settles from the names zoom to the closest keeps every mostly visible spot inside with padding", () => {
+test("a view that settles from the names zoom to the closest keeps every mostly visible spot inside the gutters with padding", () => {
   const level = (scale) => (spotScreenWidth(scale) >= FLAG_MAP_ZOOM.closestAt ? "Closest" : "Names");
   const cut = (field, view, viewport) => field.cells.filter((cell) => cell.serviceFlag || cell.status !== "Reserved").filter((cell) => {
     const left = view.x + cell.x * view.scale;
     const top = view.y + cell.y * view.scale;
     const right = left + cell.width * view.scale;
     const bottom = top + cell.height * view.scale;
-    const seen = Math.max(0, Math.min(right, viewport.width) - Math.max(left, 0)) * Math.max(0, Math.min(bottom, viewport.height) - Math.max(top, 0));
-    if (seen <= 0.5 * (right - left) * (bottom - top)) return false;
-    return left < FIT_PADDING - 0.01 || top < FIT_PADDING - 0.01 || right > viewport.width - FIT_PADDING + 0.01 || bottom > viewport.height - FIT_PADDING + 0.01;
+    const inset = gutterInsets(FIT_PADDING);
+    const seen = Math.max(0, Math.min(right, viewport.width - AXIS_STRIP.row) - Math.max(left, AXIS_STRIP.row)) * Math.max(0, Math.min(bottom, viewport.height - AXIS_STRIP.column) - Math.max(top, 0));
+    if (seen <= 0.5 * (right - left) * (bottom - top) + 1e-6) return false;
+    return left < inset.left - 0.01 || top < inset.top - 0.01 || right > viewport.width - inset.right + 0.01 || bottom > viewport.height - inset.bottom + 0.01;
   });
   // Padding boxes of the 390 and 320 phone maps, a short phone, 1440, and the kiosk.
   const viewports = [{ width: 346, height: 567 }, { width: 284, height: 268 }, { width: 296, height: 300 }, { width: 1406, height: 638 }, { width: 1874, height: 858 }];
   let views = 0;
   for (const rows of [40, 60]) {
     const field = pavilionField(rows);
-    const world = { x: 0, y: 0, width: field.worldWidth, height: field.worldHeight };
+    const world = fieldFitBounds(field);
     const anchors = ["Z-13", "N-31", "YY-1", `AA-${rows}`, "C-21"].map((name) => field.cells.find((cell) => cell.flagGridName === name));
     for (const viewport of viewports) {
       const fitted = fitWholeField(world, viewport, FIT_PADDING);
       const maxScale = Math.max(fitted.scale, spotFitMaxScale(viewport, FIT_PADDING));
       if (viewport.width < 760) {
-        assert.ok(SPOT_SIZE.width * maxScale + FIT_PADDING * 2 <= viewport.width + 0.01 || spotScreenWidth(maxScale) <= FLAG_MAP_ZOOM.closestAt + 1.01);
+        assert.ok(SPOT_SIZE.width * maxScale + gutterInsets(FIT_PADDING).left * 2 <= viewport.width + 0.01 || spotScreenWidth(maxScale) <= FLAG_MAP_ZOOM.closestAt + 1.01);
         assert.ok(spotScreenWidth(maxScale) > FLAG_MAP_ZOOM.closestAt, "the closest level stays reachable on a phone");
       } else {
         assert.equal(maxScale, FLAG_MAP_ZOOM.maxScale, "1440 and the kiosk keep the full zoom");
@@ -1513,20 +1515,20 @@ test("row numbers and section letters stay pinned in their viewport-edge gutters
     if (label.side === "left") assert.ok(label.x >= 0 && label.x + label.width <= AXIS_STRIP.row, "left numbers sit inside the left gutter");
     else assert.ok(label.x >= viewport.width - AXIS_STRIP.row && label.x + label.width <= viewport.width, "right numbers sit inside the right gutter");
     const middle = label.y + label.height / 2;
-    assert.equal(label.hidden, middle < 0 || middle > viewport.height - columns[0].height || !label.fontSize);
+    assert.equal(label.hidden, middle < 0 || middle > viewport.height - AXIS_STRIP.column || !label.fontSize, "(b) no row number draws into the bottom corners");
   }
   for (const label of columns) {
     const source = field.columnLabels.find((item) => item.section === label.label);
     assert.equal(label.x, view.x + source.x * view.scale, "each letter lines up with its column");
     assert.ok(label.y >= viewport.height - AXIS_STRIP.column && label.y + label.height <= viewport.height, "letters sit inside the bottom gutter");
     const middle = label.x + label.width / 2;
-    assert.equal(label.hidden, middle < 0 || middle > viewport.width || !label.fontSize);
+    assert.equal(label.hidden, middle < AXIS_STRIP.row || middle > viewport.width - AXIS_STRIP.row || !label.fontSize, "(a) no letter stacks behind a side gutter");
   }
   assert.ok(rows.some((label) => label.hidden) && rows.some((label) => !label.hidden));
   assert.ok(columns.some((label) => label.hidden) && columns.some((label) => !label.hidden));
   assert.ok(rows.every((label) => label.width <= AXIS_STRIP.row) && columns.every((label) => label.height <= AXIS_STRIP.column));
 
-  const fitted = fitWholeField({ x: 0, y: 0, width: field.worldWidth, height: field.worldHeight }, { width: 1406, height: 618 }, FIT_PADDING);
+  const fitted = fitWholeField(fieldFitBounds(field), { width: 1406, height: 618 }, FIT_PADDING);
   const whole = pinnedAxisLabels(field, fitted, { width: 1406, height: 618 });
   const left = whole.find((label) => label.key === `row-left-1`);
   const source = field.rowLabels.find((item) => item.side === "left" && item.row === 1);
@@ -1534,6 +1536,31 @@ test("row numbers and section letters stay pinned in their viewport-edge gutters
   assert.ok(left.x >= 0 && left.x + left.width <= AXIS_STRIP.row, "and stay inside the left gutter");
   assert.match(page, /<div ref=\{axisRef\} className="publicFlagAxis" aria-hidden="true">/);
   assert.match(css, /\.publicFlagAxis \{[^}]*z-index: 3;[^}]*pointer-events: none;/);
+});
+
+test("on the live field the fit keeps YY, AA and the pavilion inside the gutter insets at 320, 390, 1440 and the kiosk", () => {
+  const field = pavilionField(40);
+  assert.equal(field.worldWidth, 4912);
+  assert.equal(field.worldHeight, 5176);
+  assert.equal(field.rowLabels.find((label) => label.side === "left").x + field.rowLabels[0].width + 12, 200, "row-label margin of 200 world px");
+  const inset = gutterInsets(FIT_PADDING);
+  assert.ok(inset.left >= AXIS_STRIP.row + FIT_PADDING && inset.right >= AXIS_STRIP.row + FIT_PADDING && inset.bottom >= AXIS_STRIP.column + FIT_PADDING);
+  const yy = boundsOf(field.cells.filter((cell) => cell.section === "YY"));
+  const aa = boundsOf(field.cells.filter((cell) => cell.section === "AA"));
+  // 320 and 390 phone maps, 1440, and the kiosk.
+  for (const viewport of [{ width: 284, height: 567 }, { width: 346, height: 567 }, { width: 1406, height: 618 }, { width: 1874, height: 858 }]) {
+    {
+      const view = clampView(fitWholeField(fieldFitBounds(field), viewport, FIT_PADDING), viewport, fieldFitBounds(field), { pad: FIT_PADDING });
+      const screen = (box) => ({ left: view.x + box.x * view.scale, right: view.x + (box.x + box.width) * view.scale, top: view.y + box.y * view.scale, bottom: view.y + (box.y + box.height) * view.scale });
+      const where = `${viewport.width}x${viewport.height}`;
+      assert.ok(screen(yy).left >= inset.left - 0.01, `YY clears the left gutter at ${where}`);
+      assert.ok(screen(aa).right <= viewport.width - inset.right + 0.01, `AA clears the right gutter at ${where}`);
+      assert.ok(screen(field.pavilion).bottom <= viewport.height - inset.bottom + 0.01, `the pavilion clears the bottom gutter at ${where}`);
+      assert.ok(screen(field.pavilion).left >= inset.left - 0.01 && screen(field.pavilion).right <= viewport.width - inset.right + 0.01);
+    }
+    const max = spotFitMaxScale(viewport, FIT_PADDING);
+    assert.ok(SPOT_SIZE.width * max <= viewport.width - inset.left - inset.right + 0.01 || spotScreenWidth(max) <= FLAG_MAP_ZOOM.closestAt + 1.01, `the closest zoom fits one spot between the gutters at ${viewport.width}`);
+  }
 });
 
 test("pinned axis labels sit on solid navy gutter strips that taps pass through", () => {
