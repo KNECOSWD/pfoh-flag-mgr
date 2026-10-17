@@ -11319,7 +11319,11 @@ html.flagMapKiosk a {
 
 .publicFlagControls {
   display: inline-flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
   gap: 2px;
   border-radius: 12px;
   background: #eef2f8;
@@ -11385,21 +11389,22 @@ html.flagMapKiosk a {
 }
 
 .publicFlagJump {
+  display: flex;
   flex: 1 1 116px;
   min-width: 0;
   max-width: 280px;
-  margin-left: auto;
 }
 
 .publicFlagJump select {
   width: 100%;
+  height: 100%;
   min-height: 36px;
   padding: 0 24px 0 8px;
   text-overflow: ellipsis;
-  border-color: rgba(212, 175, 55, 0.55);
+  border: 0;
   border-radius: 12px;
-  background-color: #fffdf8;
-  color: #5c4b32;
+  background-color: transparent;
+  color: #173b73;
   font-size: 0.82rem;
   font-weight: 750;
   cursor: pointer;
@@ -11436,6 +11441,7 @@ html.flagMapKiosk a {
 
 .publicFlagViewport {
   position: relative;
+  isolation: isolate;
   height: min(72vh, 820px);
   min-height: 420px;
   overflow: hidden;
@@ -11533,8 +11539,20 @@ html.flagMapKiosk a {
   padding-left: calc(var(--px, 1px) * 4);
 }
 
-.publicFlagColumnLabel {
-  z-index: 2;
+.publicFlagAxis {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.publicFlagAxis .publicFlagRowLabel,
+.publicFlagAxis .publicFlagColumnLabel {
+  top: 0;
+  left: 0;
+  padding: 0 2px;
+  text-shadow: 0 1px 2px rgba(7, 21, 38, 0.9);
 }
 
 .publicFlagAisle {

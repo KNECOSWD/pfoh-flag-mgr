@@ -494,6 +494,38 @@ export function viewportWorldRect(view, viewport, pad = 0) {
   };
 }
 
+export const AXIS_STRIP = Object.freeze({ row: 36, column: 28 });
+
+// Row numbers and section letters sit at their field position until an edge of
+// the viewport would push them off, then they stay on that edge. A label whose
+// row or column is out of view hides so labels never pile up in a corner.
+export function pinnedAxisLabels(field, view, viewport, strip = AXIS_STRIP) {
+  const s = view.scale > 0 ? view.scale : 1;
+  const clamp = (value, low, high) => Math.min(Math.max(value, low), Math.max(low, high));
+  const columnHeight = Math.min(strip.column, (field.columnLabels[0]?.height ?? 0) * s);
+  const rows = field.rowLabels.map((label) => {
+    const width = Math.min(strip.row, label.width * s);
+    const height = label.height * s;
+    const y = view.y + label.y * s;
+    const natural = view.x + label.x * s;
+    const x = label.side === "right"
+      ? clamp(natural, 0, viewport.width - width)
+      : clamp(natural + label.width * s - width, 0, viewport.width - width);
+    const middle = y + height / 2;
+    const fontSize = labelFontSize(label.label, width, height, 1, { max: 13 });
+    return { kind: "row", key: `row-${label.side}-${label.row}`, label: label.label, side: label.side, x, y, width, height, fontSize, hidden: middle < 0 || middle > viewport.height - columnHeight || !fontSize };
+  });
+  const columns = field.columnLabels.map((label) => {
+    const width = label.width * s;
+    const x = view.x + label.x * s;
+    const y = clamp(view.y + label.y * s, 0, viewport.height - columnHeight);
+    const middle = x + width / 2;
+    const fontSize = labelFontSize(label.label, width, columnHeight, 1, { max: 14, em: 0.7 });
+    return { kind: "column", key: `col-${label.section}`, label: label.label, x, y, width, height: columnHeight, fontSize, hidden: middle < 0 || middle > viewport.width || !fontSize };
+  });
+  return [...rows, ...columns];
+}
+
 export function rectsIntersect(a, b) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
@@ -1103,6 +1135,14 @@ export function serviceFlagsLabelSize(box, scale, uniform) {
 // kiosk mode keeps its own browser fullscreen and lockdown.
 export function initialMapFullScreen(kiosk) {
   return !kiosk;
+}
+
+// Each Esc closes only the topmost open thing; full screen exits last.
+export function flagMapEscapeTarget({ cardOpen, listOpen, mapFull }) {
+  if (cardOpen) return "card";
+  if (listOpen) return "list";
+  if (mapFull) return "fullscreen";
+  return null;
 }
 
 export function mapFullscreenSupported(element) {

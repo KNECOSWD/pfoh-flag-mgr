@@ -15,6 +15,9 @@ import {
   spotsViewScale,
   zoneLabelSizes,
   initialMapFullScreen,
+  flagMapEscapeTarget,
+  pinnedAxisLabels,
+  AXIS_STRIP,
   sectionLabelSizes,
   applyKioskIdleReset,
   attractView,
@@ -1474,4 +1477,69 @@ test("2.0.7: field sections show letters only, the list keeps ranges, and the ma
   assert.match(page, /if \(mapFullRef\.current\) document\.documentElement\.classList\.add\(MAP_FULLSCREEN_CLASS\)/);
   const opening = page.slice(page.indexOf("const mapFullRef"), page.indexOf("async function enterMapFull"));
   assert.doesNotMatch(opening, /requestElementFullscreen\(/, "no browser Fullscreen API call on load");
+});
+
+test("Esc closes the topmost open thing before leaving full screen", () => {
+  const press = (state) => {
+    const target = flagMapEscapeTarget(state);
+    if (target === "card") return { ...state, cardOpen: false };
+    if (target === "list") return { ...state, listOpen: false };
+    if (target === "fullscreen") return { ...state, mapFull: false };
+    return state;
+  };
+  const drawer = press({ cardOpen: true, listOpen: true, mapFull: true });
+  assert.deepEqual(drawer, { cardOpen: false, listOpen: true, mapFull: true }, "drawer closes, still full screen");
+  const list = press(drawer);
+  assert.deepEqual(list, { cardOpen: false, listOpen: false, mapFull: true }, "suggestions close, still full screen");
+  assert.deepEqual(press(list), { cardOpen: false, listOpen: false, mapFull: false }, "nothing open exits full screen");
+  assert.equal(flagMapEscapeTarget({ cardOpen: false, listOpen: false, mapFull: false }), null);
+  assert.match(page, /flagMapEscapeTarget\(\{ \.\.\.escapeStateRef\.current, mapFull: mapFullRef\.current \}\)/);
+  assert.match(page, /listOpen: \(open && searchRows\.length > 0\) \|\| Boolean\(jumpPending\)/);
+});
+
+test("row numbers and section letters stay pinned to the viewport edges and track pan and zoom", () => {
+  const field = pavilionField(40);
+  const viewport = { width: 600, height: 400 };
+  const view = { x: -900, y: -700, scale: 0.6 };
+  const labels = pinnedAxisLabels(field, view, viewport);
+  const rows = labels.filter((label) => label.kind === "row");
+  const columns = labels.filter((label) => label.kind === "column");
+  assert.equal(rows.length, field.rowLabels.length);
+  assert.equal(columns.length, field.columnLabels.length);
+  for (const label of rows) {
+    const source = field.rowLabels.find((item) => `row-${item.side}-${item.row}` === label.key);
+    assert.equal(label.y, view.y + source.y * view.scale, "each row number lines up with its row");
+    assert.equal(label.height, source.height * view.scale);
+    assert.ok(label.x >= 0 && label.x + label.width <= viewport.width, "clamped inside the viewport");
+    if (label.side === "left") assert.equal(label.x, 0, "panned past the left labels, they stay on the left edge");
+    const middle = label.y + label.height / 2;
+    assert.equal(label.hidden, middle < 0 || middle > viewport.height - columns[0].height || !label.fontSize);
+  }
+  for (const label of columns) {
+    const source = field.columnLabels.find((item) => item.section === label.label);
+    assert.equal(label.x, view.x + source.x * view.scale, "each letter lines up with its column");
+    assert.equal(label.y, viewport.height - label.height, "panned above the letters, they stay on the bottom edge");
+    const middle = label.x + label.width / 2;
+    assert.equal(label.hidden, middle < 0 || middle > viewport.width || !label.fontSize);
+  }
+  assert.ok(rows.some((label) => label.hidden) && rows.some((label) => !label.hidden));
+  assert.ok(columns.some((label) => label.hidden) && columns.some((label) => !label.hidden));
+  assert.ok(rows.every((label) => label.width <= AXIS_STRIP.row) && columns.every((label) => label.height <= AXIS_STRIP.column));
+
+  const fitted = fitWholeField({ x: 0, y: 0, width: field.worldWidth, height: field.worldHeight }, { width: 1406, height: 618 }, FIT_PADDING);
+  const whole = pinnedAxisLabels(field, fitted, { width: 1406, height: 618 });
+  const left = whole.find((label) => label.key === `row-left-1`);
+  const source = field.rowLabels.find((item) => item.side === "left" && item.row === 1);
+  assert.equal(left.x + left.width, fitted.x + (source.x + source.width) * fitted.scale, "with the whole field in view, labels keep their field place");
+  assert.match(page, /<div ref=\{axisRef\} className="publicFlagAxis" aria-hidden="true">/);
+  assert.match(css, /\.publicFlagAxis \{[^}]*z-index: 3;[^}]*pointer-events: none;/);
+});
+
+test("the in-view list sits inside the map controls toolbar group", () => {
+  const group = page.slice(page.indexOf('className="publicFlagControls" role="toolbar"'), page.indexOf('<p className="publicFlagLevel srOnly"'));
+  assert.match(group, /<div className="publicFlagJump">\s*<label htmlFor=\{jumpId\} className="srOnly">/);
+  assert.match(group, /<select id=\{jumpId\} value=\{jumpPending\}/);
+  assert.match(group, /<\/select>\s*<\/div>\s*<\/div>\s*$/, "the select closes inside the toolbar group");
+  assert.match(css, /\.publicFlagControls \{[^}]*flex-wrap: nowrap;[^}]*min-width: 0;/);
+  assert.match(css, /\.publicFlagJump select \{[^}]*text-overflow: ellipsis;[^}]*border: 0;[^}]*background-color: transparent;/);
 });
