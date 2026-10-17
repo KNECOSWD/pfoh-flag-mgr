@@ -43,6 +43,8 @@ import {
   SERVICE_FLAGS_SECTION,
   serviceFlagsLabelBox,
   serviceFlagsLabelSize,
+  snapEdgeSpots,
+  spotFitMaxScale,
   spotContents,
   spotsViewScale,
   springEase,
@@ -351,12 +353,45 @@ export default function PublicFlagMap({
     return { x: 0, y: 0, width: layoutRef.current?.worldWidth || 1, height: layoutRef.current?.worldHeight || 1 };
   }
 
+  function visibleSize() {
+    const node = viewportRef.current;
+    return node && node.clientWidth > 0 ? { width: node.clientWidth, height: node.clientHeight } : viewportSize();
+  }
+
+  function maxViewScale() {
+    return Math.max(fitScaleRef.current, spotFitMaxScale(visibleSize(), FIT_PADDING));
+  }
+
   function limitView(next: View) {
     return clampView(next, viewportSize(), worldBounds(), {
       minScale: Math.min(fitScaleRef.current, FLAG_MAP_ZOOM.maxScale),
-      maxScale: FLAG_MAP_ZOOM.maxScale,
+      maxScale: maxViewScale(),
       pad: FIT_PADDING
     });
+  }
+
+  function settledView(next: View) {
+    const limited = limitView(next);
+    const cells = layoutRef.current?.cells;
+    if (!cells) return limited;
+    const settled = snapEdgeSpots(limited, visibleSize(), cells, FIT_PADDING, {
+      minScale: fitScaleRef.current,
+      maxScale: maxViewScale(),
+      world: worldBounds(),
+      clampViewport: viewportSize()
+    });
+    return limitView(settled);
+  }
+
+  function settleGesture() {
+    const now = viewRef.current;
+    const target = settledView(now);
+    if (Math.abs(target.x - now.x) >= 0.5 || Math.abs(target.y - now.y) >= 0.5) {
+      animateTo(target);
+      return;
+    }
+    publishCull(true);
+    setMoving(false);
   }
 
   function paintView(next: View) {
@@ -518,7 +553,7 @@ export default function PublicFlagMap({
     userAdjustedRef.current = true;
     const size = viewportSize();
     const point = origin ?? { x: size.width / 2, y: size.height / 2 };
-    animateTo(zoomAt(viewRef.current, point.x, point.y, viewRef.current.scale * factor));
+    animateTo(settledView(zoomAt(viewRef.current, point.x, point.y, viewRef.current.scale * factor)));
   }
 
   function openFlag(flag: FlagBox, options?: { celebrate?: boolean }) {
@@ -946,10 +981,7 @@ export default function PublicFlagMap({
       setMoving(true);
       if (layerRef.current) layerRef.current.style.transform = gestureTransform(next);
       window.clearTimeout(wheelSettleRef.current);
-      wheelSettleRef.current = window.setTimeout(() => {
-        publishCull(true);
-        setMoving(false);
-      }, WHEEL_SETTLE_MS);
+      wheelSettleRef.current = window.setTimeout(settleGesture, WHEEL_SETTLE_MS);
     };
 
     const flushPinchFrame = () => {
@@ -961,15 +993,13 @@ export default function PublicFlagMap({
       setMoving(true);
       if (layerRef.current) layerRef.current.style.transform = gestureTransform(next);
       window.clearTimeout(pinchSettleRef.current);
-      pinchSettleRef.current = window.setTimeout(() => {
-        publishCull(true);
-        setMoving(false);
-      }, WHEEL_SETTLE_MS);
+      pinchSettleRef.current = window.setTimeout(settleGesture, WHEEL_SETTLE_MS);
     };
 
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       if (attractingRef.current) exitAttractRef.current();
+      cancelAnimationFrame(animRef.current);
       userAdjustedRef.current = true;
       if (!wheelFrameRef.current) syncViewportBox();
       wheelBatchRef.current.push(event.deltaY, localPoint(event));
@@ -995,6 +1025,7 @@ export default function PublicFlagMap({
       if (!pointerDragCapture(start, point, captured)) return;
       if (!captured) {
         captured = true;
+        cancelAnimationFrame(animRef.current);
         try {
           node.setPointerCapture(event.pointerId);
         } catch {
@@ -1026,6 +1057,7 @@ export default function PublicFlagMap({
 
     const onTouchStart = (event: TouchEvent) => {
       if (event.touches.length !== 2) return;
+      cancelAnimationFrame(animRef.current);
       pinching = true;
       pinchStart = touchDistance(event);
       pinchOrigin = { ...viewRef.current };
@@ -1060,8 +1092,7 @@ export default function PublicFlagMap({
       const next = pinchBatchRef.current.flush();
       if (next) paintView(limitView(next));
       window.clearTimeout(pinchSettleRef.current);
-      publishCull(true);
-      setMoving(false);
+      settleGesture();
     };
 
     node.addEventListener("wheel", onWheel, { passive: false });
@@ -1161,7 +1192,7 @@ export default function PublicFlagMap({
       const bounds = boundsOf(matched);
       if (bounds) {
         userAdjustedRef.current = true;
-        animateTo(fitView(bounds, viewportSize(), 48));
+        animateTo(settledView(fitView(bounds, viewportSize(), 48)));
       }
     } catch {
       setWaveIds([]);
@@ -1411,7 +1442,7 @@ export default function PublicFlagMap({
               <button
                 key={zone.label}
                 type="button"
-                className="publicFlagTile publicFlagZone"
+                className={["publicFlagTile publicFlagZone", sizes.narrow ? "isNarrow" : "", sizes.tiny ? "isTiny" : ""].filter(Boolean).join(" ")}
                 style={{ left: zone.x, top: zone.y, width: zone.width, height: zone.height }}
                 aria-label={`${zone.label}, ${zone.occupiedCount} of ${zone.flagCount} flags`}
                 onClick={() => acceptClick(() => {
@@ -1423,23 +1454,23 @@ export default function PublicFlagMap({
                   setWaveIds([]);
                   writeFlagParam(null);
                   const zoneView = fitView(zone, viewportSize(), 28);
-                  animateTo(zoneView.scale >= spotsViewScale() ? zoneView : zoomAt(zoneView, viewportSize().width / 2, viewportSize().height / 2, spotsViewScale()));
+                  animateTo(settledView(zoneView.scale >= spotsViewScale() ? zoneView : zoomAt(zoneView, viewportSize().width / 2, viewportSize().height / 2, spotsViewScale())));
                 })}
               >
-                {sizes.letter ? <strong style={{ fontSize: sizes.letter }}>{zone.section}</strong> : null}
-                {sizes.rangeSize ? <span className={sizes.vertical ? "isVertical" : undefined} style={{ fontSize: sizes.rangeSize }}>{sizes.range}</span> : null}
+                {sizes.letter ? <strong className={sizes.letterStacked ? "isUpright" : undefined} style={{ fontSize: sizes.letter }}>{zone.section}</strong> : null}
+                {sizes.rangeSize ? <span className={sizes.stacked ? "isUpright" : sizes.vertical ? "isVertical" : undefined} style={{ fontSize: sizes.rangeSize }}>{sizes.range}</span> : null}
               </button>
             );
           })}
           {field?.serviceFlags ? (() => {
             const box = field.serviceFlags;
             const area = serviceLabelBox ?? serviceFlagsLabelBox(box, null);
-            const label = area ? serviceFlagsLabelSize(area, renderScale) : { size: 0, vertical: false };
+            const label = area ? serviceFlagsLabelSize(area, renderScale) : { size: 0, vertical: false, text: "", narrow: false };
             return (
-              <div className="publicFlagServiceFlags" role="img" aria-label={`${box.label}, ${SERVICE_FLAGS_SECTION} 1\u2013${FIELD_MAP_Z_ROWS}`} style={{ left: box.x, top: box.y, width: box.width, height: box.height }}>
+              <div className={label.narrow ? "publicFlagServiceFlags isNarrow" : "publicFlagServiceFlags"} role="img" aria-label={`${box.label}, ${SERVICE_FLAGS_SECTION} 1\u2013${FIELD_MAP_Z_ROWS}`} style={{ left: box.x, top: box.y, width: box.width, height: box.height }}>
                 {area && label.size ? (
                   <span style={{ left: area.x, top: area.y, width: area.width, height: area.height, fontSize: label.size }}>
-                    {label.vertical ? <span className="isVertical">{box.label}</span> : box.label.split(" ").map((word) => <span key={word}>{word}</span>)}
+                    {label.vertical ? <span className="isVertical">{label.text}</span> : label.text.split(" ").map((word) => <span key={word}>{word}</span>)}
                   </span>
                 ) : null}
               </div>

@@ -7,7 +7,7 @@ const version = readFileSync(new URL("../../VERSION", import.meta.url), "utf8").
 test("package.json matches the VERSION file", () => {
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(pkg.version, version);
-  assert.equal(version, "2.0.3");
+  assert.equal(version, "2.0.4");
 });
 
 test("the API assembly version is read from VERSION", () => {
@@ -21,7 +21,7 @@ test("the footer stamps the shared version", () => {
   assert.match(app, /Version \{packageInfo\.version\}/);
 });
 
-test("the changelog records 1.0.0 through 2.0.3", () => {
+test("the changelog records 1.0.0 through 2.0.4", () => {
   const changelog = readFileSync(new URL("../../CHANGELOG.md", import.meta.url), "utf8");
   assert.match(changelog, /## 1\.0\.0/);
   assert.match(changelog, /## 1\.1\.0/);
@@ -35,6 +35,7 @@ test("the changelog records 1.0.0 through 2.0.3", () => {
   assert.match(changelog, /## 2\.0\.1/);
   assert.match(changelog, /## 2\.0\.2/);
   assert.match(changelog, /## 2\.0\.3/);
+  assert.match(changelog, /## 2\.0\.4/);
   assert.doesNotMatch(changelog, /## 1\.4\.1/);
   assert.doesNotMatch(changelog, /## 1\.6\.0/);
 });

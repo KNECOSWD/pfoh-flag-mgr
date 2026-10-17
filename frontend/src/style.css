@@ -11484,6 +11484,15 @@ html.flagMapKiosk a {
   writing-mode: vertical-rl;
 }
 
+.publicFlagServiceFlags.isNarrow {
+  box-shadow: inset 0 0 0 calc(var(--px, 1px) * 0.5) rgba(243, 226, 167, 0.85);
+}
+
+.publicFlagServiceFlags.isNarrow > span,
+.publicFlagServiceFlags.isNarrow .isVertical {
+  line-height: 1;
+}
+
 .publicFlagTile,
 .publicFlagMarker {
   position: absolute;
@@ -11538,6 +11547,28 @@ html.flagMapKiosk a {
   max-height: 70%;
   margin-top: 0.4em;
   writing-mode: vertical-rl;
+}
+
+.publicFlagZone.isNarrow {
+  border-width: calc(var(--px, 1px) * 0.5);
+}
+
+.publicFlagZone.isTiny {
+  border-width: 0;
+  box-shadow: inset 0 0 0 calc(var(--px, 1px) * 0.5) rgba(243, 226, 167, 0.85);
+}
+
+.publicFlagZone .isUpright {
+  max-width: none;
+  max-height: none;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0;
+  line-height: 0.8;
+}
+
+.publicFlagZone span.isUpright {
+  margin-top: 0.3em;
 }
 
 .publicFlagTile span,

@@ -36,6 +36,11 @@ import {
   isServiceFlagSeat,
   serviceFlagsLabelBox,
   serviceFlagsLabelSize,
+  SERVICE_FLAGS_SHORT_LABEL,
+  NARROW_BLOCK_PX,
+  snapEdgeSpots,
+  spotFitMaxScale,
+  spotScreenWidth,
   layoutFlagField,
   MAP_FULLSCREEN_CLASS,
   PAVILION_COLUMNS_LEFT_TO_RIGHT,
@@ -274,7 +279,7 @@ test("section blocks are flat, Z1–Z10 is one flat Service Flags block, and Z h
   assert.match(css, /\.publicFlagMarker\.isReserved \{\s*background: transparent;\s*color: transparent;\s*border-color: transparent;/);
   assert.doesNotMatch(page, /<li><i className="isReserved"/);
   assert.match(page, /cell\.status !== "Reserved"/);
-  assert.match(page, /className="publicFlagServiceFlags"/);
+  assert.match(page, /"publicFlagServiceFlags isNarrow" : "publicFlagServiceFlags"/);
   assert.match(page, /!cell\.serviceFlag && ids\.has/);
 
   assert.equal(FIELD_MAP_Z_ROWS, 10);
@@ -318,7 +323,7 @@ test("section blocks are flat, Z1–Z10 is one flat Service Flags block, and Z h
     const label = serviceFlagsLabelSize(box, scale);
     if (!label.size) continue;
     const px = label.size * scale;
-    assert.ok(px >= 6 && px <= 20, `service flags label ${px}px at ${scale}`);
+    assert.ok(px > 0 && px <= 20 && (label.narrow || px >= 6), `service flags label ${px}px at ${scale}`);
     const words = box.label.split(" ");
     if (label.vertical) {
       assert.ok(box.label.length * px * 0.62 <= box.height * scale);
@@ -348,6 +353,213 @@ test("section blocks are flat, Z1–Z10 is one flat Service Flags block, and Z h
   assert.ok(gapBefore > usual * 3, `Z gap ${gapBefore} vs ${usual}`);
   assert.equal(usual, SPOT_SIZE.gap);
 });
+
+function fieldWithZ(rows) {
+  const seats = [];
+  for (let row = 1; row <= rows; row += 1) {
+    seats.push({ flagGridId: 9000 + row, flagGridName: `Z-${row}`, columnNumber: row, section: "Z", status: row <= FIELD_MAP_Z_ROWS ? "Reserved" : row % 2 ? "Occupied" : "Open", displayName: "Ada Sample" });
+  }
+  return layoutFlagField([{ section: "Z", flagCount: seats.length, occupiedCount: 3, seats }]);
+}
+
+test("at a 320 fit every section shows its letter and Service Flags shows a label inside the block", () => {
+  // Live: 40 rows, Z1–Z10 is Service Flags, and Z splits only at the aisle.
+  const field = fieldWithZ(40);
+  assert.equal(field.zones.length, 56);
+  assert.deepEqual(field.zones.filter((zone) => zone.section === "Z").map((zone) => zone.label).sort(), ["Z 11–20", "Z 21–40"]);
+  const em = { W: 1.04, M: 0.94 };
+  // 6.6–9.9px columns cover a 320 window with page chrome (the live fit is
+  // 7.1–7.2px); 2.0.3 drew no range, no YY/AA letter, and no Service Flags
+  // label there.
+  for (const columnPx of [6.6, 7, 7.09, 7.17, 7.2, 8, 8.7, 9.9]) {
+    const scale = columnPx / SPOT_SIZE.width;
+    let ranges = 0;
+    for (const zone of field.zones) {
+      const sizes = zoneLabelSizes(zone, scale);
+      const width = zone.width * scale;
+      const height = zone.height * scale;
+      assert.equal(sizes.narrow, width < NARROW_BLOCK_PX);
+      assert.ok(sizes.letter > 0, `${zone.label} has no letter at ${columnPx}px`);
+      const letterPx = sizes.letter * scale;
+      assert.ok(letterPx >= 5, `${zone.label} letter ${letterPx}px`);
+      const chars = [...zone.section];
+      const glyph = (char) => Math.max(em[char] ?? 0.78, 0.78);
+      const inner = width - 1;
+      const letterWide = sizes.letterStacked ? Math.max(0.8, ...chars.map(glyph)) * letterPx : chars.reduce((sum, char) => sum + glyph(char), 0) * letterPx;
+      assert.ok(letterWide <= inner + 0.01, `${zone.label} letter ${letterWide} wide in ${inner}`);
+      assert.equal(sizes.letterStacked, chars.length > 1, `${zone.label} stacked at ${columnPx}px`);
+      let tall = letterPx * (sizes.letterStacked ? chars.length * 1.25 : 1.25);
+      if (sizes.rangeSize) {
+        ranges += 1;
+        const rangePx = sizes.rangeSize * scale;
+        if (sizes.vertical) {
+          assert.ok(rangePx >= 7 && rangePx <= width * 0.8 + 0.01, `${zone.label} rotated range ${rangePx}px`);
+          tall += sizes.range.length * rangePx * 0.62 + rangePx * 0.4;
+        } else {
+          assert.equal(sizes.stacked, true);
+          assert.ok(rangePx >= 6 && rangePx <= 9, `${zone.label} range ${rangePx}px`);
+          assert.ok(rangePx * 0.8 <= inner + 0.01);
+          tall += rangePx * sizes.range.length * 1.25 + letterPx * 0.3;
+        }
+      }
+      assert.ok(tall <= height, `${zone.label} label ${tall} tall in ${height}`);
+    }
+    assert.equal(ranges, 56, `${ranges} ranges at ${columnPx}px`);
+
+    const label = serviceFlagsLabelSize(serviceFlagsLabelBox(field.serviceFlags, null), scale);
+    const px = label.size * scale;
+    assert.ok(px >= 5, `Service Flags label ${px}px at ${columnPx}px`);
+    assert.ok([SERVICE_FLAGS_LABEL, SERVICE_FLAGS_SHORT_LABEL].includes(label.text));
+    assert.equal(label.vertical, true);
+    assert.ok(px <= field.serviceFlags.width * scale - 1 + 0.01, "rotated line fits inside the stroke");
+    assert.ok(label.text.length * px * 0.62 <= field.serviceFlags.height * scale * 0.84 + 0.01);
+  }
+  // A taller field fits at under 5px columns; the letter still draws edge to
+  // edge and Service Flags still has a label.
+  for (const rows of [40, 60]) {
+    const tall = pavilionField(rows);
+    const fits = [fitWholeField({ x: 0, y: 0, width: tall.worldWidth, height: tall.worldHeight }, { width: 284, height: 268 }, FIT_PADDING).scale];
+    if (rows === 60) assert.ok(fits[0] * SPOT_SIZE.width < 5, "the 60-row fit is under 5px a column");
+    for (const scale of [...fits, 3 / SPOT_SIZE.width, 4 / SPOT_SIZE.width, 4.87 / SPOT_SIZE.width, 5.5 / SPOT_SIZE.width, 7.2 / SPOT_SIZE.width]) {
+      assert.equal(tall.zones.length, 56);
+      for (const zone of tall.zones) {
+        const sizes = zoneLabelSizes(zone, scale);
+        const width = zone.width * scale;
+        const letterPx = sizes.letter * scale;
+        const where = `${rows} rows ${zone.label} at ${width.toFixed(2)}px`;
+        assert.ok(letterPx > 0, `${where} paints nothing`);
+        const chars = [...zone.section];
+        const glyph = (char) => Math.max(em[char] ?? 0.78, 0.78);
+        const wide = sizes.letterStacked ? Math.max(0.8, ...chars.map(glyph)) * letterPx : chars.reduce((sum, char) => sum + glyph(char), 0) * letterPx;
+        assert.ok(wide <= width + 0.01, `${where} letter ${wide} wide`);
+        if (letterPx < 5) assert.equal(sizes.tiny, true, where);
+        let used = letterPx * 1.25 * (sizes.letterStacked ? chars.length : 1);
+        if (sizes.rangeSize) used += sizes.rangeSize * scale * sizes.range.length * 1.25;
+        assert.ok(used <= zone.height * scale, `${where} label too tall`);
+      }
+      const label = serviceFlagsLabelSize(tall.serviceFlags, scale);
+      assert.ok(label.size > 0 && [SERVICE_FLAGS_LABEL, SERVICE_FLAGS_SHORT_LABEL].includes(label.text), `${rows} rows Service Flags at ${scale}`);
+      assert.ok(label.size * scale <= tall.serviceFlags.width * scale + 0.01);
+      assert.ok(label.text.length * label.size * scale * 0.62 <= tall.serviceFlags.height * scale * 0.84 + 0.01);
+    }
+  }
+  assert.match(css, /\.publicFlagZone\.isTiny \{\s*border-width: 0;\s*box-shadow: inset/);
+  const fit320 = initialOverviewPlacement(field, { width: 320, height: 568 });
+  const padded320 = fitWholeField({ x: 0, y: 0, width: field.worldWidth, height: field.worldHeight }, { width: 284, height: 268 }, FIT_PADDING).scale;
+  for (const scale of [fit320.view.scale, padded320]) {
+    const zones320 = field.zones.map((zone) => [zone.label, zoneLabelSizes(zone, scale)]);
+    assert.deepEqual(zones320.filter(([, sizes]) => !(sizes.letter > 0 && sizes.rangeSize > 0)).map(([label]) => label), [], `every zone shows its range at ${scale}`);
+  }
+  assert.ok(serviceFlagsLabelSize(field.serviceFlags, fit320.view.scale).size > 0);
+
+  for (const scale of [0.0765, 0.29, 0.39]) {
+    for (const zone of field.zones) {
+      const sizes = zoneLabelSizes(zone, scale);
+      assert.equal(sizes.narrow, false);
+      assert.equal(sizes.stacked, false);
+      assert.equal(sizes.letterStacked, false);
+      assert.ok(sizes.rangeSize > 0, `${zone.label} range at ${scale}`);
+      if (!/[WM]/.test(zone.section)) assert.equal(sizes.letter, labelFontSize(zone.section, zone.width, zone.height * 0.3, scale, { min: 5, max: 22, em: 0.7 }));
+    }
+    assert.equal(serviceFlagsLabelSize(field.serviceFlags, scale).text, SERVICE_FLAGS_LABEL);
+  }
+  assert.match(page, /sizes\.narrow \? "isNarrow" : ""/);
+  assert.match(page, /sizes\.tiny \? "isTiny" : ""/);
+  assert.match(page, /sizes\.letterStacked \? "isUpright"/);
+  assert.match(page, /sizes\.stacked \? "isUpright"/);
+  assert.match(page, /label\.narrow \? "publicFlagServiceFlags isNarrow"/);
+  assert.match(page, /\{label\.text\}/);
+  assert.match(css, /\.publicFlagZone\.isNarrow \{\s*border-width: calc\(var\(--px, 1px\) \* 0\.5\);/);
+  assert.match(css, /\.publicFlagZone \.isUpright \{[^}]*text-orientation: upright;[^}]*line-height: 0\.8;/);
+});
+
+function pavilionField(rows) {
+  return layoutFlagField(PAVILION_COLUMNS_LEFT_TO_RIGHT.map((section) => ({
+    section,
+    seats: Array.from({ length: rows }, (_, index) => ({
+      flagGridId: pavilionSeatId(section, index + 1),
+      flagGridName: `${section}-${index + 1}`,
+      columnNumber: index + 1,
+      section,
+      status: section === "Z" && index < FIELD_MAP_Z_ROWS ? "Reserved" : index % 3 ? "Open" : "Occupied"
+    }))
+  })));
+}
+
+test("a view that settles from the names zoom to the closest keeps every mostly visible spot inside with padding", () => {
+  const level = (scale) => (spotScreenWidth(scale) >= FLAG_MAP_ZOOM.closestAt ? "Closest" : "Names");
+  const cut = (field, view, viewport) => field.cells.filter((cell) => cell.serviceFlag || cell.status !== "Reserved").filter((cell) => {
+    const left = view.x + cell.x * view.scale;
+    const top = view.y + cell.y * view.scale;
+    const right = left + cell.width * view.scale;
+    const bottom = top + cell.height * view.scale;
+    const seen = Math.max(0, Math.min(right, viewport.width) - Math.max(left, 0)) * Math.max(0, Math.min(bottom, viewport.height) - Math.max(top, 0));
+    if (seen <= 0.5 * (right - left) * (bottom - top)) return false;
+    return left < FIT_PADDING - 0.01 || top < FIT_PADDING - 0.01 || right > viewport.width - FIT_PADDING + 0.01 || bottom > viewport.height - FIT_PADDING + 0.01;
+  });
+  // Padding boxes of the 390 and 320 phone maps, a short phone, 1440, and the kiosk.
+  const viewports = [{ width: 346, height: 567 }, { width: 284, height: 268 }, { width: 296, height: 300 }, { width: 1406, height: 638 }, { width: 1874, height: 858 }];
+  let views = 0;
+  for (const rows of [40, 60]) {
+    const field = pavilionField(rows);
+    const world = { x: 0, y: 0, width: field.worldWidth, height: field.worldHeight };
+    const anchors = ["Z-13", "N-31", "YY-1", `AA-${rows}`, "C-21"].map((name) => field.cells.find((cell) => cell.flagGridName === name));
+    for (const viewport of viewports) {
+      const fitted = fitWholeField(world, viewport, FIT_PADDING);
+      const maxScale = Math.max(fitted.scale, spotFitMaxScale(viewport, FIT_PADDING));
+      if (viewport.width < 760) {
+        assert.ok(SPOT_SIZE.width * maxScale + FIT_PADDING * 2 <= viewport.width + 0.01 || spotScreenWidth(maxScale) <= FLAG_MAP_ZOOM.closestAt + 1.01);
+        assert.ok(spotScreenWidth(maxScale) > FLAG_MAP_ZOOM.closestAt, "the closest level stays reachable on a phone");
+      } else {
+        assert.equal(maxScale, FLAG_MAP_ZOOM.maxScale, "1440 and the kiosk keep the full zoom");
+      }
+      const options = { minScale: fitted.scale, maxScale, world };
+      for (let spotPx = FLAG_MAP_ZOOM.namesAt; spotPx <= SPOT_SIZE.width * maxScale + 0.01; spotPx *= 1.09) {
+        const scale = spotPx / SPOT_SIZE.width;
+        for (const anchor of anchors) {
+          for (const [nx, ny] of [[0, 0], [0.37, -0.29], [-0.45, 0.45], [0.51, 0.13], [-0.18, -0.52]]) {
+            const before = clampView({
+              scale,
+              x: viewport.width / 2 - (anchor.x + anchor.width * (0.5 + nx)) * scale,
+              y: viewport.height / 2 - (anchor.y + anchor.height * (0.5 + ny)) * scale
+            }, viewport, world, options);
+            const settled = clampView(snapEdgeSpots(before, viewport, field.cells, FIT_PADDING, options), viewport, world, options);
+            views += 1;
+            const where = `${rows} rows ${viewport.width}x${viewport.height} ${spotPx.toFixed(1)}px ${anchor.flagGridName} ${nx},${ny}`;
+            assert.deepEqual(cut(field, settled, viewport).map((cell) => cell.flagGridName), [], where);
+            assert.ok(Math.abs(settled.scale / before.scale - 1) <= 0.0601, `scale ${where}`);
+            assert.equal(level(settled.scale), level(before.scale), `level ${where}`);
+            const again = snapEdgeSpots(settled, viewport, field.cells, FIT_PADDING, options);
+            assert.ok(Math.abs(again.x - settled.x) < 0.01 && Math.abs(again.y - settled.y) < 0.01 && again.scale === settled.scale, `stable ${where}`);
+          }
+        }
+      }
+    }
+  }
+  assert.ok(views > 1000, `${views} views`);
+  const field = pavilionField(40);
+  const phone = { width: 346, height: 567 };
+  const spots = { scale: (FLAG_MAP_ZOOM.namesAt - 1) / SPOT_SIZE.width, x: -1400, y: -600 };
+  assert.deepEqual(snapEdgeSpots(spots, phone, field.cells, FIT_PADDING), spots, "below the names zoom nothing moves");
+
+  assert.match(page, /animateTo\(settledView\(zoomAt\(viewRef\.current, point\.x, point\.y/);
+  assert.match(page, /wheelSettleRef\.current = window\.setTimeout\(settleGesture, WHEEL_SETTLE_MS\)/);
+  assert.match(page, /pinchSettleRef\.current = window\.setTimeout\(settleGesture, WHEEL_SETTLE_MS\)/);
+  assert.match(page, /clearTimeout\(pinchSettleRef\.current\);\s*settleGesture\(\);/);
+  assert.match(page, /animateTo\(settledView\(zoneView\.scale >= spotsViewScale\(\)/);
+  assert.match(page, /node\.clientWidth, height: node\.clientHeight/);
+  assert.match(page, /maxScale: maxViewScale\(\)/);
+  const open = page.slice(page.indexOf("function openFlag("), page.indexOf("function drawerCover("));
+  assert.doesNotMatch(open, /settledView/);
+  const drag = page.slice(page.indexOf("const onPointerMove = "), page.indexOf("const onPointerUp = "));
+  assert.doesNotMatch(drag, /settle/);
+  const keys = page.slice(page.indexOf("panView(viewRef.current, FLAG_MAP_ZOOM.panStep, 0)") - 80, page.indexOf("panView(viewRef.current, 0, -FLAG_MAP_ZOOM.panStep)") + 80);
+  assert.doesNotMatch(keys, /settle/);
+});
+
+function pavilionSeatId(section, row) {
+  return (PAVILION_COLUMNS_LEFT_TO_RIGHT.indexOf(section) + 1) * 100 + row;
+}
 
 test("the detail drawer is portaled to body and layers above every page layer", () => {
   const stage = page.slice(page.indexOf('<div className="publicFlagStage">'), page.indexOf("{selected ? createPortal("));
@@ -683,7 +895,10 @@ test("branch seals render only when fewer than 10 flags are on screen", () => {
   const beforeSettle = flush.slice(0, flush.indexOf("setTimeout"));
   assert.match(beforeSettle, /gestureTransform/);
   assert.doesNotMatch(beforeSettle, /publishCull|paintView|setGates|setVisibleFlagIds/);
-  assert.match(flush.slice(flush.indexOf("setTimeout")), /publishCull\(true\)/);
+  assert.match(flush.slice(flush.indexOf("setTimeout")), /setTimeout\(settleGesture, WHEEL_SETTLE_MS\)/);
+  const settle = page.slice(page.indexOf("function settleGesture()"), page.indexOf("function paintView("));
+  assert.match(settle, /publishCull\(true\)/);
+  assert.match(settle, /animateTo\(target\)/);
 
   const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
   assert.match(css, /@keyframes publicFlagSealFade/);
