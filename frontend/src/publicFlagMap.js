@@ -384,6 +384,23 @@ function zoneOrder(left, right) {
   return left.x - right.x || left.y - right.y;
 }
 
+// Service Flags are Z 1–10, so they sort as Z 1, ahead of Z 11–20.
+function inViewSortKey(item) {
+  if (item?.kind === "service") return { letters: SERVICE_FLAGS_SECTION, number: 1 };
+  const name = item?.kind === "spot" ? item.name ?? item.label : item?.label;
+  const match = /^([A-Za-z]+)[\s-]*(\d+)?/.exec(String(name ?? ""));
+  return match ? { letters: match[1].toUpperCase(), number: Number(match[2] ?? 0) } : { letters: String(name ?? ""), number: 0 };
+}
+
+// A, AA, B ... YY, Z by letter, then by the first flag number, so A-2 comes
+// before A-10 and C 1–20 before C 21–40.
+export function compareInViewItems(left, right) {
+  const a = inViewSortKey(left);
+  const b = inViewSortKey(right);
+  if (a.letters !== b.letters) return a.letters < b.letters ? -1 : 1;
+  return a.number - b.number;
+}
+
 // What the "in view" list offers: the section blocks while zoomed out, and the
 // flag spots once the zoom shows flag numbers. Anything with part of its box
 // inside the map window counts.
@@ -399,17 +416,17 @@ export function flagMapItemsInView(field, view, viewport, gates = {}) {
       items.push({ key: `zone:${zone.label}`, kind: "zone", label: zone.label, box: zone });
     }
     if (service) items.push(service);
-    return { kind: "sections", items };
+    return { kind: "sections", items: items.sort(compareInViewItems) };
   }
   const spots = cullRects(field.cells, seen)
     .filter((cell) => !cell.serviceFlag && !cell.template && cell.flagGridId > 0 && cell.status !== "Reserved")
     .sort(zoneOrder);
   for (const cell of spots) {
     const caption = cell.status === "Occupied" ? (cell.displayName || "Occupied") : "Open";
-    items.push({ key: `spot:${cell.flagGridId}`, kind: "spot", label: `${cell.flagGridName} \u00b7 ${caption}`, box: cell, flagGridId: cell.flagGridId });
+    items.push({ key: `spot:${cell.flagGridId}`, kind: "spot", name: cell.flagGridName, label: `${cell.flagGridName} \u00b7 ${caption}`, box: cell, flagGridId: cell.flagGridId });
   }
   if (service) items.push(service);
-  return { kind: "spots", items };
+  return { kind: "spots", items: items.sort(compareInViewItems) };
 }
 
 // The closed list reads like the old level label, such as "Sections (56)".

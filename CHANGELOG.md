@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.6
+
+- The public Flag Map's in-view list is sorted. Zoomed out, sections go by letter, A, AA, B, C through Y, YY, Z, with a letter's 1–20 block before its 21–40 block. Service Flags sit with Z, first, as Z 1–10, before Z 11–20. Zoomed in, spots go by letter and then by number, so A-2 comes before A-10 and AA-3 before B-1. Everything else about the list is unchanged.
+
 ## 2.0.5
 
 - The public Flag Map shows the row numbers 1 through 40 on the right side of the field as well as the left. Each number sits on the same line as its row on both sides.
