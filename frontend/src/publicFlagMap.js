@@ -927,6 +927,12 @@ function blockInnerPx(widthPx) {
   return Math.max(0, widthPx - blockEdgePx(widthPx) * 2 - 0.2);
 }
 
+// A turned line (the Service Flags label) across a block: narrow blocks set it at
+// line-height 1 inside their 0.5px stroke.
+function turnedLinePx(widthPx) {
+  return widthPx < NARROW_BLOCK_PX ? Math.max(0, widthPx - 1) : blockInnerPx(widthPx);
+}
+
 // Section labels share one layout per zoom: the same letter size, range size, weight,
 // and top offset in every block, sized so the widest name fits the narrowest column.
 export const SECTION_LABEL_PX = Object.freeze({ letterMax: 22, acrossLetterMin: 7, rangeMax: 13, uprightRangeMax: 9, rangeToLetter: 0.8 });
@@ -957,7 +963,7 @@ export function sectionLabelSizes(zones, scale) {
   const need = (zone, layout, letterPx, rangePx) => {
     // Upright letters reserve the longest name's lines in every block so the ranges line up.
     const chars = [...String(zone.section || "")].length;
-    const letters = layout.letters === "across" ? letterPx : Math.max(chars * UPRIGHT_ADVANCE, longestName) * letterPx;
+    const letters = layout.letters === "across" ? letterPx : Math.max(chars, longestName) * UPRIGHT_ADVANCE * letterPx;
     const rangeChars = [...zoneRange(zone)].length;
     const range = !rangePx ? 0
       : layout.range === "across" ? rangePx * LINE_HEIGHT
@@ -965,7 +971,7 @@ export function sectionLabelSizes(zones, scale) {
           : rangeChars * rangePx * UPRIGHT_ADVANCE;
     return top(letterPx) + letters + (rangePx ? letterPx * 0.3 : 0) + range;
   };
-  const fits = (layout, letterPx, rangePx) => list.every((zone) => need(zone, layout, letterPx, rangePx) <= zone.height * s * 0.94);
+  const fits = (layout, letterPx, rangePx) => list.every((zone) => need(zone, layout, letterPx, rangePx) <= zone.height * s * 0.96);
 
   let layout;
   let letterPx;
@@ -980,7 +986,8 @@ export function sectionLabelSizes(zones, scale) {
     // Narrow columns (the 320 fallback): one glyph per line for the letter and the range.
     layout = { letters: "upright", range: "upright" };
     letterPx = Math.min(SECTION_LABEL_PX.letterMax, inner / widestGlyph);
-    rangePx = Math.min(SECTION_LABEL_PX.uprightRangeMax, inner / UPRIGHT_LINE);
+    // Capped at the turned Service Flags line so that label can share the size.
+    rangePx = Math.min(SECTION_LABEL_PX.uprightRangeMax, inner / UPRIGHT_LINE, turnedLinePx(widthPx));
   }
   while (rangePx - 0.1 >= ZONE_TEXT_PX.stackedRange && !fits(layout, letterPx, rangePx)) rangePx -= 0.1;
   while (letterPx - 0.1 >= ZONE_TEXT_PX.letter && rangePx >= ZONE_TEXT_PX.stackedRange && !fits(layout, letterPx, rangePx)) letterPx -= 0.1;
@@ -1023,7 +1030,7 @@ export function zoneLabelSizes(zone, scale, uniform = sectionLabelSizes([zone], 
     rangeParts: uniform?.rangeLayout === "lines" ? [String(zone.min), "\u2013", String(zone.max)].filter((part, index) => zone.min !== zone.max || index === 0) : null,
     letter,
     letterStacked: uniform?.letters === "upright" && chars.length > 1,
-    letterBlock: uniform?.letters === "upright" && uniform.rangePx > 0 ? (uniform.letterLines * uniform.letterPx) / s : 0,
+    letterBlock: uniform?.letters === "upright" && uniform.rangePx > 0 ? (uniform.letterLines * UPRIGHT_ADVANCE * uniform.letterPx) / s : 0,
     narrow: Boolean(uniform?.narrow),
     tiny: Boolean(uniform?.tiny),
     rangeSize,
@@ -1057,14 +1064,15 @@ export function serviceFlagsLabelSize(box, scale, uniform) {
   const empty = { size: 0, vertical: true, text: "", narrow, top: 0 };
   if (!shared || !(width > 0 && height > 0)) return empty;
   const base = Math.min(shared.rangePx > 0 ? shared.rangePx : shared.letterPx, 20);
-  const top = shared.topPx;
+  // Section blocks draw a border and this block an inset shadow, so add the border to line up with the letters.
+  const top = shared.topPx + blockEdgePx(width);
   const room = Math.min((height - top) * 0.9, height * 0.84);
   const inner = blockInnerPx(width);
   const longest = Math.max(...words.map((word) => word.length));
   if (base > 0 && longest * base * CHAR_EM <= inner && words.length * base * LINE_HEIGHT <= room) {
     return { size: base / s, vertical: false, text: label, narrow, top: top / s };
   }
-  const edge = shared.tiny ? Math.max(0, width - 0.2) : inner;
+  const edge = shared.tiny ? Math.max(0, width - 0.2) : turnedLinePx(width);
   for (const text of [label, SERVICE_FLAGS_SHORT_LABEL]) {
     const size = Math.min(base, edge);
     if (size > 0 && text.length * size * CHAR_EM <= room) return { size: size / s, vertical: true, text, narrow, top: top / s };

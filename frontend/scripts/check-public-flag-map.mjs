@@ -6,6 +6,7 @@ import {
   FIT_PADDING,
   KIOSK_IDLE_MS,
   SPOT_SIZE,
+  blockEdgePx,
   SPOT_TEXT_PX,
   clampView,
   closestViewScale,
@@ -536,7 +537,9 @@ test("at a 320 fit every section shows its letter and Service Flags shows a labe
   const padded320 = fitWholeField({ x: 0, y: 0, width: field.worldWidth, height: field.worldHeight }, { width: 284, height: 268 }, FIT_PADDING).scale;
   for (const scale of [fit320.view.scale, padded320]) {
     const zones320 = field.zones.map((zone) => [zone.label, zoneLabelSizes(zone, scale, sectionLabelSizes(field.zones, scale))]);
-    assert.deepEqual(zones320.filter(([, sizes]) => !(sizes.letter > 0 && sizes.rangeSize > 0)).map(([label]) => label), [], `every zone shows its range at ${scale}`);
+    assert.ok(zones320.every(([, sizes]) => sizes.letter > 0), `every zone shows its letter at ${scale}`);
+    const withRange = zones320.filter(([, sizes]) => sizes.rangeSize > 0).length;
+    assert.equal(withRange, SPOT_SIZE.width * scale >= 7 ? zones320.length : 0, `${withRange} ranges at ${(SPOT_SIZE.width * scale).toFixed(2)}px columns`);
   }
   assert.ok(serviceFlagsLabelSize(field.serviceFlags, fit320.view.scale).size > 0);
 
@@ -598,8 +601,8 @@ test("every section label shares one size, weight, and top placement at a zoom, 
     if (columnPx < 5.5) assert.equal(uniform.rangePx, 0, `letter only at ${columnPx}px`);
     const service = serviceFlagsLabelSize(field.serviceFlags, scale, uniform);
     assert.ok(service.size > 0, `Service Flags label at ${columnPx}px`);
-    if (uniform.rangePx > 0) assert.ok(Math.abs(service.size * scale - uniform.rangePx) < 1e-6 || service.size * scale < uniform.rangePx, `Service Flags matches the range size at ${columnPx}px`);
-    if (uniform.rangePx > 0 && service.size * scale >= Math.min(uniform.rangePx, columnPx - 1.2) - 1e-6) assert.ok(true);
+    if (uniform.rangePx > 0) assert.ok(Math.abs(service.size * scale - uniform.rangePx) < 1e-6, `Service Flags ${service.size * scale}px matches the ${uniform.rangePx}px range at ${columnPx}px`);
+    assert.ok(Math.abs(service.top * scale - (uniform.topPx + blockEdgePx(columnPx))) < 1e-6, `Service Flags top lines up with the letters at ${columnPx}px`);
   }
   assert.match(css, /\.publicFlagZone \{\s*justify-content: flex-start;/);
   assert.match(css, /\.publicFlagZone strong \{[^}]*font-weight: 800;/);
