@@ -109,8 +109,8 @@ test("the public nav links Flag Map right after Search, and the admin nav item r
   assert.equal(app.match(adminLink)?.length, 2);
   assert.doesNotMatch(app, />Flag Map<\/a>/);
   assert.doesNotMatch(app, /footerExplore[\s\S]{0,400}flag-map/);
-  assert.match(app, /name = "robots"/);
-  assert.match(app, /noindex, nofollow/);
+  assert.match(app, /aria-label="Flag Manager">\s*<div className="sectionHeader">\s*<div>\s*<p className="eyebrow">Flag grids<\/p>\s*<h3>Flag Manager<\/h3>/);
+  assert.doesNotMatch(app, /<h3>Flag Map<\/h3>/);
 });
 
 test("the public page does not start a sign-in redirect", () => {
@@ -125,10 +125,13 @@ test("the public page does not start a sign-in redirect", () => {
   assert.match(page, /touchmove/);
 });
 
-test("robots.txt and the API header keep the page out of search results", () => {
-  assert.match(robots, /Disallow:\s*\/flag-map/);
-  assert.match(program, /X-Robots-Tag/);
-  assert.match(program, /\/api\/public\/flag-map/);
+test("the /flag-map page is indexable, and only its API keeps the noindex header", () => {
+  assert.doesNotMatch(robots, /flag-map/);
+  assert.match(robots, /^User-agent: \*\nDisallow:\n$/);
+  assert.doesNotMatch(app, /name = "robots"|noindex/);
+  const header = program.slice(program.indexOf("X-Robots-Tag") - 200, program.indexOf("X-Robots-Tag"));
+  assert.match(header, /path\.StartsWith\("\/api\/public\/flag-map", StringComparison\.OrdinalIgnoreCase\)\)/);
+  assert.doesNotMatch(header, /path\.Equals\("\/flag-map"/);
 });
 
 test("zoomed-out zones use real ranges and spots stay inside their box", () => {

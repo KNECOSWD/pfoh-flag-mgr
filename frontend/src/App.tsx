@@ -1067,17 +1067,6 @@ export default function App() {
   }, [kioskLocked]);
 
   useEffect(() => {
-    if (activeRoute !== "/flag-map") return;
-    const meta = document.createElement("meta");
-    meta.name = "robots";
-    meta.content = "noindex, nofollow";
-    document.head.appendChild(meta);
-    return () => {
-      meta.remove();
-    };
-  }, [activeRoute]);
-
-  useEffect(() => {
     if (activeRoute !== "/honor-a-hero" || !account || selectedClaim || isNominating) {
       return;
     }
@@ -4150,11 +4139,11 @@ export default function App() {
               ) : null}
 
               {isFlagMapRoute ? (
-                <section id="flag-position-manager" className="flagPositionManager adminStandalonePanel" aria-label="Flag Map">
+                <section id="flag-position-manager" className="flagPositionManager adminStandalonePanel" aria-label="Flag Manager">
                   <div className="sectionHeader">
                     <div>
                       <p className="eyebrow">Flag grids</p>
-                      <h3>Flag Map</h3>
+                      <h3>Flag Manager</h3>
                       <p className="helperText">
                         
                       </p>
