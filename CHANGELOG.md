@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.17
+
+- Signed-in administrators find the Admin menu at the end of the navigation, after PlanoFlagsOfHonor.com, on desktop and in the phone menu. The menu still contains Review, Print Center, and Flag Manager. Signed-out visitors and the kiosk do not see it.
+
 ## 2.0.16
 
 - In the Print Center, the line under the heading after a merged PDF is ready now ends at "140 cards selected, merged."

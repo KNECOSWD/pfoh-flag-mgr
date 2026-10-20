@@ -2874,9 +2874,6 @@ export default function App() {
             {siteNav.filter((item) => item.show).map((item) => (
               <a key={item.route} className={activeRoute === item.route ? "isActive" : ""} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
             ))}
-            {chrome.adminLinks ? (
-              <AdminNavMenu items={adminNav} activeRoute={activeRoute} menuId="admin-nav-desktop" layout="bar" onNavigate={handleRouteLink} />
-            ) : null}
             <a
               className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
               href="/honor-a-hero"
@@ -2887,6 +2884,9 @@ export default function App() {
             <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer">
               PlanoFlagsOfHonor.com
             </a>
+            {chrome.adminLinks ? (
+              <AdminNavMenu items={adminNav} activeRoute={activeRoute} menuId="admin-nav-desktop" layout="bar" onNavigate={handleRouteLink} />
+            ) : null}
           </nav>
 
           <Dialog.Root open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
@@ -2920,9 +2920,6 @@ export default function App() {
                   {siteNav.filter((item) => item.show).map((item) => (
                     <a key={item.route} className={activeRoute === item.route ? "isActive" : ""} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
                   ))}
-                  {chrome.adminLinks ? (
-                    <AdminNavMenu items={adminNav} activeRoute={activeRoute} menuId="admin-nav-drawer" layout="drawer" onNavigate={handleRouteLink} />
-                  ) : null}
                   <a
                     className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
                     href="/honor-a-hero"
@@ -2933,6 +2930,9 @@ export default function App() {
                   <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer" onClick={() => setMobileNavOpen(false)}>
                     PlanoFlagsOfHonor.com
                   </a>
+                  {chrome.adminLinks ? (
+                    <AdminNavMenu items={adminNav} activeRoute={activeRoute} menuId="admin-nav-drawer" layout="drawer" onNavigate={handleRouteLink} />
+                  ) : null}
                 </nav>
 
                 <div className="mobileDrawerAccount">
