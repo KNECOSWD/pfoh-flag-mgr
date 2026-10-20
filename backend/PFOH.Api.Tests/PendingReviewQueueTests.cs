@@ -835,6 +835,114 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         await db.SaveChangesAsync();
     }
 
+    [Fact]
+    public async Task Remove_from_reprint_queue_succeeds_for_an_internal_claim_on_a_shared_grid()
+    {
+        await ResetAsync();
+        const string creationNote = "Internal claim created to add an existing honoree to the card reprint queue.";
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            db.FlagClaims.Add(new FlagClaim
+            {
+                Id = 10,
+                FlagGridId = 3,
+                HonoreeId = 5,
+                ExternalUserObjectId = "owner",
+                ExternalUserEmail = "owner@example.com",
+                ClaimStatus = "Approved",
+                CreatedUtc = DateTime.UtcNow
+            });
+            db.FlagClaims.Add(new FlagClaim
+            {
+                Id = 11,
+                FlagGridId = 3,
+                HonoreeId = 5,
+                ExternalUserObjectId = "admin-reprint:abc",
+                ExternalUserEmail = "admin@example.com",
+                ClaimStatus = "AdminReprintQueued",
+                AdminNotes = creationNote,
+                CreatedUtc = DateTime.UtcNow
+            });
+            db.HonoreeChangeRequests.Add(new HonoreeChangeRequest
+            {
+                Id = 21,
+                FlagClaimId = 11,
+                FlagGridId = 3,
+                HonoreeId = 5,
+                FirstName = "Ada",
+                LastName = "Lovelace",
+                RequestStatus = "Approved",
+                RequiresCardReprint = true,
+                ReviewNotes = "Added to the reprint queue by administrator.",
+                CreatedUtc = DateTime.UtcNow
+            });
+            db.FlagClaims.Add(new FlagClaim
+            {
+                Id = 12,
+                FlagGridId = 4,
+                HonoreeId = 6,
+                ExternalUserObjectId = "owner-2",
+                ExternalUserEmail = "owner2@example.com",
+                ClaimStatus = "Approved",
+                CreatedUtc = DateTime.UtcNow
+            });
+            db.HonoreeChangeRequests.Add(new HonoreeChangeRequest
+            {
+                Id = 22,
+                FlagClaimId = 12,
+                FlagGridId = 4,
+                HonoreeId = 6,
+                FirstName = "Grace",
+                LastName = "Hopper",
+                RequestStatus = "Approved",
+                RequiresCardReprint = true,
+                CreatedUtc = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient();
+        var missing = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/admin/review/reprint-queue/remove",
+            "admin-user",
+            "admin@example.com",
+            "Admin",
+            roles: "PFOH.Admin",
+            body: new { changeRequestIds = (int[]?)null }));
+        Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+
+        var response = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/admin/review/reprint-queue/remove",
+            "admin-user",
+            "admin@example.com",
+            "Admin",
+            roles: "PFOH.Admin",
+            body: new { changeRequestIds = new[] { 21, 22 } }));
+        var text = await response.Content.ReadAsStringAsync();
+        Assert.True(response.StatusCode == HttpStatusCode.OK, text);
+        using var json = JsonDocument.Parse(text);
+        Assert.Equal(2, json.RootElement.GetProperty("count").GetInt32());
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var saved = check.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var removed = await saved.HonoreeChangeRequests.Include(r => r.FlagClaim).SingleAsync(r => r.Id == 21);
+        Assert.False(removed.RequiresCardReprint);
+        Assert.Equal("admin@example.com", removed.ReviewedBy);
+        Assert.NotNull(removed.ReviewedUtc);
+        Assert.Contains("Removed from the reprint queue by administrator.", removed.ReviewNotes, StringComparison.Ordinal);
+        Assert.Equal("Cancelled", removed.FlagClaim!.ClaimStatus);
+        Assert.Equal(creationNote, removed.FlagClaim.AdminNotes);
+        var owner = await saved.FlagClaims.SingleAsync(c => c.Id == 10);
+        Assert.Equal("Approved", owner.ClaimStatus);
+
+        var approvedReprint = await saved.HonoreeChangeRequests.Include(r => r.FlagClaim).SingleAsync(r => r.Id == 22);
+        Assert.False(approvedReprint.RequiresCardReprint);
+        Assert.Equal("Approved", approvedReprint.FlagClaim!.ClaimStatus);
+    }
+
     private async Task SeedReprintAsync(int changeId, int claimId, DateTime reviewedUtc)
     {
         await using var scope = factory.Services.CreateAsyncScope();

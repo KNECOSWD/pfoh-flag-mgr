@@ -1514,66 +1514,6 @@ export default function PublicFlagMap({
             </p>
           </div>
         </div>
-        <div className="publicFlagSearch">
-          <label htmlFor="public-flag-search">Search honorees</label>
-          <input
-            id="public-flag-search"
-            role="combobox"
-            aria-expanded={open && searchRows.length > 0}
-            aria-controls={listId}
-            aria-autocomplete="list"
-            aria-activedescendant={activeDescendant}
-            type="search"
-            inputMode="search"
-            enterKeyHint="search"
-            autoComplete="off"
-            autoCapitalize="none"
-            placeholder="Type a name"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setOpen(true);
-              setActive(0);
-            }}
-            onFocus={() => setOpen(true)}
-            onKeyDown={onSearchKeyDown}
-          />
-          {submitterNote ? <p className="message" role="status">{submitterNote}</p> : null}
-          {open && searchRows.length > 0 ? (
-            <ul id={listId} role="listbox" className="publicFlagSuggestions">
-              {searchRows.map((row, optionIndex) => row.kind === "honoree" ? (
-                <li
-                  id={`${listId}-${row.hit.honoreeId}`}
-                  key={`${row.hit.honoreeId}-${row.hit.flagGridId}`}
-                  role="option"
-                  aria-selected={optionIndex === active}
-                  className={optionIndex === active ? "isActive" : ""}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    pickSuggestion(row);
-                  }}
-                >
-                  <strong>{row.hit.displayName}</strong>
-                  <span>{[row.hit.serviceBranchName, row.hit.section, row.hit.flagGridName].filter(Boolean).join(" · ")}</span>
-                </li>
-              ) : (
-                <li
-                  id={`${listId}-submitter-${row.token}`}
-                  key={row.token}
-                  role="option"
-                  aria-selected={optionIndex === active}
-                  className={optionIndex === active ? "isActive" : ""}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    pickSuggestion(row);
-                  }}
-                >
-                  <strong>{row.label}</strong>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
         <div className="publicFlagToolbar">
           {kiosk ? <button type="button" onClick={goHome} aria-label="Home">Home</button> : null}
           {kiosk ? <button type="button" className="secondary" onClick={goBack} aria-label="Back">Back</button> : null}
@@ -1601,6 +1541,70 @@ export default function PublicFlagMap({
                 <ToolIcon name="reset" />
               </button>
             )}
+            <div className="publicFlagSearch">
+              <label htmlFor="public-flag-search" className="srOnly">Search honorees</label>
+              <svg className="publicFlagSearchIcon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true" focusable="false">
+                <circle cx="7" cy="7" r="4.5" />
+                <path d="M10.5 10.5 14 14" />
+              </svg>
+              <input
+                id="public-flag-search"
+                role="combobox"
+                aria-expanded={open && searchRows.length > 0}
+                aria-controls={listId}
+                aria-autocomplete="list"
+                aria-activedescendant={activeDescendant}
+                type="search"
+                inputMode="search"
+                enterKeyHint="search"
+                autoComplete="off"
+                autoCapitalize="none"
+                placeholder="Search honorees"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setOpen(true);
+                  setActive(0);
+                }}
+                onFocus={() => setOpen(true)}
+                onKeyDown={onSearchKeyDown}
+              />
+              {submitterNote ? <p className="message" role="status">{submitterNote}</p> : null}
+              {open && searchRows.length > 0 ? (
+                <ul id={listId} role="listbox" className="publicFlagSuggestions">
+                  {searchRows.map((row, optionIndex) => row.kind === "honoree" ? (
+                    <li
+                      id={`${listId}-${row.hit.honoreeId}`}
+                      key={`${row.hit.honoreeId}-${row.hit.flagGridId}`}
+                      role="option"
+                      aria-selected={optionIndex === active}
+                      className={optionIndex === active ? "isActive" : ""}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        pickSuggestion(row);
+                      }}
+                    >
+                      <strong>{row.hit.displayName}</strong>
+                      <span>{[row.hit.serviceBranchName, row.hit.section, row.hit.flagGridName].filter(Boolean).join(" · ")}</span>
+                    </li>
+                  ) : (
+                    <li
+                      id={`${listId}-submitter-${row.token}`}
+                      key={row.token}
+                      role="option"
+                      aria-selected={optionIndex === active}
+                      className={optionIndex === active ? "isActive" : ""}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        pickSuggestion(row);
+                      }}
+                    >
+                      <strong>{row.label}</strong>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
             <div className="publicFlagJump">
               <label htmlFor={jumpId} className="srOnly">{inView.kind === "sections" ? "Go to a section in view" : "Go to a spot in view"}</label>
               <select id={jumpId} value={jumpPending} onChange={onJumpChange} onKeyDown={onJumpKeyDown} onBlur={() => setJumpPending("")}>

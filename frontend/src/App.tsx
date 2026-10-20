@@ -524,6 +524,11 @@ export default function App() {
     [printQueue]
   );
 
+  const visiblePrintHistory = useMemo(
+    () => printHistory.filter((event) => event.cardCount > 0),
+    [printHistory]
+  );
+
   const allPrintItemsSelected =
     allPrintQueueIds.length > 0 &&
     allPrintQueueIds.every((id) => selectedPrintIds.includes(id));
@@ -2694,7 +2699,11 @@ export default function App() {
       setMarkPrintedOpen(false);
       setMarkPrintedComment("");
       await loadData();
-      setNotice(`${result.count} item(s) marked printed.`);
+      setNotice(
+        result.count === 0
+          ? "No cards were marked printed, so no print history entry was recorded."
+          : `${result.count} item(s) marked printed.`
+      );
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to mark printed."));
     } finally {
@@ -4578,11 +4587,11 @@ export default function App() {
                 <p className="helperText">Times are Colombia Time (COT).</p>
                 {printHistoryError ? (
                   <p className="message error" role="alert">{printHistoryError}</p>
-                ) : printHistory.length === 0 ? (
+                ) : visiblePrintHistory.length === 0 ? (
                   <p className="compactEmptyState">No cards have been marked printed yet.</p>
                 ) : (
                   <ul className="printHistoryList">
-                    {printHistory.map((event) => (
+                    {visiblePrintHistory.map((event) => (
                       <li key={event.batchId}>
                         <span className="printHistoryWhen">{formatPrintEventTime(event.printedUtc)}</span>
                         <span className="printHistoryWho">{event.printedBy}</span>

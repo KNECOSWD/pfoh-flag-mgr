@@ -400,12 +400,12 @@ export function flagMapPageBands(size, { kiosk = false } = {}) {
   const narrow = size.width <= 760;
   const short = size.height <= 640 || size.width <= 360;
   if (short) {
-    return { header: 104, tools: 96, bottom: 24, side: 8, mapPadTop: 4, mapPadBottom: 4, legend: 20 };
+    return { header: 104, tools: 80, bottom: 24, side: 8, mapPadTop: 4, mapPadBottom: 4, legend: 20 };
   }
   if (narrow) {
-    return { header: 120, tools: 108, bottom: 28, side: 12, mapPadTop: 6, mapPadBottom: 4, legend: 20 };
+    return { header: 120, tools: 84, bottom: 28, side: 12, mapPadTop: 6, mapPadBottom: 4, legend: 20 };
   }
-  return { header: 92, tools: 104, bottom: 28, side: 16, mapPadTop: 6, mapPadBottom: 4, legend: 20 };
+  return { header: 92, tools: 44, bottom: 28, side: 16, mapPadTop: 6, mapPadBottom: 4, legend: 20 };
 }
 
 function zoneOrder(left, right) {
