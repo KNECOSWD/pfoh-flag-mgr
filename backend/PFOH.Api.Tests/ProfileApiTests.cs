@@ -618,11 +618,20 @@ public class PfohApiFactory : WebApplicationFactory<Program>
 
     public int? AuthenticatedGetPermit { get; set; }
 
+    // The shared suite raises the permit so unrelated tests are not limited.
+    // A rate-limit test sets this to keep the app default of 60.
+    public bool UseRealAuthenticatedGetLimit { get; set; }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
         builder.ConfigureAppConfiguration((_, config) =>
         {
+            if (UseRealAuthenticatedGetLimit)
+            {
+                return;
+            }
+
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["RateLimit:AuthenticatedGetPermit"] = (AuthenticatedGetPermit ?? 100_000).ToString()

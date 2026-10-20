@@ -44,6 +44,8 @@ public class AdminPrintController(
         return Ok(new PrintBatchPlanDto(cards, notInQueue));
     }
 
+    // One request per card in Download merged PDF. Not part of the 60/min cap.
+    [DisableRateLimiting]
     [HttpGet("cards/{changeRequestId:int}/pdf")]
     public async Task<IActionResult> GetQueuedCardPdf(int changeRequestId, CancellationToken ct)
     {

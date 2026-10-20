@@ -781,6 +781,7 @@ export default function App() {
 
   useEffect(() => startVersionWatch({
     loadedVersion: packageInfo.version,
+    kiosk: () => kioskLockedRef.current,
     loadRemote: async () => {
       const response = await fetch(versionUrl(import.meta.env.VITE_API_BASE_URL), {
         cache: "no-store",
@@ -791,6 +792,10 @@ export default function App() {
       return body.version ?? "";
     },
     onPrompt: () => setVersionReloadReady(true),
+    onReload: () => {
+      if (!kioskLockedRef.current) return;
+      window.location.reload();
+    },
     isHidden: () => document.hidden
   }), []);
 
@@ -2892,7 +2897,7 @@ export default function App() {
   }
 
   function versionReloadNotice() {
-    if (!versionReloadReady) return null;
+    if (kioskLocked || !versionReloadReady) return null;
     return (
       <div className="versionReloadPrompt" role="status">
         <span>A new version is available.</span>
@@ -2904,7 +2909,6 @@ export default function App() {
   if (chrome.shell === "map") {
     return (
       <main className="kioskLock" data-kiosk-lock="1">
-        {versionReloadNotice()}
         <PublicFlagMap
           kiosk
           onPreviewCard={(honoreeId, title) => { void openPublicHonoreeCard(honoreeId, title); }}

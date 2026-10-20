@@ -30,6 +30,8 @@ public class FlagClaimsController(
     // These statuses mean there is a submitted or in-progress change cycle.
     private static readonly string[] OpenChangeStatuses = ["Submitted"];
 
+    // One request per review thumbnail. Not part of the 60/min cap.
+    [DisableRateLimiting]
     [HttpGet("/api/flagclaims/change-requests/{id:int}/photo")]
     public async Task<IActionResult> GetChangeRequestPhoto(int id, CancellationToken ct)
     {
