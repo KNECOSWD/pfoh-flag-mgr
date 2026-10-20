@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
@@ -12,6 +13,7 @@ namespace PFOH.Api.Controllers;
 [ApiController]
 [Route("api/admin/print")]
 [Authorize(Policy = "AdminOnly")]
+[EnableRateLimiting("AuthenticatedGet")]
 public class AdminPrintController(
     PfohDbContext db,
     HonoreeFileStorage fileStorage) : ControllerBase

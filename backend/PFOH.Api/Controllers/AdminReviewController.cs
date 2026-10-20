@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
@@ -37,6 +38,7 @@ public record AdminUnassignedHonoreeDto(
 [ApiController]
 [Route("api/admin/review")]
 [Authorize(Policy = "AdminOnly")]
+[EnableRateLimiting("AuthenticatedGet")]
 public class AdminReviewController(
     PfohDbContext db,
     IWebHostEnvironment environment,

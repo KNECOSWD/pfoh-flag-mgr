@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using PFOH.Api.Dtos;
 using PFOH.Api.Extensions;
 
@@ -12,6 +13,7 @@ namespace PFOH.Api.Controllers;
 [ApiController]
 [Route("api/admin/users")]
 [Authorize(Policy = "AdminOnly")]
+[EnableRateLimiting("AuthenticatedGet")]
 public class AdminUsersController(IConfiguration configuration, ILogger<AdminUsersController> logger) : ControllerBase
 {
     private static readonly HttpClient Http = new();

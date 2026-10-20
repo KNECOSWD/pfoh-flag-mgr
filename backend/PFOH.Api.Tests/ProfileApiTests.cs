@@ -616,9 +616,18 @@ public class PfohApiFactory : WebApplicationFactory<Program>
 {
     private readonly string databaseName = $"PfohProfileTests-{Guid.NewGuid():N}";
 
+    public int? AuthenticatedGetPermit { get; set; }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
+        builder.ConfigureAppConfiguration((_, config) =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["RateLimit:AuthenticatedGetPermit"] = (AuthenticatedGetPermit ?? 100_000).ToString()
+            });
+        });
         builder.ConfigureTestServices(services =>
         {
             var descriptors = services

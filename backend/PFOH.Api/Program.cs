@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Identity.Web;
 using PFOH.Api.Data;
 using PFOH.Api.Services;
@@ -112,6 +113,8 @@ builder.Services.AddCors(options =>
 builder.Services.AddHttpClient();
 builder.Services.AddApplicationInsightsTelemetry(options =>
 {
+    // The built-in sampler is replaced after the app is built so adaptive
+    // sampling stays on and Exception telemetry is not sampled.
     options.EnableAdaptiveSampling = false;
 });
 builder.Services.AddSingleton<ITelemetryInitializer, SubmitterLookupTelemetryInitializer>();
@@ -128,6 +131,25 @@ builder.Services.AddSingleton<SubmitterSuggestionTokens>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    // The framework sets the status code only when OnRejected is unset, and it
+    // does not write Retry-After. Keep the empty 429 and add the wait hint.
+    options.OnRejected = (context, _) =>
+    {
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        {
+            var seconds = (int)Math.Ceiling(retryAfter.TotalSeconds);
+            if (seconds < 1)
+            {
+                seconds = 1;
+            }
+
+            context.HttpContext.Response.Headers.RetryAfter =
+                seconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return ValueTask.CompletedTask;
+    };
     options.AddPolicy("PublicFlagMap", httpContext =>
     {
         var ip = PublicFlagMapClientIp.Resolve(httpContext);
@@ -181,9 +203,45 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 0
             });
     });
+    // Signed-in reads only. Health, version, Search, and the public Flag Map
+    // do not use this policy.
+    options.AddPolicy("AuthenticatedGet", httpContext =>
+    {
+        if (!HttpMethods.IsGet(httpContext.Request.Method))
+        {
+            return RateLimitPartition.GetNoLimiter("write");
+        }
+
+        var userId = httpContext.User.FindFirst("oid")?.Value
+            ?? httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return RateLimitPartition.GetNoLimiter("anonymous");
+        }
+
+        var permit = httpContext.RequestServices.GetRequiredService<IConfiguration>().GetValue("RateLimit:AuthenticatedGetPermit", 60);
+        if (permit < 1)
+        {
+            permit = 60;
+        }
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            userId,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = permit,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+    });
 });
 
 var app = builder.Build();
+
+var telemetryConfiguration = app.Services.GetRequiredService<TelemetryConfiguration>();
+var telemetryChain = telemetryConfiguration.DefaultTelemetrySink.TelemetryProcessorChainBuilder;
+telemetryChain.UseAdaptiveSampling(excludedTypes: "Exception", includedTypes: null);
+telemetryChain.Build();
 
 app.Use(async (context, next) =>
 {

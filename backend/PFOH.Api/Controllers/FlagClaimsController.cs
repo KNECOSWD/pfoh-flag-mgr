@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
@@ -12,6 +13,7 @@ namespace PFOH.Api.Controllers;
 [ApiController]
 [Route("api/flag-claims")]
 [Authorize]
+[EnableRateLimiting("AuthenticatedGet")]
 public class FlagClaimsController(
     PfohDbContext db,
     IWebHostEnvironment environment,

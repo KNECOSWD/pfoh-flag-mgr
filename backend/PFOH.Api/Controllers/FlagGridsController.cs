@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
@@ -9,6 +10,7 @@ namespace PFOH.Api.Controllers;
 [ApiController]
 [Route("api/flag-grids")]
 [Authorize]
+[EnableRateLimiting("AuthenticatedGet")]
 public class FlagGridsController(PfohDbContext db) : ControllerBase
 {
     [HttpGet("available")]

@@ -3,7 +3,11 @@
 ## 2.0.20
 
 - Remove from queue in the Print Center still succeeds when the database rejects the cancelled-claim update. The card leaves the queue, and the server records a warning with the change-request id, the claim id, and the database error. The warning does not include names or other personal details.
-- On a phone, the Flag Map opens with the whole field across the screen, from YY to AA, and the columns stretch down to the Pavilion and the letter row. The Sections control is a rounded pill only as wide as its label. On a wide screen the map is unchanged.
+- On a phone, the Flag Map opens with the whole field across the screen, from YY to AA, and the columns stretch down to the Pavilion and the letter row. The Sections control is a rounded pill only as wide as its label. On a wide screen the map is unchanged. The toolbar has a little space above and below its controls on a phone and on a wide screen.
+- An open page checks the site version about every two minutes. When a newer version is deployed, it shows “A new version is available” with a Reload button. It does not reload by itself, and it stops checking once that note is showing.
+- Signed-in reads of profile, claims, and admin data are limited to about 60 a minute for each person. A faster repeat gets “too many requests” and a wait time. Public search, the Flag Map, the health check, and the version check are not part of that limit.
+- A review photo is requested once for that image. Refreshing the rest of the page does not request it again, and the temporary image address is released when the photo leaves the page.
+- Application Insights sampling is on again. Exception reports are still kept.
 
 ## 2.0.19
 

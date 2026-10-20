@@ -1795,6 +1795,7 @@ test("the in-view list sits inside the map controls toolbar group", () => {
   assert.match(group, /<\/select>\s*<\/div>\s*<\/div>\s*$/, "the select closes inside the toolbar group");
   assert.match(css, /\.publicFlagControls \{[^}]*flex-wrap: nowrap;[^}]*min-width: 0;/);
   assert.match(css, /\.publicFlagControls \{[^}]*display: flex;[^}]*flex: 1 1 0%;[^}]*justify-content: space-between;[^}]*width: 100%;/, "the toolbar spans the full width like the search box");
+  assert.match(css, /\.publicFlagControls \{[^}]*padding-block: 8px;/, "the toolbar keeps a little space above and below its controls");
   assert.match(css, /\.publicFlagControls \.publicFlagIconButton \{[^}]*flex: 0 0 auto;/, "the icon buttons keep their size, grouped on the left");
   assert.match(css, /\.publicFlagJump \{[^}]*flex: 0 0 auto;[^}]*min-width: 150px;[^}]*margin-left: auto;/, "the sections list stays on the right of the toolbar");
   assert.match(group, /<label htmlFor="public-flag-search" className="srOnly">Search honorees<\/label>/);

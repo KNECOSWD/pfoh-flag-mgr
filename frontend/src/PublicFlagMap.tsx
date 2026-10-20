@@ -592,10 +592,10 @@ export default function PublicFlagMap({
 
   function animateTo(requested: View, onDone?: () => void) {
     stopMotion();
-    const target: View = limitView(requested);
+    const target = limitView(requested);
     const from: View = { ...viewRef.current };
     const fromY = from.scaleY ?? from.scale;
-    const targetY = target.scaleY ?? target.scale;
+    const targetY = (target as View).scaleY ?? target.scale;
     const unchanged = Math.abs(from.x - target.x) < 0.5
       && Math.abs(from.y - target.y) < 0.5
       && Math.abs(from.scale - target.scale) < 0.0001

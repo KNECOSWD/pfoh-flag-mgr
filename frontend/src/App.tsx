@@ -37,6 +37,8 @@ import {
   profileApi
 } from "./api";
 import { decideAdminLoad } from "./adminAccess.js";
+import { thumbnailLoadKey } from "./authorizedThumbnail.js";
+import { startVersionWatch, versionUrl } from "./versionReload.js";
 import { AdminNavMenu } from "./AdminNavMenu";
 import PublicFlagMap from "./PublicFlagMap";
 import {
@@ -109,8 +111,14 @@ function AuthorizedThumbnail({
 }) {
   const [src, setSrc] = useState("");
   const [failed, setFailed] = useState(false);
+  const instanceRef = useRef(instance);
+  const accountRef = useRef(account);
+  instanceRef.current = instance;
+  accountRef.current = account;
+  const loadKey = thumbnailLoadKey(photoKey, url);
 
   useEffect(() => {
+    const requestUrl = url;
     let active = true;
     let held = false;
     setFailed(false);
@@ -118,7 +126,7 @@ function AuthorizedThumbnail({
 
     void (async () => {
       try {
-        const blob = await fetchAuthorizedBlob(instance, account, url);
+        const blob = await fetchAuthorizedBlob(instanceRef.current, accountRef.current, requestUrl);
         if (!active) return;
         held = true;
         setSrc(thumbnailUrls.hold(photoKey, blob));
@@ -134,7 +142,7 @@ function AuthorizedThumbnail({
         held = false;
       }
     };
-  }, [account, instance, photoKey, url]);
+  }, [loadKey]);
 
   if (!src && !failed) {
     return <span className={className} aria-busy="true" />;
@@ -428,6 +436,7 @@ export default function App() {
   const [pendingPhotoObjectUrl, setPendingPhotoObjectUrl] = useState("");
   const [submitPhase, setSubmitPhase] = useState("");
   const [cardPreview, setCardPreview] = useState<CardPreviewState | null>(null);
+  const [versionReloadReady, setVersionReloadReady] = useState(false);
   const cardPreviewFrameRef = useRef<HTMLIFrameElement | null>(null);
   const cardPreviewRequest = useRef(0);
   const printBatchAbort = useRef<AbortController | null>(null);
@@ -768,6 +777,21 @@ export default function App() {
   useEffect(() => subscribeSignInError((message) => {
     if (kioskLockedRef.current) return;
     if (message) setError(message);
+  }), []);
+
+  useEffect(() => startVersionWatch({
+    loadedVersion: packageInfo.version,
+    loadRemote: async () => {
+      const response = await fetch(versionUrl(import.meta.env.VITE_API_BASE_URL), {
+        cache: "no-store",
+        headers: { Accept: "application/json" }
+      });
+      if (!response.ok) return "";
+      const body = await response.json() as { version?: string };
+      return body.version ?? "";
+    },
+    onPrompt: () => setVersionReloadReady(true),
+    isHidden: () => document.hidden
   }), []);
 
   useEffect(() => {
@@ -2867,9 +2891,20 @@ export default function App() {
     );
   }
 
+  function versionReloadNotice() {
+    if (!versionReloadReady) return null;
+    return (
+      <div className="versionReloadPrompt" role="status">
+        <span>A new version is available.</span>
+        <button type="button" onClick={() => window.location.reload()}>Reload</button>
+      </div>
+    );
+  }
+
   if (chrome.shell === "map") {
     return (
       <main className="kioskLock" data-kiosk-lock="1">
+        {versionReloadNotice()}
         <PublicFlagMap
           kiosk
           onPreviewCard={(honoreeId, title) => { void openPublicHonoreeCard(honoreeId, title); }}
@@ -2882,6 +2917,7 @@ export default function App() {
 
   return (
     <main>
+      {versionReloadNotice()}
       <header className={mobileNavOpen ? "hero mobileMenuOpen" : isPublicFlagMapRoute ? "hero publicMapHero" : "hero"}>
         <div className="heroContent">
 
