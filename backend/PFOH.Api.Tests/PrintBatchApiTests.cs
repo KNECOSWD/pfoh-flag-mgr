@@ -93,6 +93,23 @@ public class PrintBatchApiTests(PfohApiFactory factory) : IClassFixture<PfohApiF
         Assert.Contains("Synthetic storage read failure.", body.GetProperty("message").GetString());
     }
 
+    [Fact]
+    public async Task The_legacy_merge_endpoint_is_gone()
+    {
+        await ResetAsync();
+        var ids = await SeedQueueAsync();
+        var client = factory.CreateClient();
+
+        var response = await client.SendAsync(AdminRequest(
+            HttpMethod.Post,
+            "/api/admin/print/merge",
+            admin: true,
+            new { changeRequestIds = new[] { ids.Ann, ids.Zane } }));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Empty(factory.Files.Pdfs);
+    }
+
     private async Task ResetAsync()
     {
         factory.Files.Reset();

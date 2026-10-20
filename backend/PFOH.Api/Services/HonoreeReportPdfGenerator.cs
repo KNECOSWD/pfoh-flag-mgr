@@ -12,6 +12,15 @@ public sealed record HonoreeReportAssets(
     byte[]? ServiceLogoImage,
     byte[]? SilhouetteImage = null);
 
+public sealed class HonoreeCardArtworkMissingException(IReadOnlyList<string> missing)
+    : InvalidOperationException(
+        $"The honoree card artwork could not be loaded ({string.Join(", ", missing)}). " +
+        "The card was not created, so a card without its background and logos is never saved or printed. " +
+        "Check the servicelogos storage container.")
+{
+    public IReadOnlyList<string> Missing { get; } = missing;
+}
+
 public static class HonoreeReportPdfGenerator
 {
     private const string FontFamily = "DejaVu Sans";
@@ -35,18 +44,26 @@ public static class HonoreeReportPdfGenerator
 
         using var gfx = XGraphics.FromPdfPage(page);
 
-        DrawBackground(gfx, page, environment, assets?.BackgroundImage);
+        var missing = new List<string>();
+        if (!DrawBackground(gfx, page, environment, assets?.BackgroundImage)) missing.Add("card background DonorCardBlankLrg.png");
         DrawFlagGrid(gfx, honoree);
         DrawLogoPhotoRow(gfx, environment, honoree, searchResult, photoBytes, assets?.ServiceLogoImage, assets?.SilhouetteImage);
         DrawCenteredHonoreeContent(gfx, honoree, searchResult);
-        DrawRotaryLogo(gfx, environment, assets?.RotaryImage);
+        if (!DrawRotaryLogo(gfx, environment, assets?.RotaryImage)) missing.Add("Rotary logo Rotary.png");
+
+        // The deploy replaces wwwroot with the frontend build, so the on-disk fallback
+        // artwork is absent in production; without this a failed asset load yields a bare card.
+        if (missing.Count > 0)
+        {
+            throw new HonoreeCardArtworkMissingException(missing);
+        }
 
         using var output = new MemoryStream();
         document.Save(output, false);
         return output.ToArray();
     }
 
-    private static void DrawBackground(
+    private static bool DrawBackground(
         XGraphics gfx,
         PdfPage page,
         IWebHostEnvironment environment,
@@ -54,7 +71,7 @@ public static class HonoreeReportPdfGenerator
     {
         if (TryDrawImageBytes(gfx, backgroundImage, 0, 0, page.Width, page.Height))
         {
-            return;
+            return true;
         }
 
         var path = FirstExistingAssetPath(environment, "DonorCardBlankLrg.png", "DonorCardBlank.png");
@@ -63,10 +80,10 @@ public static class HonoreeReportPdfGenerator
         {
             using var background = XImage.FromFile(path);
             gfx.DrawImage(background, 0, 0, page.Width, page.Height);
-            return;
+            return true;
         }
 
-        gfx.DrawRectangle(XBrushes.White, 0, 0, page.Width, page.Height);
+        return false;
     }
 
     private static void DrawFlagGrid(XGraphics gfx, Honoree honoree)
@@ -475,24 +492,25 @@ public static class HonoreeReportPdfGenerator
         return Math.Max(layout.Height, font.GetHeight());
     }
 
-    private static void DrawRotaryLogo(XGraphics gfx, IWebHostEnvironment environment, byte[]? rotaryImage)
+    private static bool DrawRotaryLogo(XGraphics gfx, IWebHostEnvironment environment, byte[]? rotaryImage)
     {
         if (TryDrawImageBytes(gfx, rotaryImage, 234, 596, 50, 50, fitArea: true))
         {
-            return;
+            return true;
         }
 
         var path = FirstExistingAssetPath(environment, "Rotary.png", "Rotary.jpg");
-        if (string.IsNullOrWhiteSpace(path)) return;
+        if (string.IsNullOrWhiteSpace(path)) return false;
 
         try
         {
             using var rotary = XImage.FromFile(path);
             DrawImageFitArea(gfx, rotary, 234, 596, 50, 50);
+            return true;
         }
         catch
         {
-            // Keep generating the PDF even if the Rotary image is missing/corrupt.
+            return false;
         }
     }
 

@@ -140,7 +140,15 @@ public class HonoreesController(
 
         var photoBytes = await SafeDownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
         var reportAssets = await fileStorage.LoadReportAssetsAsync(honoree, searchResult, ct);
-        var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes, reportAssets);
+        byte[] pdf;
+        try
+        {
+            pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes, reportAssets);
+        }
+        catch (HonoreeCardArtworkMissingException ex)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = ex.Message });
+        }
 
         // Return the generated PDF even if storage upload fails. This prevents users
         // from seeing a browser 500 when a blob setting/container is temporarily wrong.

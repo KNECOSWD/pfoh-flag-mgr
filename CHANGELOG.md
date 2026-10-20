@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.14
+
+- In the Print Center, Download merged PDF now regenerates every selected card before merging, using the same Regenerate PDF step as the admin button. A card that already has a stored PDF is regenerated too, so every page in the merged PDF has its full background, seal, and logos. Before, a stored card without its artwork could end up in the merged PDF. The progress screen counts "Regenerating card 37/140" and then "Merging card 37/140". There is still no time limit, Close still cancels, and if any card fails, the Print Center names it and builds no partial PDF.
+- A card PDF is never saved or shown without its background and Rotary logo. If that artwork can't be loaded, the card is not created and the error says so. Regenerate PDF reports it as a failed upload, and the public card link returns an error naming the missing artwork instead of a bare card.
+- The old server-side merge, which could save cards without their artwork, has been removed. The Print Center hasn't used it since 2.0.13.
+
 ## 2.0.13
 
 - In the Print Center, Download merged PDF no longer fails on large batches with "signal is aborted without reason". Each selected card is now checked on its own, and a progress screen counts up as it goes, for example 37/140. Any card whose PDF is missing is generated first, the same way Regenerate PDF does it, and then every card is merged into one PDF in the browser. There is no time limit on the batch. Close cancels it.
