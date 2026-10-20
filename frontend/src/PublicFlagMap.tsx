@@ -630,7 +630,8 @@ export default function PublicFlagMap({
   }
 
   function fitWorld() {
-    const fitted = fitWholeField(worldBounds(), viewportSize(), FIT_PADDING);
+    const viewport = viewportSize();
+    const fitted = fitWholeField(worldBounds(), viewport, FIT_PADDING, { fillHeight: viewport.width <= 600 });
     fitScaleRef.current = fitted.scale;
     return fitted;
   }

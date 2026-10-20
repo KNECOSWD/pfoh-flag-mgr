@@ -632,10 +632,14 @@ public class PfohApiFactory : WebApplicationFactory<Program>
                 services.Remove(descriptor);
             }
 
+            services.AddSingleton<ReprintClaimStatusFaultInterceptor>();
+            services.AddSingleton<ILoggerProvider, ReprintRemoveWarningLog>();
             services.AddDbContext<PfohDbContext>((sp, options) => options
                 .UseInMemoryDatabase(databaseName)
                 .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-                .AddInterceptors(sp.GetRequiredService<PublicFlagMapCacheInvalidator>()));
+                .AddInterceptors(
+                    sp.GetRequiredService<PublicFlagMapCacheInvalidator>(),
+                    sp.GetRequiredService<ReprintClaimStatusFaultInterceptor>()));
 
             services.RemoveAll<HonoreeFileStorage>();
             services.AddSingleton<HonoreeFileStorage, PendingReviewTestFileStorage>();
@@ -898,5 +902,80 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
         var identity = new ClaimsIdentity(claims, SchemeName);
         var principal = new ClaimsPrincipal(identity);
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(principal, SchemeName)));
+    }
+}
+
+public static class ReprintClaimStatusFault
+{
+    public static bool RejectCancelled { get; set; }
+}
+
+public sealed class ReprintClaimStatusFaultInterceptor : SaveChangesInterceptor
+{
+    public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
+    {
+        ThrowIfRejected(eventData.Context);
+        return base.SavingChanges(eventData, result);
+    }
+
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfRejected(eventData.Context);
+        return base.SavingChangesAsync(eventData, result, cancellationToken);
+    }
+
+    private static void ThrowIfRejected(DbContext? context)
+    {
+        if (!ReprintClaimStatusFault.RejectCancelled || context is null)
+        {
+            return;
+        }
+
+        var rejected = context.ChangeTracker.Entries<FlagClaim>().Any(entry =>
+            entry.State == EntityState.Modified &&
+            entry.Property(claim => claim.ClaimStatus).IsModified &&
+            entry.Property(claim => claim.ClaimStatus).CurrentValue == "Cancelled");
+        if (!rejected)
+        {
+            return;
+        }
+
+        throw new DbUpdateException(
+            "Synthetic claim status rejection.",
+            new InvalidOperationException("The UPDATE statement conflicted with the CHECK constraint \"CK_FlagClaims_ClaimStatus\"."));
+    }
+}
+
+public sealed class ReprintRemoveWarningLog : ILoggerProvider, ILogger
+{
+    public static readonly List<string> Lines = new();
+
+    public ILogger CreateLogger(string categoryName) => this;
+
+    public void Dispose()
+    {
+    }
+
+    public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+
+    public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+    {
+        if (logLevel >= LogLevel.Warning)
+        {
+            Lines.Add(formatter(state, exception));
+        }
+    }
+
+    private sealed class NullScope : IDisposable
+    {
+        public static readonly NullScope Instance = new();
+        public void Dispose()
+        {
+        }
     }
 }

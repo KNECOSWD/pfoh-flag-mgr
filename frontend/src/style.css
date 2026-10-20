@@ -11543,9 +11543,16 @@ html.flagMapKiosk a {
 
   .publicFlagControls .publicFlagJump {
     order: 2;
-    flex: 0 1 auto;
-    max-width: none;
+    flex: 0 0 auto;
+    width: max-content;
+    min-width: 0;
+    max-width: max-content;
     margin-left: auto;
+  }
+
+  .publicFlagControls .publicFlagJump select {
+    width: auto;
+    field-sizing: content;
   }
 
   .publicFlagControls .publicFlagSearch {

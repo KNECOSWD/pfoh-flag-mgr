@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.20
+
+- Remove from queue in the Print Center still succeeds when the database rejects the cancelled-claim update. The card leaves the queue, and the server records a warning with the change-request id, the claim id, and the database error. The warning does not include names or other personal details.
+- On a phone, the Flag Map grid fills the height of the map, so the empty band under the field is gone. The Sections control is only as wide as its label. On a wide screen the map is unchanged.
+
 ## 2.0.19
 
 - On the public Flag Map, Search honorees is in the toolbar instead of a row above it. On a wide screen the search sits between the zoom buttons and the Sections list. On a phone, the zoom buttons and Sections stay on the first line and the search fills the second. The map uses the space that row used to take. Search results are unchanged, and the legend stays under the field.

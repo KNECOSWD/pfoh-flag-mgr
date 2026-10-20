@@ -295,7 +295,6 @@ public class AdminReviewController(
         }
 
         var now = DateTime.UtcNow;
-        var internalClaims = new List<FlagClaim>();
 
         foreach (var item in queueItems)
         {
@@ -305,39 +304,59 @@ public class AdminReviewController(
             item.ReviewNotes = string.IsNullOrWhiteSpace(item.ReviewNotes)
                 ? "Removed from the reprint queue by administrator."
                 : $"{item.ReviewNotes}\nRemoved from the reprint queue by administrator.";
-
-            // The 500 is this claim write. Admin-queued cards share a flag grid with
-            // the approved ownership claim. Setting ClaimStatus to AdminReprintRemoved
-            // and appending the removal sentence onto the 76-character creation note
-            // is the only update other admin saves do not make. SQL Server rejects it
-            // (the new status is outside the original claim-status set, and the notes
-            // append overflows the existing AdminNotes column). There is no catch, so
-            // that DbUpdateException becomes HTTP 500 and the queue row stays. InMemory
-            // enforces neither constraint. Cancelled is an original status, is outside
-            // the active-grid unique index, and is omitted from claimant lists. The
-            // creation note is left as stored.
-            if (item.FlagClaim?.ClaimStatus == "AdminReprintQueued")
-            {
-                item.FlagClaim.ClaimStatus = "Cancelled";
-                internalClaims.Add(item.FlagClaim);
-            }
         }
 
-        try
-        {
-            await db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException) when (internalClaims.Count > 0)
-        {
-            foreach (var claim in internalClaims)
-            {
-                db.Entry(claim).State = EntityState.Unchanged;
-            }
+        // The queue membership is saved first. The Cancelled claim-status write
+        // is the one SQL Server rejects. Saving it second means that rejection
+        // cannot roll the removal back or become HTTP 500.
+        await db.SaveChangesAsync(ct);
 
-            await db.SaveChangesAsync(ct);
+        var internalClaims = queueItems
+            .Where(item => item.FlagClaim?.ClaimStatus == "AdminReprintQueued")
+            .Select(item => item.FlagClaim!)
+            .ToList();
+
+        foreach (var claim in internalClaims)
+        {
+            claim.ClaimStatus = "Cancelled";
+        }
+
+        if (internalClaims.Count > 0)
+        {
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex)
+            {
+                foreach (var claim in internalClaims)
+                {
+                    var status = db.Entry(claim).Property(item => item.ClaimStatus);
+                    status.CurrentValue = status.OriginalValue;
+                    status.IsModified = false;
+                }
+
+                logger.LogWarning(
+                    "Reprint queue remove saved change requests {ChangeRequestIds} but SQL rejected Cancelled for claims {ClaimIds}: {DbError}",
+                    string.Join(',', queueItems.Select(item => item.Id)),
+                    string.Join(',', internalClaims.Select(claim => claim.Id)),
+                    DatabaseError(ex));
+            }
         }
 
         return Ok(new { count = queueItems.Count });
+    }
+
+    private static string DatabaseError(DbUpdateException ex)
+    {
+        Exception current = ex;
+        while (current.InnerException is not null)
+        {
+            current = current.InnerException;
+        }
+
+        var message = string.IsNullOrWhiteSpace(current.Message) ? ex.Message : current.Message;
+        return message.Length > 500 ? message[..500] : message;
     }
 
 

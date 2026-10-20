@@ -375,15 +375,17 @@ export function fitView(bounds, viewport, padding = 36) {
   };
 }
 
-export function fitWholeField(bounds, viewport, padding = FIT_PADDING) {
+export function fitWholeField(bounds, viewport, padding = FIT_PADDING, options = {}) {
   const inset = gutterInsets(padding);
   const innerWidth = Math.max(1, viewport.width - inset.left - inset.right);
   const innerHeight = Math.max(1, viewport.height - inset.top - inset.bottom);
-  const scale = Math.min(
-    FLAG_MAP_ZOOM.maxScale,
-    innerWidth / Math.max(bounds.width, 1),
-    innerHeight / Math.max(bounds.height, 1)
-  );
+  const widthScale = innerWidth / Math.max(bounds.width, 1);
+  const heightScale = innerHeight / Math.max(bounds.height, 1);
+  // On a phone the frame is taller than the field, so a contain fit leaves an
+  // empty band under the pavilion. Filling the height uses the taller scale.
+  // A wide frame is unchanged: it still fits the whole field inside the gutters.
+  const fillHeight = options.fillHeight === true && heightScale > widthScale;
+  const scale = Math.min(FLAG_MAP_ZOOM.maxScale, fillHeight ? heightScale : Math.min(widthScale, heightScale));
   return {
     scale,
     x: inset.left + (innerWidth - bounds.width * scale) / 2 - bounds.x * scale,
@@ -493,7 +495,9 @@ export function initialOverviewPlacement(field, windowSize, options = {}) {
   frame.bottom = frame.y + frame.height;
   const view = fitWholeField(
     fieldFitBounds(field),
-    { width: frame.width, height: frame.height }
+    { width: frame.width, height: frame.height },
+    FIT_PADDING,
+    { fillHeight: frame.width <= 600 }
   );
   const row1 = boundsOf([
     ...field.cells.filter((cell) => cell.columnNumber === 1),

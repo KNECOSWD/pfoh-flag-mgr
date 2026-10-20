@@ -957,14 +957,24 @@ test("the opening fit keeps row 1 and the pavilion inside the window", () => {
   for (const size of sizes) {
     const placed = initialOverviewPlacement(field, size, { kiosk: Boolean(size.kiosk) });
     assert.equal(boxInsideViewport(placed.frame, size), true, `canvas ${size.width}`);
-    assert.equal(boxInsideViewport(placed.row40, size), true, `row 40 ${size.width}`);
-    assert.equal(boxInsideViewport(placed.row1, size), true, `row 1 ${size.width}`);
-    assert.equal(boxInsideViewport(placed.pavilion, size), true, `pavilion ${size.width}`);
     assert.ok(placed.pavilion.top < size.height, `pavilion top ${size.width}`);
     assert.ok(placed.row1.bottom <= size.height + 0.5, `row 1 bottom ${size.width}`);
     assert.ok(placed.row40.top >= -0.5, `row 40 top ${size.width}`);
     assert.ok(placed.pavilion.bottom > placed.row1.top);
+    const phone = size.width <= 600 && !size.kiosk;
+    if (phone) {
+      const inset = gutterInsets(FIT_PADDING);
+      const topSlack = placed.row40.top - (placed.frame.top + inset.top);
+      const bottomSlack = (placed.frame.bottom - inset.bottom) - placed.pavilion.bottom;
+      assert.ok(Math.abs(topSlack) < 8, `row 40 fills the top of the phone map, slack ${topSlack} at ${size.width}`);
+      assert.ok(bottomSlack < 24 && bottomSlack > -1, `the pavilion fills the bottom of the phone map, slack ${bottomSlack} at ${size.width}`);
+    } else {
+      assert.equal(boxInsideViewport(placed.row40, size), true, `row 40 ${size.width}`);
+      assert.equal(boxInsideViewport(placed.row1, size), true, `row 1 ${size.width}`);
+      assert.equal(boxInsideViewport(placed.pavilion, size), true, `pavilion ${size.width}`);
+    }
   }
+  assert.match(page, /fillHeight: viewport\.width <= 600/);
   assert.match(page, /fitWholeField/);
   assert.match(page, /flagMapPageBands/);
   assert.match(page, /flagMapPage/);
@@ -1786,6 +1796,8 @@ test("the in-view list sits inside the map controls toolbar group", () => {
   assert.doesNotMatch(page.slice(page.indexOf('className="publicFlagChrome"'), page.indexOf('className="publicFlagToolbar"')), /publicFlagSearch/, "search is not a row above the toolbar");
   assert.match(css, /@media \(max-width: 600px\) \{\s*\.publicFlagControls \{[^}]*flex-wrap: wrap;/);
   assert.match(css, /@media \(max-width: 600px\) \{[\s\S]*?\.publicFlagControls \.publicFlagSearch \{[^}]*order: 3;[^}]*flex: 1 1 100%;/);
+  assert.match(css, /@media \(max-width: 600px\) \{[\s\S]*?\.publicFlagControls \.publicFlagJump \{[^}]*width: max-content;[^}]*min-width: 0;/);
+  assert.match(css, /@media \(max-width: 600px\) \{[\s\S]*?\.publicFlagControls \.publicFlagJump select \{[^}]*width: auto;[^}]*field-sizing: content;/);
   assert.ok(group.lastIndexOf("publicFlagIconButton") < group.indexOf('<div className="publicFlagJump">'), "the in-view list is the last item in the toolbar");
   assert.match(css, /\.publicFlagJump select \{[^}]*text-overflow: ellipsis;[^}]*border: 0;[^}]*background-color: transparent;/);
 });
