@@ -19,7 +19,7 @@ import {
 } from "../src/cardPreview.js";
 
 test("one selected card and twenty-eight selected cards title the shared viewer", () => {
-  assert.equal(printCenterHeading, "Print Center");
+  assert.equal(printCenterHeading, "Reprint Queue");
   assert.equal(honoreeCardHeading, "Honoree Card");
   assert.equal(printSelectionSubtitle(1), "1 card selected");
   assert.equal(printSelectionSubtitle(28), "28 cards selected");
@@ -39,10 +39,11 @@ test("Print Center row and merged download open the Honoree Card viewer", () => 
   const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   assert.equal(source.split("cardPreviewOverlay").length - 1, 1);
 
-  const printStart = source.indexOf('aria-label="Printing"');
+  const printStart = source.indexOf('aria-label="Reprint Queue"');
   const printEnd = source.indexOf("isMyFlagsRoute", printStart);
   const print = source.slice(printStart, printEnd);
   assert.ok(printStart >= 0 && printEnd > printStart);
+  assert.match(print, /<h2>\s*Reprint Queue/);
   assert.match(print, /Download merged PDF/);
   assert.match(print, /onClick=\{openSelectedPrintPdf\}/);
   assert.match(print, /Open PDF/);

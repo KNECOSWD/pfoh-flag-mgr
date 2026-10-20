@@ -549,7 +549,7 @@ export default function App() {
   ];
   const adminNav: { route: AppRoute; label: string }[] = [
     { route: "/admin/review", label: "Review" },
-    { route: "/admin/printing", label: "Printing" },
+    { route: "/admin/printing", label: "Reprint Queue" },
     { route: "/admin/flag-map", label: "Flag Manager" }
   ];
   const isPrintingRoute = activeRoute === "/admin/printing";
@@ -4377,12 +4377,12 @@ export default function App() {
 
 
               {isPrintingRoute ? (
-              <section className="card adminCard adminPrintingCard" aria-label="Printing">
+              <section className="card adminCard adminPrintingCard" aria-label="Reprint Queue">
                 <div className="sectionHeader printCenterHeader">
                   <div>
                     <p className="eyebrow">Printing</p>
                     <h2>
-                      Print Center
+                      Reprint Queue
                       <span className="countBadge">{printQueue.length}</span>
                     </h2>
                     <p className="helperText">
