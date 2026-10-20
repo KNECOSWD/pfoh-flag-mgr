@@ -11553,6 +11553,10 @@ html.flagMapKiosk a {
   .publicFlagControls .publicFlagJump select {
     width: auto;
     field-sizing: content;
+    border: 1px solid #c5d0e0;
+    border-radius: 999px;
+    background-color: #fff;
+    padding: 0 28px 0 12px;
   }
 
   .publicFlagControls .publicFlagSearch {

@@ -3,7 +3,7 @@
 ## 2.0.20
 
 - Remove from queue in the Print Center still succeeds when the database rejects the cancelled-claim update. The card leaves the queue, and the server records a warning with the change-request id, the claim id, and the database error. The warning does not include names or other personal details.
-- On a phone, the Flag Map grid fills the height of the map, so the empty band under the field is gone. The Sections control is only as wide as its label. On a wide screen the map is unchanged.
+- On a phone, the Flag Map opens with the whole field across the screen, from YY to AA, and the columns stretch down to the Pavilion and the letter row. The Sections control is a rounded pill only as wide as its label. On a wide screen the map is unchanged.
 
 ## 2.0.19
 

@@ -241,20 +241,24 @@ export function clampView(view, viewport, world, options = {}) {
   const height = Math.max(1, viewport.height);
   let { x, y } = view;
   const scale = clamp(view.scale, minScale, maxScale);
+  const sy0 = viewScaleY(view);
+  const scaleY = view.scale > 0 ? scale * (sy0 / view.scale) : scale;
   if (scale !== view.scale && view.scale > 0) {
     x = width / 2 - ((width / 2 - view.x) / view.scale) * scale;
-    y = height / 2 - ((height / 2 - view.y) / view.scale) * scale;
+    y = height / 2 - ((height / 2 - view.y) / sy0) * scaleY;
   }
-  const axis = (position, size, start, length, low, high) => {
-    const content = length * scale;
-    if (content + low + high <= size + 0.5) return low + (size - low - high - content) / 2 - start * scale;
-    return clamp(position, size - high - (start + length) * scale, low - start * scale);
+  const axis = (position, size, start, length, low, high, axisScale) => {
+    const content = length * axisScale;
+    if (content + low + high <= size + 0.5) return low + (size - low - high - content) / 2 - start * axisScale;
+    return clamp(position, size - high - (start + length) * axisScale, low - start * axisScale);
   };
-  return {
-    x: axis(x, width, world.x, world.width, inset.left, inset.right),
-    y: axis(y, height, world.y, world.height, inset.top, inset.bottom),
+  const next = {
+    x: axis(x, width, world.x, world.width, inset.left, inset.right, scale),
+    y: axis(y, height, world.y, world.height, inset.top, inset.bottom, scaleY),
     scale
   };
+  if (Math.abs(scaleY - scale) > 1e-6) next.scaleY = scaleY;
+  return next;
 }
 
 // Each spot is either fully inside (with room) or under `hidden` of it on
@@ -345,19 +349,30 @@ export function snapEdgeSpots(view, viewport, cells, pad = FIT_PADDING, options 
   return tighter[0] ?? view;
 }
 
+export function viewScaleY(view) {
+  const sy = Number(view?.scaleY);
+  return sy > 0 ? sy : view?.scale;
+}
+
 export function zoomAt(view, originX, originY, nextScale) {
   const scale = clamp(nextScale, FLAG_MAP_ZOOM.minScale, FLAG_MAP_ZOOM.maxScale);
+  const sy = viewScaleY(view);
   const worldX = (originX - view.x) / view.scale;
-  const worldY = (originY - view.y) / view.scale;
-  return {
+  const worldY = (originY - view.y) / sy;
+  const scaleY = view.scale > 0 ? scale * (sy / view.scale) : scale;
+  const next = {
     x: originX - worldX * scale,
-    y: originY - worldY * scale,
+    y: originY - worldY * scaleY,
     scale
   };
+  if (Math.abs(scaleY - scale) > 1e-6) next.scaleY = scaleY;
+  return next;
 }
 
 export function panView(view, dx, dy) {
-  return { x: view.x + dx, y: view.y + dy, scale: view.scale };
+  const next = { x: view.x + dx, y: view.y + dy, scale: view.scale };
+  if (view.scaleY > 0) next.scaleY = view.scaleY;
+  return next;
 }
 
 export function fitView(bounds, viewport, padding = 36) {
@@ -381,16 +396,18 @@ export function fitWholeField(bounds, viewport, padding = FIT_PADDING, options =
   const innerHeight = Math.max(1, viewport.height - inset.top - inset.bottom);
   const widthScale = innerWidth / Math.max(bounds.width, 1);
   const heightScale = innerHeight / Math.max(bounds.height, 1);
-  // On a phone the frame is taller than the field, so a contain fit leaves an
-  // empty band under the pavilion. Filling the height uses the taller scale.
-  // A wide frame is unchanged: it still fits the whole field inside the gutters.
-  const fillHeight = options.fillHeight === true && heightScale > widthScale;
-  const scale = Math.min(FLAG_MAP_ZOOM.maxScale, fillHeight ? heightScale : Math.min(widthScale, heightScale));
-  return {
+  // On a phone the opening view fits the whole field across the width, then
+  // stretches the columns down to the pavilion. A wide frame stays uniform.
+  const stretchHeight = options.stretchHeight === true && heightScale > widthScale;
+  const scale = Math.min(FLAG_MAP_ZOOM.maxScale, stretchHeight ? widthScale : Math.min(widthScale, heightScale));
+  const scaleY = stretchHeight ? Math.min(FLAG_MAP_ZOOM.maxScale, heightScale) : scale;
+  const next = {
     scale,
     x: inset.left + (innerWidth - bounds.width * scale) / 2 - bounds.x * scale,
-    y: inset.top + (innerHeight - bounds.height * scale) / 2 - bounds.y * scale
+    y: inset.top + (innerHeight - bounds.height * scaleY) / 2 - bounds.y * scaleY
   };
+  if (stretchHeight) next.scaleY = scaleY;
+  return next;
 }
 
 // `legend` is the Occupied/Open key under the bottom-right corner of the field,
@@ -466,10 +483,11 @@ export function flagMapItemsSummary(list) {
 }
 
 export function projectFieldBox(box, view, frame) {
+  const sy = viewScaleY(view);
   const left = frame.x + view.x + box.x * view.scale;
-  const top = frame.y + view.y + box.y * view.scale;
+  const top = frame.y + view.y + box.y * sy;
   const width = box.width * view.scale;
-  const height = box.height * view.scale;
+  const height = box.height * sy;
   return { left, top, width, height, right: left + width, bottom: top + height };
 }
 
@@ -497,7 +515,7 @@ export function initialOverviewPlacement(field, windowSize, options = {}) {
     fieldFitBounds(field),
     { width: frame.width, height: frame.height },
     FIT_PADDING,
-    { fillHeight: frame.width <= 600 }
+    { stretchHeight: frame.width <= 600 }
   );
   const row1 = boundsOf([
     ...field.cells.filter((cell) => cell.columnNumber === 1),
@@ -518,11 +536,12 @@ export function initialOverviewPlacement(field, windowSize, options = {}) {
 }
 
 export function viewportWorldRect(view, viewport, pad = 0) {
+  const sy = viewScaleY(view);
   return {
     x: (0 - view.x) / view.scale - pad,
-    y: (0 - view.y) / view.scale - pad,
+    y: (0 - view.y) / sy - pad,
     width: viewport.width / view.scale + pad * 2,
-    height: viewport.height / view.scale + pad * 2
+    height: viewport.height / sy + pad * 2
   };
 }
 
@@ -533,13 +552,14 @@ export function viewportWorldRect(view, viewport, pad = 0) {
 // a label whose row or column is scrolled out of view hides.
 export function pinnedAxisLabels(field, view, viewport, strip = AXIS_STRIP) {
   const s = view.scale > 0 ? view.scale : 1;
+  const sy = viewScaleY(view) > 0 ? viewScaleY(view) : s;
   const clamp = (value, low, high) => Math.min(Math.max(value, low), Math.max(low, high));
   const frame = axisStripFrame(field, view, viewport, strip);
-  const rowFont = axisRowFont(field, s, strip);
+  const rowFont = axisRowFont(field, sy, strip);
   const columnFont = axisColumnFont(field, s, strip);
-  const rowPitch = axisPitch(field.rowLabels.filter((label) => label.side === "left"), "y", "height") * s;
+  const rowPitch = axisPitch(field.rowLabels.filter((label) => label.side === "left"), "y", "height") * sy;
   const rows = field.rowLabels.map((label) => {
-    const middle = view.y + (label.y + label.height / 2) * s;
+    const middle = view.y + (label.y + label.height / 2) * sy;
     const width = strip.row;
     const height = Math.min(rowPitch, Math.max(label.height * s, rowFont));
     const x = label.side === "right"
@@ -607,10 +627,11 @@ export function axisStripFrame(field, view, viewport, strip = AXIS_STRIP, pad = 
   const box = field ? fieldFitBounds(field) : null;
   if (!box || !(view?.scale > 0)) return fixed;
   const s = view.scale;
+  const sy = viewScaleY(view);
   const gapLeft = view.x + box.x * s - pad - strip.row;
   const gapRight = viewport.width - (view.x + (box.x + box.width) * s) - pad - strip.row;
   const inset = Math.min(Math.max(0, Math.min(gapLeft, gapRight)), Math.max(0, (viewport.width - strip.row * 2) / 2));
-  const bottom = Math.max(Math.min(fixed.bottom, view.y + (box.y + box.height) * s + pad), 0);
+  const bottom = Math.max(Math.min(fixed.bottom, view.y + (box.y + box.height) * sy + pad), 0);
   return { left: inset, right: fixed.right - inset, bottom };
 }
 
@@ -1269,7 +1290,9 @@ export function exitDocumentFullscreen(doc) {
 }
 
 export function gestureTransform(view) {
-  return `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+  const sy = viewScaleY(view);
+  if (!(sy > 0) || Math.abs(sy - view.scale) <= 1e-6) return `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+  return `translate(${view.x}px, ${view.y}px) scale(${view.scale}, ${sy})`;
 }
 
 export function readFlagMapLocation(search = "") {

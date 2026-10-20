@@ -35,6 +35,7 @@ import {
   fitWholeField,
   flagMapPageBands,
   initialOverviewPlacement,
+  projectFieldBox,
   boxInsideViewport,
   flagDeepLink,
   countFlagsOnScreen,
@@ -966,15 +967,22 @@ test("the opening fit keeps row 1 and the pavilion inside the window", () => {
       const inset = gutterInsets(FIT_PADDING);
       const topSlack = placed.row40.top - (placed.frame.top + inset.top);
       const bottomSlack = (placed.frame.bottom - inset.bottom) - placed.pavilion.bottom;
+      assert.ok(placed.view.scaleY > placed.view.scale, `phone columns stretch to fill the height at ${size.width}`);
       assert.ok(Math.abs(topSlack) < 8, `row 40 fills the top of the phone map, slack ${topSlack} at ${size.width}`);
       assert.ok(bottomSlack < 24 && bottomSlack > -1, `the pavilion fills the bottom of the phone map, slack ${bottomSlack} at ${size.width}`);
+      const edge = projectFieldBox(boundsOf(field.cells.filter((cell) => cell.columnNumber === 40)), placed.view, placed.frame);
+      assert.ok(Math.abs(edge.left - (placed.frame.left + inset.left)) < 1, `YY side of the field stays inside the left gutter at ${size.width}`);
+      assert.ok(Math.abs(edge.right - (placed.frame.right - inset.right)) < 1, `AA side of the field stays inside the right gutter at ${size.width}`);
+      const letters = pinnedAxisLabels(field, placed.view, { width: placed.frame.width, height: placed.frame.height }).filter((label) => label.kind === "column" && !label.hidden);
+      assert.ok(letters.length > 20, `the bottom letter row stays on the phone map at ${size.width}`);
+      assert.ok(letters.every((label) => label.fontSize <= 9), `column labels stay small at ${size.width}`);
     } else {
       assert.equal(boxInsideViewport(placed.row40, size), true, `row 40 ${size.width}`);
       assert.equal(boxInsideViewport(placed.row1, size), true, `row 1 ${size.width}`);
       assert.equal(boxInsideViewport(placed.pavilion, size), true, `pavilion ${size.width}`);
     }
   }
-  assert.match(page, /fillHeight: viewport\.width <= 600/);
+  assert.match(page, /stretchHeight: viewport\.width <= 600/);
   assert.match(page, /fitWholeField/);
   assert.match(page, /flagMapPageBands/);
   assert.match(page, /flagMapPage/);
@@ -1797,7 +1805,7 @@ test("the in-view list sits inside the map controls toolbar group", () => {
   assert.match(css, /@media \(max-width: 600px\) \{\s*\.publicFlagControls \{[^}]*flex-wrap: wrap;/);
   assert.match(css, /@media \(max-width: 600px\) \{[\s\S]*?\.publicFlagControls \.publicFlagSearch \{[^}]*order: 3;[^}]*flex: 1 1 100%;/);
   assert.match(css, /@media \(max-width: 600px\) \{[\s\S]*?\.publicFlagControls \.publicFlagJump \{[^}]*width: max-content;[^}]*min-width: 0;/);
-  assert.match(css, /@media \(max-width: 600px\) \{[\s\S]*?\.publicFlagControls \.publicFlagJump select \{[^}]*width: auto;[^}]*field-sizing: content;/);
+  assert.match(css, /@media \(max-width: 600px\) \{[\s\S]*?\.publicFlagControls \.publicFlagJump select \{[^}]*width: auto;[^}]*field-sizing: content;[^}]*border: 1px solid #c5d0e0;[^}]*border-radius: 999px;/);
   assert.ok(group.lastIndexOf("publicFlagIconButton") < group.indexOf('<div className="publicFlagJump">'), "the in-view list is the last item in the toolbar");
   assert.match(css, /\.publicFlagJump select \{[^}]*text-overflow: ellipsis;[^}]*border: 0;[^}]*background-color: transparent;/);
 });
