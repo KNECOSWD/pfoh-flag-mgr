@@ -13,7 +13,9 @@ import {
 import {
   cardPreviewLoadingMessage,
   honoreeCardHeading,
+  formatPrintEventTime,
   mergedPrintName,
+  PRINT_EVENT_COMMENT_MAX,
   printCenterHeading,
   printSelectionSubtitle
 } from "../src/cardPreview.js";
@@ -25,6 +27,12 @@ test("one selected card and twenty-eight selected cards title the shared viewer"
   assert.equal(printSelectionSubtitle(28), "28 cards selected");
   assert.equal(cardPreviewLoadingMessage(printCenterHeading), "Loading the print PDF…");
   assert.equal(cardPreviewLoadingMessage(honoreeCardHeading), "Loading the honoree card…");
+});
+
+test("print history times are labeled Colombia Time", () => {
+  assert.equal(PRINT_EVENT_COMMENT_MAX, 500);
+  assert.equal(formatPrintEventTime("2026-10-20T18:30:00Z"), "Oct 20, 2026, 1:30 PM COT");
+  assert.equal(formatPrintEventTime("2026-10-21T03:00:00Z"), "Oct 20, 2026, 10:00 PM COT");
 });
 
 test("the merged PDF name uses today's Bogotá date and the merged card count", () => {
@@ -56,7 +64,7 @@ test("Print Center row and merged download open the Honoree Card viewer", () => 
   assert.ok(row.indexOf("beginCardPreview") < row.indexOf("await fetch"));
   assert.doesNotMatch(row, /printCenterHeading/);
 
-  const merged = source.slice(source.indexOf("async function openSelectedPrintPdf"), source.indexOf("async function markSelectedPrinted"));
+  const merged = source.slice(source.indexOf("async function openSelectedPrintPdf"), source.indexOf("function markSelectedPrinted"));
   assert.match(merged, /const count = selectedPrintIds\.length/);
   assert.match(merged, /printSelectionSubtitle\(count\)/);
   assert.match(merged, /beginCardPreview\(title, printCenterHeading, downloadName\)/);
@@ -82,6 +90,18 @@ test("Print Center row and merged download open the Honoree Card viewer", () => 
 
   const close = source.slice(source.indexOf("function closeCardPreview"), source.indexOf("function beginCardPreview"));
   assert.match(close, /printBatchAbort\.current\?\.abort\(\)/);
+
+  const mark = source.slice(source.indexOf("function markSelectedPrinted"), source.indexOf("async function removeSelectedFromReprintQueue"));
+  assert.match(mark, /setMarkPrintedOpen\(true\)/);
+  assert.match(mark, /adminApi\.markPrinted\(instance, account, selectedPrintIds, comment\)/);
+  assert.doesNotMatch(mark, /requestConfirmation/);
+  const remove = source.slice(source.indexOf("async function removeSelectedFromReprintQueue"), source.indexOf("async function removeOneFromReprintQueue"));
+  assert.match(remove, /requestConfirmation/);
+  assert.match(remove, /Remove from reprint queue/);
+  assert.match(print, /aria-label="Print history"/);
+  assert.match(print, /formatPrintEventTime\(event\.printedUtc\)/);
+  assert.match(source, /id="mark-printed-title">Mark printed/);
+  assert.match(source, /maxLength=\{PRINT_EVENT_COMMENT_MAX\}/);
 });
 
 test("the per-card PDF request carries no timeout, so a large batch is never aborted by a timer", () => {

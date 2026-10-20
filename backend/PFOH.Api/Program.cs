@@ -306,6 +306,18 @@ try
 
     try
     {
+        await CardPrintEventSchema.EnsureAsync(startupDb, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(
+            ex,
+            "STARTUP CLEANUP FAILED while ensuring dbo.CardPrintEvents. {Failure}",
+            ex.ToString());
+    }
+
+    try
+    {
         var startupMaintenance = scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>();
         await startupMaintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
     }

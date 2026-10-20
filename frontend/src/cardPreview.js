@@ -36,3 +36,22 @@ export function mergedPrintName(count, date = new Date()) {
   const cards = Math.max(0, Number(count) || 0);
   return `PFOH Reprint Cards - ${bogotaDate.format(date)} - ${cards} card${cards === 1 ? "" : "s"}`;
 }
+
+export const PRINT_EVENT_COMMENT_MAX = 500;
+
+const bogotaDateTime = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Bogota",
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit"
+});
+
+/**
+ * Print history time in Colombia Time, labeled COT.
+ * @param {string | number | Date} value
+ */
+export function formatPrintEventTime(value) {
+  return `${bogotaDateTime.format(new Date(value))} COT`;
+}

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PFOH.Api.Data;
 using PFOH.Api.Models;
@@ -91,6 +92,141 @@ public class PrintBatchApiTests(PfohApiFactory factory) : IClassFixture<PfohApiF
         Assert.Equal("storage-read-failed", body.GetProperty("code").GetString());
         Assert.Equal("Ann Able", body.GetProperty("honoreeName").GetString());
         Assert.Contains("Synthetic storage read failure.", body.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task Mark_printed_and_history_require_an_administrator()
+    {
+        await ResetAsync();
+        var client = factory.CreateClient();
+
+        var anonymous = await client.PostAsJsonAsync("/api/admin/print/mark-printed", new { changeRequestIds = new[] { 1 } });
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        var anonymousHistory = await client.GetAsync("/api/admin/print/history");
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymousHistory.StatusCode);
+
+        var forbidden = await client.SendAsync(AdminRequest(HttpMethod.Post, "/api/admin/print/mark-printed", admin: false, new { changeRequestIds = new[] { 1 } }));
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+        var forbiddenHistory = await client.SendAsync(AdminRequest(HttpMethod.Get, "/api/admin/print/history", admin: false));
+        Assert.Equal(HttpStatusCode.Forbidden, forbiddenHistory.StatusCode);
+    }
+
+    [Fact]
+    public async Task Mark_printed_records_one_event_and_keeps_the_card_batch_columns()
+    {
+        await ResetAsync();
+        var ids = await SeedQueueAsync();
+        var client = factory.CreateClient();
+
+        var response = await client.SendAsync(AdminRequest(
+            HttpMethod.Post,
+            "/api/admin/print/mark-printed",
+            admin: true,
+            new { changeRequestIds = new[] { ids.Ann, ids.Zane, ids.Rejected }, comment = "  Morning run  " }));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var batchId = json.RootElement.GetProperty("batchId").GetGuid();
+        Assert.Equal(2, json.RootElement.GetProperty("count").GetInt32());
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var cards = await db.HonoreeChangeRequests.OrderBy(r => r.Id).ToListAsync();
+        var printed = cards.Where(r => r.Id == ids.Ann || r.Id == ids.Zane).ToList();
+        Assert.All(printed, card =>
+        {
+            Assert.Equal(batchId, card.CardPrintBatchId);
+            Assert.NotNull(card.CardPrintedUtc);
+            Assert.Equal(DateTimeKind.Utc, card.CardPrintedUtc!.Value.Kind);
+            Assert.True(card.RequiresCardReprint);
+            Assert.Equal("Approved", card.RequestStatus);
+        });
+        Assert.Equal(printed[0].CardPrintedUtc, printed[1].CardPrintedUtc);
+
+        var rejected = cards.Single(r => r.Id == ids.Rejected);
+        Assert.Null(rejected.CardPrintedUtc);
+        Assert.Null(rejected.CardPrintBatchId);
+        Assert.Equal("Rejected", rejected.RequestStatus);
+
+        var events = await db.CardPrintEvents.ToListAsync();
+        var recorded = Assert.Single(events);
+        Assert.Equal(batchId, recorded.CardPrintBatchId);
+        Assert.Equal(printed[0].CardPrintedUtc, recorded.PrintedUtc);
+        Assert.Equal("admin@example.com", recorded.PrintedBy);
+        Assert.Equal(2, recorded.CardCount);
+        Assert.Equal("Morning run", recorded.Comment);
+    }
+
+    [Fact]
+    public async Task Mark_printed_uses_the_display_name_when_the_account_has_no_email()
+    {
+        await ResetAsync();
+        var ids = await SeedQueueAsync();
+        var client = factory.CreateClient();
+        var request = AdminRequest(
+            HttpMethod.Post,
+            "/api/admin/print/mark-printed",
+            admin: true,
+            new { changeRequestIds = new[] { ids.Ann }, comment = "" });
+        request.Headers.Remove(TestAuthHandler.EmailHeader);
+
+        var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var recorded = Assert.Single(await db.CardPrintEvents.ToListAsync());
+        Assert.Equal("Admin", recorded.PrintedBy);
+        Assert.Null(recorded.Comment);
+        Assert.Equal(1, recorded.CardCount);
+    }
+
+    [Fact]
+    public async Task A_comment_over_500_characters_is_rejected_and_writes_nothing()
+    {
+        await ResetAsync();
+        var ids = await SeedQueueAsync();
+        var client = factory.CreateClient();
+        var comment = new string('x', 501);
+
+        var response = await client.SendAsync(AdminRequest(
+            HttpMethod.Post,
+            "/api/admin/print/mark-printed",
+            admin: true,
+            new { changeRequestIds = new[] { ids.Ann }, comment }));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Empty(await db.CardPrintEvents.ToListAsync());
+        Assert.All(await db.HonoreeChangeRequests.ToListAsync(), card =>
+        {
+            Assert.Null(card.CardPrintedUtc);
+            Assert.Null(card.CardPrintBatchId);
+        });
+    }
+
+    [Fact]
+    public async Task Print_history_lists_events_newest_first()
+    {
+        await ResetAsync();
+        var ids = await SeedQueueAsync();
+        var client = factory.CreateClient();
+
+        var first = await client.SendAsync(AdminRequest(HttpMethod.Post, "/api/admin/print/mark-printed", admin: true, new { changeRequestIds = new[] { ids.Ann }, comment = "First" }));
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var second = await client.SendAsync(AdminRequest(HttpMethod.Post, "/api/admin/print/mark-printed", admin: true, new { changeRequestIds = new[] { ids.Zane }, comment = "Second" }));
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+
+        var history = await client.SendAsync(AdminRequest(HttpMethod.Get, "/api/admin/print/history", admin: true));
+        Assert.Equal(HttpStatusCode.OK, history.StatusCode);
+        using var json = JsonDocument.Parse(await history.Content.ReadAsStringAsync());
+        var events = json.RootElement.EnumerateArray().ToList();
+        Assert.Equal("Second", events[0].GetProperty("comment").GetString());
+        Assert.Equal("First", events[1].GetProperty("comment").GetString());
+        Assert.Equal([1, 1], events.Select(e => e.GetProperty("cardCount").GetInt32()).ToArray());
+        Assert.Equal("admin@example.com", events[0].GetProperty("printedBy").GetString());
+        Assert.True(events[0].GetProperty("printedUtc").GetDateTime() >= events[1].GetProperty("printedUtc").GetDateTime());
     }
 
     [Fact]

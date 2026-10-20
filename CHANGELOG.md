@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.18
+
+- In the Print Center, Mark printed opens a window that shows how many cards are in the batch and an optional comment. Confirm records one print event: who marked it, when, the batch, the card count, and the comment. Cancel leaves the queue as it was. Print history lists those events, newest first, with the date and time in Colombia Time (COT).
+- The PlanoFlagsOfHonor.com link in the phone menu now fits fully at narrow widths. The rest of the navigation is unchanged.
+
 ## 2.0.17
 
 - Signed-in administrators find the Admin menu at the end of the navigation, after PlanoFlagsOfHonor.com, on desktop and in the phone menu. The menu still contains Review, Print Center, and Flag Manager. Signed-out visitors and the kiosk do not see it.

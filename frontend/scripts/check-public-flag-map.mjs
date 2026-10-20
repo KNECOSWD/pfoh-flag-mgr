@@ -120,6 +120,12 @@ test("the public nav links Flag Map right after Search, and the admin nav item r
     assert.ok(nav.indexOf('href="/honor-a-hero"') < nav.indexOf("PlanoFlagsOfHonor.com"));
     assert.ok(nav.lastIndexOf("PlanoFlagsOfHonor.com") < nav.indexOf("<AdminNavMenu "));
   }
+  assert.equal(app.split('className="drawerExternalLink"').length - 1, 1);
+  const drawerStart = app.indexOf('aria-label="Mobile navigation"');
+  const drawerNav = app.slice(drawerStart, app.indexOf("</nav>", drawerStart));
+  assert.match(drawerNav, /className="drawerExternalLink"/);
+  assert.match(css, /\.mobileDrawerNav a\.drawerExternalLink[\s\S]{0,280}overflow-wrap:\s*anywhere/);
+  assert.match(css, /\.mobileDrawerNav a\.drawerExternalLink[\s\S]{0,280}min-width:\s*0/);
   const menu = readFileSync(new URL("../src/AdminNavMenu.tsx", import.meta.url), "utf8");
   assert.match(menu, /aria-haspopup="menu"/);
   assert.match(menu, /role="menu"/);

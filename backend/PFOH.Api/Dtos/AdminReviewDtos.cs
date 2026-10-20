@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using PFOH.Api.Models;
 
 namespace PFOH.Api.Dtos;
 
@@ -62,6 +63,22 @@ public class BulkPrintRequest
     [Required]
     public List<int> ChangeRequestIds { get; set; } = new();
 }
+
+public class MarkPrintedRequest
+{
+    [Required]
+    public List<int> ChangeRequestIds { get; set; } = new();
+
+    [MaxLength(CardPrintEventLimits.CommentMaxLength)]
+    public string? Comment { get; set; }
+}
+
+public sealed record CardPrintEventDto(
+    Guid BatchId,
+    DateTime PrintedUtc,
+    string PrintedBy,
+    int CardCount,
+    string? Comment);
 
 public sealed record PrintBatchCardDto(int ChangeRequestId, int HonoreeId, string HonoreeName);
 
