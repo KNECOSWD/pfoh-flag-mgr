@@ -72,6 +72,8 @@ test("Print Center row and merged download open the Honoree Card viewer", () => 
   assert.match(merged, /const mergedName = mergedPrintName\(cards\.length\)/);
   assert.match(merged, /title: mergedName/);
   assert.match(merged, /finishCardPreview\(requestId, doneTitle, url, true, printCenterHeading, `\$\{mergedName\}\.pdf`\)/);
+  assert.match(merged, /const doneTitle = `\$\{printSelectionSubtitle\(cards\.length\)\}, merged\.`;/);
+  assert.doesNotMatch(source, /Every card was regenerated with its full artwork first/);
   assert.ok(merged.indexOf("beginCardPreview(title, printCenterHeading") < merged.indexOf("planPrintBatch"));
   assert.ok(merged.indexOf("preparePrintBatch(") < merged.indexOf("mergePrintBatch("));
   assert.doesNotMatch(merged, /fetchMergedPrintPdf|openCardBlob|setTimeout/);

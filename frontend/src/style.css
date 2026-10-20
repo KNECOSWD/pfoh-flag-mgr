@@ -12461,3 +12461,178 @@ html.isMapFullscreen .publicFlagSearch label,
 html.isMapFullscreen .publicFlagLevel {
   color: #f3e2a7;
 }
+
+/* Signed-in Admin menu. Public nav links are unchanged. */
+.adminNavMenu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.desktopHeroNav .adminNavButton {
+  min-height: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  margin: 0;
+  padding: 0.15rem 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: inherit;
+  text-shadow: 0 2px 7px rgba(0, 0, 0, 0.45);
+  opacity: 0.92;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.desktopHeroNav .adminNavButton:hover,
+.desktopHeroNav .adminNavButton:focus-visible {
+  transform: none;
+  opacity: 1;
+  border-bottom-color: #ffffff;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+.desktopHeroNav .adminNavButton.isActive {
+  position: relative;
+  opacity: 1;
+}
+
+.desktopHeroNav .adminNavButton.isActive::after {
+  content: "";
+  position: absolute;
+  left: 0.15rem;
+  right: 0.15rem;
+  bottom: -2px;
+  height: 2px;
+  background: #ffd56a;
+}
+
+.adminNavCaret {
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.adminNavMenu.isOpen .adminNavCaret {
+  transform: rotate(180deg);
+}
+
+.adminNavPanel.isBar {
+  position: fixed;
+  z-index: 80;
+}
+
+.adminNavPanel {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  left: 0;
+  z-index: 30;
+  min-width: 11.5rem;
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.35rem;
+  border-radius: 0.7rem;
+  background: #071a3b;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35);
+}
+
+.adminNavPanel[hidden] {
+  display: none !important;
+}
+
+.adminNavPanel.isBar a {
+  min-height: 2.4rem;
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0.7rem;
+  border: 0;
+  border-bottom: 0;
+  border-radius: 0.45rem;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 750;
+  opacity: 1;
+  text-decoration: none;
+  text-shadow: none;
+}
+
+.adminNavPanel.isBar a::after {
+  display: none;
+}
+
+.adminNavPanel.isBar a:hover,
+.adminNavPanel.isBar a:focus-visible {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 0.45rem;
+  outline: 2px solid #ffd56a;
+  outline-offset: -2px;
+}
+
+.adminNavPanel.isBar a.isActive {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.mobileDrawerNav .adminNavMenu {
+  display: grid;
+}
+
+.mobileDrawerNav .adminNavButton {
+  width: 100%;
+  min-height: 2.55rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0.58rem 0.68rem;
+  border: 0;
+  border-radius: 0.72rem;
+  background: transparent;
+  box-shadow: none;
+  color: #ffffff;
+  font-size: 0.98rem;
+  font-weight: 850;
+  line-height: 1.2;
+  text-align: left;
+  touch-action: manipulation;
+}
+
+.mobileDrawerNav .adminNavButton:hover,
+.mobileDrawerNav .adminNavButton:focus-visible {
+  transform: none;
+  background: rgba(255, 255, 255, 0.10);
+  box-shadow: none;
+}
+
+.mobileDrawerNav .adminNavButton.isActive {
+  box-shadow: inset 3px 0 0 #ffd56a;
+}
+
+.mobileDrawerNav .adminNavPanel {
+  position: static;
+  min-width: 0;
+  padding: 0.1rem 0 0.15rem 0.85rem;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.mobileDrawerNav .adminNavPanel a {
+  min-height: 2.55rem;
+}
+
+@media (max-width: 900px) {
+  .desktopHeroNav .adminNavButton,
+  .mobileDrawerNav .adminNavButton {
+    min-height: 2.55rem;
+  }
+}

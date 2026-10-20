@@ -36,6 +36,7 @@ import {
   profileApi
 } from "./api";
 import { decideAdminLoad } from "./adminAccess.js";
+import { AdminNavMenu } from "./AdminNavMenu";
 import PublicFlagMap from "./PublicFlagMap";
 import {
   clearKioskSession,
@@ -545,6 +546,11 @@ export default function App() {
     { route: "/find", label: "Search", show: true },
     { route: "/flag-map", label: "Flag Map", show: true },
     { route: "/my-flags", label: publicCopy.mySubmissions, show: true }
+  ];
+  const adminNav: { route: AppRoute; label: string }[] = [
+    { route: "/admin/review", label: "Review" },
+    { route: "/admin/printing", label: "Print Center" },
+    { route: "/admin/flag-map", label: "Flag Manager" }
   ];
   const isPrintingRoute = activeRoute === "/admin/printing";
   const isAdminRoute = activeRoute.startsWith("/admin");
@@ -2621,7 +2627,7 @@ export default function App() {
 
       if (!isCurrent()) return;
       const url = URL.createObjectURL(new Blob([merged.bytes as BlobPart], { type: "application/pdf" }));
-      const doneTitle = `${printSelectionSubtitle(cards.length)}, merged. Every card was regenerated with its full artwork first.`;
+      const doneTitle = `${printSelectionSubtitle(cards.length)}, merged.`;
       finishCardPreview(requestId, doneTitle, url, true, printCenterHeading, `${mergedName}.pdf`);
     } catch (err) {
       if (controller.signal.aborted) return;
@@ -2868,9 +2874,9 @@ export default function App() {
             {siteNav.filter((item) => item.show).map((item) => (
               <a key={item.route} className={activeRoute === item.route ? "isActive" : ""} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
             ))}
-            {chrome.adminLinks ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
-            {chrome.adminLinks ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
-            {chrome.adminLinks ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Manager</a> : null}
+            {chrome.adminLinks ? (
+              <AdminNavMenu items={adminNav} activeRoute={activeRoute} menuId="admin-nav-desktop" layout="bar" onNavigate={handleRouteLink} />
+            ) : null}
             <a
               className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
               href="/honor-a-hero"
@@ -2914,9 +2920,9 @@ export default function App() {
                   {siteNav.filter((item) => item.show).map((item) => (
                     <a key={item.route} className={activeRoute === item.route ? "isActive" : ""} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
                   ))}
-                  {chrome.adminLinks ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
-                  {chrome.adminLinks ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
-                  {chrome.adminLinks ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Manager</a> : null}
+                  {chrome.adminLinks ? (
+                    <AdminNavMenu items={adminNav} activeRoute={activeRoute} menuId="admin-nav-drawer" layout="drawer" onNavigate={handleRouteLink} />
+                  ) : null}
                   <a
                     className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
                     href="/honor-a-hero"
