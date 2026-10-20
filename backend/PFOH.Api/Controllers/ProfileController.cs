@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using PFOH.Api.Dtos;
 using PFOH.Api.Extensions;
 using PFOH.Api.Services;
@@ -8,6 +9,7 @@ namespace PFOH.Api.Controllers;
 
 [ApiController]
 [Authorize]
+[EnableRateLimiting("AuthenticatedGet")]
 [Route("api/profile")]
 public class ProfileController(UserProfileService profiles) : ControllerBase
 {

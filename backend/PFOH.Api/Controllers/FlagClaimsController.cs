@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
@@ -12,6 +13,7 @@ namespace PFOH.Api.Controllers;
 [ApiController]
 [Route("api/flag-claims")]
 [Authorize]
+[EnableRateLimiting("AuthenticatedGet")]
 public class FlagClaimsController(
     PfohDbContext db,
     IWebHostEnvironment environment,
@@ -28,6 +30,8 @@ public class FlagClaimsController(
     // These statuses mean there is a submitted or in-progress change cycle.
     private static readonly string[] OpenChangeStatuses = ["Submitted"];
 
+    // One request per review thumbnail. Not part of the 60/min cap.
+    [DisableRateLimiting]
     [HttpGet("/api/flagclaims/change-requests/{id:int}/photo")]
     public async Task<IActionResult> GetChangeRequestPhoto(int id, CancellationToken ct)
     {

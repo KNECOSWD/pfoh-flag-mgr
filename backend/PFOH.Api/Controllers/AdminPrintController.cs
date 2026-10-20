@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
@@ -12,6 +13,7 @@ namespace PFOH.Api.Controllers;
 [ApiController]
 [Route("api/admin/print")]
 [Authorize(Policy = "AdminOnly")]
+[EnableRateLimiting("AuthenticatedGet")]
 public class AdminPrintController(
     PfohDbContext db,
     HonoreeFileStorage fileStorage) : ControllerBase
@@ -42,6 +44,8 @@ public class AdminPrintController(
         return Ok(new PrintBatchPlanDto(cards, notInQueue));
     }
 
+    // One request per card in Download merged PDF. Not part of the 60/min cap.
+    [DisableRateLimiting]
     [HttpGet("cards/{changeRequestId:int}/pdf")]
     public async Task<IActionResult> GetQueuedCardPdf(int changeRequestId, CancellationToken ct)
     {

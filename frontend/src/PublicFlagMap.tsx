@@ -106,7 +106,7 @@ type SearchHit = {
   serviceBranchName?: string | null;
 };
 
-type View = { x: number; y: number; scale: number };
+type View = { x: number; y: number; scale: number; scaleY?: number };
 type Box = { x: number; y: number; width: number; height: number; section: string; flagCount: number; occupiedCount: number };
 type FlagBox = PublicSeat & Box;
 type Gates = ReturnType<typeof flagMapDetailGates>;
@@ -441,7 +441,9 @@ export default function PublicFlagMap({
 
   function paintView(next: View) {
     const scale = Math.min(FLAG_MAP_ZOOM.maxScale, Math.max(Math.min(FLAG_MAP_ZOOM.minScale, fitScaleRef.current), next.scale));
-    const view = { x: next.x, y: next.y, scale };
+    const sy = next.scaleY && next.scale > 0 ? next.scaleY * (scale / next.scale) : scale;
+    const view: View = { x: next.x, y: next.y, scale };
+    if (Math.abs(sy - scale) > 1e-6) view.scaleY = sy;
     viewRef.current = view;
     const opacity = flagMapLayerOpacities(view.scale);
     const layer = layerRef.current;
@@ -591,10 +593,13 @@ export default function PublicFlagMap({
   function animateTo(requested: View, onDone?: () => void) {
     stopMotion();
     const target = limitView(requested);
-    const from = { ...viewRef.current };
+    const from: View = { ...viewRef.current };
+    const fromY = from.scaleY ?? from.scale;
+    const targetY = (target as View).scaleY ?? target.scale;
     const unchanged = Math.abs(from.x - target.x) < 0.5
       && Math.abs(from.y - target.y) < 0.5
-      && Math.abs(from.scale - target.scale) < 0.0001;
+      && Math.abs(from.scale - target.scale) < 0.0001
+      && Math.abs(fromY - targetY) < 0.0001;
     if (reducedMotionRef.current || unchanged) {
       applyView(target, true);
       setMoving(false);
@@ -607,11 +612,14 @@ export default function PublicFlagMap({
     const step = (now: number) => {
       const amount = Math.min(1, (now - started) / 680);
       const eased = springEase(amount);
-      const next = {
+      const scale = from.scale + (target.scale - from.scale) * eased;
+      const scaleY = fromY + (targetY - fromY) * eased;
+      const next: View = {
         x: from.x + (target.x - from.x) * eased,
         y: from.y + (target.y - from.y) * eased,
-        scale: from.scale + (target.scale - from.scale) * eased
+        scale
       };
+      if (Math.abs(scaleY - scale) > 1e-6) next.scaleY = scaleY;
       paintView(next);
       const nextGates = flagMapDetailGates(next.scale);
       const done = amount >= 1;
@@ -630,7 +638,8 @@ export default function PublicFlagMap({
   }
 
   function fitWorld() {
-    const fitted = fitWholeField(worldBounds(), viewportSize(), FIT_PADDING);
+    const viewport = viewportSize();
+    const fitted = fitWholeField(worldBounds(), viewport, FIT_PADDING, { stretchHeight: viewport.width <= 600 });
     fitScaleRef.current = fitted.scale;
     return fitted;
   }
@@ -1233,7 +1242,7 @@ export default function PublicFlagMap({
       }
       moved = true;
       userAdjustedRef.current = true;
-      applyView({ x: origin.x + point.x - start.x, y: origin.y + point.y - start.y, scale: viewRef.current.scale });
+      applyView({ x: origin.x + point.x - start.x, y: origin.y + point.y - start.y, scale: viewRef.current.scale, scaleY: viewRef.current.scaleY });
     };
 
     const onPointerUp = (event: PointerEvent) => {

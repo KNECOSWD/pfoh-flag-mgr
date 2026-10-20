@@ -943,6 +943,78 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         Assert.Equal("Approved", approvedReprint.FlagClaim!.ClaimStatus);
     }
 
+    [Fact]
+    public async Task Remove_from_reprint_queue_succeeds_when_sql_rejects_cancelled_claim_status()
+    {
+        await ResetAsync();
+        const string creationNote = "Internal claim created to add an existing honoree to the card reprint queue.";
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            db.FlagClaims.Add(new FlagClaim
+            {
+                Id = 11,
+                FlagGridId = 3,
+                HonoreeId = 5,
+                ExternalUserObjectId = "admin-reprint:abc",
+                ExternalUserEmail = "admin@example.com",
+                ClaimStatus = "AdminReprintQueued",
+                AdminNotes = creationNote,
+                CreatedUtc = DateTime.UtcNow
+            });
+            db.HonoreeChangeRequests.Add(new HonoreeChangeRequest
+            {
+                Id = 21,
+                FlagClaimId = 11,
+                FlagGridId = 3,
+                HonoreeId = 5,
+                FirstName = "Ada",
+                LastName = "Lovelace",
+                RequestStatus = "Approved",
+                RequiresCardReprint = true,
+                CreatedUtc = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        ReprintRemoveWarningLog.Lines.Clear();
+        ReprintClaimStatusFault.RejectCancelled = true;
+        try
+        {
+            var client = factory.CreateClient();
+            var response = await client.SendAsync(Authed(
+                HttpMethod.Post,
+                "/api/admin/review/reprint-queue/remove",
+                "admin-user",
+                "admin@example.com",
+                "Admin",
+                roles: "PFOH.Admin",
+                body: new { changeRequestIds = new[] { 21 } }));
+            var text = await response.Content.ReadAsStringAsync();
+            Assert.True(response.StatusCode == HttpStatusCode.OK, text);
+            using var json = JsonDocument.Parse(text);
+            Assert.Equal(1, json.RootElement.GetProperty("count").GetInt32());
+        }
+        finally
+        {
+            ReprintClaimStatusFault.RejectCancelled = false;
+        }
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var saved = check.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var removed = await saved.HonoreeChangeRequests.Include(r => r.FlagClaim).SingleAsync(r => r.Id == 21);
+        Assert.False(removed.RequiresCardReprint);
+        Assert.Equal("AdminReprintQueued", removed.FlagClaim!.ClaimStatus);
+        Assert.Equal(creationNote, removed.FlagClaim.AdminNotes);
+        var warning = Assert.Single(ReprintRemoveWarningLog.Lines, line => line.Contains("SQL rejected Cancelled", StringComparison.Ordinal));
+        Assert.Contains("21", warning, StringComparison.Ordinal);
+        Assert.Contains("11", warning, StringComparison.Ordinal);
+        Assert.Contains("CK_FlagClaims_ClaimStatus", warning, StringComparison.Ordinal);
+        Assert.DoesNotContain("Lovelace", warning, StringComparison.Ordinal);
+        Assert.DoesNotContain("admin@example.com", warning, StringComparison.Ordinal);
+        Assert.DoesNotContain(creationNote, warning, StringComparison.Ordinal);
+    }
+
     private async Task SeedReprintAsync(int changeId, int claimId, DateTime reviewedUtc)
     {
         await using var scope = factory.Services.CreateAsyncScope();

@@ -11418,6 +11418,7 @@ html.flagMapKiosk a {
   border-radius: 12px;
   background: #eef2f8;
   box-shadow: inset 0 0 0 1px rgba(23, 59, 115, 0.14);
+  padding-block: 8px;
 }
 
 .publicFlagControls .publicFlagIconButton {
@@ -11543,9 +11544,20 @@ html.flagMapKiosk a {
 
   .publicFlagControls .publicFlagJump {
     order: 2;
-    flex: 0 1 auto;
-    max-width: none;
+    flex: 0 0 auto;
+    width: max-content;
+    min-width: 0;
+    max-width: max-content;
     margin-left: auto;
+  }
+
+  .publicFlagControls .publicFlagJump select {
+    width: auto;
+    field-sizing: content;
+    border: 1px solid #c5d0e0;
+    border-radius: 999px;
+    background-color: #fff;
+    padding: 0 28px 0 12px;
   }
 
   .publicFlagControls .publicFlagSearch {
@@ -12754,4 +12766,29 @@ html.isMapFullscreen .publicFlagLevel {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: #24344d;
+}
+
+.versionReloadPrompt {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 24px));
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(23, 59, 115, 0.22);
+  border-radius: 12px;
+  background: #fffdf8;
+  color: #173b73;
+  box-shadow: 0 10px 28px rgba(7, 21, 38, 0.18);
+  font-size: 0.92rem;
+  line-height: 1.3;
+}
+
+.versionReloadPrompt button {
+  min-height: 32px;
+  padding: 4px 12px;
 }
