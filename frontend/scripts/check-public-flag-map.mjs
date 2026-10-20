@@ -117,6 +117,8 @@ test("the public nav links Flag Map right after Search, and the admin nav item r
     const nav = app.slice(start, app.indexOf("</nav>", start));
     assert.doesNotMatch(nav, /href="\/admin\//);
     assert.match(nav, /<AdminNavMenu /);
+    assert.ok(nav.indexOf('href="/honor-a-hero"') < nav.indexOf("PlanoFlagsOfHonor.com"));
+    assert.ok(nav.lastIndexOf("PlanoFlagsOfHonor.com") < nav.indexOf("<AdminNavMenu "));
   }
   const menu = readFileSync(new URL("../src/AdminNavMenu.tsx", import.meta.url), "utf8");
   assert.match(menu, /aria-haspopup="menu"/);
