@@ -2592,18 +2592,18 @@ export default function App() {
       const cards = plan.cards;
       const prepared = await preparePrintBatch({
         cards,
-        loadStoredPdf: async (card, signal) => {
+        regeneratePdf: async (card, signal) => {
           try {
-            return await adminApi.fetchQueuedCardPdf(instance, account, card.changeRequestId, signal);
+            const result = await adminApi.regenerateHonoreePdf(instance, account, card.honoreeId, signal);
+            if (!result.uploaded) throw new Error(result.message || "The card PDF could not be regenerated.");
           } catch (err) {
             if (signal?.aborted) throw err;
             throw new Error(printCardFailureMessage(err));
           }
         },
-        generatePdf: async (card, signal) => {
+        loadStoredPdf: async (card, signal) => {
           try {
-            const result = await adminApi.regenerateHonoreePdf(instance, account, card.honoreeId, signal);
-            if (!result.uploaded) throw new Error(result.message || "The card PDF could not be generated.");
+            return await adminApi.fetchQueuedCardPdf(instance, account, card.changeRequestId, signal);
           } catch (err) {
             if (signal?.aborted) throw err;
             throw new Error(printCardFailureMessage(err));
@@ -2621,7 +2621,7 @@ export default function App() {
       const merged = await mergePrintBatch(cards, prepared.pdfs as ArrayBuffer[], {
         onProgress: showProgress,
         signal: controller.signal,
-        generated: prepared.generated
+        regenerated: prepared.regenerated
       });
       if (merged.failures.length > 0 || !merged.bytes) {
         failBatch(printBatchFailureSummary(merged.failures, cards.length), merged.failures);
@@ -2630,9 +2630,7 @@ export default function App() {
 
       if (!isCurrent()) return;
       const url = URL.createObjectURL(new Blob([merged.bytes as BlobPart], { type: "application/pdf" }));
-      const doneTitle = `${printSelectionSubtitle(cards.length)}, merged.${prepared.generated > 0
-        ? ` ${prepared.generated} missing card PDF${prepared.generated === 1 ? " was" : "s were"} generated first.`
-        : ""}`;
+      const doneTitle = `${printSelectionSubtitle(cards.length)}, merged. Every card was regenerated with its full artwork first.`;
       finishCardPreview(requestId, doneTitle, url, true, printCenterHeading, downloadName);
     } catch (err) {
       if (controller.signal.aborted) return;
@@ -2781,15 +2779,15 @@ export default function App() {
                 <p className="printBatchCurrent">
                   {cardPreview.progress.current
                     ? `${cardPreview.progress.phase === "merging" ? "Added" : "Finished"} ${printCardLabel(cardPreview.progress.current)}`
-                    : "Checking each card's stored PDF…"}
+                    : "Regenerating each card with its full artwork…"}
                 </p>
                 <p className="printBatchCounts">
-                  <span>{cardPreview.progress.generated} missing PDF{cardPreview.progress.generated === 1 ? "" : "s"} generated</span>
+                  <span>{cardPreview.progress.regenerated} regenerated</span>
                   <span className={cardPreview.progress.failed > 0 ? "printBatchFailedCount" : undefined}>
                     {cardPreview.progress.failed} failed
                   </span>
                 </p>
-                <p className="printBatchHint">Each card is checked on its own, so large batches don't time out. Keep this window open. Close cancels.</p>
+                <p className="printBatchHint">Each card is regenerated on its own request, so large batches don't time out. Keep this window open. Close cancels.</p>
               </div>
             </div>
           ) : cardPreview.phase === "error" && cardPreview.failures?.length ? (

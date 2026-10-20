@@ -3,7 +3,7 @@ export const PRINT_BATCH_CONCURRENCY = 3;
 /**
  * @typedef {{ changeRequestId: number, honoreeId: number, honoreeName: string }} PrintBatchCard
  * @typedef {{ card: PrintBatchCard, step: string, message: string }} PrintBatchFailure
- * @typedef {{ phase: "preparing" | "merging", done: number, total: number, current?: PrintBatchCard, generated: number, failed: number }} PrintBatchProgress
+ * @typedef {{ phase: "regenerating" | "merging", done: number, total: number, current?: PrintBatchCard, regenerated: number, failed: number }} PrintBatchProgress
  */
 
 /** @param {PrintBatchCard} card */
@@ -14,7 +14,7 @@ export function printCardLabel(card) {
 
 /** @param {PrintBatchProgress} progress */
 export function printBatchProgressText(progress) {
-  const verb = progress.phase === "merging" ? "Merging card" : "Preparing card";
+  const verb = progress.phase === "merging" ? "Merging card" : "Regenerating card";
   return `${verb} ${progress.done}/${progress.total}`;
 }
 
@@ -36,14 +36,15 @@ function errorMessage(error) {
 }
 
 /**
- * Prepares every card one request at a time (with small parallelism), generating
- * any card whose stored PDF is missing. No card is skipped: each one either yields
- * PDF bytes or a named failure.
+ * Regenerates every card through the admin Regenerate PDF path, then loads the
+ * freshly stored PDF. A stored PDF is never reused as-is, because it may predate
+ * the current card artwork. No card is skipped: each one either yields PDF bytes
+ * or a named failure.
  *
  * @param {{
  *   cards: PrintBatchCard[],
+ *   regeneratePdf: (card: PrintBatchCard, signal?: AbortSignal) => Promise<void>,
  *   loadStoredPdf: (card: PrintBatchCard, signal?: AbortSignal) => Promise<Uint8Array | ArrayBuffer | null>,
- *   generatePdf: (card: PrintBatchCard, signal?: AbortSignal) => Promise<void>,
  *   onProgress?: (progress: PrintBatchProgress) => void,
  *   signal?: AbortSignal,
  *   concurrency?: number
@@ -51,8 +52,8 @@ function errorMessage(error) {
  */
 export async function preparePrintBatch({
   cards,
+  regeneratePdf,
   loadStoredPdf,
-  generatePdf,
   onProgress,
   signal,
   concurrency = PRINT_BATCH_CONCURRENCY
@@ -63,24 +64,20 @@ export async function preparePrintBatch({
   /** @type {{ index: number, failure: PrintBatchFailure }[]} */
   const failed = [];
   let done = 0;
-  let generated = 0;
+  let regenerated = 0;
   let next = 0;
 
   const report = (current) =>
-    onProgress?.({ phase: "preparing", done, total, current, generated, failed: failed.length });
+    onProgress?.({ phase: "regenerating", done, total, current, regenerated, failed: failed.length });
 
   async function prepare(card) {
-    let step = "check";
+    let step = "regenerate";
     try {
-      let pdf = await loadStoredPdf(card, signal);
-      if (!pdf) {
-        step = "generate";
-        await generatePdf(card, signal);
-        generated += 1;
-        step = "reload";
-        pdf = await loadStoredPdf(card, signal);
-        if (!pdf) throw new Error("The card PDF was generated but is still not in storage.");
-      }
+      await regeneratePdf(card, signal);
+      regenerated += 1;
+      step = "load";
+      const pdf = await loadStoredPdf(card, signal);
+      if (!pdf) throw new Error("The card PDF was regenerated but is not in storage.");
       return { pdf };
     } catch (error) {
       if (signal?.aborted) throw abortError();
@@ -106,15 +103,15 @@ export async function preparePrintBatch({
   await Promise.all(workers);
 
   failed.sort((left, right) => left.index - right.index);
-  return { pdfs, failures: failed.map((entry) => entry.failure), generated };
+  return { pdfs, failures: failed.map((entry) => entry.failure), regenerated };
 }
 
 /**
  * @param {PrintBatchCard[]} cards
  * @param {(Uint8Array | ArrayBuffer)[]} pdfs
- * @param {{ onProgress?: (progress: PrintBatchProgress) => void, signal?: AbortSignal, generated?: number }} [options]
+ * @param {{ onProgress?: (progress: PrintBatchProgress) => void, signal?: AbortSignal, regenerated?: number }} [options]
  */
-export async function mergePrintBatch(cards, pdfs, { onProgress, signal, generated = 0 } = {}) {
+export async function mergePrintBatch(cards, pdfs, { onProgress, signal, regenerated = 0 } = {}) {
   const total = cards.length;
   const { PDFDocument } = await import("pdf-lib");
   const output = await PDFDocument.create();
@@ -132,7 +129,7 @@ export async function mergePrintBatch(cards, pdfs, { onProgress, signal, generat
     } catch (error) {
       failures.push({ card, step: "merge", message: errorMessage(error) });
     }
-    onProgress?.({ phase: "merging", done: index + 1, total, current: card, generated, failed: failures.length });
+    onProgress?.({ phase: "merging", done: index + 1, total, current: card, regenerated, failed: failures.length });
     if (index % 10 === 9) await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
@@ -143,12 +140,10 @@ export async function mergePrintBatch(cards, pdfs, { onProgress, signal, generat
 /** @param {PrintBatchFailure} failure */
 export function printFailureStepLabel(failure) {
   switch (failure.step) {
-    case "check":
-      return "Checking the stored card PDF failed";
-    case "generate":
-      return "Generating the missing card PDF failed";
-    case "reload":
-      return "Loading the newly generated card PDF failed";
+    case "regenerate":
+      return "Regenerating the card PDF failed";
+    case "load":
+      return "Loading the regenerated card PDF failed";
     case "merge":
       return "Adding the card PDF to the merged file failed";
     case "queue":

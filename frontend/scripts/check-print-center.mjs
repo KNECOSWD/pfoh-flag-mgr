@@ -56,6 +56,9 @@ test("Print Center row and merged download open the Honoree Card viewer", () => 
   assert.match(merged, /preparePrintBatch\(/);
   assert.match(merged, /fetchQueuedCardPdf/);
   assert.match(merged, /regenerateHonoreePdf\(instance, account, card\.honoreeId, signal\)/);
+  assert.match(merged, /if \(!result\.uploaded\) throw/);
+  assert.doesNotMatch(merged, /\bgeneratePdf|pdf-missing/);
+  assert.match(source, /adminApi\.regenerateHonoreePdf\(instance, account, honoree\.id\)/);
   assert.match(merged, /mergePrintBatch\(/);
   assert.match(merged, /finishCardPreview\(requestId, doneTitle, url, true, printCenterHeading, downloadName\)/);
   assert.ok(merged.indexOf("beginCardPreview(title, printCenterHeading") < merged.indexOf("planPrintBatch"));
@@ -111,69 +114,73 @@ function syntheticBatch(total) {
   }));
 }
 
-test("140 cards: missing PDFs are generated first, progress counts 1/140 to 140/140, and the merge has every card", async () => {
+test("140 cards: every card is regenerated before it is loaded, stale stored PDFs are never reused, and the merge has every card", async () => {
   const cards = syntheticBatch(140);
-  const template = await syntheticCardPdf("card");
+  const bare = await syntheticCardPdf("bare");
+  const full = await syntheticCardPdf("full artwork");
   const storage = new Map();
   cards.forEach((card, index) => {
-    if (index % 7 < 2) storage.set(card.honoreeId, template);
+    if (index % 7 < 2) storage.set(card.honoreeId, bare);
   });
-  const missingBefore = cards.filter((card) => !storage.has(card.honoreeId)).length;
-  assert.equal(missingBefore, 100);
+  assert.equal(storage.size, 40);
 
-  const generatedIds = [];
+  const regeneratedIds = [];
+  const loadedBeforeRegenerate = [];
   const progress = [];
   const prepared = await preparePrintBatch({
     cards,
-    loadStoredPdf: async (card) => {
+    regeneratePdf: async (card) => {
       await new Promise((resolve) => setImmediate(resolve));
-      return storage.get(card.honoreeId) ?? null;
+      regeneratedIds.push(card.honoreeId);
+      storage.set(card.honoreeId, full);
     },
-    generatePdf: async (card) => {
-      generatedIds.push(card.honoreeId);
-      storage.set(card.honoreeId, template);
+    loadStoredPdf: async (card) => {
+      if (!regeneratedIds.includes(card.honoreeId)) loadedBeforeRegenerate.push(card.honoreeId);
+      return storage.get(card.honoreeId) ?? null;
     },
     onProgress: (entry) => progress.push(entry)
   });
 
   assert.deepEqual(prepared.failures, []);
-  assert.equal(prepared.generated, 100);
-  assert.equal(generatedIds.length, 100);
-  assert.equal(new Set(generatedIds).size, 100);
+  assert.equal(prepared.regenerated, 140);
+  assert.equal(new Set(regeneratedIds).size, 140);
+  assert.deepEqual(loadedBeforeRegenerate, []);
+  assert.ok(prepared.pdfs.every((pdf) => pdf === full));
   assert.deepEqual(progress.map((entry) => entry.done), Array.from({ length: 141 }, (_, index) => index));
-  assert.ok(progress.every((entry) => entry.total === 140 && entry.phase === "preparing"));
-  assert.equal(printBatchProgressText(progress[37]), "Preparing card 37/140");
+  assert.ok(progress.every((entry) => entry.total === 140 && entry.phase === "regenerating"));
+  assert.equal(printBatchProgressText(progress[37]), "Regenerating card 37/140");
 
   const merging = [];
-  const merged = await mergePrintBatch(cards, prepared.pdfs, { onProgress: (entry) => merging.push(entry), generated: prepared.generated });
+  const merged = await mergePrintBatch(cards, prepared.pdfs, { onProgress: (entry) => merging.push(entry), regenerated: prepared.regenerated });
   assert.deepEqual(merged.failures, []);
   assert.deepEqual(merging.map((entry) => entry.done), Array.from({ length: 140 }, (_, index) => index + 1));
+  assert.ok(merging.every((entry) => entry.regenerated === 140));
   assert.equal(printBatchProgressText(merging.at(-1)), "Merging card 140/140");
   const output = await PDFDocument.load(merged.bytes);
   assert.equal(output.getPageCount(), 140);
 });
 
-test("a forced failure names the card and the step, does not skip it, and no merged PDF is built", async () => {
+test("a forced regenerate failure names the card and the step, does not fall back to the stored PDF, and no merged PDF is built", async () => {
   const cards = syntheticBatch(140);
   const template = await syntheticCardPdf("card");
-  const storage = new Map();
+  const storage = new Map(cards.map((card) => [card.honoreeId, template]));
   const broken = cards[57];
   const prepared = await preparePrintBatch({
     cards,
     loadStoredPdf: async (card) => storage.get(card.honoreeId) ?? null,
-    generatePdf: async (card) => {
-      if (card.honoreeId === broken.honoreeId) throw new Error("HTTP 404: Honoree was not found. Reference: PFOH-TEST.");
-      storage.set(card.honoreeId, template);
+    regeneratePdf: async (card) => {
+      if (card.honoreeId === broken.honoreeId) throw new Error("PDF generation failed before upload: The honoree card artwork could not be loaded.");
     }
   });
 
   assert.equal(prepared.failures.length, 1);
   const [failure] = prepared.failures;
   assert.equal(failure.card, broken);
-  assert.equal(failure.step, "generate");
+  assert.equal(failure.step, "regenerate");
   assert.equal(printCardLabel(failure.card), "Synthetic Honoree 058 (honoree #9057)");
-  assert.equal(printFailureStepLabel(failure), "Generating the missing card PDF failed");
-  assert.match(failure.message, /Honoree was not found/);
+  assert.equal(printFailureStepLabel(failure), "Regenerating the card PDF failed");
+  assert.match(failure.message, /artwork could not be loaded/);
+  assert.equal(prepared.pdfs[57], null);
   assert.equal(prepared.pdfs.filter(Boolean).length, 139);
   assert.equal(
     printBatchFailureSummary(prepared.failures, 140),
@@ -199,13 +206,12 @@ test("Close cancels the batch without reporting card failures", async () => {
     preparePrintBatch({
       cards,
       signal: controller.signal,
-      loadStoredPdf: async () => {
+      regeneratePdf: async () => {
         calls += 1;
         if (calls === 5) controller.abort();
         if (controller.signal.aborted) throw new Error("aborted");
-        return new Uint8Array([1]);
       },
-      generatePdf: async () => {}
+      loadStoredPdf: async () => new Uint8Array([1])
     }),
     { name: "AbortError" }
   );
