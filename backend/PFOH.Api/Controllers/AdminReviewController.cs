@@ -1811,7 +1811,7 @@ public class AdminReviewController(
         return int.TryParse(digits, out var parsed) ? parsed : null;
     }
 
-    private static string BuildHonoreeName(HonoreeChangeRequest r) =>
+    internal static string BuildHonoreeName(HonoreeChangeRequest r) =>
         BuildHonoreeName(r.FirstName, r.MiddleName, r.LastName, r.Suffix, r.Nickname);
 
     private static string BuildHonoreeName(
