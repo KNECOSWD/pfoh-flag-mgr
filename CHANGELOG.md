@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.19
+
+- On the public Flag Map, Search honorees is in the toolbar instead of a row above it. On a wide screen the search sits between the zoom buttons and the Sections list. On a phone, the zoom buttons and Sections stay on the first line and the search fills the second. The map uses the space that row used to take. Search results are unchanged, and the legend stays under the field.
+- Remove from queue in the Print Center succeeds. It had been returning an error and leaving the card in the queue.
+- Mark printed with no matching cards records nothing. Print history does not show an entry when the count is 0.
+
 ## 2.0.18
 
 - In the Print Center, Mark printed opens a window that shows how many cards are in the batch and an optional comment. Confirm records one print event: who marked it, when, the batch, the card count, and the comment. Cancel leaves the queue as it was. Print history lists those events, newest first, with the date and time in Colombia Time (COT).
