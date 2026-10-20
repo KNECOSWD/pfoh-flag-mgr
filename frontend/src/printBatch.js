@@ -109,12 +109,13 @@ export async function preparePrintBatch({
 /**
  * @param {PrintBatchCard[]} cards
  * @param {(Uint8Array | ArrayBuffer)[]} pdfs
- * @param {{ onProgress?: (progress: PrintBatchProgress) => void, signal?: AbortSignal, regenerated?: number }} [options]
+ * @param {{ onProgress?: (progress: PrintBatchProgress) => void, signal?: AbortSignal, regenerated?: number, title?: string }} [options]
  */
-export async function mergePrintBatch(cards, pdfs, { onProgress, signal, regenerated = 0 } = {}) {
+export async function mergePrintBatch(cards, pdfs, { onProgress, signal, regenerated = 0, title } = {}) {
   const total = cards.length;
   const { PDFDocument } = await import("pdf-lib");
   const output = await PDFDocument.create();
+  if (title) output.setTitle(title, { showInWindowTitleBar: true });
   /** @type {PrintBatchFailure[]} */
   const failures = [];
 

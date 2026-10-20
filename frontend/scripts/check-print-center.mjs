@@ -13,6 +13,7 @@ import {
 import {
   cardPreviewLoadingMessage,
   honoreeCardHeading,
+  mergedPrintName,
   printCenterHeading,
   printSelectionSubtitle
 } from "../src/cardPreview.js";
@@ -24,6 +25,14 @@ test("one selected card and twenty-eight selected cards title the shared viewer"
   assert.equal(printSelectionSubtitle(28), "28 cards selected");
   assert.equal(cardPreviewLoadingMessage(printCenterHeading), "Loading the print PDF…");
   assert.equal(cardPreviewLoadingMessage(honoreeCardHeading), "Loading the honoree card…");
+});
+
+test("the merged PDF name uses today's Bogotá date and the merged card count", () => {
+  assert.equal(mergedPrintName(140, new Date("2026-10-20T18:00:00Z")), "PFOH Reprint Cards - 2026-10-20 - 140 cards");
+  assert.equal(mergedPrintName(1, new Date("2026-10-20T18:00:00Z")), "PFOH Reprint Cards - 2026-10-20 - 1 card");
+  // 03:00 UTC on the 21st is still the 20th in Bogotá (UTC-5).
+  assert.equal(mergedPrintName(28, new Date("2026-10-21T03:00:00Z")), "PFOH Reprint Cards - 2026-10-20 - 28 cards");
+  assert.equal(mergedPrintName(28, new Date("2026-10-21T05:00:00Z")), "PFOH Reprint Cards - 2026-10-21 - 28 cards");
 });
 
 test("Print Center row and merged download open the Honoree Card viewer", () => {
@@ -60,7 +69,9 @@ test("Print Center row and merged download open the Honoree Card viewer", () => 
   assert.doesNotMatch(merged, /\bgeneratePdf|pdf-missing/);
   assert.match(source, /adminApi\.regenerateHonoreePdf\(instance, account, honoree\.id\)/);
   assert.match(merged, /mergePrintBatch\(/);
-  assert.match(merged, /finishCardPreview\(requestId, doneTitle, url, true, printCenterHeading, downloadName\)/);
+  assert.match(merged, /const mergedName = mergedPrintName\(cards\.length\)/);
+  assert.match(merged, /title: mergedName/);
+  assert.match(merged, /finishCardPreview\(requestId, doneTitle, url, true, printCenterHeading, `\$\{mergedName\}\.pdf`\)/);
   assert.ok(merged.indexOf("beginCardPreview(title, printCenterHeading") < merged.indexOf("planPrintBatch"));
   assert.ok(merged.indexOf("preparePrintBatch(") < merged.indexOf("mergePrintBatch("));
   assert.doesNotMatch(merged, /fetchMergedPrintPdf|openCardBlob|setTimeout/);
@@ -151,13 +162,16 @@ test("140 cards: every card is regenerated before it is loaded, stale stored PDF
   assert.equal(printBatchProgressText(progress[37]), "Regenerating card 37/140");
 
   const merging = [];
-  const merged = await mergePrintBatch(cards, prepared.pdfs, { onProgress: (entry) => merging.push(entry), regenerated: prepared.regenerated });
+  const title = "PFOH Reprint Cards - 2026-10-20 - 140 cards";
+  const merged = await mergePrintBatch(cards, prepared.pdfs, { onProgress: (entry) => merging.push(entry), regenerated: prepared.regenerated, title });
   assert.deepEqual(merged.failures, []);
   assert.deepEqual(merging.map((entry) => entry.done), Array.from({ length: 140 }, (_, index) => index + 1));
   assert.ok(merging.every((entry) => entry.regenerated === 140));
   assert.equal(printBatchProgressText(merging.at(-1)), "Merging card 140/140");
   const output = await PDFDocument.load(merged.bytes);
   assert.equal(output.getPageCount(), 140);
+  assert.equal(output.getTitle(), title);
+  assert.equal(output.catalog.getViewerPreferences()?.getDisplayDocTitle(), true);
 });
 
 test("a forced regenerate failure names the card and the step, does not fall back to the stored PDF, and no merged PDF is built", async () => {

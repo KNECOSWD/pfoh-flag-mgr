@@ -54,7 +54,7 @@ import {
   cardPreviewLoadingMessage,
   honoreeCardDownloadName,
   honoreeCardHeading,
-  mergedPrintDownloadName,
+  mergedPrintName,
   printCenterHeading,
   printSelectionSubtitle
 } from "./cardPreview.js";
@@ -2558,7 +2558,7 @@ export default function App() {
     }
 
     const ids = [...selectedPrintIds];
-    const downloadName = mergedPrintDownloadName();
+    const downloadName = `${mergedPrintName(count)}.pdf`;
     setError("");
     printBatchAbort.current?.abort();
     const controller = new AbortController();
@@ -2618,10 +2618,12 @@ export default function App() {
         return;
       }
 
+      const mergedName = mergedPrintName(cards.length);
       const merged = await mergePrintBatch(cards, prepared.pdfs as ArrayBuffer[], {
         onProgress: showProgress,
         signal: controller.signal,
-        regenerated: prepared.regenerated
+        regenerated: prepared.regenerated,
+        title: mergedName
       });
       if (merged.failures.length > 0 || !merged.bytes) {
         failBatch(printBatchFailureSummary(merged.failures, cards.length), merged.failures);
@@ -2631,7 +2633,7 @@ export default function App() {
       if (!isCurrent()) return;
       const url = URL.createObjectURL(new Blob([merged.bytes as BlobPart], { type: "application/pdf" }));
       const doneTitle = `${printSelectionSubtitle(cards.length)}, merged. Every card was regenerated with its full artwork first.`;
-      finishCardPreview(requestId, doneTitle, url, true, printCenterHeading, downloadName);
+      finishCardPreview(requestId, doneTitle, url, true, printCenterHeading, `${mergedName}.pdf`);
     } catch (err) {
       if (controller.signal.aborted) return;
       failBatch(reportableErrorMessage(err, "Unable to prepare the print PDF."));
