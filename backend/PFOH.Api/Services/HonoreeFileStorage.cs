@@ -422,7 +422,7 @@ public class HonoreeFileStorage(IConfiguration configuration)
         return null;
     }
 
-    public async Task<byte[]?> DownloadPdfAsync(int honoreeId, CancellationToken ct)
+    public virtual async Task<byte[]?> DownloadPdfAsync(int honoreeId, CancellationToken ct)
     {
         var container = await GetContainerAsync(PdfContainerName, ct);
         var blob = container.GetBlobClient(GetHonoreePdfFileName(honoreeId));
@@ -438,7 +438,7 @@ public class HonoreeFileStorage(IConfiguration configuration)
         return memory.ToArray();
     }
 
-    public async Task<string> UploadPdfAsync(int honoreeId, byte[] pdf, CancellationToken ct)
+    public virtual async Task<string> UploadPdfAsync(int honoreeId, byte[] pdf, CancellationToken ct)
     {
         var fileName = GetHonoreePdfFileName(honoreeId);
         var container = await GetContainerAsync(PdfContainerName, ct);

@@ -10999,6 +10999,94 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
   width: auto !important;
 }
 
+.printBatchStatus,
+.printBatchError {
+  overflow: auto;
+}
+
+.printBatchBody {
+  display: grid;
+  gap: 0.6rem;
+  width: min(34rem, 100%);
+  justify-items: center;
+}
+
+.printBatchBody p {
+  margin: 0;
+}
+
+.printBatchCounter {
+  color: #173b73;
+  font-size: clamp(2.4rem, 9vw, 3.6rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.printBatchPhase {
+  color: #173b73;
+  font-size: 1.05rem;
+}
+
+.printBatchBar {
+  width: 100%;
+  height: 0.85rem;
+  accent-color: #173b73;
+}
+
+.printBatchCurrent {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.printBatchCounts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem 1.25rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.printBatchFailedCount {
+  color: #9b1c1c;
+}
+
+.printBatchHint {
+  font-weight: 400;
+  font-size: 0.85rem;
+  color: #475569;
+}
+
+.printBatchError {
+  place-items: start center;
+}
+
+.printBatchError .printBatchBody {
+  width: min(48rem, 100%);
+  justify-items: stretch;
+  text-align: left;
+}
+
+.printBatchFailures {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.printBatchFailures li {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #f3c2c2;
+  border-radius: 0.5rem;
+  background: #fff;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 760px) {
   .appConfirmOverlay.cardPreviewOverlay {
     padding: 0 !important;

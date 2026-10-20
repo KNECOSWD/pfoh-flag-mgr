@@ -666,8 +666,30 @@ public class PfohApiFactory : WebApplicationFactory<Program>
 
         public List<string?> DownloadedImages { get; } = new();
 
+        public Dictionary<int, byte[]> Pdfs { get; } = new();
+
+        public HashSet<int> UnreadablePdfs { get; } = new();
+
+        public override Task<byte[]?> DownloadPdfAsync(int honoreeId, CancellationToken ct)
+        {
+            if (UnreadablePdfs.Contains(honoreeId))
+            {
+                throw new IOException("Synthetic storage read failure.");
+            }
+
+            return Task.FromResult(Pdfs.TryGetValue(honoreeId, out var pdf) ? pdf : null);
+        }
+
+        public override Task<string> UploadPdfAsync(int honoreeId, byte[] pdf, CancellationToken ct)
+        {
+            Pdfs[honoreeId] = pdf;
+            return Task.FromResult(GetHonoreePdfFileName(honoreeId));
+        }
+
         public void Reset()
         {
+            Pdfs.Clear();
+            UnreadablePdfs.Clear();
             Photos.Clear();
             DeletedPendingPhotos.Clear();
             DownloadedImages.Clear();

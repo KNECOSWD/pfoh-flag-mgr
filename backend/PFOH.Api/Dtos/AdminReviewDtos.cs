@@ -62,3 +62,7 @@ public class BulkPrintRequest
     [Required]
     public List<int> ChangeRequestIds { get; set; } = new();
 }
+
+public sealed record PrintBatchCardDto(int ChangeRequestId, int HonoreeId, string HonoreeName);
+
+public sealed record PrintBatchPlanDto(IReadOnlyList<PrintBatchCardDto> Cards, IReadOnlyList<int> NotInQueue);

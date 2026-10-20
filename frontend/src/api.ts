@@ -5,7 +5,7 @@ import {
 } from "@azure/msal-browser";
 import { loginRequest } from "./authConfig";
 import { isPublicApiPath } from "./publicApi.js";
-import { sharedTokenRequest, withNetworkRetry } from "./tokenRequest.js";
+import { isRetryableNetworkError, sharedTokenRequest, withNetworkRetry } from "./tokenRequest.js";
 
 export class ApiError extends Error {
   status: number;
@@ -13,11 +13,12 @@ export class ApiError extends Error {
   url?: string;
   requestId?: string;
   detail?: string;
+  serverMessage?: string;
 
   constructor(
     message: string,
     status: number,
-    options: { method?: string; url?: string; requestId?: string; detail?: string } = {}
+    options: { method?: string; url?: string; requestId?: string; detail?: string; serverMessage?: string } = {}
   ) {
     super(message);
     this.name = "ApiError";
@@ -26,6 +27,7 @@ export class ApiError extends Error {
     this.url = options.url;
     this.requestId = options.requestId;
     this.detail = options.detail;
+    this.serverMessage = options.serverMessage;
   }
 }
 
@@ -94,7 +96,8 @@ async function buildApiError(response: Response, method: string, url: string): P
     method,
     url,
     requestId,
-    detail: detail || rawMessage
+    detail: detail || rawMessage,
+    serverMessage: serverMessage || undefined
   });
 }
 
@@ -278,6 +281,17 @@ export type AdminPrintQueueItem = {
   cardPrintedUtc?: string | null;
 };
 
+export type PrintBatchCard = {
+  changeRequestId: number;
+  honoreeId: number;
+  honoreeName: string;
+};
+
+export type PrintBatchPlan = {
+  cards: PrintBatchCard[];
+  notInQueue: number[];
+};
+
 export type AdminFlagPosition = {
   flagGridId: number;
   flagGridName: string;
@@ -364,7 +378,59 @@ export async function fetchAuthorizedBlob(
     throw await buildApiError(response, method, url);
   }
 
-  return response.blob();
+  try {
+    return await response.blob();
+  } catch (error) {
+    throw buildNetworkError(error, method, url);
+  }
+}
+
+async function fetchQueuedCardPdf(
+  instance: IPublicClientApplication,
+  account: AccountInfo,
+  changeRequestId: number,
+  signal?: AbortSignal
+): Promise<ArrayBuffer | null> {
+  const url = `${apiBase}/api/admin/print/cards/${changeRequestId}/pdf`;
+  const token = await getToken(instance, account);
+
+  // No timeout signal here: one slow card must not abort a batch. Only the caller's
+  // signal (Close in the Print Center) cancels it.
+  const attempt = async () => {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "GET",
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+        signal
+      });
+    } catch (error) {
+      throw buildNetworkError(error, "GET", url);
+    }
+
+    if (response.status === 404) {
+      const body = (await response.clone().json().catch(() => null)) as { code?: string } | null;
+      if (body?.code === "pdf-missing") return null;
+    }
+
+    if (!response.ok) {
+      throw await buildApiError(response, "GET", url);
+    }
+
+    try {
+      return await response.arrayBuffer();
+    } catch (error) {
+      throw buildNetworkError(error, "GET", url);
+    }
+  };
+
+  try {
+    return await attempt();
+  } catch (error) {
+    if (signal?.aborted || !isRetryableNetworkError(error)) throw error;
+    return attempt();
+  }
 }
 
 
@@ -652,16 +718,19 @@ export const adminApi = {
       method: "POST"
     }),
 
-  fetchMergedPrintPdf: (
+  planPrintBatch: (
     instance: IPublicClientApplication,
     account: AccountInfo,
-    changeRequestIds: number[]
+    changeRequestIds: number[],
+    signal?: AbortSignal
   ) =>
-    fetchAuthorizedBlob(instance, account, `${apiBase}/api/admin/print/merge`, {
+    request<PrintBatchPlan>(instance, account, "/api/admin/print/plan", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ changeRequestIds })
+      body: JSON.stringify({ changeRequestIds }),
+      signal
     }),
+
+  fetchQueuedCardPdf,
 
 
   queueHonoreeReprint: (
@@ -676,14 +745,16 @@ export const adminApi = {
   regenerateHonoreePdf: (
     instance: IPublicClientApplication,
     account: AccountInfo,
-    honoreeId: number
+    honoreeId: number,
+    signal?: AbortSignal
   ) =>
     request<RegeneratePdfResult>(
       instance,
       account,
       `/api/honorees/${honoreeId}/pdf/regenerate`,
       {
-        method: "POST"
+        method: "POST",
+        signal
       }
     ),
 

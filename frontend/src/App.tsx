@@ -59,6 +59,15 @@ import {
   printSelectionSubtitle
 } from "./cardPreview.js";
 import {
+  mergePrintBatch,
+  preparePrintBatch,
+  printBatchFailureSummary,
+  printBatchProgressText,
+  printCardLabel,
+  printFailureStepLabel
+} from "./printBatch.js";
+import type { PrintBatchFailure, PrintBatchProgress } from "./printBatch.js";
+import {
   dropWithdrawnSubmission,
   fieldChangeText,
   flagSpotLabel,
@@ -339,7 +348,18 @@ type CardPreviewState = {
   revoke?: boolean;
   message?: string;
   downloadName?: string;
+  progress?: PrintBatchProgress;
+  failures?: PrintBatchFailure[];
 };
+
+function printCardFailureMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    const reference = error.requestId ? ` Reference: ${error.requestId}.` : "";
+    const status = error.status ? `HTTP ${error.status}: ` : "";
+    return `${status}${error.serverMessage || error.message}${reference}`;
+  }
+  return error instanceof Error && error.message.trim() ? error.message : String(error);
+}
 
 function reportableErrorMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError) {
@@ -406,6 +426,7 @@ export default function App() {
   const [cardPreview, setCardPreview] = useState<CardPreviewState | null>(null);
   const cardPreviewFrameRef = useRef<HTMLIFrameElement | null>(null);
   const cardPreviewRequest = useRef(0);
+  const printBatchAbort = useRef<AbortController | null>(null);
   const cardPreviewRef = useRef<CardPreviewState | null>(null);
   cardPreviewRef.current = cardPreview;
   const [printQueue, setPrintQueue] = useState<AdminPrintQueueItem[]>([]);
@@ -2295,6 +2316,8 @@ export default function App() {
 
   function closeCardPreview() {
     cardPreviewRequest.current += 1;
+    printBatchAbort.current?.abort();
+    printBatchAbort.current = null;
     setCardPreview((current) => {
       if (current?.revoke && current.url) URL.revokeObjectURL(current.url);
       return null;
@@ -2523,7 +2546,7 @@ export default function App() {
     }
   }
 
-  function openSelectedPrintPdf() {
+  async function openSelectedPrintPdf() {
     if (!account) return;
 
     const count = selectedPrintIds.length;
@@ -2535,15 +2558,88 @@ export default function App() {
     }
 
     const ids = [...selectedPrintIds];
-    openCardBlob(
-      title,
-      () => adminApi.fetchMergedPrintPdf(instance, account, ids),
-      {
-        heading: printCenterHeading,
-        downloadName: mergedPrintDownloadName(),
-        errorFallback: "Unable to open the print PDF."
+    const downloadName = mergedPrintDownloadName();
+    setError("");
+    printBatchAbort.current?.abort();
+    const controller = new AbortController();
+    printBatchAbort.current = controller;
+    const requestId = beginCardPreview(title, printCenterHeading, downloadName);
+    const isCurrent = () => cardPreviewRequest.current === requestId && !controller.signal.aborted;
+    const showProgress = (progress: PrintBatchProgress) => {
+      if (!isCurrent()) return;
+      setCardPreview((current) => (current && current.phase === "loading" ? { ...current, progress } : current));
+    };
+    const failBatch = (message: string, failures?: PrintBatchFailure[]) => {
+      if (!isCurrent()) return;
+      setCardPreview({ heading: printCenterHeading, title, phase: "error", message, failures });
+    };
+
+    try {
+      const plan = await adminApi.planPrintBatch(instance, account, ids, controller.signal);
+      if (plan.notInQueue.length > 0) {
+        const failures = plan.notInQueue.map((id): PrintBatchFailure => {
+          const item = printQueue.find((entry) => entry.changeRequestId === id);
+          return {
+            card: { changeRequestId: id, honoreeId: item?.honoreeId ?? 0, honoreeName: item?.honoreeName ?? `Queue item #${id}` },
+            step: "queue",
+            message: "It was removed, printed, or changed after the Print Center loaded. Refresh the page and select it again."
+          };
+        });
+        failBatch(printBatchFailureSummary(failures, ids.length), failures);
+        return;
       }
-    );
+
+      const cards = plan.cards;
+      const prepared = await preparePrintBatch({
+        cards,
+        loadStoredPdf: async (card, signal) => {
+          try {
+            return await adminApi.fetchQueuedCardPdf(instance, account, card.changeRequestId, signal);
+          } catch (err) {
+            if (signal?.aborted) throw err;
+            throw new Error(printCardFailureMessage(err));
+          }
+        },
+        generatePdf: async (card, signal) => {
+          try {
+            const result = await adminApi.regenerateHonoreePdf(instance, account, card.honoreeId, signal);
+            if (!result.uploaded) throw new Error(result.message || "The card PDF could not be generated.");
+          } catch (err) {
+            if (signal?.aborted) throw err;
+            throw new Error(printCardFailureMessage(err));
+          }
+        },
+        onProgress: showProgress,
+        signal: controller.signal
+      });
+
+      if (prepared.failures.length > 0) {
+        failBatch(printBatchFailureSummary(prepared.failures, cards.length), prepared.failures);
+        return;
+      }
+
+      const merged = await mergePrintBatch(cards, prepared.pdfs as ArrayBuffer[], {
+        onProgress: showProgress,
+        signal: controller.signal,
+        generated: prepared.generated
+      });
+      if (merged.failures.length > 0 || !merged.bytes) {
+        failBatch(printBatchFailureSummary(merged.failures, cards.length), merged.failures);
+        return;
+      }
+
+      if (!isCurrent()) return;
+      const url = URL.createObjectURL(new Blob([merged.bytes as BlobPart], { type: "application/pdf" }));
+      const doneTitle = `${printSelectionSubtitle(cards.length)}, merged.${prepared.generated > 0
+        ? ` ${prepared.generated} missing card PDF${prepared.generated === 1 ? " was" : "s were"} generated first.`
+        : ""}`;
+      finishCardPreview(requestId, doneTitle, url, true, printCenterHeading, downloadName);
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      failBatch(reportableErrorMessage(err, "Unable to prepare the print PDF."));
+    } finally {
+      if (printBatchAbort.current === controller) printBatchAbort.current = null;
+    }
   }
 
   async function markSelectedPrinted() {
@@ -2671,6 +2767,45 @@ export default function App() {
               title={cardPreview.heading === printCenterHeading ? `${cardPreview.heading}, ${cardPreview.title}` : `Honoree card for ${cardPreview.title}`}
               src={honoreeCardViewUrl(cardPreview.url)}
             />
+          ) : cardPreview.phase === "loading" && cardPreview.progress ? (
+            <div className="cardPreviewStatus printBatchStatus" role="status" aria-live="polite">
+              <div className="printBatchBody">
+                <p className="printBatchCounter">{cardPreview.progress.done}/{cardPreview.progress.total}</p>
+                <p className="printBatchPhase">{printBatchProgressText(cardPreview.progress)}</p>
+                <progress
+                  className="printBatchBar"
+                  max={Math.max(1, cardPreview.progress.total)}
+                  value={cardPreview.progress.done}
+                  aria-label={printBatchProgressText(cardPreview.progress)}
+                />
+                <p className="printBatchCurrent">
+                  {cardPreview.progress.current
+                    ? `${cardPreview.progress.phase === "merging" ? "Added" : "Finished"} ${printCardLabel(cardPreview.progress.current)}`
+                    : "Checking each card's stored PDF…"}
+                </p>
+                <p className="printBatchCounts">
+                  <span>{cardPreview.progress.generated} missing PDF{cardPreview.progress.generated === 1 ? "" : "s"} generated</span>
+                  <span className={cardPreview.progress.failed > 0 ? "printBatchFailedCount" : undefined}>
+                    {cardPreview.progress.failed} failed
+                  </span>
+                </p>
+                <p className="printBatchHint">Each card is checked on its own, so large batches don't time out. Keep this window open. Close cancels.</p>
+              </div>
+            </div>
+          ) : cardPreview.phase === "error" && cardPreview.failures?.length ? (
+            <div className="cardPreviewStatus error printBatchError" role="alert">
+              <div className="printBatchBody">
+                <p>{cardPreview.message}</p>
+                <ul className="printBatchFailures">
+                  {cardPreview.failures.map((failure) => (
+                    <li key={`${failure.card.changeRequestId}-${failure.step}`}>
+                      <strong>{printCardLabel(failure.card)}</strong>
+                      <span>{printFailureStepLabel(failure)}: {failure.message}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           ) : (
             <p className={`cardPreviewStatus${cardPreview.phase === "error" ? " error" : ""}`} role={cardPreview.phase === "error" ? "alert" : "status"}>
               {cardPreview.phase === "error" ? cardPreview.message : cardPreviewLoadingMessage(cardPreview.heading)}
