@@ -17,6 +17,7 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
     public DbSet<HonoreeSearchResult> HonoreeSearchResults => Set<HonoreeSearchResult>();
     public DbSet<HonoreeChangeRequest> HonoreeChangeRequests => Set<HonoreeChangeRequest>();
+    public DbSet<CardPrintEvent> CardPrintEvents => Set<CardPrintEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -238,6 +239,16 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
                 .WithMany()
                 .HasForeignKey(e => e.ServiceBranchCategoryId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<CardPrintEvent>(entity =>
+        {
+            entity.ToTable("CardPrintEvents", "dbo");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.PrintedBy).HasMaxLength(CardPrintEventLimits.PrintedByMaxLength).IsRequired();
+            entity.Property(e => e.Comment).HasMaxLength(CardPrintEventLimits.CommentMaxLength);
+            entity.HasIndex(e => e.CardPrintBatchId).IsUnique();
+            entity.HasIndex(e => e.PrintedUtc);
         });
     }
 }

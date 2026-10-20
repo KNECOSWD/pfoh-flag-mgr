@@ -12636,3 +12636,70 @@ html.isMapFullscreen .publicFlagLevel {
     min-height: 2.55rem;
   }
 }
+
+.mobileDrawerNav a.drawerExternalLink {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.25;
+}
+
+.markPrintedComment {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.9rem;
+  color: #173b73;
+  font-weight: 750;
+}
+
+.markPrintedComment textarea {
+  width: 100%;
+  min-height: 6.5rem;
+  resize: vertical;
+}
+
+.markPrintedCount {
+  margin: 0.35rem 0 0;
+  color: #526179;
+  font-size: 0.82rem;
+}
+
+.printHistory {
+  margin-top: 1.35rem;
+}
+
+.printHistory h3 {
+  margin: 0 0 0.2rem;
+}
+
+.printHistoryList {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.printHistoryList li {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid #dce6f3;
+  border-radius: 0.75rem;
+  background: #f7f9fc;
+}
+
+.printHistoryWhen,
+.printHistoryWho,
+.printHistoryCount {
+  color: #173b73;
+  font-weight: 750;
+}
+
+.printHistoryComment {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: #24344d;
+}

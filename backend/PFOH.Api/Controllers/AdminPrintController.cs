@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
+using PFOH.Api.Extensions;
+using PFOH.Api.Models;
 using PFOH.Api.Services;
 
 namespace PFOH.Api.Controllers;
@@ -90,14 +92,44 @@ public class AdminPrintController(
         return File(pdf, "application/pdf", fileName);
     }
 
+    [HttpGet("history")]
+    public async Task<ActionResult<IReadOnlyList<CardPrintEventDto>>> History(CancellationToken ct)
+    {
+        await CardPrintEventSchema.EnsureAsync(db, ct);
+        var events = await db.CardPrintEvents
+            .AsNoTracking()
+            .OrderByDescending(e => e.PrintedUtc)
+            .ThenByDescending(e => e.Id)
+            .Select(e => new CardPrintEventDto(e.CardPrintBatchId, e.PrintedUtc, e.PrintedBy, e.CardCount, e.Comment))
+            .ToListAsync(ct);
+        return Ok(events);
+    }
+
     [HttpPost("mark-printed")]
     public async Task<IActionResult> MarkPrinted(
-        [FromBody] BulkPrintRequest request,
+        [FromBody] MarkPrintedRequest request,
         CancellationToken ct)
     {
         if (request.ChangeRequestIds.Count == 0)
         {
             return BadRequest("Select at least one item to mark printed.");
+        }
+
+        var comment = string.IsNullOrWhiteSpace(request.Comment) ? null : request.Comment.Trim();
+        if (comment is { Length: > CardPrintEventLimits.CommentMaxLength })
+        {
+            return BadRequest($"Comments must be {CardPrintEventLimits.CommentMaxLength} characters or fewer.");
+        }
+
+        var printedBy = User.GetEmail();
+        if (string.IsNullOrWhiteSpace(printedBy))
+        {
+            printedBy = User.GetDisplayName() ?? "PFOH.Admin";
+        }
+
+        if (printedBy.Length > CardPrintEventLimits.PrintedByMaxLength)
+        {
+            printedBy = printedBy[..CardPrintEventLimits.PrintedByMaxLength];
         }
 
         var batchId = Guid.NewGuid();
@@ -115,6 +147,16 @@ public class AdminPrintController(
             change.CardPrintedUtc = now;
             change.CardPrintBatchId = batchId;
         }
+
+        await CardPrintEventSchema.EnsureAsync(db, ct);
+        db.CardPrintEvents.Add(new CardPrintEvent
+        {
+            CardPrintBatchId = batchId,
+            PrintedBy = printedBy,
+            PrintedUtc = now,
+            CardCount = changes.Count,
+            Comment = comment
+        });
 
         await db.SaveChangesAsync(ct);
 

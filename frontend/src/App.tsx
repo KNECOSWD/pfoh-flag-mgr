@@ -7,6 +7,7 @@ import {
   AdminFlagPosition,
   AdminUnassignedHonoree,
   AdminPrintQueueItem,
+  CardPrintEvent,
   AdminReviewItem,
   ApiError,
   FlagClaim,
@@ -55,7 +56,9 @@ import {
   cardPreviewLoadingMessage,
   honoreeCardDownloadName,
   honoreeCardHeading,
+  formatPrintEventTime,
   mergedPrintName,
+  PRINT_EVENT_COMMENT_MAX,
   printCenterHeading,
   printSelectionSubtitle
 } from "./cardPreview.js";
@@ -431,6 +434,10 @@ export default function App() {
   const cardPreviewRef = useRef<CardPreviewState | null>(null);
   cardPreviewRef.current = cardPreview;
   const [printQueue, setPrintQueue] = useState<AdminPrintQueueItem[]>([]);
+  const [printHistory, setPrintHistory] = useState<CardPrintEvent[]>([]);
+  const [printHistoryError, setPrintHistoryError] = useState("");
+  const [markPrintedOpen, setMarkPrintedOpen] = useState(false);
+  const [markPrintedComment, setMarkPrintedComment] = useState("");
   const [selectedPrintIds, setSelectedPrintIds] = useState<number[]>([]);
   const [adminBusyId, setAdminBusyId] = useState<number | null>(null);
   const [adminBusyAction, setAdminBusyAction] = useState<"approve-reprint" | "approve" | "reject" | null>(null);
@@ -1154,6 +1161,8 @@ export default function App() {
       setIsAdmin(false);
       setPendingReviews([]);
       setPrintQueue([]);
+      setPrintHistory([]);
+      setPrintHistoryError("");
       setFlagPositions([]);
       setSelectedPrintIds([]);
       setReviewLoadError("");
@@ -1187,6 +1196,19 @@ export default function App() {
       setFlagPositions(positionsResult.value);
     } else {
       setFlagPositions([]);
+    }
+
+    void loadPrintHistory();
+  }
+
+  async function loadPrintHistory() {
+    if (!account) return;
+
+    try {
+      setPrintHistory(await adminApi.printHistory(instance, account));
+      setPrintHistoryError("");
+    } catch (err) {
+      setPrintHistoryError(reportableErrorMessage(err, "Print history could not be loaded."));
     }
   }
 
@@ -2637,7 +2659,7 @@ export default function App() {
     }
   }
 
-  async function markSelectedPrinted() {
+  function markSelectedPrinted() {
     if (!account) return;
 
     if (selectedPrintIds.length === 0) {
@@ -2645,18 +2667,32 @@ export default function App() {
       return;
     }
 
-    const ok = await requestConfirmation(
-      "Mark the selected card reprints as printed?",
-      { title: "Mark printed", confirmText: "Mark printed" }
-    );
-    if (!ok) return;
+    setMarkPrintedComment("");
+    setMarkPrintedOpen(true);
+  }
+
+  function cancelMarkPrinted() {
+    setMarkPrintedOpen(false);
+    setMarkPrintedComment("");
+  }
+
+  async function confirmMarkPrinted() {
+    if (!account || !markPrintedOpen) return;
+
+    const comment = markPrintedComment.trim();
+    if (comment.length > PRINT_EVENT_COMMENT_MAX) {
+      setError(`Comments must be ${PRINT_EVENT_COMMENT_MAX} characters or fewer.`);
+      return;
+    }
 
     setSaving(true);
     setError("");
     setNotice("");
 
     try {
-      const result = await adminApi.markPrinted(instance, account, selectedPrintIds);
+      const result = await adminApi.markPrinted(instance, account, selectedPrintIds, comment);
+      setMarkPrintedOpen(false);
+      setMarkPrintedComment("");
       await loadData();
       setNotice(`${result.count} item(s) marked printed.`);
     } catch (err) {
@@ -2927,7 +2963,7 @@ export default function App() {
                   >
                     {publicCopy.submitHonoree}
                   </a>
-                  <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer" onClick={() => setMobileNavOpen(false)}>
+                  <a className="drawerExternalLink" href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer" onClick={() => setMobileNavOpen(false)}>
                     PlanoFlagsOfHonor.com
                   </a>
                   {chrome.adminLinks ? (
@@ -3203,6 +3239,46 @@ export default function App() {
                   </button>
                   <button type="button" onClick={() => void signIn("login", authPrompt)}>
                     Log in
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {markPrintedOpen ? (
+            <div
+              className="modalOverlay appConfirmOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="mark-printed-title"
+              onClick={cancelMarkPrinted}
+            >
+              <div className="modalCard appConfirmModal markPrintedModal" onClick={(event) => event.stopPropagation()}>
+                <div>
+                  <p className="eyebrow">Print Center</p>
+                  <h2 id="mark-printed-title">Mark printed</h2>
+                  <p className="helperText">
+                    {selectedPrintIds.length} card{selectedPrintIds.length === 1 ? "" : "s"} in this batch.
+                  </p>
+                  <label className="markPrintedComment" htmlFor="mark-printed-comment">
+                    Comments
+                    <textarea
+                      id="mark-printed-comment"
+                      rows={4}
+                      maxLength={PRINT_EVENT_COMMENT_MAX}
+                      value={markPrintedComment}
+                      onChange={(event) => setMarkPrintedComment(event.target.value.slice(0, PRINT_EVENT_COMMENT_MAX))}
+                      placeholder="Optional"
+                    />
+                  </label>
+                  <p className="markPrintedCount">{markPrintedComment.length}/{PRINT_EVENT_COMMENT_MAX}</p>
+                </div>
+                <div className="modalActions">
+                  <button type="button" className="secondary" onClick={cancelMarkPrinted}>
+                    Cancel
+                  </button>
+                  <button type="button" onClick={() => void confirmMarkPrinted()} disabled={saving}>
+                    Confirm
                   </button>
                 </div>
               </div>
@@ -4496,6 +4572,27 @@ export default function App() {
                   </div>
                 </section>
               )}
+
+              <section className="printHistory" aria-label="Print history">
+                <h3>Print history</h3>
+                <p className="helperText">Times are Colombia Time (COT).</p>
+                {printHistoryError ? (
+                  <p className="message error" role="alert">{printHistoryError}</p>
+                ) : printHistory.length === 0 ? (
+                  <p className="compactEmptyState">No cards have been marked printed yet.</p>
+                ) : (
+                  <ul className="printHistoryList">
+                    {printHistory.map((event) => (
+                      <li key={event.batchId}>
+                        <span className="printHistoryWhen">{formatPrintEventTime(event.printedUtc)}</span>
+                        <span className="printHistoryWho">{event.printedBy}</span>
+                        <span className="printHistoryCount">{event.cardCount} card{event.cardCount === 1 ? "" : "s"}</span>
+                        {event.comment ? <span className="printHistoryComment">{event.comment}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
 
               </section>
               ) : null}

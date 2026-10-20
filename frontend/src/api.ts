@@ -269,6 +269,14 @@ export type RegeneratePdfResult = {
   message?: string;
 };
 
+export type CardPrintEvent = {
+  batchId: string;
+  printedUtc: string;
+  printedBy: string;
+  cardCount: number;
+  comment?: string | null;
+};
+
 export type AdminPrintQueueItem = {
   changeRequestId: number;
   claimId: number;
@@ -771,12 +779,16 @@ export const adminApi = {
   markPrinted: (
     instance: IPublicClientApplication,
     account: AccountInfo,
-    changeRequestIds: number[]
+    changeRequestIds: number[],
+    comment?: string
   ) =>
     request<{ batchId: string; count: number }>(instance, account, "/api/admin/print/mark-printed", {
       method: "POST",
-      body: JSON.stringify({ changeRequestIds })
+      body: JSON.stringify({ changeRequestIds, comment: comment ?? "" })
     }),
+
+  printHistory: (instance: IPublicClientApplication, account: AccountInfo) =>
+    request<CardPrintEvent[]>(instance, account, "/api/admin/print/history"),
 
   flagPositions: (instance: IPublicClientApplication, account: AccountInfo) =>
     request<AdminFlagPosition[]>(instance, account, "/api/admin/review/flag-positions"),
