@@ -107,7 +107,7 @@ test("the public nav links Flag Map right after Search, and the admin nav item r
   assert.equal(app.split("siteNav.filter((item) => item.show)").length - 1, 2);
   assert.match(
     app,
-    /const adminNav: \{ route: AppRoute; label: string \}\[\] = \[\s*\{ route: "\/admin\/review", label: "Review" \},\s*\{ route: "\/admin\/printing", label: "Reprint Queue" \},\s*\{ route: "\/admin\/flag-map", label: "Flag Manager" \}\s*\];/
+    /const adminNav: \{ route: AppRoute; label: string \}\[\] = \[\s*\{ route: "\/admin\/review", label: "Review" \},\s*\{ route: "\/admin\/printing", label: "Print Center" \},\s*\{ route: "\/admin\/flag-map", label: "Flag Manager" \}\s*\];/
   );
   assert.equal(app.split("<AdminNavMenu ").length - 1, 2);
   assert.match(app, /menuId="admin-nav-desktop" layout="bar"/);

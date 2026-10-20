@@ -3,7 +3,7 @@
 ## 2.0.16
 
 - In the Print Center, the line under the heading after a merged PDF is ready now ends at "140 cards selected, merged."
-- Signed-in administrators open Review, Reprint Queue, and Flag Manager from one Admin menu, on desktop and in the phone menu. Search, Flag Map, and the rest of the public navigation are unchanged, and signed-out visitors do not see the Admin menu. Each admin page keeps its own address. The Reprint Queue page is still at /admin/printing. Its heading was Print Center.
+- Signed-in administrators open Review, Print Center, and Flag Manager from one Admin menu, on desktop and in the phone menu. Search, Flag Map, and the rest of the public navigation are unchanged, and signed-out visitors do not see the Admin menu. Each admin page keeps its own address.
 
 ## 2.0.15
 

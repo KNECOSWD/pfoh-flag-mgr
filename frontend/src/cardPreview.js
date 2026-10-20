@@ -1,5 +1,5 @@
 export const honoreeCardHeading = "Honoree Card";
-export const printCenterHeading = "Reprint Queue";
+export const printCenterHeading = "Print Center";
 export const honoreeCardDownloadName = "honoree-card.pdf";
 
 /**
