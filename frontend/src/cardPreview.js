@@ -19,10 +19,20 @@ export function cardPreviewLoadingMessage(heading) {
   return "Loading the honoree card…";
 }
 
+const bogotaDate = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Bogota",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit"
+});
+
 /**
- * @param {Date | string} [date]
+ * Title of the merged Print Center PDF, also its download name without ".pdf".
+ * The date is today in Bogotá time (COT).
+ * @param {number} count
+ * @param {Date} [date]
  */
-export function mergedPrintDownloadName(date = new Date()) {
-  const iso = date instanceof Date ? date.toISOString() : String(date);
-  return `pfoh-card-reprints-${iso.slice(0, 10)}.pdf`;
+export function mergedPrintName(count, date = new Date()) {
+  const cards = Math.max(0, Number(count) || 0);
+  return `PFOH Reprint Cards - ${bogotaDate.format(date)} - ${cards} card${cards === 1 ? "" : "s"}`;
 }

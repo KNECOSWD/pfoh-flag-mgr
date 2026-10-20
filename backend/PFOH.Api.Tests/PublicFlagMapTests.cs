@@ -182,11 +182,13 @@ public class PublicFlagMapTests : IClassFixture<PfohApiFactory>
     }
 
     [Fact]
-    public async Task Flag_map_page_sends_the_robots_header()
+    public async Task Flag_map_page_is_indexable_while_its_api_stays_noindex()
     {
         var client = factory.CreateClient();
         var response = await client.GetAsync("/flag-map");
-        Assert.Equal("noindex, nofollow", response.Headers.GetValues("X-Robots-Tag").Single());
+        Assert.False(response.Headers.Contains("X-Robots-Tag"));
+        var api = await client.GetAsync("/api/public/flag-map/sections");
+        Assert.Equal("noindex, nofollow", api.Headers.GetValues("X-Robots-Tag").Single());
     }
 
     private static void Seed(PfohDbContext db)

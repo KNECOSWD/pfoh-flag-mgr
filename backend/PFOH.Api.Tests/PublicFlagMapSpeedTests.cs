@@ -304,7 +304,7 @@ public class PublicFlagMapHtmlTests : IClassFixture<PublicFlagMapHtmlTests.HtmlF
         var client = factory.CreateClient();
         var page = await client.GetAsync("/flag-map");
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
-        Assert.Equal("noindex, nofollow", page.Headers.GetValues("X-Robots-Tag").Single());
+        Assert.False(page.Headers.Contains("X-Robots-Tag"));
         Assert.Contains("no-cache", page.Headers.CacheControl?.ToString(), StringComparison.Ordinal);
         var html = await page.Content.ReadAsStringAsync();
         Assert.Contains("/api/public/flag-map/sections", html, StringComparison.Ordinal);

@@ -54,7 +54,7 @@ import {
   cardPreviewLoadingMessage,
   honoreeCardDownloadName,
   honoreeCardHeading,
-  mergedPrintDownloadName,
+  mergedPrintName,
   printCenterHeading,
   printSelectionSubtitle
 } from "./cardPreview.js";
@@ -543,8 +543,8 @@ export default function App() {
   const isFlagMapRoute = activeRoute === "/admin/flag-map";
   const siteNav: { route: AppRoute; label: string; show: boolean }[] = [
     { route: "/find", label: "Search", show: true },
-    { route: "/my-flags", label: publicCopy.mySubmissions, show: true },
-    { route: "/flag-map", label: "Flag Map", show: false }
+    { route: "/flag-map", label: "Flag Map", show: true },
+    { route: "/my-flags", label: publicCopy.mySubmissions, show: true }
   ];
   const isPrintingRoute = activeRoute === "/admin/printing";
   const isAdminRoute = activeRoute.startsWith("/admin");
@@ -1065,17 +1065,6 @@ export default function App() {
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [kioskLocked]);
-
-  useEffect(() => {
-    if (activeRoute !== "/flag-map") return;
-    const meta = document.createElement("meta");
-    meta.name = "robots";
-    meta.content = "noindex, nofollow";
-    document.head.appendChild(meta);
-    return () => {
-      meta.remove();
-    };
-  }, [activeRoute]);
 
   useEffect(() => {
     if (activeRoute !== "/honor-a-hero" || !account || selectedClaim || isNominating) {
@@ -2558,7 +2547,7 @@ export default function App() {
     }
 
     const ids = [...selectedPrintIds];
-    const downloadName = mergedPrintDownloadName();
+    const downloadName = `${mergedPrintName(count)}.pdf`;
     setError("");
     printBatchAbort.current?.abort();
     const controller = new AbortController();
@@ -2618,10 +2607,12 @@ export default function App() {
         return;
       }
 
+      const mergedName = mergedPrintName(cards.length);
       const merged = await mergePrintBatch(cards, prepared.pdfs as ArrayBuffer[], {
         onProgress: showProgress,
         signal: controller.signal,
-        regenerated: prepared.regenerated
+        regenerated: prepared.regenerated,
+        title: mergedName
       });
       if (merged.failures.length > 0 || !merged.bytes) {
         failBatch(printBatchFailureSummary(merged.failures, cards.length), merged.failures);
@@ -2631,7 +2622,7 @@ export default function App() {
       if (!isCurrent()) return;
       const url = URL.createObjectURL(new Blob([merged.bytes as BlobPart], { type: "application/pdf" }));
       const doneTitle = `${printSelectionSubtitle(cards.length)}, merged. Every card was regenerated with its full artwork first.`;
-      finishCardPreview(requestId, doneTitle, url, true, printCenterHeading, downloadName);
+      finishCardPreview(requestId, doneTitle, url, true, printCenterHeading, `${mergedName}.pdf`);
     } catch (err) {
       if (controller.signal.aborted) return;
       failBatch(reportableErrorMessage(err, "Unable to prepare the print PDF."));
@@ -2879,7 +2870,7 @@ export default function App() {
             ))}
             {chrome.adminLinks ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
             {chrome.adminLinks ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
-            {chrome.adminLinks ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
+            {chrome.adminLinks ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Manager</a> : null}
             <a
               className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
               href="/honor-a-hero"
@@ -2925,7 +2916,7 @@ export default function App() {
                   ))}
                   {chrome.adminLinks ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
                   {chrome.adminLinks ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
-                  {chrome.adminLinks ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
+                  {chrome.adminLinks ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Manager</a> : null}
                   <a
                     className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
                     href="/honor-a-hero"
@@ -4148,11 +4139,11 @@ export default function App() {
               ) : null}
 
               {isFlagMapRoute ? (
-                <section id="flag-position-manager" className="flagPositionManager adminStandalonePanel" aria-label="Flag Map">
+                <section id="flag-position-manager" className="flagPositionManager adminStandalonePanel" aria-label="Flag Manager">
                   <div className="sectionHeader">
                     <div>
                       <p className="eyebrow">Flag grids</p>
-                      <h3>Flag Map</h3>
+                      <h3>Flag Manager</h3>
                       <p className="helperText">
                         
                       </p>

@@ -257,8 +257,7 @@ app.UseRouting();
 app.Use(async (context, next) =>
 {
     var path = context.Request.Path.Value ?? string.Empty;
-    if (path.Equals("/flag-map", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith("/api/public/flag-map", StringComparison.OrdinalIgnoreCase))
+    if (path.StartsWith("/api/public/flag-map", StringComparison.OrdinalIgnoreCase))
     {
         context.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
     }
