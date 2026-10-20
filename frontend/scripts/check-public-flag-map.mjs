@@ -98,10 +98,16 @@ const robots = readFileSync(new URL("../public/robots.txt", import.meta.url), "u
 const page = readFileSync(new URL("../src/PublicFlagMap.tsx", import.meta.url), "utf8");
 const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
 
-test("the hidden flag map route is registered and kept out of the nav", () => {
+test("the public nav links Flag Map right after Search, and the admin nav item reads Flag Manager", () => {
   assert.match(app, /"\/flag-map"/);
-  assert.match(app, /route: "\/flag-map", label: "Flag Map", show: false/);
-  assert.match(app, /siteNav\.filter\(\(item\) => item\.show\)/);
+  assert.match(
+    app,
+    /\{ route: "\/find", label: "Search", show: true \},\s*\{ route: "\/flag-map", label: "Flag Map", show: true \},\s*\{ route: "\/my-flags"/
+  );
+  assert.equal(app.split("siteNav.filter((item) => item.show)").length - 1, 2);
+  const adminLink = /\{chrome\.adminLinks \? <a className=\{activeRoute === "\/admin\/flag-map" \? "isActive" : ""\} href="\/admin\/flag-map" onClick=\{\(event\) => handleRouteLink\(event, "\/admin\/flag-map"\)\}>Flag Manager<\/a> : null\}/g;
+  assert.equal(app.match(adminLink)?.length, 2);
+  assert.doesNotMatch(app, />Flag Map<\/a>/);
   assert.doesNotMatch(app, /footerExplore[\s\S]{0,400}flag-map/);
   assert.match(app, /name = "robots"/);
   assert.match(app, /noindex, nofollow/);

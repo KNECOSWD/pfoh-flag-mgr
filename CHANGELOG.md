@@ -3,6 +3,7 @@
 ## 2.0.15
 
 - In the Print Center, the merged PDF now has a readable name instead of a long code. The PDF viewer's header shows, for example, "PFOH Reprint Cards - 2026-10-20 - 140 cards", using today's date in Bogotá time and the number of cards in the PDF. Download saves the file with the same name, ending in .pdf.
+- The public Flag Map at /flag-map now has a Flag Map link in the site navigation, right after Search, on desktop and in the phone menu. It still works signed out, and what it shows is unchanged. For admins, the Flag Map item in the admin navigation is now called Flag Manager. It still opens the same admin page, and only admins see it.
 
 ## 2.0.14
 

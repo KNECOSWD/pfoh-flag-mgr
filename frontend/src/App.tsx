@@ -543,8 +543,8 @@ export default function App() {
   const isFlagMapRoute = activeRoute === "/admin/flag-map";
   const siteNav: { route: AppRoute; label: string; show: boolean }[] = [
     { route: "/find", label: "Search", show: true },
-    { route: "/my-flags", label: publicCopy.mySubmissions, show: true },
-    { route: "/flag-map", label: "Flag Map", show: false }
+    { route: "/flag-map", label: "Flag Map", show: true },
+    { route: "/my-flags", label: publicCopy.mySubmissions, show: true }
   ];
   const isPrintingRoute = activeRoute === "/admin/printing";
   const isAdminRoute = activeRoute.startsWith("/admin");
@@ -2881,7 +2881,7 @@ export default function App() {
             ))}
             {chrome.adminLinks ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
             {chrome.adminLinks ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
-            {chrome.adminLinks ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
+            {chrome.adminLinks ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Manager</a> : null}
             <a
               className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
               href="/honor-a-hero"
@@ -2927,7 +2927,7 @@ export default function App() {
                   ))}
                   {chrome.adminLinks ? <a className={activeRoute === "/admin/review" ? "isActive" : ""} href="/admin/review" onClick={(event) => handleRouteLink(event, "/admin/review")}>Review</a> : null}
                   {chrome.adminLinks ? <a className={activeRoute === "/admin/printing" ? "isActive" : ""} href="/admin/printing" onClick={(event) => handleRouteLink(event, "/admin/printing")}>Printing</a> : null}
-                  {chrome.adminLinks ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Map</a> : null}
+                  {chrome.adminLinks ? <a className={activeRoute === "/admin/flag-map" ? "isActive" : ""} href="/admin/flag-map" onClick={(event) => handleRouteLink(event, "/admin/flag-map")}>Flag Manager</a> : null}
                   <a
                     className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
                     href="/honor-a-hero"
