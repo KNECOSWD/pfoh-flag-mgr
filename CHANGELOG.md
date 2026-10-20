@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.13
+
+- In the Print Center, Download merged PDF no longer fails on large batches with "signal is aborted without reason". Each selected card is now checked on its own, and a progress screen counts up as it goes, for example 37/140. Any card whose PDF is missing is generated first, the same way Regenerate PDF does it, and then every card is merged into one PDF in the browser. There is no time limit on the batch. Close cancels it.
+- If a card can't be prepared, no card is skipped and no partial PDF is built. The Print Center lists each failed card by honoree name and number, with the step that failed and the server's message. Fix or remove those cards and try again.
+- CI runs once per change: on pull requests, and on pushes to main. Pushes to feature branches no longer start a second, duplicate run. Deploys are unchanged.
+
 ## 2.0.12
 
 - On the public Flag Map, every row number 1–40 on both sides and every section letter YY to AA now shows at every zoom level, including the whole-field view. Labels are no longer skipped. Each label sits exactly at the centre of its row or column, using the same position maths as the spots, so the aisle between Z and M and the aisle between rows 20 and 21 show at their true size. When the field is small, the labels get smaller instead. All row numbers share one size, and all letters share another, picked so that no two neighbouring labels overlap. On the 1440-wide map, rows are 13px and letters 14px. On the 390-wide phone map, letters are about 7.5px and rows about 6.7px. On the 320-wide phone map, letters are about 5.4px and rows about 5px. The label strips, the whole-field view, zoom limits, edge snapping, the toolbar, the flag card, Esc, and kiosk mode are unchanged.
