@@ -179,9 +179,45 @@ public class HonoreeCardPdfLayoutTests
                 FlagGrid = new FlagGrid { FlagGridName = "V-12" }
             },
             searchResult: null,
-            photoBytes: null);
+            photoBytes: null,
+            SyntheticArtwork());
         Assert.Equal("%PDF", Encoding.ASCII.GetString(pdf, 0, 4));
         return ReadRuns(pdf);
+    }
+
+    [Fact]
+    public void A_card_without_its_background_and_rotary_artwork_is_refused_not_rendered_bare()
+    {
+        var honoree = new Honoree
+        {
+            FirstName = "James",
+            LastName = "Alley",
+            ServiceBranch = new ServiceBranch { ServiceBranchName = Branch },
+            FlagGrid = new FlagGrid { FlagGridName = "U-40" }
+        };
+
+        var noAssets = Assert.Throws<HonoreeCardArtworkMissingException>(() =>
+            HonoreeReportPdfGenerator.Create(new EmptyHost(), honoree, null, null));
+        Assert.Equal(["card background DonorCardBlankLrg.png", "Rotary logo Rotary.png"], noAssets.Missing);
+        Assert.Contains("servicelogos", noAssets.Message);
+
+        var unreadable = Assert.Throws<HonoreeCardArtworkMissingException>(() =>
+            HonoreeReportPdfGenerator.Create(new EmptyHost(), honoree, null, null, new HonoreeReportAssets([1, 2, 3], SyntheticPng(), null)));
+        Assert.Equal(["card background DonorCardBlankLrg.png"], unreadable.Missing);
+
+        var pdf = HonoreeReportPdfGenerator.Create(new EmptyHost(), honoree, null, null, SyntheticArtwork());
+        Assert.Equal("%PDF", Encoding.ASCII.GetString(pdf, 0, 4));
+        Assert.Contains("/Subtype /Image", Encoding.Latin1.GetString(pdf));
+    }
+
+    private static HonoreeReportAssets SyntheticArtwork() => new(SyntheticPng(), SyntheticPng(), null);
+
+    private static byte[] SyntheticPng()
+    {
+        using var bitmap = new SkiaSharp.SKBitmap(4, 4);
+        bitmap.Erase(SkiaSharp.SKColors.SteelBlue);
+        using var data = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
     }
 
     private static string Dump(IEnumerable<TextRun> runs) =>
