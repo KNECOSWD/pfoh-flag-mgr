@@ -105,8 +105,27 @@ test("the public nav links Flag Map right after Search, and the admin nav item r
     /\{ route: "\/find", label: "Search", show: true \},\s*\{ route: "\/flag-map", label: "Flag Map", show: true \},\s*\{ route: "\/my-flags"/
   );
   assert.equal(app.split("siteNav.filter((item) => item.show)").length - 1, 2);
-  const adminLink = /\{chrome\.adminLinks \? <a className=\{activeRoute === "\/admin\/flag-map" \? "isActive" : ""\} href="\/admin\/flag-map" onClick=\{\(event\) => handleRouteLink\(event, "\/admin\/flag-map"\)\}>Flag Manager<\/a> : null\}/g;
-  assert.equal(app.match(adminLink)?.length, 2);
+  assert.match(
+    app,
+    /const adminNav: \{ route: AppRoute; label: string \}\[\] = \[\s*\{ route: "\/admin\/review", label: "Review" \},\s*\{ route: "\/admin\/printing", label: "Printing" \},\s*\{ route: "\/admin\/flag-map", label: "Flag Manager" \}\s*\];/
+  );
+  assert.equal(app.split("<AdminNavMenu ").length - 1, 2);
+  assert.match(app, /menuId="admin-nav-desktop" layout="bar"/);
+  assert.match(app, /menuId="admin-nav-drawer" layout="drawer"/);
+  for (const navLabel of ['aria-label="Main navigation"', 'aria-label="Mobile navigation"']) {
+    const start = app.indexOf(navLabel);
+    const nav = app.slice(start, app.indexOf("</nav>", start));
+    assert.doesNotMatch(nav, /href="\/admin\//);
+    assert.match(nav, /<AdminNavMenu /);
+  }
+  const menu = readFileSync(new URL("../src/AdminNavMenu.tsx", import.meta.url), "utf8");
+  assert.match(menu, /aria-haspopup="menu"/);
+  assert.match(menu, /role="menu"/);
+  assert.match(menu, /role="menuitem"/);
+  assert.match(menu, /ArrowDown/);
+  assert.match(menu, /ArrowUp/);
+  assert.match(menu, /Escape/);
+  assert.match(menu, /href=\{item\.route\}/);
   assert.doesNotMatch(app, />Flag Map<\/a>/);
   assert.doesNotMatch(app, /footerExplore[\s\S]{0,400}flag-map/);
   assert.match(app, /aria-label="Flag Manager">\s*<div className="sectionHeader">\s*<div>\s*<p className="eyebrow">Flag grids<\/p>\s*<h3>Flag Manager<\/h3>/);
