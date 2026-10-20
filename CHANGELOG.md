@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.15
+
+- In the Print Center, the merged PDF now has a readable name instead of a long code. The PDF viewer's header shows, for example, "PFOH Reprint Cards - 2026-10-20 - 140 cards", using today's date in Bogotá time and the number of cards in the PDF. Download saves the file with the same name, ending in .pdf.
+
 ## 2.0.14
 
 - In the Print Center, Download merged PDF now regenerates every selected card before merging, using the same Regenerate PDF step as the admin button. A card that already has a stored PDF is regenerated too, so every page in the merged PDF has its full background, seal, and logos. Before, a stored card without its artwork could end up in the merged PDF. The progress screen counts "Regenerating card 37/140" and then "Merging card 37/140". There is still no time limit, Close still cancels, and if any card fails, the Print Center names it and builds no partial PDF.
