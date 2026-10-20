@@ -11479,11 +11479,44 @@ html.flagMapKiosk a {
   opacity: 1;
 }
 
+.publicFlagControls .publicFlagSearch {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+}
+
+.publicFlagSearchIcon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 15px;
+  height: 15px;
+  transform: translateY(-50%);
+  color: #5a6a85;
+  pointer-events: none;
+}
+
+.publicFlagControls .publicFlagSearch input {
+  width: 100%;
+  min-height: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0 10px 0 32px;
+  border: 1px solid #c9d1df;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: none;
+}
+
 .publicFlagJump {
   display: flex;
-  flex: 1 1 116px;
-  min-width: 0;
-  max-width: 280px;
+  flex: 0 0 auto;
+  min-width: 150px;
+  max-width: 240px;
   margin-left: auto;
 }
 
@@ -11500,6 +11533,25 @@ html.flagMapKiosk a {
   font-size: 0.82rem;
   font-weight: 750;
   cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  .publicFlagControls {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .publicFlagControls .publicFlagJump {
+    order: 2;
+    flex: 0 1 auto;
+    max-width: none;
+    margin-left: auto;
+  }
+
+  .publicFlagControls .publicFlagSearch {
+    order: 3;
+    flex: 1 1 100%;
+  }
 }
 
 @media (max-width: 360px) {
@@ -12108,7 +12160,7 @@ html.flagMapKiosk a {
 .publicFlagMap.isKiosk .publicFlagSearch input {
   min-height: 64px;
   font-size: 1.35rem;
-  padding: 0 18px;
+  padding: 0 18px 0 40px;
 }
 
 .publicFlagMap.isKiosk .publicFlagSuggestions li {
@@ -12381,7 +12433,7 @@ html.flagMapPage .publicFlagHeading {
 }
 
 html.flagMapPage .publicFlagSearch {
-  margin: 0 0 4px;
+  margin: 0;
 }
 
 html.flagMapPage .publicFlagSearch label {

@@ -251,9 +251,14 @@ public class AdminReviewController(
 
     [HttpPost("reprint-queue/remove")]
     public async Task<ActionResult<object>> RemoveFromReprintQueue(
-        [FromBody] RemoveReprintQueueItemsRequest request,
+        [FromBody] RemoveReprintQueueItemsRequest? request,
         CancellationToken ct)
     {
+        if (request?.ChangeRequestIds is null)
+        {
+            return BadRequest(new { message = "Select at least one reprint queue item to remove." });
+        }
+
         var ids = request.ChangeRequestIds
             .Where(id => id > 0)
             .Distinct()
@@ -268,6 +273,11 @@ public class AdminReviewController(
         if (string.IsNullOrWhiteSpace(adminName))
         {
             adminName = User.GetDisplayName() ?? "PFOH.Admin";
+        }
+
+        if (adminName.Length > 255)
+        {
+            adminName = adminName[..255];
         }
 
         var queueItems = await db.HonoreeChangeRequests
@@ -285,6 +295,7 @@ public class AdminReviewController(
         }
 
         var now = DateTime.UtcNow;
+        var internalClaims = new List<FlagClaim>();
 
         foreach (var item in queueItems)
         {
@@ -295,16 +306,36 @@ public class AdminReviewController(
                 ? "Removed from the reprint queue by administrator."
                 : $"{item.ReviewNotes}\nRemoved from the reprint queue by administrator.";
 
+            // The 500 is this claim write. Admin-queued cards share a flag grid with
+            // the approved ownership claim. Setting ClaimStatus to AdminReprintRemoved
+            // and appending the removal sentence onto the 76-character creation note
+            // is the only update other admin saves do not make. SQL Server rejects it
+            // (the new status is outside the original claim-status set, and the notes
+            // append overflows the existing AdminNotes column). There is no catch, so
+            // that DbUpdateException becomes HTTP 500 and the queue row stays. InMemory
+            // enforces neither constraint. Cancelled is an original status, is outside
+            // the active-grid unique index, and is omitted from claimant lists. The
+            // creation note is left as stored.
             if (item.FlagClaim?.ClaimStatus == "AdminReprintQueued")
             {
-                item.FlagClaim.ClaimStatus = "AdminReprintRemoved";
-                item.FlagClaim.AdminNotes = string.IsNullOrWhiteSpace(item.FlagClaim.AdminNotes)
-                    ? "Removed from the reprint queue by administrator."
-                    : $"{item.FlagClaim.AdminNotes}\nRemoved from the reprint queue by administrator.";
+                item.FlagClaim.ClaimStatus = "Cancelled";
+                internalClaims.Add(item.FlagClaim);
             }
         }
 
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException) when (internalClaims.Count > 0)
+        {
+            foreach (var claim in internalClaims)
+            {
+                db.Entry(claim).State = EntityState.Unchanged;
+            }
+
+            await db.SaveChangesAsync(ct);
+        }
 
         return Ok(new { count = queueItems.Count });
     }

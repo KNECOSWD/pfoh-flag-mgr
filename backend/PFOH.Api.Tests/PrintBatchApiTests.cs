@@ -230,6 +230,38 @@ public class PrintBatchApiTests(PfohApiFactory factory) : IClassFixture<PfohApiF
     }
 
     [Fact]
+    public async Task Mark_printed_with_no_matching_cards_records_no_history()
+    {
+        await ResetAsync();
+        var ids = await SeedQueueAsync();
+        var client = factory.CreateClient();
+
+        var response = await client.SendAsync(AdminRequest(
+            HttpMethod.Post,
+            "/api/admin/print/mark-printed",
+            admin: true,
+            new { changeRequestIds = new[] { ids.Rejected }, comment = "Nothing to print" }));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(0, json.RootElement.GetProperty("count").GetInt32());
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Empty(await db.CardPrintEvents.ToListAsync());
+        Assert.All(await db.HonoreeChangeRequests.ToListAsync(), card =>
+        {
+            Assert.Null(card.CardPrintedUtc);
+            Assert.Null(card.CardPrintBatchId);
+        });
+
+        var history = await client.SendAsync(AdminRequest(HttpMethod.Get, "/api/admin/print/history", admin: true));
+        Assert.Equal(HttpStatusCode.OK, history.StatusCode);
+        using var historyJson = JsonDocument.Parse(await history.Content.ReadAsStringAsync());
+        Assert.Empty(historyJson.RootElement.EnumerateArray());
+    }
+
+    [Fact]
     public async Task The_legacy_merge_endpoint_is_gone()
     {
         await ResetAsync();

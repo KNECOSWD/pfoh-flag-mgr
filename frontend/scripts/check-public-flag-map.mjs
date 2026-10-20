@@ -1778,7 +1778,14 @@ test("the in-view list sits inside the map controls toolbar group", () => {
   assert.match(css, /\.publicFlagControls \{[^}]*flex-wrap: nowrap;[^}]*min-width: 0;/);
   assert.match(css, /\.publicFlagControls \{[^}]*display: flex;[^}]*flex: 1 1 0%;[^}]*justify-content: space-between;[^}]*width: 100%;/, "the toolbar spans the full width like the search box");
   assert.match(css, /\.publicFlagControls \.publicFlagIconButton \{[^}]*flex: 0 0 auto;/, "the icon buttons keep their size, grouped on the left");
-  assert.match(css, /\.publicFlagJump \{[^}]*flex: 1 1 116px;[^}]*min-width: 0;[^}]*margin-left: auto;/, "the in-view list is pushed to the right and fills what is left");
+  assert.match(css, /\.publicFlagJump \{[^}]*flex: 0 0 auto;[^}]*min-width: 150px;[^}]*margin-left: auto;/, "the sections list stays on the right of the toolbar");
+  assert.match(group, /<label htmlFor="public-flag-search" className="srOnly">Search honorees<\/label>/);
+  assert.match(group, /placeholder="Search honorees"/);
+  assert.match(group, /className="publicFlagSearchIcon"[^>]*aria-hidden="true"/);
+  assert.ok(group.indexOf("publicFlagIconButton") < group.indexOf('className="publicFlagSearch"') && group.indexOf('className="publicFlagSearch"') < group.indexOf('<div className="publicFlagJump">'), "search sits between the zoom buttons and the sections list");
+  assert.doesNotMatch(page.slice(page.indexOf('className="publicFlagChrome"'), page.indexOf('className="publicFlagToolbar"')), /publicFlagSearch/, "search is not a row above the toolbar");
+  assert.match(css, /@media \(max-width: 600px\) \{\s*\.publicFlagControls \{[^}]*flex-wrap: wrap;/);
+  assert.match(css, /@media \(max-width: 600px\) \{[\s\S]*?\.publicFlagControls \.publicFlagSearch \{[^}]*order: 3;[^}]*flex: 1 1 100%;/);
   assert.ok(group.lastIndexOf("publicFlagIconButton") < group.indexOf('<div className="publicFlagJump">'), "the in-view list is the last item in the toolbar");
   assert.match(css, /\.publicFlagJump select \{[^}]*text-overflow: ellipsis;[^}]*border: 0;[^}]*background-color: transparent;/);
 });

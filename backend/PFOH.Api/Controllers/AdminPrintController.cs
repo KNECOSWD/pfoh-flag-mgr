@@ -98,6 +98,7 @@ public class AdminPrintController(
         await CardPrintEventSchema.EnsureAsync(db, ct);
         var events = await db.CardPrintEvents
             .AsNoTracking()
+            .Where(e => e.CardCount > 0)
             .OrderByDescending(e => e.PrintedUtc)
             .ThenByDescending(e => e.Id)
             .Select(e => new CardPrintEventDto(e.CardPrintBatchId, e.PrintedUtc, e.PrintedBy, e.CardCount, e.Comment))
@@ -141,6 +142,11 @@ public class AdminPrintController(
                 r.RequestStatus == "Approved" &&
                 r.RequiresCardReprint)
             .ToListAsync(ct);
+
+        if (changes.Count == 0)
+        {
+            return Ok(new { batchId, count = 0 });
+        }
 
         foreach (var change in changes)
         {
