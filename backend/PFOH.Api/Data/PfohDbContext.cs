@@ -309,6 +309,7 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
             entity.Property(e => e.AbsorbedHonoreeIds).IsRequired();
             entity.Property(e => e.BeforeState).IsRequired();
             entity.Property(e => e.AfterSurvivorState).IsRequired();
+            entity.Property(e => e.AfterState).IsRequired();
             entity.Property(e => e.CreatedHonoreeClaimIds).IsRequired();
             entity.Property(e => e.MergedBy).HasMaxLength(255).IsRequired();
             entity.Property(e => e.UndoneBy).HasMaxLength(255);

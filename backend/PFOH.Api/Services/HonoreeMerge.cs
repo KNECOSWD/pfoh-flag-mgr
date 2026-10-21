@@ -174,6 +174,7 @@ public static class HonoreeMerge
             audit,
             confirmed.Select(honoree => honoree.Id).ToList(),
             ct);
+        await HonoreeMergeAuditLog.NoteAfterStateAsync(db, audit, ct);
         var claimants = await HonoreeClaimStore.ActiveForHonoreeAsync(db, survivor.Id, ct);
         return new HonoreeMergeResult(survivor.Id, deactivatedIds, claimants);
     }

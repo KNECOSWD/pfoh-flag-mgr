@@ -16,6 +16,12 @@ public class HonoreeMergeAudit
 
     public string AfterSurvivorState { get; set; } = "{}";
 
+    /// <summary>
+    /// Every row the merge touched, read back from the database after the merge saved.
+    /// Undo refuses to write when the live rows differ from this snapshot.
+    /// </summary>
+    public string AfterState { get; set; } = "{}";
+
     public string CreatedHonoreeClaimIds { get; set; } = "[]";
 
     public string MergedBy { get; set; } = string.Empty;

@@ -15,6 +15,7 @@ public partial class AddHonoreeMergeAudits : Migration
     protected override void Up(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.Sql(HonoreeMergeAuditSchema.CreateSql);
+        migrationBuilder.Sql(HonoreeMergeAuditSchema.AddColumnSql);
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)

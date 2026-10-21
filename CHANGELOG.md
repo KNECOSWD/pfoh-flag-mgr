@@ -8,7 +8,7 @@
 - Photo is one record's photo or no photo. Awards can be one record's list, both lists combined, or an edited list.
 - Preview card PDF opens the card that merge would save. It does not save the record, queue a print, or write a file.
 - The admin bar shows how many duplicate groups are open and links to Duplicate honorees. The prompt is hidden when that count is zero.
-- Merge history lists each merge, newest first, with the surviving record, the absorbed records, the administrator, and the time. Undo puts those records back. It is refused when the surviving record was edited after the merge, or when that merge was already undone.
+- Merge history lists each merge, newest first, with the surviving record, the absorbed records, the administrator, and the time. Undo puts those records back only when every row the merge touched is still the way the merge left it. It is refused when the surviving record, an absorbed record, a flag grid, a claim, or a change request was edited, reassigned, or removed after the merge, or when that merge was already undone.
 
 ## 2.1.2
 

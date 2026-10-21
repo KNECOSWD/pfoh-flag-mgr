@@ -207,6 +207,7 @@ public class HonoreeClaimSchemaTests
         Assert.Contains("[MergedBy] nvarchar(255) NOT NULL", sql);
         Assert.Contains("[MergedUtc] datetime2 NOT NULL", sql);
         Assert.Contains("[SurvivorModifiedUtc] datetime2 NOT NULL", sql);
+        Assert.Contains("[AfterState] nvarchar(max) NOT NULL", sql);
         Assert.Contains("[UndoneBy] nvarchar(255) NULL", sql);
         Assert.Contains("[UndoneUtc] datetime2 NULL", sql);
         Assert.Contains("IX_HonoreeMergeAudits_MergedUtc", sql);
@@ -215,6 +216,14 @@ public class HonoreeClaimSchemaTests
         Assert.DoesNotContain("DROP TABLE [dbo].[FlagClaims]", sql);
         Assert.DoesNotContain("DROP COLUMN", sql);
         Assert.Equal(1, sql.Split("CREATE TABLE [dbo].[HonoreeMergeAudits]").Length - 1);
+
+        var add = HonoreeMergeAuditSchema.AddColumnSql;
+        Assert.Contains("COL_LENGTH(N'dbo.HonoreeMergeAudits', N'AfterState') IS NULL", add);
+        Assert.Contains("ALTER TABLE [dbo].[HonoreeMergeAudits]", add);
+        Assert.Contains("[AfterState] nvarchar(max) NOT NULL", add);
+        Assert.DoesNotContain("Honorees", add);
+        Assert.DoesNotContain("FlagClaims", add);
+        Assert.DoesNotContain("DROP", add);
     }
 }
 
