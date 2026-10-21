@@ -10,18 +10,37 @@ import {
 } from "./api";
 import { duplicateListState } from "./duplicateListState.js";
 import {
-  DuplicateCustomFields,
   DuplicateReviewBoard,
-  MergePreview,
+  MergeActions,
+  ResultingRecord,
+  SharedFieldChoices,
+  UseMatchingButton,
+  applyMatchingValues,
+  blankChoice,
   buildMergeRequest,
   canConfirmMerge,
   choicesAfterIncludedChange,
-  choicesForSurvivor,
-  previewRows
+  previewRows,
+  survivorIdFromChoices
 } from "./duplicateReview.js";
 import { isQuietAuthRejection, PLEASE_SIGN_IN_AGAIN } from "./tokenRequest.js";
 
-type FieldChoice = { useCustom: boolean; sourceId: number | null; custom: string; explicit?: boolean };
+type FieldChoice = {
+  useCustom: boolean;
+  sourceId: number | null;
+  custom: string;
+  explicit?: boolean;
+  noPhoto?: boolean;
+  combine?: boolean;
+};
+
+export type DuplicateMergeBody = {
+  survivorId: number;
+  duplicateIds: number[];
+  fields: Record<string, number>;
+  values?: Record<string, string>;
+  combineAwards?: boolean;
+};
 
 function claimantLabel(claimant: DuplicateClaimant) {
   const name = claimant.name?.trim() || claimant.email;
@@ -47,28 +66,26 @@ export function DuplicateMergeScreen({
   loadError,
   busy,
   onMerge,
+  onPreviewCard,
   onNotDuplicates,
   onReload,
-  onSignIn
+  onSignIn,
+  onOpenHistory
 }: {
   groups: DuplicateGroup[];
   loaded: boolean;
   loadError: string;
   busy: boolean;
-  onMerge: (body: {
-    survivorId: number;
-    duplicateIds: number[];
-    fields: Record<string, number>;
-    values?: Record<string, string>;
-  }) => Promise<DuplicateMergeResult>;
+  onMerge: (body: DuplicateMergeBody) => Promise<DuplicateMergeResult>;
+  onPreviewCard: (body: DuplicateMergeBody) => Promise<Blob>;
   onNotDuplicates: (leftId: number, rightId: number) => Promise<void>;
   onReload: () => void;
   onSignIn?: () => void;
+  onOpenHistory?: () => void;
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [included, setIncluded] = useState<number[]>([]);
   const [step, setStep] = useState<"list" | "review" | "confirm" | "done">("list");
-  const [survivorId, setSurvivorId] = useState<number | null>(null);
   const [choices, setChoices] = useState<Record<string, FieldChoice>>({});
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -82,13 +99,13 @@ export function DuplicateMergeScreen({
     [group, included]
   );
   const keptClaimants = useMemo(() => uniqueClaimants(includedHonorees), [includedHonorees]);
-  const preview = survivorId != null && group ? previewRows(group.honorees, choices) : null;
-  const ready = canConfirmMerge(survivorId, included, group?.honorees ?? [], choices);
+  const survivorId = survivorIdFromChoices(choices, included);
+  const ready = canConfirmMerge(included, group?.honorees ?? [], choices);
+  const preview = group ? previewRows(includedHonorees, choices) : null;
 
   function openGroup(next: DuplicateGroup) {
     setOpenKey(next.groupKey);
     setIncluded([]);
-    setSurvivorId(null);
     setChoices({});
     setResult(null);
     setError("");
@@ -101,37 +118,70 @@ export function DuplicateMergeScreen({
     setIncluded((current) => {
       const removing = current.includes(id);
       const next = removing ? current.filter((item) => item !== id) : [...current, id];
-      if (removing && survivorId === id) {
-        setSurvivorId(null);
-        setChoices({});
-      } else if (survivorId != null) {
-        const includedHonorees = (group?.honorees ?? []).filter((honoree) => next.includes(honoree.id));
-        setChoices((existing) => choicesAfterIncludedChange(survivorId, includedHonorees, existing));
-      }
+      const includedNow = (group?.honorees ?? []).filter((honoree) => next.includes(honoree.id));
+      setChoices((existing) => choicesAfterIncludedChange(includedNow, existing) as Record<string, FieldChoice>);
       return next;
     });
   }
 
-  function chooseSurvivor(id: number) {
-    const nextIncluded = included.includes(id) ? included : [...included, id];
-    const includedHonorees = (group?.honorees ?? []).filter((honoree) => nextIncluded.includes(honoree.id));
-    setIncluded(nextIncluded);
-    setSurvivorId(id);
-    setChoices(choicesForSurvivor(id, includedHonorees) as Record<string, FieldChoice>);
-  }
-
   function chooseSource(key: string, sourceId: number) {
+    setIncluded((current) => (current.includes(sourceId) ? current : [...current, sourceId]));
     setChoices((current) => ({
       ...current,
-      [key]: { useCustom: false, sourceId, custom: current[key]?.custom ?? "", explicit: true }
+      [key]: { useCustom: false, sourceId, custom: "", explicit: true, noPhoto: false, combine: false }
     }));
   }
 
-  function chooseCustom(key: string, custom: string) {
+  function chooseNoPhoto() {
     setChoices((current) => ({
       ...current,
-      [key]: { useCustom: true, sourceId: null, custom, explicit: true }
+      photo: { ...blankChoice(), explicit: true, noPhoto: true }
     }));
+  }
+
+  function chooseCombine() {
+    setChoices((current) => ({
+      ...current,
+      awards: { ...blankChoice(), explicit: true, combine: true }
+    }));
+  }
+
+  function editPreview(key: string, custom: string) {
+    setChoices((current) => ({
+      ...current,
+      [key]: {
+        ...(current[key] ?? blankChoice()),
+        useCustom: true,
+        sourceId: null,
+        custom,
+        explicit: true,
+        noPhoto: false,
+        combine: false
+      }
+    }));
+  }
+
+  function editGrid(custom: string) {
+    setChoices((current) => {
+      const prior = current.flagGrid ?? blankChoice();
+      const source = includedHonorees.find((honoree) => honoree.id === prior.sourceId);
+      const normalized = custom.replace(/\s+/g, " ").trim();
+      const sourceText = (source?.flagGridName || "").replace(/\s+/g, " ").trim();
+      const changed = !source || normalized !== sourceText;
+      return {
+        ...current,
+        flagGrid: {
+          ...prior,
+          useCustom: changed,
+          custom,
+          explicit: true
+        }
+      };
+    });
+  }
+
+  function useMatching() {
+    setChoices((current) => applyMatchingValues(includedHonorees, current) as Record<string, FieldChoice>);
   }
 
   async function confirmNotDuplicates() {
@@ -151,11 +201,11 @@ export function DuplicateMergeScreen({
 
   async function merge() {
     if (!group || !ready || survivorId == null) {
-      setError("Choose the surviving record from the confirmed duplicates. Nothing is selected automatically.");
+      setError("Choose a value for every field. The record whose flag grid you select is the one that is kept.");
       return;
     }
     setError("");
-    const body = buildMergeRequest(survivorId, includedHonorees, choices);
+    const body = buildMergeRequest(includedHonorees, choices);
     try {
       const merged = await onMerge(body);
       setResult(merged);
@@ -165,6 +215,39 @@ export function DuplicateMergeScreen({
       setError(err instanceof ApiError ? err.serverMessage || err.message : "The merge could not be saved.");
     }
   }
+
+  async function previewCard() {
+    if (!group || !ready) {
+      setError("Choose a value for every field before previewing the card.");
+      return;
+    }
+    setError("");
+    const tab = window.open("", "_blank");
+    try {
+      const blob = await onPreviewCard(buildMergeRequest(includedHonorees, choices));
+      const url = URL.createObjectURL(blob);
+      if (tab && !tab.closed) tab.location.href = url;
+      else window.open(url, "_blank", "noopener");
+    } catch (err) {
+      tab?.close();
+      setError(err instanceof ApiError ? err.serverMessage || err.message : "The card preview could not be created.");
+    }
+  }
+
+  const claimants = (
+    <section className="survivorClaimants" aria-label="Claimants the merged record will keep">
+      <h3>Claimants the merged record will keep</h3>
+      {keptClaimants.length === 0 ? (
+        <p>None of the included records is claimed.</p>
+      ) : (
+        <ul>
+          {keptClaimants.map((claimant) => (
+            <li key={claimant.userId}>{claimantLabel(claimant)}</li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 
   return (
     <section className="card adminCard duplicateMergeCard" aria-label="Duplicate honorees">
@@ -176,12 +259,19 @@ export function DuplicateMergeScreen({
             {listState.showCount ? <span className="countBadge">{groups.length}</span> : null}
           </h2>
           <p className="helperText">
-            Likely duplicates are listed for review. Only active records are included. Open a group to compare the records side by side. Nothing is merged until you choose the surviving record and confirm the values. A pair you mark as not duplicates is left out of this list.
+            Likely duplicates are listed for review. Only active records are included. Open a group to compare the records side by side. Nothing is merged until every field has a value and you confirm. A pair you mark as not duplicates is left out of this list.
           </p>
         </div>
-        <button type="button" className="secondary" onClick={onReload} disabled={busy}>
-          {busy ? "Loading..." : "Refresh"}
-        </button>
+        <div className="adminHeaderActions">
+          {onOpenHistory ? (
+            <button type="button" className="secondary" onClick={onOpenHistory}>
+              Merge history
+            </button>
+          ) : null}
+          <button type="button" className="secondary" onClick={onReload} disabled={busy}>
+            {busy ? "Loading..." : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {listState.showError ? (
@@ -269,39 +359,36 @@ export function DuplicateMergeScreen({
               );
             })}
           </ul>
-          <h3>Choose the surviving record</h3>
+          <h3>Choose each field</h3>
           <p className="helperText">
-            Nothing is selected automatically. After you choose the surviving record, each field that differs stays unset until you pick a record's value or type one. Fields that match on the included records keep that shared value. The chosen values are written into the surviving record. No new record is created.
+            Nothing is selected for you, including fields that match. Choose a value on each included record. Use all matching values fills only the fields that are the same. The record whose flag grid you select is the one that is kept, even when that grid is blank.
           </p>
+          <UseMatchingButton disabled={includedHonorees.length < 2} onClick={useMatching} />
           <DuplicateReviewBoard
             honorees={group.honorees}
             includedIds={included}
-            survivorId={survivorId}
             choices={choices}
             onToggleIncluded={toggleIncluded}
-            onSurvivor={chooseSurvivor}
             onChooseSource={chooseSource}
-            onCustom={chooseCustom}
           />
-          <DuplicateCustomFields survivorId={survivorId} choices={choices} onCustom={chooseCustom} />
-          <MergePreview rows={preview} />
-          <section className="survivorClaimants" aria-label="Claimants the survivor will keep">
-            <h3>Claimants the survivor will keep</h3>
-            {keptClaimants.length === 0 ? (
-              <p>None of the included records is claimed.</p>
-            ) : (
-              <ul>
-                {keptClaimants.map((claimant) => (
-                  <li key={claimant.userId}>{claimantLabel(claimant)}</li>
-                ))}
-              </ul>
-            )}
-          </section>
+          <SharedFieldChoices
+            includedCount={includedHonorees.length}
+            choices={choices}
+            onNoPhoto={chooseNoPhoto}
+            onCombine={chooseCombine}
+          />
+          <ResultingRecord
+            honorees={includedHonorees}
+            choices={choices}
+            onEdit={editPreview}
+            onGrid={editGrid}
+          />
+          {claimants}
           <button type="button" disabled={!ready} onClick={() => setStep("confirm")}>
             Continue to confirm
           </button>
           {!ready ? (
-            <p className="helperText">Choose the surviving record from at least two included records, then choose a value for every field that differs. Nothing is selected automatically.</p>
+            <p className="helperText">Choose a value for every field on at least two included records. Nothing is selected automatically. The flag grid you select chooses the record that is kept.</p>
           ) : null}
         </div>
       ) : null}
@@ -313,24 +400,21 @@ export function DuplicateMergeScreen({
           </button>
           <h3>Confirm the merged record</h3>
           <p className="helperText">
-            These values will be written onto the surviving record. The other included records will be set inactive and their flag spots released. Claimants move to the surviving record.
+            These values will be written onto the record whose flag grid you selected. You can still edit a text field here. An edited field is marked custom and replaces that field's pick. The other included records will be set inactive and their flag spots released. Claimants move to the kept record.
           </p>
-          <MergePreview rows={preview} />
-          <section className="survivorClaimants" aria-label="Claimants the survivor will keep">
-            <h3>Claimants the survivor will keep</h3>
-            {keptClaimants.length === 0 ? (
-              <p>None of the included records is claimed.</p>
-            ) : (
-              <ul>
-                {keptClaimants.map((claimant) => (
-                  <li key={claimant.userId}>{claimantLabel(claimant)}</li>
-                ))}
-              </ul>
-            )}
-          </section>
-          <button type="button" onClick={() => void merge()} disabled={busy || !ready}>
-            Merge into the surviving record
-          </button>
+          <ResultingRecord
+            honorees={includedHonorees}
+            choices={choices}
+            onEdit={editPreview}
+            onGrid={editGrid}
+          />
+          {claimants}
+          <MergeActions
+            ready={ready}
+            busy={busy}
+            onMerge={() => void merge()}
+            onPreview={() => void previewCard()}
+          />
         </div>
       ) : null}
 
@@ -365,11 +449,13 @@ export function DuplicateMergeScreen({
 export function DuplicateMerge({
   instance,
   account,
-  onSignIn
+  onSignIn,
+  onOpenHistory
 }: {
   instance: IPublicClientApplication;
   account: AccountInfo | null;
   onSignIn?: () => void;
+  onOpenHistory?: () => void;
 }) {
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -410,9 +496,11 @@ export function DuplicateMerge({
       onReload={() => void load()}
       onSignIn={onSignIn}
       onMerge={(body) => adminApi.mergeDuplicates(instance, account, body)}
+      onPreviewCard={(body) => adminApi.previewMergeCard(instance, account, body)}
       onNotDuplicates={async (leftId, rightId) => {
         await adminApi.markNotDuplicates(instance, account, leftId, rightId);
       }}
+      onOpenHistory={onOpenHistory}
     />
   );
 }

@@ -106,6 +106,7 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(allowedOrigins)
             .AllowAnyHeader()
+            .WithExposedHeaders(DuplicateReviewGroups.OpenGroupCountHeader)
             .AllowAnyMethod();
     });
 });
@@ -395,6 +396,18 @@ try
         app.Logger.LogError(
             ex,
             "STARTUP CLEANUP FAILED while ensuring dbo.HonoreeNotDuplicatePairs. {Failure}",
+            ex.ToString());
+    }
+
+    try
+    {
+        await HonoreeMergeAuditSchema.EnsureAsync(startupDb, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(
+            ex,
+            "STARTUP CLEANUP FAILED while ensuring dbo.HonoreeMergeAudits. {Failure}",
             ex.ToString());
     }
 

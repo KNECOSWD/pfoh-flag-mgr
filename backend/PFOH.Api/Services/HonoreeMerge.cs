@@ -51,52 +51,12 @@ public static class HonoreeMerge
         string adminName,
         CancellationToken ct)
     {
-        var byId = confirmed.ToDictionary(honoree => honoree.Id);
         var now = DateTime.UtcNow;
         custom ??= new MergeCustom();
-
-        survivor.FirstName = ReadText(byId, fields, custom, "firstName", honoree => honoree.FirstName);
-        survivor.MiddleName = ReadOptional(byId, fields, custom, "middleName", honoree => honoree.MiddleName);
-        survivor.LastName = ReadText(byId, fields, custom, "lastName", honoree => honoree.LastName);
-        survivor.Suffix = ReadOptional(byId, fields, custom, "suffix", honoree => honoree.Suffix);
-        survivor.Nickname = ReadOptional(byId, fields, custom, "nickname", honoree => honoree.Nickname);
-        survivor.Rank = ReadText(byId, fields, custom, "rank", honoree => honoree.Rank);
-        survivor.ConflictsServed = ReadText(byId, fields, custom, "conflictsServed", honoree => honoree.ConflictsServed);
-        survivor.Awards = Text(byId, fields, "awards", honoree => honoree.Awards);
-        survivor.Description = ReadText(byId, fields, custom, "description", honoree => honoree.Description);
-        survivor.KIA = custom.HasKia ? custom.Kia : byId[fields["kia"]].KIA;
-        survivor.PhotoFileName = Text(byId, fields, "photo", honoree => honoree.PhotoFileName);
-        survivor.PhoneNumber = ReadText(byId, fields, custom, "phone", honoree => honoree.PhoneNumber);
-        survivor.EmailAddress = ReadText(byId, fields, custom, "email", honoree => honoree.EmailAddress);
-        survivor.SponsorId = custom.HasSponsor ? custom.SponsorId : byId[fields["sponsor"]].SponsorId;
-
-        if (custom.HasBranch)
-        {
-            survivor.ServiceBranchId = custom.BranchId;
-            survivor.ServiceBranchCategoryId = custom.BranchCategoryId;
-        }
-        else
-        {
-            var branch = byId[fields["serviceBranch"]];
-            survivor.ServiceBranchId = branch.ServiceBranchId;
-            survivor.ServiceBranchCategoryId = branch.ServiceBranchCategoryId;
-        }
-
-        if (custom.HasYears)
-        {
-            survivor.StartYear = custom.StartYear;
-            survivor.EndYear = custom.EndYear;
-            survivor.DatesUserEntry = custom.DatesUserEntry ?? string.Empty;
-        }
-        else
-        {
-            var years = byId[fields["serviceYears"]];
-            survivor.StartYear = years.StartYear;
-            survivor.EndYear = years.EndYear;
-            survivor.DatesUserEntry = years.DatesUserEntry ?? string.Empty;
-        }
-
-        var keptGridId = custom.HasGrid ? custom.FlagGridId : byId[fields["flagGrid"]].FlagGridId;
+        var byId = confirmed.ToDictionary(honoree => honoree.Id);
+        var audit = await HonoreeMergeAuditLog.CaptureAsync(db, survivor, confirmed, fields, custom, adminName, now, ct);
+        ApplyValues(survivor, confirmed, fields, custom);
+        var keptGridId = KeptGridId(byId, fields, custom);
         var gridIds = confirmed
             .Select(honoree => honoree.FlagGridId)
             .Where(id => id.HasValue)
@@ -157,6 +117,7 @@ public static class HonoreeMerge
         survivor.ModifiedBy = adminName;
         survivor.ModifiedDate = now;
         survivor.IsActive = true;
+        HonoreeMergeAuditLog.NoteSurvivorAfter(audit, survivor);
 
         if (released.Count > 0)
         {
@@ -208,9 +169,83 @@ public static class HonoreeMerge
 
         await db.SaveChangesAsync(ct);
         await HonoreeClaimStore.SyncAsync(db, ct);
+        await HonoreeMergeAuditLog.NoteCreatedClaimsAsync(
+            db,
+            audit,
+            confirmed.Select(honoree => honoree.Id).ToList(),
+            ct);
+        await HonoreeMergeAuditLog.NoteAfterStateAsync(db, audit, ct);
         var claimants = await HonoreeClaimStore.ActiveForHonoreeAsync(db, survivor.Id, ct);
         return new HonoreeMergeResult(survivor.Id, deactivatedIds, claimants);
     }
+
+    /// <summary>
+    /// Writes the normalized field values onto <paramref name="target"/> and
+    /// does not touch the database, other records, or the flag grid assignment.
+    /// The merge and the card preview both use this.
+    /// </summary>
+    public static void ApplyValues(
+        Honoree target,
+        IReadOnlyList<Honoree> confirmed,
+        IReadOnlyDictionary<string, int> fields,
+        MergeCustom? custom)
+    {
+        var byId = confirmed.ToDictionary(honoree => honoree.Id);
+        custom ??= new MergeCustom();
+
+        target.FirstName = ReadText(byId, fields, custom, "firstName", honoree => honoree.FirstName);
+        target.MiddleName = ReadOptional(byId, fields, custom, "middleName", honoree => honoree.MiddleName);
+        target.LastName = ReadText(byId, fields, custom, "lastName", honoree => honoree.LastName);
+        target.Suffix = ReadOptional(byId, fields, custom, "suffix", honoree => honoree.Suffix);
+        target.Nickname = ReadOptional(byId, fields, custom, "nickname", honoree => honoree.Nickname);
+        target.Rank = ReadText(byId, fields, custom, "rank", honoree => honoree.Rank);
+        target.ConflictsServed = ReadText(byId, fields, custom, "conflictsServed", honoree => honoree.ConflictsServed);
+        target.Awards = custom.Text.ContainsKey("awards")
+            ? custom.Text["awards"]
+            : custom.CombineAwards
+                ? HonoreeMergeValues.CombineAwardLists(confirmed.Select(honoree => honoree.Awards))
+                : Text(byId, fields, "awards", honoree => honoree.Awards);
+        target.Description = ReadText(byId, fields, custom, "description", honoree => honoree.Description);
+        target.KIA = custom.HasKia ? custom.Kia : byId[fields["kia"]].KIA;
+        target.PhotoFileName = custom.NoPhoto
+            ? string.Empty
+            : Text(byId, fields, "photo", honoree => honoree.PhotoFileName);
+        target.PhoneNumber = ReadText(byId, fields, custom, "phone", honoree => honoree.PhoneNumber);
+        target.EmailAddress = ReadText(byId, fields, custom, "email", honoree => honoree.EmailAddress);
+        target.SponsorId = custom.HasSponsor ? custom.SponsorId : byId[fields["sponsor"]].SponsorId;
+
+        if (custom.HasBranch)
+        {
+            target.ServiceBranchId = custom.BranchId;
+            target.ServiceBranchCategoryId = custom.BranchCategoryId;
+        }
+        else
+        {
+            var branch = byId[fields["serviceBranch"]];
+            target.ServiceBranchId = branch.ServiceBranchId;
+            target.ServiceBranchCategoryId = branch.ServiceBranchCategoryId;
+        }
+
+        if (custom.HasYears)
+        {
+            target.StartYear = custom.StartYear;
+            target.EndYear = custom.EndYear;
+            target.DatesUserEntry = custom.DatesUserEntry ?? string.Empty;
+        }
+        else
+        {
+            var years = byId[fields["serviceYears"]];
+            target.StartYear = years.StartYear;
+            target.EndYear = years.EndYear;
+            target.DatesUserEntry = years.DatesUserEntry ?? string.Empty;
+        }
+    }
+
+    public static int? KeptGridId(
+        IReadOnlyDictionary<int, Honoree> byId,
+        IReadOnlyDictionary<string, int> fields,
+        MergeCustom custom) =>
+        custom.HasGrid ? custom.FlagGridId : byId[fields["flagGrid"]].FlagGridId;
 
     private static string ReadText(
         IReadOnlyDictionary<int, Honoree> byId,

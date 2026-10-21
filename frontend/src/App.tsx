@@ -38,10 +38,12 @@ import {
   profileApi
 } from "./api";
 import { decideAdminLoad } from "./adminAccess.js";
+import { adminAttentionItems } from "./adminAttention.js";
 import { thumbnailLoadKey } from "./authorizedThumbnail.js";
 import { startVersionWatch, versionUrl } from "./versionReload.js";
 import { AdminNavMenu } from "./AdminNavMenu";
 import { DuplicateMerge } from "./DuplicateMerge";
+import { MergeHistory } from "./MergeHistory";
 import { PrintDuplicateReviews } from "./PrintDuplicateReviews";
 import PublicFlagMap from "./PublicFlagMap";
 import {
@@ -230,7 +232,7 @@ const blankForm: SaveHonoreeChangeRequest = {
   submitterEmailAddress: ""
 };
 
-type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/duplicates" | "/admin/flag-map" | "/admin/printing";
+type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/duplicates" | "/admin/duplicates/history" | "/admin/flag-map" | "/admin/printing";
 
 const appRoutes: AppRoute[] = [
   "/find",
@@ -239,6 +241,7 @@ const appRoutes: AppRoute[] = [
   "/flag-map",
   "/admin/review",
   "/admin/duplicates",
+  "/admin/duplicates/history",
   "/admin/flag-map",
   "/admin/printing"
 ];
@@ -449,6 +452,7 @@ export default function App() {
   const [printLoadError, setPrintLoadError] = useState("");
   const [flagMapLoadError, setFlagMapLoadError] = useState("");
   const [pendingReviews, setPendingReviews] = useState<AdminReviewItem[]>([]);
+  const [openDuplicateGroups, setOpenDuplicateGroups] = useState(0);
   const [pendingPhotoObjectUrl, setPendingPhotoObjectUrl] = useState("");
   const [submitPhase, setSubmitPhase] = useState("");
   const [cardPreview, setCardPreview] = useState<CardPreviewState | null>(null);
@@ -579,6 +583,7 @@ export default function App() {
   const isHonorHeroRoute = activeRoute === "/honor-a-hero";
   const isAdminReviewRoute = activeRoute === "/admin/review";
   const isDuplicatesRoute = activeRoute === "/admin/duplicates";
+  const isMergeHistoryRoute = activeRoute === "/admin/duplicates/history";
   const isFlagMapRoute = activeRoute === "/admin/flag-map";
   const siteNav: { route: AppRoute; label: string; show: boolean }[] = [
     { route: "/find", label: "Search", show: true },
@@ -602,27 +607,13 @@ export default function App() {
 
   const adminAlertItems = useMemo(
     () =>
-      [
-        {
-          key: "pending-review",
-          label: "Pending review",
-          count: pendingReviews.length,
-          route: "/admin/review" as AppRoute
-        },
-        {
-          key: "ready-to-print",
-          label: "Ready to print",
-          count: printQueue.length,
-          route: "/admin/printing" as AppRoute
-        },
-        {
-          key: "multiple-claim-alerts",
-          label: "Multiple-claim alerts",
-          count: claimedByMultipleCount,
-          route: "/admin/review" as AppRoute
-        }
-      ].filter((item) => item.count > 0),
-    [pendingReviews.length, printQueue.length, claimedByMultipleCount]
+      adminAttentionItems({
+        pendingReview: pendingReviews.length,
+        readyToPrint: printQueue.length,
+        duplicatesForReview: openDuplicateGroups,
+        multipleClaimAlerts: claimedByMultipleCount
+      }).map((item) => ({ ...item, route: item.route as AppRoute })),
+    [pendingReviews.length, printQueue.length, openDuplicateGroups, claimedByMultipleCount]
   );
 
   const adminAlertTotalCount = useMemo(
@@ -1230,6 +1221,7 @@ export default function App() {
       setIsAdmin(false);
       setCachedApiAdmin(false);
       setPendingReviews([]);
+      setOpenDuplicateGroups(0);
       setPrintQueue([]);
       setPrintHistory([]);
       setPrintHistoryError("");
@@ -1248,9 +1240,11 @@ export default function App() {
     setFlagMapLoadError(decision.errors.flagMap ?? "");
 
     if (pendingResult.ok) {
-      setPendingReviews(pendingResult.value);
+      setPendingReviews(pendingResult.value.items);
+      setOpenDuplicateGroups(pendingResult.value.openDuplicateGroupCount);
     } else {
       setPendingReviews([]);
+      setOpenDuplicateGroups(0);
     }
 
     if (queueResult.ok) {
@@ -4154,6 +4148,15 @@ export default function App() {
                   instance={instance}
                   account={account ?? null}
                   onSignIn={() => void signIn("login")}
+                  onOpenHistory={() => navigateToRoute("/admin/duplicates/history")}
+                />
+              ) : null}
+
+              {isMergeHistoryRoute ? (
+                <MergeHistory
+                  instance={instance}
+                  account={account ?? null}
+                  onBack={() => navigateToRoute("/admin/duplicates")}
                 />
               ) : null}
 

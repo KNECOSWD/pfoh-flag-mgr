@@ -17,6 +17,7 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
     public DbSet<HonoreeClaim> HonoreeClaims => Set<HonoreeClaim>();
     public DbSet<ReprintDuplicateReview> ReprintDuplicateReviews => Set<ReprintDuplicateReview>();
     public DbSet<HonoreeNotDuplicatePair> HonoreeNotDuplicatePairs => Set<HonoreeNotDuplicatePair>();
+    public DbSet<HonoreeMergeAudit> HonoreeMergeAudits => Set<HonoreeMergeAudit>();
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
     public DbSet<HonoreeSearchResult> HonoreeSearchResults => Set<HonoreeSearchResult>();
     public DbSet<HonoreeChangeRequest> HonoreeChangeRequests => Set<HonoreeChangeRequest>();
@@ -299,6 +300,20 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
                 .WithMany()
                 .HasForeignKey(e => e.HighHonoreeId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<HonoreeMergeAudit>(entity =>
+        {
+            entity.ToTable("HonoreeMergeAudits", "dbo");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.AbsorbedHonoreeIds).IsRequired();
+            entity.Property(e => e.BeforeState).IsRequired();
+            entity.Property(e => e.AfterSurvivorState).IsRequired();
+            entity.Property(e => e.AfterState).IsRequired();
+            entity.Property(e => e.CreatedHonoreeClaimIds).IsRequired();
+            entity.Property(e => e.MergedBy).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.UndoneBy).HasMaxLength(255);
+            entity.HasIndex(e => e.MergedUtc);
         });
     }
 }

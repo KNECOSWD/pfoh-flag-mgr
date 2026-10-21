@@ -195,6 +195,36 @@ public class HonoreeClaimSchemaTests
         Assert.DoesNotContain("DROP COLUMN", sql);
         Assert.Equal(1, sql.Split("CREATE TABLE [dbo].[HonoreeNotDuplicatePairs]").Length - 1);
     }
+
+    [Fact]
+    public void Merge_audit_sql_creates_only_that_table()
+    {
+        var sql = HonoreeMergeAuditSchema.CreateSql;
+        Assert.Contains("IF OBJECT_ID(N'[dbo].[HonoreeMergeAudits]', N'U') IS NULL", sql);
+        Assert.Contains("CREATE TABLE [dbo].[HonoreeMergeAudits]", sql);
+        Assert.Contains("[SurvivorId] int NOT NULL", sql);
+        Assert.Contains("[BeforeState] nvarchar(max) NOT NULL", sql);
+        Assert.Contains("[MergedBy] nvarchar(255) NOT NULL", sql);
+        Assert.Contains("[MergedUtc] datetime2 NOT NULL", sql);
+        Assert.Contains("[SurvivorModifiedUtc] datetime2 NOT NULL", sql);
+        Assert.Contains("[AfterState] nvarchar(max) NOT NULL", sql);
+        Assert.Contains("[UndoneBy] nvarchar(255) NULL", sql);
+        Assert.Contains("[UndoneUtc] datetime2 NULL", sql);
+        Assert.Contains("IX_HonoreeMergeAudits_MergedUtc", sql);
+        Assert.DoesNotContain("ALTER TABLE", sql);
+        Assert.DoesNotContain("DROP TABLE [dbo].[Honorees]", sql);
+        Assert.DoesNotContain("DROP TABLE [dbo].[FlagClaims]", sql);
+        Assert.DoesNotContain("DROP COLUMN", sql);
+        Assert.Equal(1, sql.Split("CREATE TABLE [dbo].[HonoreeMergeAudits]").Length - 1);
+
+        var add = HonoreeMergeAuditSchema.AddColumnSql;
+        Assert.Contains("COL_LENGTH(N'dbo.HonoreeMergeAudits', N'AfterState') IS NULL", add);
+        Assert.Contains("ALTER TABLE [dbo].[HonoreeMergeAudits]", add);
+        Assert.Contains("[AfterState] nvarchar(max) NOT NULL", add);
+        Assert.DoesNotContain("Honorees", add);
+        Assert.DoesNotContain("FlagClaims", add);
+        Assert.DoesNotContain("DROP", add);
+    }
 }
 
 public class DuplicateMergeApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFactory>
@@ -252,20 +282,22 @@ public class DuplicateMergeApiTests(PfohApiFactory factory) : IClassFixture<Pfoh
     }
 
     [Fact]
-    public async Task Merge_without_a_chosen_survivor_does_nothing()
+    public async Task An_explicit_survivor_that_disagrees_with_the_flag_grid_does_nothing()
     {
         await ResetAsync();
         await SeedPairAsync();
         var client = factory.CreateClient();
+        var fields = Fields(2, 1, 1);
+        fields["flagGrid"] = 2;
         var response = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
         {
-            survivorId = 0,
+            survivorId = 1,
             duplicateIds = new[] { 1, 2 },
-            fields = Fields(2, 1, 1)
+            fields
         }));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Choose the surviving record", body);
+        Assert.Contains("flag grid you selected", body);
         Assert.Equal(2, await CountActiveAsync());
     }
 

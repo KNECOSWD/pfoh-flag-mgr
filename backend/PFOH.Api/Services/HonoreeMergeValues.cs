@@ -39,20 +39,21 @@ public sealed class MergeCustom
     public bool HasSponsor { get; set; }
 
     public int? SponsorId { get; set; }
+
+    public bool NoPhoto { get; set; }
+
+    public bool CombineAwards { get; set; }
 }
 
 /// <summary>
 /// Whitelist, sanitizing, and the same length and format checks as the honoree
-/// edit form. Photo and awards are not typed here: the photo is a stored file,
-/// and awards are one stored text set, so those stay a choice of which record to keep.
+/// edit form. Photo is one record's stored file or no photo. Awards are one
+/// record's list, both lists combined, or text edited with the same rules as
+/// the honoree edit path. <see cref="Sanitize"/> is the text cleanup the
+/// review preview copies, so the preview matches the saved value.
 /// </summary>
 public static class HonoreeMergeValues
 {
-    public static readonly HashSet<string> SourceOnly = new(StringComparer.Ordinal)
-    {
-        "photo",
-        "awards"
-    };
 
     private static readonly HashSet<string> OptionalText = new(StringComparer.Ordinal)
     {
@@ -72,7 +73,8 @@ public static class HonoreeMergeValues
     public static string? ValidateShape(
         IReadOnlyDictionary<string, int> fields,
         IReadOnlyDictionary<string, string?> values,
-        IReadOnlyCollection<int> duplicateIds)
+        IReadOnlyCollection<int> duplicateIds,
+        bool combineAwards)
     {
         foreach (var key in fields.Keys.Concat(values.Keys).Distinct(StringComparer.Ordinal))
         {
@@ -82,31 +84,30 @@ public static class HonoreeMergeValues
             }
         }
 
-        if (values.ContainsKey("photo"))
+        if (values.TryGetValue("photo", out var photoValue) && !string.IsNullOrEmpty(photoValue))
         {
-            return "Choose which record's photo to keep. A typed photo value is not accepted.";
+            return "Choose which record's photo to keep, or choose no photo. A typed photo value is not accepted.";
         }
 
-        if (values.ContainsKey("awards"))
+        if (!fields.TryGetValue("flagGrid", out var gridSource) || !duplicateIds.Contains(gridSource))
         {
-            return "Choose which record's awards to keep. A typed awards value is not accepted.";
+            return "Choose the flag grid from one of the included records. That record is the survivor, even when its grid is blank.";
         }
 
         foreach (var key in DuplicateMergeFields.Keys)
         {
-            var hasSource = fields.ContainsKey(key);
-            var hasCustom = values.ContainsKey(key);
-            if (SourceOnly.Contains(key))
+            if (key == "flagGrid")
             {
-                if (!hasSource)
-                {
-                    return "Choose a value for every field before merging.";
-                }
-
                 continue;
             }
 
-            if (!hasSource && !hasCustom)
+            var chosen = key switch
+            {
+                "photo" => fields.ContainsKey(key) || values.ContainsKey(key),
+                "awards" => fields.ContainsKey(key) || values.ContainsKey(key) || combineAwards,
+                _ => fields.ContainsKey(key) || values.ContainsKey(key)
+            };
+            if (!chosen)
             {
                 return "Choose a value for every field before merging.";
             }
@@ -120,6 +121,108 @@ public static class HonoreeMergeValues
         return null;
     }
 
+    /// <summary>
+    /// The surviving record is the one whose flag-grid row was selected.
+    /// A blank grid still counts. An explicit survivor id of 0 is not a choice.
+    /// </summary>
+    public static string? SurvivorError(int explicitSurvivorId, int gridSourceId)
+    {
+        if (explicitSurvivorId > 0 && explicitSurvivorId != gridSourceId)
+        {
+            return "The surviving record has to be the record whose flag grid you selected.";
+        }
+
+        return null;
+    }
+
+    public static string CombineAwardLists(IEnumerable<string?> lists)
+    {
+        var sources = lists.Select(value => value ?? string.Empty).ToList();
+        var delimiter = AwardDelimiter(sources);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var items = new List<string>();
+        foreach (var source in sources)
+        {
+            foreach (var item in SplitAwardItems(source))
+            {
+                if (!seen.Add(item))
+                {
+                    continue;
+                }
+
+                items.Add(item);
+            }
+        }
+
+        return string.Join(delimiter, items);
+    }
+
+    public static List<string> SplitAwardItems(string? value)
+    {
+        var items = new List<string>();
+        if (string.IsNullOrEmpty(value))
+        {
+            return items;
+        }
+
+        var text = value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        foreach (var line in text.Split('\n'))
+        {
+            foreach (var piece in line.Split([';', ','], StringSplitOptions.None))
+            {
+                var item = Sanitize(piece, multiline: false);
+                if (item.Length > 0)
+                {
+                    items.Add(item);
+                }
+            }
+        }
+
+        return items;
+    }
+
+    private static string AwardDelimiter(IReadOnlyList<string> sources)
+    {
+        var hasNewline = false;
+        var hasSemicolon = false;
+        var hasComma = false;
+        foreach (var source in sources)
+        {
+            var text = source.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+            if (text.Contains('\n'))
+            {
+                hasNewline = true;
+            }
+
+            if (source.Contains(';'))
+            {
+                hasSemicolon = true;
+            }
+
+            if (source.Contains(','))
+            {
+                hasComma = true;
+            }
+        }
+
+        if (hasNewline)
+        {
+            return "\n";
+        }
+
+        if (hasSemicolon && !hasComma)
+        {
+            return "; ";
+        }
+
+        if (hasComma && !hasSemicolon)
+        {
+            return ", ";
+        }
+
+        return "\n";
+    }
+
     public static async Task<(MergeCustom? Custom, string? Error)> ResolveAsync(
         PfohDbContext db,
         IReadOnlyDictionary<string, int> fields,
@@ -130,11 +233,6 @@ public static class HonoreeMergeValues
         var custom = new MergeCustom();
         foreach (var (key, raw) in values)
         {
-            if (fields.ContainsKey(key) && SourceOnly.Contains(key))
-            {
-                continue;
-            }
-
             var error = await ApplyOneAsync(db, custom, key, raw, duplicateIds, ct);
             if (error is not null)
             {
@@ -207,6 +305,16 @@ public static class HonoreeMergeValues
                 return Text(custom, key, raw, multiline: true, required: false, max: null, "Conflicts served");
             case "description":
                 return Text(custom, key, raw, multiline: true, required: true, max: null, "Honoree description");
+            case "awards":
+                return Text(custom, key, raw, multiline: true, required: false, max: null, "Awards");
+            case "photo":
+                if (!string.IsNullOrEmpty(Sanitize(raw, multiline: false)))
+                {
+                    return "Choose which record's photo to keep, or choose no photo. A typed photo value is not accepted.";
+                }
+
+                custom.NoPhoto = true;
+                return null;
             case "phone":
                 return Text(custom, key, raw, multiline: false, required: false, max: 50, "Phone");
             case "email":

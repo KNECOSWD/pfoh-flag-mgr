@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.3
+
+- Duplicate review asks for every field on both records. Nothing is selected for you, including fields that match. Use all matching values fills only fields that are still empty and the same on the included records. It does not select the flag grid, even when both grids match or both are blank, and it does not replace a value already chosen or typed. A field that differs is still marked differs.
+- The surviving record is the one whose flag grid you select, even when that grid is blank. There is no separate survivor choice. Merge stays unavailable until every field has a value.
+- Resulting record shows the merged values and lets you edit any text field. An edited field is marked custom. The preview uses the same text cleanup and length checks as the save. The flag grid changes only through the grid picker. A deleted, reserved, or outside-held grid is still rejected.
+- Photo is one record's photo or no photo. Awards can be one record's list, both lists combined, or an edited list.
+- Preview card PDF opens the card that merge would save. It does not save the record, queue a print, or write a file.
+- The admin bar shows how many duplicate groups are open and links to Duplicate honorees. The prompt is hidden when that count is zero.
+- Merge history lists each merge, newest first, with the surviving record, the absorbed records, the administrator, and the time. Undo puts those records back only when every row the merge touched is still the way the merge left it. It is refused when one of those rows was edited, reassigned, or removed, when a new claim or change request points at a merged record or a grid the merge moved, or when that merge was already undone.
+
 ## 2.1.2
 
 - Duplicate honorees opens a side-by-side review. Each active record is a column with the full name, including a suffix such as Jr., Sr., II, or III, the photo or a no-photo state, the bio, branch, years of service, awards, and the other stored fields. A field that is not the same on every record is marked differs.
