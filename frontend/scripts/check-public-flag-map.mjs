@@ -1801,12 +1801,14 @@ test("search results open below the box and stay inside the visible viewport", (
 
   const keyboard = suggestionListFrame(
     { bottom: 180, left: 12, width: 366 },
-    { height: 220, width: 390, offsetTop: 400, offsetLeft: 0 }
+    { height: 220, width: 390, offsetTop: 400, offsetLeft: 16 }
   );
-  assert.equal(keyboard.top, 180 + 400 + 4);
-  assert.ok(keyboard.maxHeight < 320);
-  assert.ok(keyboard.top + keyboard.maxHeight <= 400 + 220 - 8);
+  assert.ok(400 > 0, "the keyboard case is panned");
+  assert.equal(keyboard.top, 184, "top is the box bottom plus 4, with no offsetTop added");
+  assert.equal(keyboard.maxHeight, Math.min(320, 400 + 220 - 180 - 8));
   assert.ok(keyboard.maxHeight > 0);
+  assert.equal(keyboard.left, 12, "left is the box left, with offsetLeft only in the width bound");
+  assert.equal(keyboard.width, Math.min(366, 16 + 390 - 12 - 8));
 
   const layer = css.slice(css.indexOf(".publicFlagSuggestLayer {"), css.indexOf(".publicFlagSuggestLayer.isPlaced"));
   assert.match(layer, /position:\s*fixed/);
