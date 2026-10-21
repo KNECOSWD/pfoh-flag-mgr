@@ -7,18 +7,28 @@ import {
   DuplicateReviewBoard,
   MergeActions,
   ResultingRecord,
+  ReviewStepActions,
   SharedFieldChoices,
+  StillToChoose,
   UseMatchingButton,
+  activeFlashKeys,
   applyMatchingValues,
   blankChoice,
   buildMergeRequest,
   canConfirmMerge,
+  changedPreviewKeys,
+  choicesAfterIncludedChange,
   combineAwardLists,
   mergeFields,
   previewDraft,
+  previewNotePlacement,
   previewRows,
+  previewUpdateText,
   previewValue,
   recordsDiffer,
+  schedulePreviewFlash,
+  shouldShowPreviewNote,
+  stillToChooseHint,
   survivorIdFromChoices
 } from "../src/duplicateReview.js";
 import { MergeHistoryScreen } from "../src/mergeHistory.js";
@@ -121,6 +131,33 @@ function buttons(html) {
   return [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map((match) => match[0]);
 }
 
+function inputChecked(tag) {
+  return /(?:^|\s)checked(?:=|\s|>|\/)/.test(tag);
+}
+
+function previewBlock(html, key) {
+  const marker = `data-preview="${key}"`;
+  const start = html.indexOf(marker);
+  if (start < 0) return "";
+  const tagStart = html.lastIndexOf("<", start);
+  const nextMarker = html.indexOf("data-preview=", start + marker.length);
+  if (nextMarker < 0) return html.slice(tagStart);
+  return html.slice(tagStart, html.lastIndexOf("<", nextMarker));
+}
+
+function contrast(foreground, background) {
+  const luminance = (hex) => {
+    const channels = [0, 1, 2].map((index) => {
+      const value = parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16) / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  };
+  const lighter = Math.max(luminance(foreground), luminance(background));
+  const darker = Math.min(luminance(foreground), luminance(background));
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 function fillFrom(sourceId) {
   const choices = {};
   for (const field of mergeFields) {
@@ -129,12 +166,13 @@ function fillFrom(sourceId) {
   return choices;
 }
 
-test("every field has a select on both records and nothing is preselected", () => {
+test("every field has a select on both records and only exact matches are preselected", () => {
   assert.equal(recordsDiffer(["Jr.", "Sr."]), true);
   assert.equal(recordsDiffer(["Army", "Army"]), false);
   assert.equal(mergeFields.length, 17);
 
-  const html = reviewMarkup();
+  const choices = choicesAfterIncludedChange(honorees, {});
+  const html = reviewMarkup(choices);
   assert.match(html, /Side-by-side duplicate review/);
   assert.match(html, /Use all matching values/);
   assert.match(html, /John Q Smith Jr\./);
@@ -147,7 +185,19 @@ test("every field has a select on both records and nothing is preselected", () =
   for (const field of mergeFields) {
     const radios = tags(html, `field-${field.key}`).filter((tag) => tag.includes('value="1"') || tag.includes('value="2"'));
     assert.equal(radios.length, 2, `${field.key} has a select on both records`);
-    assert.equal(radios.filter((tag) => tag.includes("checked")).length, 0, `${field.key} is not preselected`);
+    const checked = radios.filter(inputChecked);
+    if (identicalKeys.includes(field.key)) {
+      assert.equal(checked.length, 1, `${field.key} is preselected`);
+      assert.equal(choices[field.key].sourceId, 1);
+      assert.equal(choices[field.key].explicit, false);
+      assert.equal(choices[field.key].useCustom, false);
+      assert.match(checked[0], /value="1"/);
+      assert.match(checked[0], /aria-checked="true"/);
+      assert.match(html, new RegExp(`class="mergeChoice isSelected"><input[^>]*name="field-${field.key}"[^>]*value="1"`));
+    } else {
+      assert.equal(checked.length, 0, `${field.key} is not preselected`);
+      assert.equal(choices[field.key], undefined);
+    }
     assert.equal(radios.filter((tag) => tag.includes("disabled")).length, 0, `${field.key} can be chosen on an included record`);
 
     const block = html.split(`data-field="${field.key}"`)[1]?.split("data-field=")[0] ?? "";
@@ -158,9 +208,10 @@ test("every field has a select on both records and nothing is preselected", () =
     }
   }
 
-  assert.equal(tags(html, "field-photo").filter((tag) => tag.includes('value="none"') && tag.includes("checked")).length, 0);
-  assert.equal(tags(html, "field-awards").filter((tag) => tag.includes('value="combine"') && tag.includes("checked")).length, 0);
-  assert.equal(canConfirmMerge(included, honorees, {}), false);
+  assert.equal(tags(html, "field-photo").filter((tag) => tag.includes('value="none"') && inputChecked(tag)).length, 0);
+  assert.equal(tags(html, "field-awards").filter((tag) => tag.includes('value="combine"') && inputChecked(tag)).length, 0);
+  assert.equal(choices.flagGrid, undefined);
+  assert.equal(canConfirmMerge(included, honorees, choices), false);
   assert.ok(buttons(html).filter((tag) => tag.includes("Merge") || tag.includes("Preview card PDF")).every((tag) => tag.includes("disabled")));
 });
 
@@ -182,11 +233,11 @@ test("use all matching values fills only identical fields", () => {
   const html = reviewMarkup(applyMatchingValues(honorees, {}));
   for (const key of identicalKeys) {
     const radios = tags(html, `field-${key}`);
-    assert.equal(radios.filter((tag) => tag.includes('value="1"') && tag.includes("checked")).length, 1);
-    assert.equal(radios.filter((tag) => tag.includes('value="2"') && tag.includes("checked")).length, 0);
+    assert.equal(radios.filter((tag) => tag.includes('value="1"') && inputChecked(tag)).length, 1);
+    assert.equal(radios.filter((tag) => tag.includes('value="2"') && inputChecked(tag)).length, 0);
   }
   for (const key of differingKeys) {
-    assert.equal(tags(html, `field-${key}`).filter((tag) => tag.includes("checked")).length, 0, `${key} stays unselected`);
+    assert.equal(tags(html, `field-${key}`).filter(inputChecked).length, 0, `${key} stays unselected`);
   }
   assert.equal(canConfirmMerge(included, honorees, applyMatchingValues(honorees, {})), false);
 });
@@ -254,7 +305,7 @@ test("the survivor is the flag-grid row, including a blank grid, and merge waits
   assert.equal(mergeButtons.length, 2);
   assert.ok(mergeButtons.every((tag) => !tag.includes("disabled")));
   const gridRadios = tags(ready, "field-flagGrid").filter((tag) => tag.includes('value="1"') || tag.includes('value="2"'));
-  assert.equal(gridRadios.filter((tag) => tag.includes('value="2"') && tag.includes("checked")).length, 1);
+  assert.equal(gridRadios.filter((tag) => tag.includes('value="2"') && inputChecked(tag)).length, 1);
 });
 
 test("the preview normalizes typed text the same way the save request does", () => {
@@ -317,7 +368,7 @@ test("the preview normalizes typed text the same way the save request does", () 
   customGrid.flagGrid = choice({ sourceId: 2, useCustom: true, custom: "AA-10" });
   const gridHtml = reviewMarkup(customGrid);
   const gridRadios = tags(gridHtml, "field-flagGrid").filter((tag) => tag.includes('value="2"'));
-  assert.equal(gridRadios.filter((tag) => tag.includes("checked")).length, 1);
+  assert.equal(gridRadios.filter(inputChecked).length, 1);
   assert.match(gridHtml, /aria-label="Flag grid"/);
   assert.match(gridHtml, /placeholder="AA-10"/);
   assert.equal(buildMergeRequest(honorees, customGrid).fields.flagGrid, 2);
@@ -327,6 +378,274 @@ test("the preview normalizes typed text the same way the save request does", () 
   const stacked = css.slice(css.indexOf("@media (max-width: 720px)"));
   assert.match(stacked, /\.mergeBoard\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   assert.match(stacked, /\.resultField\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+});
+
+test("exact matches are preselected on load and the flag grid never is", () => {
+  const loaded = choicesAfterIncludedChange(honorees, {});
+  for (const key of identicalKeys) {
+    assert.equal(loaded[key].sourceId, 1, `${key} is preselected`);
+    assert.equal(loaded[key].explicit, false);
+    assert.equal(loaded[key].useCustom, false);
+  }
+  for (const key of differingKeys) assert.equal(loaded[key], undefined, `${key} is not preselected`);
+  assert.equal(loaded.flagGrid, undefined);
+
+  const sameGrid = [{ ...left, flagGridName: "AA-1" }, { ...right, flagGridName: "AA-1" }];
+  const bothBlank = [{ ...left, flagGridName: "" }, { ...right, flagGridName: "" }];
+  for (const pair of [sameGrid, bothBlank]) {
+    const filled = choicesAfterIncludedChange(pair, {});
+    assert.equal(filled.flagGrid, undefined);
+    assert.equal(survivorIdFromChoices(filled, [1, 2]), null);
+    assert.equal(filled.firstName.sourceId, 1);
+    assert.equal(filled.firstName.explicit, false);
+  }
+
+  const third = { ...left, id: 3, firstName: "Joan" };
+  const widened = choicesAfterIncludedChange([left, right, third], loaded);
+  assert.equal(widened.firstName, undefined, "a preselect is cleared when the values no longer match");
+  assert.equal(widened.middleName.sourceId, 1);
+  assert.equal(widened.flagGrid, undefined);
+});
+
+test("a preselected field can be changed or custom-edited and matching values do not overwrite it", () => {
+  const loaded = choicesAfterIncludedChange(honorees, {});
+  const changed = {
+    ...loaded,
+    firstName: choice({ sourceId: 2 })
+  };
+  const kept = choicesAfterIncludedChange(honorees, changed);
+  assert.equal(kept.firstName.sourceId, 2);
+  assert.equal(kept.firstName.explicit, true);
+  assert.equal(kept.firstName.useCustom, false);
+
+  const custom = {
+    ...loaded,
+    firstName: choice({ useCustom: true, sourceId: null, custom: "Patricia Ann" })
+  };
+  const afterInclude = choicesAfterIncludedChange(honorees, custom);
+  assert.equal(afterInclude.firstName.useCustom, true);
+  assert.equal(afterInclude.firstName.custom, "Patricia Ann");
+  assert.equal(afterInclude.firstName.sourceId, null);
+  const matched = applyMatchingValues(honorees, custom);
+  assert.equal(matched.firstName.custom, "Patricia Ann");
+  assert.equal(matched.firstName.useCustom, true);
+  assert.equal(matched.firstName.sourceId, null);
+  assert.equal(matched.middleName.sourceId, 1);
+  assert.equal(matched.flagGrid, undefined);
+
+  const html = reviewMarkup(changed);
+  const firstName = tags(html, "field-firstName").filter((tag) => tag.includes('value="1"') || tag.includes('value="2"'));
+  assert.equal(firstName.filter((tag) => tag.includes('value="2"') && inputChecked(tag)).length, 1);
+  assert.equal(firstName.filter((tag) => tag.includes('value="1"') && inputChecked(tag)).length, 0);
+  assert.match(html, /class="mergeChoice isSelected"><input[^>]*name="field-firstName"[^>]*value="2"/);
+  assert.match(html, /aria-checked="true"/);
+});
+
+test("the review step previews the card and names only the fields still to choose", () => {
+  const screen = readFileSync(new URL("../src/DuplicateMerge.tsx", import.meta.url), "utf8");
+  const review = screen.slice(screen.indexOf('step === "review"'), screen.indexOf('step === "confirm"'));
+  const confirm = screen.slice(screen.indexOf('step === "confirm"'), screen.indexOf('step === "done"'));
+  assert.match(review, /ReviewStepActions/);
+  assert.match(review, /previewCard\(\)/);
+  assert.match(review, /StillToChoose/);
+  assert.match(confirm, /Preview card PDF|onPreview=\{\(\) => void previewCard\(\)\}/);
+  assert.match(confirm, /StillToChoose/);
+  assert.match(screen, /Fields that match exactly are preselected/);
+  assert.match(screen, /Everything else, including the flag grid, needs a pick/);
+  assert.doesNotMatch(screen, /Nothing is selected for you/);
+  assert.doesNotMatch(screen, /Nothing is selected automatically/);
+  const open = screen.slice(screen.indexOf("function openGroup"), screen.indexOf("function toggleIncluded"));
+  const toggle = screen.slice(screen.indexOf("function toggleIncluded"), screen.indexOf("function chooseSource"));
+  assert.match(open, /choicesAfterIncludedChange/);
+  assert.doesNotMatch(open, /flashChanges/);
+  assert.match(toggle, /choicesAfterIncludedChange/);
+  assert.doesNotMatch(toggle, /flashChanges/);
+  assert.match(screen.slice(screen.indexOf("function chooseSource"), screen.indexOf("function chooseNoPhoto")), /flashChanges/);
+  assert.match(screen.slice(screen.indexOf("function useMatching"), screen.indexOf("async function confirmNotDuplicates")), /flashChanges/);
+  assert.match(screen.slice(screen.indexOf("function editPreview"), screen.indexOf("function editGrid")), /flashChanges/);
+
+  const loaded = choicesAfterIncludedChange(honorees, {});
+  const hint = stillToChooseHint(included, loaded);
+  assert.match(hint, /^Still to choose: /);
+  assert.match(hint, /\.$/);
+  for (const key of identicalKeys) {
+    const label = mergeFields.find((field) => field.key === key).label;
+    assert.equal(hint.includes(label), false, `${label} is preselected and stays off the hint`);
+  }
+  assert.match(hint, /Flag grid/);
+  assert.match(hint, /Photo/);
+  assert.equal(hint, stillToChooseHint(included, loaded));
+
+  const waiting = renderToStaticMarkup(
+    createElement(
+      "div",
+      null,
+      createElement(ReviewStepActions, { ready: false, busy: false, onPreview() {}, onContinue() {} }),
+      createElement(StillToChoose, { includedIds: included, choices: loaded })
+    )
+  );
+  const previewButtons = buttons(waiting).filter((tag) => tag.includes("Preview card PDF"));
+  const continueButtons = buttons(waiting).filter((tag) => tag.includes("Continue to confirm"));
+  assert.equal(previewButtons.length, 1);
+  assert.equal(continueButtons.length, 1);
+  assert.match(previewButtons[0], /disabled/);
+  assert.match(continueButtons[0], /disabled/);
+  assert.match(waiting, /Still to choose:/);
+  assert.doesNotMatch(waiting, /First name/);
+  assert.match(waiting, /Flag grid/);
+
+  const readyChoices = fillFrom(1);
+  assert.equal(stillToChooseHint(included, readyChoices), "");
+  const readyHtml = renderToStaticMarkup(
+    createElement(
+      "div",
+      null,
+      createElement(ReviewStepActions, { ready: true, busy: false, onPreview() {}, onContinue() {} }),
+      createElement(StillToChoose, { includedIds: included, choices: readyChoices })
+    )
+  );
+  assert.doesNotMatch(buttons(readyHtml).find((tag) => tag.includes("Preview card PDF")), /disabled/);
+  assert.doesNotMatch(readyHtml, /Still to choose/);
+});
+
+test("the resulting photo is a thumbnail, or No photo, or Not chosen", () => {
+  const chosen = renderToStaticMarkup(
+    createElement(ResultingRecord, {
+      honorees,
+      choices: { photo: choice({ sourceId: 1 }) },
+      onEdit() {},
+      onGrid() {}
+    })
+  );
+  const photo = previewBlock(chosen, "photo");
+  assert.match(photo, /<img /);
+  assert.match(photo, /class="duplicatePhoto"/);
+  assert.match(photo, /src="\/api\/honorees\/1\/photo"/);
+  assert.match(photo, /alt="John Q Smith Jr\. photo"/);
+  assert.doesNotMatch(photo, /john\.jpg/);
+
+  const none = renderToStaticMarkup(
+    createElement(ResultingRecord, {
+      honorees,
+      choices: { photo: choice({ noPhoto: true, sourceId: null }) },
+      onEdit() {},
+      onGrid() {}
+    })
+  );
+  const noneBlock = previewBlock(none, "photo");
+  assert.match(noneBlock, /No photo/);
+  assert.doesNotMatch(noneBlock, /<img /);
+
+  const emptyRecord = renderToStaticMarkup(
+    createElement(ResultingRecord, {
+      honorees,
+      choices: { photo: choice({ sourceId: 2 }) },
+      onEdit() {},
+      onGrid() {}
+    })
+  );
+  const emptyBlock = previewBlock(emptyRecord, "photo");
+  assert.match(emptyBlock, /No photo/);
+  assert.doesNotMatch(emptyBlock, /<img /);
+
+  const unset = renderToStaticMarkup(
+    createElement(ResultingRecord, { honorees, choices: {}, onEdit() {}, onGrid() {} })
+  );
+  assert.match(previewBlock(unset, "photo"), /Not chosen/);
+  assert.doesNotMatch(previewBlock(unset, "photo"), /<img /);
+
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  assert.match(css, /\.resultControl \.duplicatePhoto,\s*\.resultControl \.duplicateNoPhoto\s*\{[^}]*max-width:\s*100%/);
+});
+
+test("a changed resulting row highlights, then clears, and reduced motion does not animate", () => {
+  const before = {};
+  const after = { rank: choice({ sourceId: 2 }) };
+  assert.deepEqual(changedPreviewKeys(honorees, before, after), ["rank"]);
+  const flash = schedulePreviewFlash(["rank"], 0);
+  assert.deepEqual(activeFlashKeys(flash, 0), ["rank"]);
+  assert.deepEqual(activeFlashKeys(flash, 999), ["rank"]);
+  assert.deepEqual(activeFlashKeys(flash, 1000), []);
+
+  const sameGrid = [{ ...left, flagGridName: "AA-1" }, { ...right, flagGridName: "AA-1" }];
+  const matched = applyMatchingValues(sameGrid, {});
+  assert.equal(changedPreviewKeys(sameGrid, {}, matched).includes("flagGrid"), false);
+
+  const lit = renderToStaticMarkup(
+    createElement(ResultingRecord, {
+      honorees,
+      choices: after,
+      litKeys: ["rank"],
+      onEdit() {},
+      onGrid() {}
+    })
+  );
+  assert.match(previewBlock(lit, "rank"), /class="resultField resultFlash"/);
+  assert.doesNotMatch(previewBlock(lit, "firstName"), /resultFlash/);
+  const cleared = renderToStaticMarkup(
+    createElement(ResultingRecord, { honorees, choices: after, litKeys: [], onEdit() {}, onGrid() {} })
+  );
+  assert.doesNotMatch(cleared, /resultFlash/);
+
+  const source = readFileSync(new URL("../src/duplicateReview.js", import.meta.url), "utf8");
+  const resulting = source.slice(source.indexOf("export function ResultingRecord"), source.indexOf("export function ReviewStepActions"));
+  assert.match(resulting, /schedulePreviewFlash/);
+  assert.match(resulting, /activeFlashKeys/);
+  assert.match(resulting, /PREVIEW_FLASH_MS/);
+  assert.match(resulting, /setLit\(\(current\) => current\.filter/);
+
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  assert.match(css, /\.resultField\.resultFlash\s*\{[^}]*animation:\s*resultFlash 1s/);
+  assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)\s*\{[^}]*\.resultField\.resultFlash\s*\{[^}]*animation:\s*none/);
+  const selected = css.slice(css.indexOf(".mergeChoice.isSelected {"), css.indexOf(".mergeChoice.isSelected strong"));
+  assert.match(selected, /background:\s*#0A2342/i);
+  assert.match(selected, /color:\s*#FFFFFF/i);
+  assert.ok(contrast("#FFFFFF", "#0A2342") >= 4.5);
+  assert.ok(contrast("#162033", "#FFF4D6") >= 4.5);
+  assert.ok(contrast("#162033", "#FFE08A") >= 4.5);
+  assert.ok(contrast("#F4C95D", "#0A2342") >= 3);
+});
+
+test("the preview note names an off-screen field and stays out of the layout", () => {
+  const viewport = { top: 0, left: 0, bottom: 800, right: 1280 };
+  assert.equal(shouldShowPreviewNote({ top: 20, bottom: 80, left: 0, right: 400 }, viewport), false);
+  assert.equal(shouldShowPreviewNote({ top: 860, bottom: 920, left: 0, right: 400 }, viewport), true);
+  assert.equal(shouldShowPreviewNote(null, viewport), false);
+  assert.equal(previewUpdateText("Email"), "Preview updated: Email");
+  assert.equal(previewNotePlacement(null, 800), "top");
+  assert.equal(previewNotePlacement({ top: 400, bottom: 460, left: 0, right: 240 }, 800), "top");
+  assert.equal(previewNotePlacement({ top: 4, bottom: 48, left: 0, right: 240 }, 800), "offset");
+  assert.equal(previewNotePlacement([{ top: 4, bottom: 48 }, { top: 70, bottom: 110 }], 800), "bottom");
+
+  const shown = renderToStaticMarkup(
+    createElement(ResultingRecord, {
+      honorees,
+      choices: {},
+      notes: ["Email"],
+      onEdit() {},
+      onGrid() {}
+    })
+  );
+  assert.match(shown, /aria-live="polite"/);
+  assert.match(shown, /Preview updated: Email/);
+  assert.match(shown, /class="previewUpdateNote"/);
+
+  const hidden = renderToStaticMarkup(
+    createElement(ResultingRecord, { honorees, choices: {}, notes: [], onEdit() {}, onGrid() {} })
+  );
+  assert.match(hidden, /aria-live="polite"/);
+  assert.doesNotMatch(hidden, /Preview updated:/);
+
+  const source = readFileSync(new URL("../src/duplicateReview.js", import.meta.url), "utf8");
+  const resulting = source.slice(source.indexOf("export function ResultingRecord"), source.indexOf("export function ReviewStepActions"));
+  assert.match(resulting, /getBoundingClientRect/);
+  assert.match(resulting, /shouldShowPreviewNote/);
+  assert.match(resulting, /PREVIEW_NOTE_MS/);
+  assert.match(resulting, /previewNotePlacement/);
+  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  assert.match(css, /\.previewUpdateNote\s*\{[^}]*position:\s*fixed/);
+  assert.match(css, /\.previewUpdateNote\.isOffset\s*\{[^}]*top:\s*4\.25rem/);
+  assert.match(css, /\.previewUpdateNote\.isBottom\s*\{[^}]*bottom:\s*0\.75rem/);
 });
 
 test("merge history lists newest first and shows when undo is blocked", () => {

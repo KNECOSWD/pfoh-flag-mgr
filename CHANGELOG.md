@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.1.4
+
+- On the duplicate review step, Preview card PDF sits with Continue to confirm. It opens the same card preview as the confirm step. While a field still needs a pick, both steps name the remaining fields.
+- The resulting record shows the chosen photo as a thumbnail. No photo, and a chosen record that has no photo, show No photo. A photo that has not been chosen stays Not chosen.
+- Fields that match exactly on the included records are preselected when a group opens and when the included records change. The flag grid is never preselected, even when the grids match or are both blank. A preselected field can still be changed or edited. Use all matching values still does not replace a custom edit or an explicit choice.
+- A pick, Use all matching values, or a custom edit that changes a resulting value highlights that row for about a second. Reduced motion keeps a steady highlight instead of an animation. The chosen value stays marked on the record. If that row is off the screen, a short note names the field and then goes away. Opening a group and the automatic exact-match picks do not highlight.
+
 ## 2.1.3
 
 - Duplicate review asks for every field on both records. Nothing is selected for you, including fields that match. Use all matching values fills only fields that are still empty and the same on the included records. It does not select the flag grid, even when both grids match or both are blank, and it does not replace a value already chosen or typed. A field that differs is still marked differs.
