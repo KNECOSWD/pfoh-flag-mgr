@@ -679,6 +679,232 @@ public class DuplicateMergeFieldApiTests(PfohApiFactory factory) : IClassFixture
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/admin/review/pending")).StatusCode);
     }
 
+    [Fact]
+    public async Task A_merge_writes_one_audit_row_and_undo_restores_every_moved_value()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var now = DateTime.UtcNow;
+            db.HonoreeClaims.Add(new HonoreeClaim
+            {
+                Id = 71,
+                HonoreeId = 1,
+                UserId = "person-a",
+                ClaimedUtc = now,
+                Email = "ada@example.com",
+                DisplayName = "Ada",
+                ClaimStatus = "Claimed",
+                SourceFlagClaimId = 31
+            });
+            db.HonoreeChangeRequests.Add(new HonoreeChangeRequest
+            {
+                Id = 81,
+                FlagClaimId = 31,
+                HonoreeId = 1,
+                FlagGridId = 11,
+                FirstName = "John",
+                LastName = "Smith",
+                RequestStatus = "Approved",
+                Awards = "Bronze Star",
+                PhotoFileName = "john-1.jpg"
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient();
+        var merged = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields = SourceFields(2, 1, 1)
+        }));
+        var mergedBody = await merged.Content.ReadAsStringAsync();
+        Assert.True(merged.StatusCode == HttpStatusCode.OK, mergedBody);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var audit = Assert.Single(await db.HonoreeMergeAudits.ToListAsync());
+            Assert.Equal(2, audit.SurvivorId);
+            Assert.Equal("admin@example.com", audit.MergedBy);
+            Assert.NotEqual(default, audit.MergedUtc);
+            Assert.Contains("Purple Heart", audit.BeforeState);
+            Assert.Contains("john-1.jpg", audit.BeforeState);
+            Assert.Contains("\"id\":81", audit.BeforeState);
+            Assert.Equal("John", (await db.Honorees.SingleAsync(honoree => honoree.Id == 2)).FirstName);
+            Assert.Equal("john-1.jpg", (await db.Honorees.SingleAsync(honoree => honoree.Id == 2)).PhotoFileName);
+            Assert.Equal("Bronze Star", (await db.Honorees.SingleAsync(honoree => honoree.Id == 2)).Awards);
+            Assert.False((await db.Honorees.SingleAsync(honoree => honoree.Id == 1)).IsActive);
+            Assert.Null((await db.Honorees.SingleAsync(honoree => honoree.Id == 1)).FlagGridId);
+            Assert.Null((await db.FlagGrids.SingleAsync(grid => grid.Id == 11)).HonoreeId);
+            Assert.Equal(2, (await db.FlagClaims.SingleAsync(claim => claim.Id == 31)).HonoreeId);
+            var change = await db.HonoreeChangeRequests.SingleAsync(item => item.Id == 81);
+            change.HonoreeId = 2;
+            change.FlagGridId = 12;
+            await db.SaveChangesAsync();
+        }
+
+        var history = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/duplicates/merges"));
+        Assert.Equal(HttpStatusCode.OK, history.StatusCode);
+        var listed = await history.Content.ReadFromJsonAsync<List<HistoryBody>>(Json);
+        var item = Assert.Single(listed!);
+        Assert.Equal("John Q Smith Sr.", item.SurvivorName);
+        Assert.Equal("John Q Smith Jr.", Assert.Single(item.Absorbed).Name);
+        Assert.Equal("admin@example.com", item.MergedBy);
+        Assert.Null(item.UndoneUtc);
+
+        var undone = await client.SendAsync(Admin(HttpMethod.Post, $"/api/admin/duplicates/merges/{item.Id}/undo"));
+        var undoneBody = await undone.Content.ReadAsStringAsync();
+        Assert.True(undone.StatusCode == HttpStatusCode.OK, undoneBody);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var survivor = await db.Honorees.SingleAsync(honoree => honoree.Id == 2);
+            var absorbed = await db.Honorees.SingleAsync(honoree => honoree.Id == 1);
+            Assert.Equal("", survivor.PhotoFileName);
+            Assert.Equal("Purple Heart", survivor.Awards);
+            Assert.Equal("Kept bio", survivor.Description);
+            Assert.Equal(12, survivor.FlagGridId);
+            Assert.True(survivor.IsActive);
+            Assert.True(absorbed.IsActive);
+            Assert.Equal(11, absorbed.FlagGridId);
+            Assert.Equal("john-1.jpg", absorbed.PhotoFileName);
+            Assert.Equal("Bronze Star", absorbed.Awards);
+            Assert.Equal("Photo bio", absorbed.Description);
+            Assert.Equal(1, (await db.FlagGrids.SingleAsync(grid => grid.Id == 11)).HonoreeId);
+            Assert.Equal(2, (await db.FlagGrids.SingleAsync(grid => grid.Id == 12)).HonoreeId);
+            var claim = await db.FlagClaims.SingleAsync(item => item.Id == 31);
+            Assert.Equal(1, claim.HonoreeId);
+            Assert.Equal(11, claim.FlagGridId);
+            var ownership = await db.HonoreeClaims.SingleAsync(item => item.Id == 71);
+            Assert.Equal(1, ownership.HonoreeId);
+            Assert.Equal("Claimed", ownership.ClaimStatus);
+            Assert.Equal("ada@example.com", ownership.Email);
+            Assert.DoesNotContain(await db.HonoreeClaims.ToListAsync(), item => item.HonoreeId == 2 && item.UserId == "person-a");
+            var change = await db.HonoreeChangeRequests.SingleAsync(item => item.Id == 81);
+            Assert.Equal(1, change.HonoreeId);
+            Assert.Equal(11, change.FlagGridId);
+            var audit = await db.HonoreeMergeAudits.SingleAsync();
+            Assert.Equal("admin@example.com", audit.UndoneBy);
+            Assert.NotNull(audit.UndoneUtc);
+        }
+
+        var twice = await client.SendAsync(Admin(HttpMethod.Post, $"/api/admin/duplicates/merges/{item.Id}/undo"));
+        Assert.Equal(HttpStatusCode.Conflict, twice.StatusCode);
+        Assert.Contains("already undone", await twice.Content.ReadAsStringAsync());
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            Assert.True((await db.Honorees.SingleAsync(honoree => honoree.Id == 1)).IsActive);
+            Assert.True((await db.Honorees.SingleAsync(honoree => honoree.Id == 2)).IsActive);
+        }
+    }
+
+    [Fact]
+    public async Task Undo_is_blocked_when_the_survivor_was_edited_after_the_merge()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        var client = factory.CreateClient();
+        var merged = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields = SourceFields(2, 1, 2)
+        }));
+        Assert.Equal(HttpStatusCode.OK, merged.StatusCode);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var survivor = await db.Honorees.SingleAsync(honoree => honoree.Id == 2);
+            survivor.FirstName = "Edited";
+            survivor.ModifiedDate = DateTime.UtcNow.AddMinutes(5);
+            await db.SaveChangesAsync();
+        }
+
+        int auditId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            auditId = (await db.HonoreeMergeAudits.SingleAsync(row => row.MergedBy == "admin@example.com")).Id;
+        }
+
+        var undone = await client.SendAsync(Admin(HttpMethod.Post, $"/api/admin/duplicates/merges/{auditId}/undo"));
+        Assert.Equal(HttpStatusCode.Conflict, undone.StatusCode);
+        Assert.Contains("edited after the merge", await undone.Content.ReadAsStringAsync());
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var after = check.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Equal("Edited", (await after.Honorees.SingleAsync(honoree => honoree.Id == 2)).FirstName);
+        Assert.False((await after.Honorees.SingleAsync(honoree => honoree.Id == 1)).IsActive);
+        Assert.Null((await after.HonoreeMergeAudits.SingleAsync()).UndoneUtc);
+    }
+
+    [Fact]
+    public async Task Merge_history_and_undo_are_admin_only()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        var client = factory.CreateClient();
+        var merged = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields = SourceFields(2, 1, 2)
+        }));
+        Assert.Equal(HttpStatusCode.OK, merged.StatusCode);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            db.HonoreeMergeAudits.Add(new HonoreeMergeAudit
+            {
+                SurvivorId = 2,
+                AbsorbedHonoreeIds = "[1]",
+                BeforeState = db.HonoreeMergeAudits.Single().BeforeState,
+                AfterSurvivorState = db.HonoreeMergeAudits.Single().AfterSurvivorState,
+                CreatedHonoreeClaimIds = "[]",
+                MergedBy = "earlier@example.com",
+                MergedUtc = DateTime.UtcNow.AddDays(-1),
+                SurvivorModifiedUtc = DateTime.UtcNow.AddDays(-1)
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var history = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/duplicates/merges"));
+        var listed = await history.Content.ReadFromJsonAsync<List<HistoryBody>>(Json);
+        Assert.Equal(2, listed!.Count);
+        Assert.Equal("admin@example.com", listed[0].MergedBy);
+        Assert.Equal("earlier@example.com", listed[1].MergedBy);
+
+        int auditId;
+        await using (var lookup = factory.Services.CreateAsyncScope())
+        {
+            var db = lookup.ServiceProvider.GetRequiredService<PfohDbContext>();
+            auditId = (await db.HonoreeMergeAudits.SingleAsync(row => row.MergedBy == "admin@example.com")).Id;
+        }
+
+        foreach (var url in new[] { "/api/admin/duplicates/merges", $"/api/admin/duplicates/merges/{auditId}/undo" })
+        {
+            var member = new HttpRequestMessage(url.EndsWith("undo") ? HttpMethod.Post : HttpMethod.Get, url);
+            member.Headers.Add(TestAuthHandler.OidHeader, "member-1");
+            member.Headers.Add(TestAuthHandler.EmailHeader, "member@example.com");
+            member.Headers.Add(TestAuthHandler.NameHeader, "Member");
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(member)).StatusCode);
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.SendAsync(new HttpRequestMessage(member.Method, url))).StatusCode);
+        }
+
+        await using var afterScope = factory.Services.CreateAsyncScope();
+        var after = afterScope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.False((await after.Honorees.SingleAsync(honoree => honoree.Id == 1)).IsActive);
+        Assert.Null((await after.HonoreeMergeAudits.SingleAsync(row => row.MergedBy == "admin@example.com")).UndoneUtc);
+    }
+
     private static object GridValue(Dictionary<string, int> fields, string gridName)
     {
         var copy = new Dictionary<string, int>(fields) { ["flagGrid"] = 2 };
@@ -792,6 +1018,7 @@ public class DuplicateMergeFieldApiTests(PfohApiFactory factory) : IClassFixture
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
         db.Database.EnsureCreated();
+        db.HonoreeMergeAudits.RemoveRange(db.HonoreeMergeAudits);
         db.ReprintDuplicateReviews.RemoveRange(db.ReprintDuplicateReviews);
         db.HonoreeNotDuplicatePairs.RemoveRange(db.HonoreeNotDuplicatePairs);
         db.HonoreeClaims.RemoveRange(db.HonoreeClaims);
@@ -890,6 +1117,8 @@ public class DuplicateMergeFieldApiTests(PfohApiFactory factory) : IClassFixture
         return request;
     }
 
+    private sealed record HistoryBody(int Id, string SurvivorName, List<AbsorbedBody> Absorbed, string MergedBy, DateTime? UndoneUtc);
+    private sealed record AbsorbedBody(int Id, string Name);
     private sealed record GroupBody(List<HonoreeBody> Honorees);
     private sealed record HonoreeBody(
         int Id,

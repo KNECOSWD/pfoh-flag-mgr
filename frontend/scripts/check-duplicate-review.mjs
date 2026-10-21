@@ -21,6 +21,7 @@ import {
   recordsDiffer,
   survivorIdFromChoices
 } from "../src/duplicateReview.js";
+import { MergeHistoryScreen } from "../src/mergeHistory.js";
 
 const left = {
   id: 1,
@@ -190,6 +191,46 @@ test("use all matching values fills only identical fields", () => {
   assert.equal(canConfirmMerge(included, honorees, applyMatchingValues(honorees, {})), false);
 });
 
+test("use all matching values does not choose the flag grid when the grids match", () => {
+  const sameGrid = [{ ...left, flagGridName: "AA-1" }, { ...right, flagGridName: "AA-1" }];
+  const bothBlank = [{ ...left, flagGridName: "" }, { ...right, flagGridName: "" }];
+  for (const pair of [sameGrid, bothBlank]) {
+    const filled = applyMatchingValues(pair, {});
+    assert.equal(filled.flagGrid, undefined);
+    assert.equal(survivorIdFromChoices(filled, [1, 2]), null);
+    const readyExceptGrid = { ...filled };
+    for (const field of mergeFields) {
+      if (field.key === "flagGrid" || readyExceptGrid[field.key]) continue;
+      readyExceptGrid[field.key] = choice({ sourceId: 1 });
+    }
+    assert.equal(canConfirmMerge([1, 2], pair, readyExceptGrid), false);
+    readyExceptGrid.flagGrid = choice({ sourceId: 2 });
+    assert.equal(survivorIdFromChoices(readyExceptGrid, [1, 2]), 2);
+    assert.equal(canConfirmMerge([1, 2], pair, readyExceptGrid), true);
+  }
+});
+
+test("use all matching values does not overwrite a custom or explicit choice", () => {
+  const pair = [
+    { ...left, rank: "Sgt", awards: "Bronze Star" },
+    { ...right, rank: "Sgt", awards: "Bronze Star" }
+  ];
+  const prior = {
+    firstName: choice({ useCustom: true, sourceId: null, custom: "Patricia Ann" }),
+    rank: choice({ sourceId: 2 }),
+    awards: choice({ combine: true, sourceId: null })
+  };
+  const filled = applyMatchingValues(pair, prior);
+  assert.equal(filled.firstName.custom, "Patricia Ann");
+  assert.equal(filled.firstName.useCustom, true);
+  assert.equal(filled.firstName.sourceId, null);
+  assert.equal(filled.rank.sourceId, 2);
+  assert.equal(filled.awards.combine, true);
+  assert.equal(filled.middleName.sourceId, 1);
+  assert.equal(filled.flagGrid, undefined);
+  assert.equal(filled.nickname.sourceId, 1);
+});
+
 test("the survivor is the flag-grid row, including a blank grid, and merge waits for every field", () => {
   const blank = { ...right, flagGridName: "" };
   const choices = fillFrom(1);
@@ -286,4 +327,69 @@ test("the preview normalizes typed text the same way the save request does", () 
   const stacked = css.slice(css.indexOf("@media (max-width: 720px)"));
   assert.match(stacked, /\.mergeBoard\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
   assert.match(stacked, /\.resultField\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+});
+
+test("merge history lists newest first and shows when undo is blocked", () => {
+  const older = {
+    id: 9,
+    survivorName: "Mary Ann Lee",
+    absorbed: [{ id: 5, name: "Mary A Lee" }],
+    mergedBy: "earlier@example.com",
+    mergedUtc: "2026-10-18T11:30:00Z",
+    undoneBy: "admin@example.com",
+    undoneUtc: "2026-10-19T09:00:00Z"
+  };
+  const newer = {
+    id: 12,
+    survivorName: "John Q Smith Sr.",
+    absorbed: [{ id: 1, name: "John Q Smith Jr." }],
+    mergedBy: "admin@example.com",
+    mergedUtc: "2026-10-21T15:04:00Z",
+    undoneBy: null,
+    undoneUtc: null
+  };
+  const html = renderToStaticMarkup(
+    createElement(MergeHistoryScreen, {
+      records: [older, newer],
+      loaded: true,
+      loadError: "",
+      busy: false,
+      error: "",
+      onUndo() {},
+      onBack() {},
+      onReload() {}
+    })
+  );
+  assert.ok(html.indexOf("John Q Smith Sr.") < html.indexOf("Mary Ann Lee"));
+  assert.match(html, /John Q Smith Jr\./);
+  assert.match(html, /admin@example.com/);
+  assert.match(html, />Undo</);
+  assert.match(html, /Undone /);
+
+  const blocked = renderToStaticMarkup(
+    createElement(MergeHistoryScreen, {
+      records: [newer],
+      loaded: true,
+      loadError: "",
+      busy: false,
+      error: "This merge cannot be undone because the surviving record was edited after the merge.",
+      onUndo() {},
+      onBack() {},
+      onReload() {}
+    })
+  );
+  assert.match(blocked, /role="alert"/);
+  assert.match(blocked, /edited after the merge/);
+});
+
+test("merge history is linked from duplicates and stays off the admin nav", () => {
+  const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const nav = app.match(/const adminNav: \{ route: AppRoute; label: string \}\[\] = \[[\s\S]*?\];/);
+  assert.ok(nav);
+  assert.doesNotMatch(nav[0], /history|Merge history/);
+  assert.match(app, /onOpenHistory=\{\(\) => navigateToRoute\("\/admin\/duplicates\/history"\)\}/);
+  assert.match(app, /isMergeHistoryRoute \? \([\s\S]*<MergeHistory/);
+  assert.doesNotMatch(readFileSync(new URL("../src/publicRoutes.js", import.meta.url), "utf8"), /duplicates\/history/);
+  const loadAdmin = app.slice(app.indexOf("async function loadAdminData"), app.indexOf("async function loadData"));
+  assert.doesNotMatch(loadAdmin, /mergeHistory|duplicates\/merges/);
 });

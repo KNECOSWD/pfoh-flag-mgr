@@ -54,6 +54,7 @@ public static class HonoreeMerge
         var now = DateTime.UtcNow;
         custom ??= new MergeCustom();
         var byId = confirmed.ToDictionary(honoree => honoree.Id);
+        var audit = await HonoreeMergeAuditLog.CaptureAsync(db, survivor, confirmed, fields, custom, adminName, now, ct);
         ApplyValues(survivor, confirmed, fields, custom);
         var keptGridId = KeptGridId(byId, fields, custom);
         var gridIds = confirmed
@@ -116,6 +117,7 @@ public static class HonoreeMerge
         survivor.ModifiedBy = adminName;
         survivor.ModifiedDate = now;
         survivor.IsActive = true;
+        HonoreeMergeAuditLog.NoteSurvivorAfter(audit, survivor);
 
         if (released.Count > 0)
         {
@@ -167,6 +169,11 @@ public static class HonoreeMerge
 
         await db.SaveChangesAsync(ct);
         await HonoreeClaimStore.SyncAsync(db, ct);
+        await HonoreeMergeAuditLog.NoteCreatedClaimsAsync(
+            db,
+            audit,
+            confirmed.Select(honoree => honoree.Id).ToList(),
+            ct);
         var claimants = await HonoreeClaimStore.ActiveForHonoreeAsync(db, survivor.Id, ct);
         return new HonoreeMergeResult(survivor.Id, deactivatedIds, claimants);
     }

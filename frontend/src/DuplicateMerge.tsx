@@ -69,7 +69,8 @@ export function DuplicateMergeScreen({
   onPreviewCard,
   onNotDuplicates,
   onReload,
-  onSignIn
+  onSignIn,
+  onOpenHistory
 }: {
   groups: DuplicateGroup[];
   loaded: boolean;
@@ -80,6 +81,7 @@ export function DuplicateMergeScreen({
   onNotDuplicates: (leftId: number, rightId: number) => Promise<void>;
   onReload: () => void;
   onSignIn?: () => void;
+  onOpenHistory?: () => void;
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [included, setIncluded] = useState<number[]>([]);
@@ -260,9 +262,16 @@ export function DuplicateMergeScreen({
             Likely duplicates are listed for review. Only active records are included. Open a group to compare the records side by side. Nothing is merged until every field has a value and you confirm. A pair you mark as not duplicates is left out of this list.
           </p>
         </div>
-        <button type="button" className="secondary" onClick={onReload} disabled={busy}>
-          {busy ? "Loading..." : "Refresh"}
-        </button>
+        <div className="adminHeaderActions">
+          {onOpenHistory ? (
+            <button type="button" className="secondary" onClick={onOpenHistory}>
+              Merge history
+            </button>
+          ) : null}
+          <button type="button" className="secondary" onClick={onReload} disabled={busy}>
+            {busy ? "Loading..." : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {listState.showError ? (
@@ -440,11 +449,13 @@ export function DuplicateMergeScreen({
 export function DuplicateMerge({
   instance,
   account,
-  onSignIn
+  onSignIn,
+  onOpenHistory
 }: {
   instance: IPublicClientApplication;
   account: AccountInfo | null;
   onSignIn?: () => void;
+  onOpenHistory?: () => void;
 }) {
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -489,6 +500,7 @@ export function DuplicateMerge({
       onNotDuplicates={async (leftId, rightId) => {
         await adminApi.markNotDuplicates(instance, account, leftId, rightId);
       }}
+      onOpenHistory={onOpenHistory}
     />
   );
 }

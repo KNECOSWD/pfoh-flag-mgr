@@ -240,6 +240,22 @@ export type DuplicateMergeResult = {
   claimants: DuplicateClaimant[];
 };
 
+export type MergeHistoryAbsorbed = {
+  id: number;
+  name: string;
+};
+
+export type MergeHistoryRecord = {
+  id: number;
+  survivorId: number;
+  survivorName: string;
+  absorbed: MergeHistoryAbsorbed[];
+  mergedBy: string;
+  mergedUtc: string;
+  undoneBy?: string | null;
+  undoneUtc?: string | null;
+};
+
 export type ReprintDuplicateReview = {
   id: number;
   honoreeId: number;
@@ -887,6 +903,14 @@ export const adminApi = {
 
   duplicateGroups: (instance: IPublicClientApplication, account: AccountInfo) =>
     request<DuplicateGroup[]>(instance, account, "/api/admin/duplicates/groups"),
+
+  mergeHistory: (instance: IPublicClientApplication, account: AccountInfo) =>
+    request<MergeHistoryRecord[]>(instance, account, "/api/admin/duplicates/merges"),
+
+  undoMerge: (instance: IPublicClientApplication, account: AccountInfo, id: number) =>
+    request<{ id: number }>(instance, account, `/api/admin/duplicates/merges/${id}/undo`, {
+      method: "POST"
+    }),
 
   mergeDuplicates: (
     instance: IPublicClientApplication,

@@ -172,11 +172,25 @@ function fieldResolved(field, choice, includedIds) {
   return choice.sourceId != null && includedIds.includes(choice.sourceId);
 }
 
+function choiceAlreadySet(choice) {
+  if (!choice) return false;
+  return Boolean(
+    choice.useCustom ||
+    choice.explicit ||
+    choice.noPhoto ||
+    choice.combine ||
+    choice.sourceId != null
+  );
+}
+
 export function applyMatchingValues(includedHonorees, previous) {
   const next = { ...(previous ?? {}) };
   const included = includedHonorees ?? [];
   if (included.length < 2) return next;
   for (const field of mergeFields) {
+    // The flag grid chooses the survivor. A matching grid, including both blank, stays unset.
+    if (field.key === "flagGrid") continue;
+    if (choiceAlreadySet(previous?.[field.key])) continue;
     const values = included.map((honoree) => field.value(honoree));
     if (recordsDiffer(values)) continue;
     next[field.key] = {

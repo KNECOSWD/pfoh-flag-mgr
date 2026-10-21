@@ -43,6 +43,7 @@ import { thumbnailLoadKey } from "./authorizedThumbnail.js";
 import { startVersionWatch, versionUrl } from "./versionReload.js";
 import { AdminNavMenu } from "./AdminNavMenu";
 import { DuplicateMerge } from "./DuplicateMerge";
+import { MergeHistory } from "./MergeHistory";
 import { PrintDuplicateReviews } from "./PrintDuplicateReviews";
 import PublicFlagMap from "./PublicFlagMap";
 import {
@@ -231,7 +232,7 @@ const blankForm: SaveHonoreeChangeRequest = {
   submitterEmailAddress: ""
 };
 
-type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/duplicates" | "/admin/flag-map" | "/admin/printing";
+type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/duplicates" | "/admin/duplicates/history" | "/admin/flag-map" | "/admin/printing";
 
 const appRoutes: AppRoute[] = [
   "/find",
@@ -240,6 +241,7 @@ const appRoutes: AppRoute[] = [
   "/flag-map",
   "/admin/review",
   "/admin/duplicates",
+  "/admin/duplicates/history",
   "/admin/flag-map",
   "/admin/printing"
 ];
@@ -581,6 +583,7 @@ export default function App() {
   const isHonorHeroRoute = activeRoute === "/honor-a-hero";
   const isAdminReviewRoute = activeRoute === "/admin/review";
   const isDuplicatesRoute = activeRoute === "/admin/duplicates";
+  const isMergeHistoryRoute = activeRoute === "/admin/duplicates/history";
   const isFlagMapRoute = activeRoute === "/admin/flag-map";
   const siteNav: { route: AppRoute; label: string; show: boolean }[] = [
     { route: "/find", label: "Search", show: true },
@@ -4145,6 +4148,15 @@ export default function App() {
                   instance={instance}
                   account={account ?? null}
                   onSignIn={() => void signIn("login")}
+                  onOpenHistory={() => navigateToRoute("/admin/duplicates/history")}
+                />
+              ) : null}
+
+              {isMergeHistoryRoute ? (
+                <MergeHistory
+                  instance={instance}
+                  account={account ?? null}
+                  onBack={() => navigateToRoute("/admin/duplicates")}
                 />
               ) : null}
 

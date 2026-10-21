@@ -234,6 +234,43 @@ public class AdminDuplicatesController(
             };
     }
 
+    [HttpGet("merges")]
+    public async Task<ActionResult<IReadOnlyList<MergeHistoryRecord>>> Merges(CancellationToken ct)
+    {
+        return Ok(await HonoreeMergeAuditLog.ListAsync(db, ct));
+    }
+
+    [HttpPost("merges/{id:int}/undo")]
+    public async Task<IActionResult> UndoMerge(int id, CancellationToken ct)
+    {
+        var adminName = User.GetEmail();
+        if (string.IsNullOrWhiteSpace(adminName))
+        {
+            adminName = User.GetDisplayName() ?? "PFOH.Admin";
+        }
+
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync<IActionResult>(async () =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var error = await HonoreeMergeAuditLog.UndoAsync(db, id, adminName, ct);
+            if (error == "missing")
+            {
+                await transaction.RollbackAsync(ct);
+                return NotFound(new { message = "That merge was not found." });
+            }
+
+            if (error is not null)
+            {
+                await transaction.RollbackAsync(ct);
+                return Conflict(new { message = error });
+            }
+
+            await transaction.CommitAsync(ct);
+            return Ok(new { id });
+        });
+    }
+
     [HttpPost("not-duplicates")]
     public async Task<ActionResult<NotDuplicatePairDto>> MarkNotDuplicates(
         [FromBody] NotDuplicatePairRequest request,
