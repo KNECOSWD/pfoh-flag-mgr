@@ -12964,6 +12964,24 @@ html.isMapFullscreen .publicFlagLevel {
   box-shadow: none;
 }
 
+.mergeChoice.isSelected {
+  background: #0A2342;
+  color: #FFFFFF;
+  border-radius: 8px;
+  padding: 0.35rem 0.45rem;
+  outline: 3px solid #0A2342;
+  outline-offset: 1px;
+}
+
+.mergeChoice.isSelected strong,
+.mergeChoice.isSelected em {
+  color: #FFFFFF;
+}
+
+.mergeChoice.isSelected input {
+  accent-color: #F4C95D;
+}
+
 .mergeMultiline {
   white-space: pre-wrap;
 }
@@ -13042,6 +13060,10 @@ html.isMapFullscreen .publicFlagLevel {
   font-weight: 700;
 }
 
+.resultControl {
+  min-width: 0;
+}
+
 .resultControl input,
 .resultControl textarea {
   width: 100%;
@@ -13051,10 +13073,70 @@ html.isMapFullscreen .publicFlagLevel {
   font-size: 1rem;
 }
 
+.resultControl .duplicatePhoto,
+.resultControl .duplicateNoPhoto {
+  max-width: 100%;
+}
+
 .resultPhoto {
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.resultField.resultFlash {
+  border-radius: 8px;
+  background: #FFF4D6;
+  animation: resultFlash 1s ease;
+}
+
+@keyframes resultFlash {
+  0% { background: #FFE08A; }
+  100% { background: #FFF4D6; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resultField.resultFlash {
+    animation: none;
+    background: #FFF4D6;
+  }
+}
+
+.previewUpdateNote {
+  position: fixed;
+  top: 0.75rem;
+  left: 50%;
+  z-index: 40;
+  display: grid;
+  gap: 0.35rem;
+  width: max-content;
+  max-width: calc(100vw - 1.5rem);
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.previewUpdateNote.isOffset {
+  top: 4.25rem;
+}
+
+.previewUpdateNote.isBottom {
+  top: auto;
+  bottom: 0.75rem;
+}
+
+.previewUpdateNote p {
+  margin: 0;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: #0A2342;
+  color: #FFFFFF;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+  box-shadow: 0 8px 18px rgba(7, 21, 38, 0.18);
 }
 
 .customTag {

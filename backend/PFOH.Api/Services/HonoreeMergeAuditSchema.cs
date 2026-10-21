@@ -76,8 +76,8 @@ public static class HonoreeMergeAuditSchema
                 return;
             }
 
-            await db.Database.ExecuteSqlRawAsync(CreateSql, ct);
-            await db.Database.ExecuteSqlRawAsync(AddColumnSql, ct);
+            await db.Database.ExecuteSqlRawAsync(SchemaSql.ForExecuteSqlRaw(CreateSql), ct);
+            await db.Database.ExecuteSqlRawAsync(SchemaSql.ForExecuteSqlRaw(AddColumnSql), ct);
             ready = true;
         }
         finally

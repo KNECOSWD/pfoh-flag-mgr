@@ -1,4 +1,4 @@
-import { createElement as h } from "react";
+import { createElement as h, useEffect, useRef, useState } from "react";
 
 export const mergeFields = [
   { key: "firstName", label: "First name", serverLabel: "First name", custom: "text", required: true, maxLength: 200, serverMax: 200, value: (honoree) => honoree.firstName },
@@ -205,21 +205,33 @@ export function applyMatchingValues(includedHonorees, previous) {
   return next;
 }
 
+function stickyChoice(prior, includedIds) {
+  if (!prior) return null;
+  if (prior.useCustom || prior.noPhoto || prior.combine) return prior;
+  // An explicit pick stays. An automatic exact-match pick is rebuilt below.
+  if (prior.explicit && prior.sourceId != null && includedIds.has(prior.sourceId)) return prior;
+  return null;
+}
+
 export function choicesAfterIncludedChange(includedHonorees, previous) {
-  const includedIds = new Set((includedHonorees ?? []).map((honoree) => honoree.id));
+  const included = includedHonorees ?? [];
+  const includedIds = new Set(included.map((honoree) => honoree.id));
   const next = {};
   for (const field of mergeFields) {
     const prior = previous?.[field.key];
-    if (!prior) continue;
     if (field.key === "flagGrid") {
-      if (prior.sourceId != null && includedIds.has(prior.sourceId)) next[field.key] = prior;
+      if (prior?.sourceId != null && includedIds.has(prior.sourceId)) next[field.key] = prior;
       continue;
     }
-    if (prior.useCustom || prior.noPhoto || prior.combine) {
-      next[field.key] = prior;
+    const sticky = stickyChoice(prior, includedIds);
+    if (sticky) {
+      next[field.key] = sticky;
       continue;
     }
-    if (prior.sourceId != null && includedIds.has(prior.sourceId)) next[field.key] = prior;
+    if (included.length < 2) continue;
+    const values = included.map((honoree) => field.value(honoree));
+    if (recordsDiffer(values)) continue;
+    next[field.key] = { ...blankChoice(), sourceId: included[0].id };
   }
   return next;
 }
@@ -270,6 +282,83 @@ export function previewRows(honorees, choices) {
     const preview = previewValue(field, honorees, choices?.[field.key]);
     return { key: field.key, label: field.label, value: preview.display, custom: preview.custom };
   });
+}
+
+export const PREVIEW_FLASH_MS = 1000;
+export const PREVIEW_NOTE_MS = 2000;
+
+function previewSignature(field, honorees, choice) {
+  const preview = previewValue(field, honorees, choice);
+  if (field.key === "photo") {
+    if (choice?.noPhoto) return "no-photo";
+    const honoree = (honorees ?? []).find((item) => item.id === choice?.sourceId);
+    if (!honoree) return "not-chosen";
+    return honoree.photoUrl ? `photo:${honoree.photoUrl}` : "no-photo";
+  }
+  return `${preview.custom ? "1" : "0"}|${preview.display}|${preview.input}`;
+}
+
+export function changedPreviewKeys(honorees, previousChoices, nextChoices) {
+  const keys = [];
+  for (const field of mergeFields) {
+    const before = previewSignature(field, honorees, previousChoices?.[field.key]);
+    const after = previewSignature(field, honorees, nextChoices?.[field.key]);
+    if (before !== after) keys.push(field.key);
+  }
+  return keys;
+}
+
+export function schedulePreviewFlash(keys, now = 0, holdMs = PREVIEW_FLASH_MS) {
+  return { keys: [...(keys ?? [])], until: now + holdMs };
+}
+
+export function activeFlashKeys(flash, now) {
+  if (!flash || now >= flash.until) return [];
+  return flash.keys;
+}
+
+export function stillToChooseHint(includedIds, choices) {
+  const ids = includedIds ?? [];
+  const labels = mergeFields
+    .filter((field) => !fieldResolved(field, choices?.[field.key], ids))
+    .map((field) => field.label);
+  if (!labels.length) return "";
+  return `Still to choose: ${labels.join(", ")}.`;
+}
+
+export function rowIsInView(rect, viewport) {
+  if (!rect || !viewport) return false;
+  const vertical = rect.bottom > viewport.top && rect.top < viewport.bottom;
+  const horizontal = rect.right > viewport.left && rect.left < viewport.right;
+  return vertical && horizontal;
+}
+
+export function shouldShowPreviewNote(rect, viewport) {
+  if (!rect || !viewport) return false;
+  return !rowIsInView(rect, viewport);
+}
+
+export function previewUpdateText(label) {
+  return `Preview updated: ${label}`;
+}
+
+export function previewNotePlacement(buttonRect, viewportHeight) {
+  const height = viewportHeight ?? 0;
+  const obstacles = Array.isArray(buttonRect) ? buttonRect : buttonRect ? [buttonRect] : [];
+  const hits = (top, bottom) => obstacles.some((rect) => rect && rect.bottom > top && rect.top < bottom);
+  if (!hits(0, 56)) return "top";
+  if (!hits(64, 116)) return "offset";
+  if (height > 0 && !hits(height - 56, height)) return "bottom";
+  return "top";
+}
+
+function currentViewport() {
+  return {
+    top: 0,
+    left: 0,
+    bottom: window.innerHeight,
+    right: window.innerWidth
+  };
 }
 
 export function buildMergeRequest(honorees, choices) {
@@ -339,6 +428,17 @@ function photoBlock(honoree) {
   return h("div", { className: "duplicateNoPhoto", role: "img", "aria-label": "No photo" }, "No photo");
 }
 
+function resultingPhoto(honorees, choice) {
+  if (choice?.noPhoto) return photoBlock({ photoUrl: null });
+  const honoree = (honorees ?? []).find((item) => item.id === choice?.sourceId);
+  if (!honoree) return h("p", { className: "resultPhoto" }, "Not chosen");
+  return photoBlock(honoree);
+}
+
+function choiceClass(selected) {
+  return selected ? "mergeChoice isSelected" : "mergeChoice";
+}
+
 export function UseMatchingButton({ disabled, onClick }) {
   return h(
     "button",
@@ -354,12 +454,13 @@ export function SharedFieldChoices({ includedCount, choices, onNoPhoto, onCombin
     { className: "mergeSharedChoices" },
     h(
       "label",
-      { className: "mergeChoice" },
+      { className: choiceClass(Boolean(choices?.photo?.noPhoto)) },
       h("input", {
         type: "radio",
         name: "field-photo",
         value: "none",
         checked: Boolean(choices?.photo?.noPhoto),
+        "aria-checked": Boolean(choices?.photo?.noPhoto),
         disabled,
         onChange: onNoPhoto
       }),
@@ -367,12 +468,13 @@ export function SharedFieldChoices({ includedCount, choices, onNoPhoto, onCombin
     ),
     h(
       "label",
-      { className: "mergeChoice" },
+      { className: choiceClass(Boolean(choices?.awards?.combine) && !choices?.awards?.useCustom) },
       h("input", {
         type: "radio",
         name: "field-awards",
         value: "combine",
         checked: Boolean(choices?.awards?.combine) && !choices?.awards?.useCustom,
+        "aria-checked": Boolean(choices?.awards?.combine) && !choices?.awards?.useCustom,
         disabled: includedCount < 2,
         onChange: onCombine
       }),
@@ -431,12 +533,13 @@ export function DuplicateReviewBoard({
             },
             h(
               "label",
-              { className: "mergeChoice" },
+              { className: choiceClass(sourceChecked) },
               h("input", {
                 type: "radio",
                 name: `field-${field.key}`,
                 value: String(honoree.id),
                 checked: sourceChecked,
+                "aria-checked": sourceChecked,
                 disabled: !included,
                 onChange: () => onChooseSource(field.key, honoree.id)
               }),
@@ -461,10 +564,119 @@ function customTag(show) {
   return h("span", { className: "customTag" }, "custom");
 }
 
-export function ResultingRecord({ honorees, choices, onEdit, onGrid }) {
+function noteEntries(notes) {
+  return (notes ?? []).map((item) => (typeof item === "string" ? { key: item, label: item } : item));
+}
+
+export function ResultingRecord({
+  honorees,
+  choices,
+  onEdit,
+  onGrid,
+  highlightKeys,
+  highlightToken = 0,
+  litKeys = [],
+  notes = []
+}) {
+  const [lit, setLit] = useState(litKeys);
+  const [liveNotes, setLiveNotes] = useState(() => noteEntries(notes));
+  const [notePlace, setNotePlace] = useState("top");
+  const seenToken = useRef(highlightToken);
+  const sectionRef = useRef(null);
+  const flashTimers = useRef(new Map());
+  const noteTimers = useRef(new Map());
+
+  useEffect(() => {
+    const flashes = flashTimers.current;
+    const announcements = noteTimers.current;
+    return () => {
+      for (const id of flashes.values()) window.clearTimeout(id);
+      for (const id of announcements.values()) window.clearTimeout(id);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!liveNotes.length) return undefined;
+    function hideVisible() {
+      const viewport = currentViewport();
+      setLiveNotes((current) => current.filter((item) => {
+        const node = sectionRef.current?.querySelector(`[data-preview="${item.key}"]`);
+        return shouldShowPreviewNote(node?.getBoundingClientRect(), viewport);
+      }));
+    }
+    window.addEventListener("scroll", hideVisible, true);
+    window.addEventListener("resize", hideVisible);
+    return () => {
+      window.removeEventListener("scroll", hideVisible, true);
+      window.removeEventListener("resize", hideVisible);
+    };
+  }, [liveNotes.length]);
+
+  useEffect(() => {
+    if (!highlightToken || highlightToken === seenToken.current) return;
+    seenToken.current = highlightToken;
+    const keys = highlightKeys ?? [];
+    if (!keys.length) return;
+    const flash = schedulePreviewFlash(keys, Date.now());
+    const active = activeFlashKeys(flash, Date.now());
+    setLit((current) => [...new Set([...current, ...active])]);
+    for (const key of active) {
+      const existing = flashTimers.current.get(key);
+      if (existing) window.clearTimeout(existing);
+      const timer = window.setTimeout(() => {
+        flashTimers.current.delete(key);
+        setLit((current) => current.filter((item) => item !== key));
+      }, PREVIEW_FLASH_MS);
+      flashTimers.current.set(key, timer);
+    }
+
+    const viewport = currentViewport();
+    const root = sectionRef.current;
+    const announced = [];
+    for (const key of active) {
+      const node = root?.querySelector(`[data-preview="${key}"]`);
+      const rect = node?.getBoundingClientRect();
+      if (!shouldShowPreviewNote(rect, viewport)) continue;
+      const field = mergeFields.find((item) => item.key === key);
+      if (!field) continue;
+      announced.push({ key, label: field.label });
+    }
+    if (announced.length) {
+      const obstacles = [...document.querySelectorAll(".mergeActions, .mergeChoice, button")].map((node) => node.getBoundingClientRect());
+      setNotePlace(previewNotePlacement(obstacles, window.innerHeight));
+      setLiveNotes((current) => {
+        const rest = current.filter((item) => !announced.some((entry) => entry.key === item.key));
+        return [...rest, ...announced];
+      });
+      for (const entry of announced) {
+        const existing = noteTimers.current.get(entry.key);
+        if (existing) window.clearTimeout(existing);
+        const timer = window.setTimeout(() => {
+          noteTimers.current.delete(entry.key);
+          setLiveNotes((current) => current.filter((item) => item.key !== entry.key));
+        }, PREVIEW_NOTE_MS);
+        noteTimers.current.set(entry.key, timer);
+      }
+    }
+    return () => {
+      // A strict-mode remount runs this cleanup and then the effect again.
+      seenToken.current = 0;
+    };
+  }, [highlightToken, highlightKeys]);
+
   return h(
     "section",
-    { className: "mergePreview", "aria-label": "Resulting record" },
+    { className: "mergePreview", "aria-label": "Resulting record", ref: sectionRef },
+    h(
+      "div",
+      {
+        className: notePlace === "bottom" ? "previewUpdateNote isBottom" : notePlace === "offset" ? "previewUpdateNote isOffset" : "previewUpdateNote",
+        "aria-live": "polite",
+        role: "status",
+        "data-place": notePlace
+      },
+      liveNotes.map((item) => h("p", { key: item.key }, previewUpdateText(item.label)))
+    ),
     h("h3", null, "Resulting record"),
     h(
       "div",
@@ -474,7 +686,7 @@ export function ResultingRecord({ honorees, choices, onEdit, onGrid }) {
         const inputId = `result-${field.key}`;
         let control;
         if (field.key === "photo") {
-          control = h("p", { className: "resultPhoto" }, preview.display);
+          control = resultingPhoto(honorees, choices?.[field.key]);
         } else if (field.picker) {
           control = h("input", {
             id: inputId,
@@ -505,7 +717,7 @@ export function ResultingRecord({ honorees, choices, onEdit, onGrid }) {
         }
         return h(
           "div",
-          { key: field.key, className: "resultField", "data-preview": field.key, "data-custom": preview.custom ? "true" : "false" },
+          { key: field.key, className: lit.includes(field.key) ? "resultField resultFlash" : "resultField", "data-preview": field.key, "data-custom": preview.custom ? "true" : "false" },
           h("label", { htmlFor: field.key === "photo" ? undefined : inputId }, field.label, " ", customTag(preview.custom)),
           h(
             "div",
@@ -517,6 +729,29 @@ export function ResultingRecord({ honorees, choices, onEdit, onGrid }) {
       })
     )
   );
+}
+
+export function ReviewStepActions({ ready, busy, onPreview, onContinue }) {
+  return h(
+    "div",
+    { className: "mergeActions" },
+    h(
+      "button",
+      { type: "button", className: "secondary", disabled: !ready || busy, onClick: onPreview },
+      "Preview card PDF"
+    ),
+    h(
+      "button",
+      { type: "button", disabled: !ready, onClick: onContinue },
+      "Continue to confirm"
+    )
+  );
+}
+
+export function StillToChoose({ includedIds, choices }) {
+  const text = stillToChooseHint(includedIds, choices);
+  if (!text) return null;
+  return h("p", { className: "helperText" }, text);
 }
 
 export function MergeActions({ ready, busy, onMerge, onPreview }) {

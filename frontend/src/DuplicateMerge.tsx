@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AccountInfo, IPublicClientApplication } from "@azure/msal-browser";
 import {
   ApiError,
@@ -13,12 +13,15 @@ import {
   DuplicateReviewBoard,
   MergeActions,
   ResultingRecord,
+  ReviewStepActions,
   SharedFieldChoices,
+  StillToChoose,
   UseMatchingButton,
   applyMatchingValues,
   blankChoice,
   buildMergeRequest,
   canConfirmMerge,
+  changedPreviewKeys,
   choicesAfterIncludedChange,
   previewRows,
   survivorIdFromChoices
@@ -87,6 +90,7 @@ export function DuplicateMergeScreen({
   const [included, setIncluded] = useState<number[]>([]);
   const [step, setStep] = useState<"list" | "review" | "confirm" | "done">("list");
   const [choices, setChoices] = useState<Record<string, FieldChoice>>({});
+  const [highlight, setHighlight] = useState<{ token: number; keys: string[] }>({ token: 0, keys: [] });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState<DuplicateMergeResult | null>(null);
@@ -102,11 +106,25 @@ export function DuplicateMergeScreen({
   const survivorId = survivorIdFromChoices(choices, included);
   const ready = canConfirmMerge(included, group?.honorees ?? [], choices);
   const preview = group ? previewRows(includedHonorees, choices) : null;
+  const choicesRef = useRef(choices);
+  choicesRef.current = choices;
+
+  function flashChanges(
+    before: Record<string, FieldChoice>,
+    after: Record<string, FieldChoice>,
+    records: DuplicateHonoree[]
+  ) {
+    const keys = changedPreviewKeys(records, before, after);
+    if (!keys.length) return;
+    setHighlight((current) => ({ token: current.token + 1, keys }));
+  }
 
   function openGroup(next: DuplicateGroup) {
+    const ids = next.honorees.map((honoree) => honoree.id);
     setOpenKey(next.groupKey);
-    setIncluded([]);
-    setChoices({});
+    setIncluded(ids);
+    setChoices(choicesAfterIncludedChange(next.honorees, {}) as Record<string, FieldChoice>);
+    setHighlight({ token: 0, keys: [] });
     setResult(null);
     setError("");
     setMessage("");
@@ -125,32 +143,44 @@ export function DuplicateMergeScreen({
   }
 
   function chooseSource(key: string, sourceId: number) {
-    setIncluded((current) => (current.includes(sourceId) ? current : [...current, sourceId]));
-    setChoices((current) => ({
-      ...current,
-      [key]: { useCustom: false, sourceId, custom: "", explicit: true, noPhoto: false, combine: false }
-    }));
+    const before = choicesRef.current;
+    const nextChoices = {
+      ...before,
+      [key]: { ...blankChoice(), sourceId, explicit: true }
+    };
+    const nextIncluded = included.includes(sourceId) ? included : [...included, sourceId];
+    const records = (group?.honorees ?? []).filter((honoree) => nextIncluded.includes(honoree.id));
+    setIncluded(nextIncluded);
+    setChoices(nextChoices);
+    flashChanges(before, nextChoices, records);
   }
 
   function chooseNoPhoto() {
-    setChoices((current) => ({
-      ...current,
+    const before = choicesRef.current;
+    const nextChoices = {
+      ...before,
       photo: { ...blankChoice(), explicit: true, noPhoto: true }
-    }));
+    };
+    setChoices(nextChoices);
+    flashChanges(before, nextChoices, includedHonorees);
   }
 
   function chooseCombine() {
-    setChoices((current) => ({
-      ...current,
+    const before = choicesRef.current;
+    const nextChoices = {
+      ...before,
       awards: { ...blankChoice(), explicit: true, combine: true }
-    }));
+    };
+    setChoices(nextChoices);
+    flashChanges(before, nextChoices, includedHonorees);
   }
 
   function editPreview(key: string, custom: string) {
-    setChoices((current) => ({
-      ...current,
+    const before = choicesRef.current;
+    const nextChoices = {
+      ...before,
       [key]: {
-        ...(current[key] ?? blankChoice()),
+        ...(before[key] ?? blankChoice()),
         useCustom: true,
         sourceId: null,
         custom,
@@ -158,30 +188,36 @@ export function DuplicateMergeScreen({
         noPhoto: false,
         combine: false
       }
-    }));
+    };
+    setChoices(nextChoices);
+    flashChanges(before, nextChoices, includedHonorees);
   }
 
   function editGrid(custom: string) {
-    setChoices((current) => {
-      const prior = current.flagGrid ?? blankChoice();
-      const source = includedHonorees.find((honoree) => honoree.id === prior.sourceId);
-      const normalized = custom.replace(/\s+/g, " ").trim();
-      const sourceText = (source?.flagGridName || "").replace(/\s+/g, " ").trim();
-      const changed = !source || normalized !== sourceText;
-      return {
-        ...current,
-        flagGrid: {
-          ...prior,
-          useCustom: changed,
-          custom,
-          explicit: true
-        }
-      };
-    });
+    const before = choicesRef.current;
+    const prior = before.flagGrid ?? blankChoice();
+    const source = includedHonorees.find((honoree) => honoree.id === prior.sourceId);
+    const normalized = custom.replace(/\s+/g, " ").trim();
+    const sourceText = (source?.flagGridName || "").replace(/\s+/g, " ").trim();
+    const changed = !source || normalized !== sourceText;
+    const nextChoices = {
+      ...before,
+      flagGrid: {
+        ...prior,
+        useCustom: changed,
+        custom,
+        explicit: true
+      }
+    };
+    setChoices(nextChoices);
+    flashChanges(before, nextChoices, includedHonorees);
   }
 
   function useMatching() {
-    setChoices((current) => applyMatchingValues(includedHonorees, current) as Record<string, FieldChoice>);
+    const before = choicesRef.current;
+    const nextChoices = applyMatchingValues(includedHonorees, before) as Record<string, FieldChoice>;
+    setChoices(nextChoices);
+    flashChanges(before, nextChoices, includedHonorees);
   }
 
   async function confirmNotDuplicates() {
@@ -361,7 +397,7 @@ export function DuplicateMergeScreen({
           </ul>
           <h3>Choose each field</h3>
           <p className="helperText">
-            Nothing is selected for you, including fields that match. Choose a value on each included record. Use all matching values fills only the fields that are the same. The record whose flag grid you select is the one that is kept, even when that grid is blank.
+            Fields that match exactly are preselected. Everything else, including the flag grid, needs a pick. Choose a value on each included record. Use all matching values fills only the fields that are the same. The record whose flag grid you select is the one that is kept, even when that grid is blank.
           </p>
           <UseMatchingButton disabled={includedHonorees.length < 2} onClick={useMatching} />
           <DuplicateReviewBoard
@@ -382,14 +418,17 @@ export function DuplicateMergeScreen({
             choices={choices}
             onEdit={editPreview}
             onGrid={editGrid}
+            highlightKeys={highlight.keys}
+            highlightToken={highlight.token}
           />
           {claimants}
-          <button type="button" disabled={!ready} onClick={() => setStep("confirm")}>
-            Continue to confirm
-          </button>
-          {!ready ? (
-            <p className="helperText">Choose a value for every field on at least two included records. Nothing is selected automatically. The flag grid you select chooses the record that is kept.</p>
-          ) : null}
+          <ReviewStepActions
+            ready={ready}
+            busy={busy}
+            onPreview={() => void previewCard()}
+            onContinue={() => setStep("confirm")}
+          />
+          <StillToChoose includedIds={included} choices={choices} />
         </div>
       ) : null}
 
@@ -407,6 +446,8 @@ export function DuplicateMergeScreen({
             choices={choices}
             onEdit={editPreview}
             onGrid={editGrid}
+            highlightKeys={highlight.keys}
+            highlightToken={highlight.token}
           />
           {claimants}
           <MergeActions
@@ -415,6 +456,7 @@ export function DuplicateMergeScreen({
             onMerge={() => void merge()}
             onPreview={() => void previewCard()}
           />
+          <StillToChoose includedIds={included} choices={choices} />
         </div>
       ) : null}
 
