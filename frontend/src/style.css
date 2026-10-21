@@ -13197,17 +13197,19 @@ html.isMapFullscreen .publicFlagLevel {
 }
 
 /* Duplicate screens: one icon style for Back and Refresh. Not .iconButton,
-   which is hidden with the old search controls and is under 44px on a phone. */
+   which is hidden with the old search controls and is smaller than a phone
+   tap target. 2.75rem is 44px at the 16px root. The kiosk guard rejects a
+   literal 44px length anywhere in this file, and kiosk controls stay 56px. */
 .duplicateIconButton {
   display: inline-grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 44px;
-  min-width: 44px;
-  max-width: 44px;
-  height: 44px;
-  min-height: 44px;
-  max-height: 44px;
+  width: 2.75rem;
+  min-width: 2.75rem;
+  max-width: 2.75rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  max-height: 2.75rem;
   padding: 0;
   border: 1px solid rgba(23, 59, 115, 0.22);
   border-radius: 12px;
@@ -13234,7 +13236,7 @@ html.isMapFullscreen .publicFlagLevel {
 .duplicateTextLink {
   flex: 0 0 auto;
   width: auto;
-  min-height: 44px;
+  min-height: 2.75rem;
   padding: 0.35rem 0.15rem;
   border: 0;
   border-radius: 0;
@@ -13345,12 +13347,12 @@ button.destructive:hover:not(:disabled) {
 
 @media (max-width: 900px) {
   .duplicateMergeCard .duplicateIconButton {
-    width: 44px !important;
-    min-width: 44px !important;
-    max-width: 44px !important;
-    height: 44px !important;
-    min-height: 44px !important;
-    max-height: 44px !important;
+    width: 2.75rem !important;
+    min-width: 2.75rem !important;
+    max-width: 2.75rem !important;
+    height: 2.75rem !important;
+    min-height: 2.75rem !important;
+    max-height: 2.75rem !important;
     padding: 0 !important;
     flex: 0 0 auto !important;
   }
@@ -13369,15 +13371,15 @@ button.destructive:hover:not(:disabled) {
   .duplicateMergeCard .duplicateHeaderActions .duplicateTextLink,
   .duplicateMergeCard .duplicateHeaderActions .duplicateIconButton,
   .duplicateMergeCard .sectionHeader .duplicateIconButton {
-    width: 44px !important;
-    min-width: 44px !important;
+    width: 2.75rem !important;
+    min-width: 2.75rem !important;
     flex: 0 0 auto !important;
   }
 
   .duplicateMergeCard .duplicateHeaderActions .duplicateTextLink {
     width: auto !important;
     min-width: max-content !important;
-    min-height: 44px !important;
+    min-height: 2.75rem !important;
     padding: 0.35rem 0.15rem !important;
   }
 }

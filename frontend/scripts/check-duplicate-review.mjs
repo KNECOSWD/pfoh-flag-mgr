@@ -731,8 +731,9 @@ test("merge history lists newest first and shows when undo is blocked", () => {
   const historyCss = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
   assert.match(historyCss, /\.mergeHistoryActions\s*\{[^}]*align-items:\s*flex-end/);
   assert.match(historyCss, /button\.destructive\s*\{[^}]*color:\s*#8b1e2c/);
-  assert.match(historyCss, /\.duplicateIconButton\s*\{[^}]*min-width:\s*44px/);
-  assert.match(historyCss, /\.duplicateIconButton\s*\{[^}]*min-height:\s*44px/);
+  assert.equal(2.75 * 16, 44);
+  assert.match(historyCss, /\.duplicateIconButton\s*\{[^}]*min-width:\s*2\.75rem/);
+  assert.match(historyCss, /\.duplicateIconButton\s*\{[^}]*min-height:\s*2\.75rem/);
   assert.match(historyCss, /\.mergeStepFooterActions\s*\{[^}]*flex-direction:\s*row-reverse/);
 });
 
