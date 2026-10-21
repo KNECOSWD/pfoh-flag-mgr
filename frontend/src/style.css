@@ -12965,21 +12965,21 @@ html.isMapFullscreen .publicFlagLevel {
 }
 
 .mergeChoice.isSelected {
-  background: #0A2342;
-  color: #FFFFFF;
+  background: #e7eef8;
+  color: #0A2342;
   border-radius: 8px;
   padding: 0.35rem 0.45rem;
-  outline: 3px solid #0A2342;
-  outline-offset: 1px;
+  outline: 2px solid #0A2342;
+  outline-offset: 0;
 }
 
 .mergeChoice.isSelected strong,
 .mergeChoice.isSelected em {
-  color: #FFFFFF;
+  color: #0A2342;
 }
 
 .mergeChoice.isSelected input {
-  accent-color: #F4C95D;
+  accent-color: #0A2342;
 }
 
 .mergeMultiline {
@@ -13153,7 +13153,18 @@ html.isMapFullscreen .publicFlagLevel {
   vertical-align: middle;
 }
 
-.mergeSharedChoices,
+.mergeSharedChoices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.mergeSharedField h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
 .mergeActions {
   display: flex;
   flex-wrap: wrap;
@@ -13178,5 +13189,218 @@ html.isMapFullscreen .publicFlagLevel {
   .mergePreview dl > div,
   .resultField {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .duplicateGroup > button {
+    width: 100%;
+  }
+}
+
+/* Duplicate screens: one icon style for Back and Refresh. Not .iconButton,
+   which is hidden with the old search controls and is smaller than a phone
+   tap target. 2.75rem is 44px at the 16px root. The kiosk guard rejects a
+   literal 44px length anywhere in this file, and kiosk controls stay 56px. */
+.duplicateIconButton {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2.75rem;
+  min-width: 2.75rem;
+  max-width: 2.75rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  max-height: 2.75rem;
+  padding: 0;
+  border: 1px solid rgba(23, 59, 115, 0.22);
+  border-radius: 12px;
+  background: #eef2f8;
+  color: #173b73;
+  box-shadow: none;
+}
+
+.duplicateIconButton svg {
+  display: block;
+}
+
+.duplicateIconButton:hover:not(:disabled) {
+  transform: none;
+  background: #e2e9f3;
+  box-shadow: none;
+}
+
+.duplicateIconButton:focus-visible {
+  outline: 2px solid #0A2342;
+  outline-offset: 2px;
+}
+
+.duplicateTextLink {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 2.75rem;
+  padding: 0.35rem 0.15rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #173b73;
+  box-shadow: none;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.duplicateTextLink:hover:not(:disabled) {
+  transform: none;
+  background: transparent;
+  box-shadow: none;
+  color: #0f2d5c;
+}
+
+.duplicateHeaderActions {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  width: auto;
+}
+
+.duplicateStepNav {
+  display: flex;
+  margin: 0.15rem 0 0.75rem;
+}
+
+.mergeStepFooter {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+  margin: 0.75rem 0;
+}
+
+.mergeWarning {
+  margin: 0;
+  color: #8b1e2c;
+  font-size: 0.92rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.mergeStepFooterActions {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.mergeStepFooterPrimary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  max-width: 100%;
+}
+
+.mergeStepFooterPrimary .helperText {
+  margin: 0;
+  max-width: 28rem;
+  text-align: right;
+}
+
+button.mergeCommit {
+  background: #0A2342;
+  border: 2px solid #0A2342;
+  box-shadow: 0 10px 22px rgba(10, 35, 66, 0.28);
+  min-height: 2.9rem;
+}
+
+button.mergeCommit:hover:not(:disabled) {
+  background: #071a33;
+}
+
+.mergeHistoryActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+}
+
+.mergeHistoryActions .message {
+  align-self: stretch;
+  margin: 0;
+}
+
+button.destructive {
+  background: transparent;
+  color: #8b1e2c;
+  border: 2px solid #8b1e2c;
+  box-shadow: none;
+}
+
+button.destructive:hover:not(:disabled) {
+  transform: none;
+  background: #ffe7e7;
+  box-shadow: none;
+}
+
+@media (max-width: 900px) {
+  .duplicateMergeCard .duplicateIconButton {
+    width: 2.75rem !important;
+    min-width: 2.75rem !important;
+    max-width: 2.75rem !important;
+    height: 2.75rem !important;
+    min-height: 2.75rem !important;
+    max-height: 2.75rem !important;
+    padding: 0 !important;
+    flex: 0 0 auto !important;
+  }
+
+  .duplicateMergeCard .duplicateHeaderActions {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    grid-template-columns: none !important;
+    width: auto !important;
+    min-width: max-content !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+  }
+
+  .duplicateMergeCard .duplicateHeaderActions .duplicateTextLink,
+  .duplicateMergeCard .duplicateHeaderActions .duplicateIconButton,
+  .duplicateMergeCard .sectionHeader .duplicateIconButton {
+    width: 2.75rem !important;
+    min-width: 2.75rem !important;
+    flex: 0 0 auto !important;
+  }
+
+  .duplicateMergeCard .duplicateHeaderActions .duplicateTextLink {
+    width: auto !important;
+    min-width: max-content !important;
+    min-height: 2.75rem !important;
+    padding: 0.35rem 0.15rem !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .mergeWarning,
+  .mergeStepFooterPrimary .helperText {
+    text-align: left;
+  }
+
+  .mergeStepFooterActions {
+    flex-direction: column;
+  }
+
+  .mergeStepFooterPrimary {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .mergeStepFooterPrimary > button,
+  .mergeStepFooterActions > button.secondary {
+    width: 100%;
   }
 }

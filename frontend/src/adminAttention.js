@@ -11,7 +11,7 @@ export function adminAttentionItems({
   return [
     { key: "pending-review", label: "Pending review", count: pendingReview, route: "/admin/review" },
     { key: "ready-to-print", label: "Ready to print", count: readyToPrint, route: "/admin/printing" },
-    { key: "duplicates-for-review", label: "Duplicates for review", count: duplicatesForReview, route: "/admin/duplicates" },
+    { key: "duplicates-for-review", label: "Duplicates", count: duplicatesForReview, route: "/admin/duplicates" },
     { key: "multiple-claim-alerts", label: "Multiple-claim alerts", count: multipleClaimAlerts, route: "/admin/review" }
   ].filter((item) => item.count > 0);
 }

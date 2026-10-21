@@ -26,6 +26,7 @@ import {
   previewRows,
   survivorIdFromChoices
 } from "./duplicateReview.js";
+import { DuplicateHistoryLink, DuplicateIconButton } from "./duplicateChrome.js";
 import { isQuietAuthRejection, PLEASE_SIGN_IN_AGAIN } from "./tokenRequest.js";
 
 type FieldChoice = {
@@ -298,15 +299,9 @@ export function DuplicateMergeScreen({
             Likely duplicates are listed for review. Only active records are included. Open a group to compare the records side by side. Nothing is merged until every field has a value and you confirm. A pair you mark as not duplicates is left out of this list.
           </p>
         </div>
-        <div className="adminHeaderActions">
-          {onOpenHistory ? (
-            <button type="button" className="secondary" onClick={onOpenHistory}>
-              Merge history
-            </button>
-          ) : null}
-          <button type="button" className="secondary" onClick={onReload} disabled={busy}>
-            {busy ? "Loading..." : "Refresh"}
-          </button>
+        <div className="adminHeaderActions duplicateHeaderActions">
+          {onOpenHistory ? <DuplicateHistoryLink onClick={onOpenHistory} /> : null}
+          <DuplicateIconButton kind="refresh" label={busy ? "Loading" : "Refresh"} disabled={busy} onClick={onReload} />
         </div>
       </div>
 
@@ -348,7 +343,7 @@ export function DuplicateMergeScreen({
                   ))}
                 </ul>
                 <button type="button" onClick={() => openGroup(item)}>
-                  Review side by side
+                  Review
                 </button>
               </article>
             ))}
@@ -357,9 +352,9 @@ export function DuplicateMergeScreen({
 
       {step === "review" && group ? (
         <div className="duplicateMergeStep">
-          <button type="button" className="secondary" onClick={() => setStep("list")}>
-            Back to groups
-          </button>
+          <div className="duplicateStepNav">
+            <DuplicateIconButton kind="back" label="Back to groups" onClick={() => setStep("list")} />
+          </div>
           <p className="duplicateLikelihood">How likely: {group.likelihood}</p>
           <p className="duplicateWhy">{group.explanation}</p>
           <h3>Why these may be duplicates</h3>
@@ -375,7 +370,7 @@ export function DuplicateMergeScreen({
                         Mark records {pair.leftId} and {pair.rightId} as not duplicates? They will not be listed together again. Other pairs in this group stay under review.
                       </p>
                       <button type="button" disabled={busy} onClick={() => void confirmNotDuplicates()}>
-                        Confirm not duplicates
+                        Confirm
                       </button>
                       <button type="button" className="secondary" onClick={() => setPendingPair(null)}>
                         Cancel
@@ -397,7 +392,7 @@ export function DuplicateMergeScreen({
           </ul>
           <h3>Choose each field</h3>
           <p className="helperText">
-            Fields that match exactly are preselected. Everything else, including the flag grid, needs a pick. Choose a value on each included record. Use all matching values fills only the fields that are the same. The record whose flag grid you select is the one that is kept, even when that grid is blank.
+            Fields that match exactly are preselected. Everything else, including the flag grid, needs a pick. Choose a value on each included record. Use matches fills only the fields that are the same. The record whose flag grid you select is the one that is kept, even when that grid is blank.
           </p>
           <UseMatchingButton disabled={includedHonorees.length < 2} onClick={useMatching} />
           <DuplicateReviewBoard
@@ -427,16 +422,16 @@ export function DuplicateMergeScreen({
             busy={busy}
             onPreview={() => void previewCard()}
             onContinue={() => setStep("confirm")}
+            hint={<StillToChoose includedIds={included} choices={choices} />}
           />
-          <StillToChoose includedIds={included} choices={choices} />
         </div>
       ) : null}
 
       {step === "confirm" && group && preview ? (
         <div className="duplicateMergeStep">
-          <button type="button" className="secondary" onClick={() => setStep("review")}>
-            Back to review
-          </button>
+          <div className="duplicateStepNav">
+            <DuplicateIconButton kind="back" label="Back to review" onClick={() => setStep("review")} />
+          </div>
           <h3>Confirm the merged record</h3>
           <p className="helperText">
             These values will be written onto the record whose flag grid you selected. You can still edit a text field here. An edited field is marked custom and replaces that field's pick. The other included records will be set inactive and their flag spots released. Claimants move to the kept record.
@@ -455,8 +450,8 @@ export function DuplicateMergeScreen({
             busy={busy}
             onMerge={() => void merge()}
             onPreview={() => void previewCard()}
+            hint={<StillToChoose includedIds={included} choices={choices} />}
           />
-          <StillToChoose includedIds={included} choices={choices} />
         </div>
       ) : null}
 
@@ -472,16 +467,17 @@ export function DuplicateMergeScreen({
               ))}
             </ul>
           )}
-          <button
-            type="button"
-            onClick={() => {
-              setStep("list");
-              setOpenKey(null);
-              onReload();
-            }}
-          >
-            Back to groups
-          </button>
+          <div className="duplicateStepNav">
+            <DuplicateIconButton
+              kind="back"
+              label="Back to groups"
+              onClick={() => {
+                setStep("list");
+                setOpenKey(null);
+                onReload();
+              }}
+            />
+          </div>
         </section>
       ) : null}
     </section>

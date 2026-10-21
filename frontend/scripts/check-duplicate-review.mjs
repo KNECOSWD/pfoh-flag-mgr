@@ -174,7 +174,7 @@ test("every field has a select on both records and only exact matches are presel
   const choices = choicesAfterIncludedChange(honorees, {});
   const html = reviewMarkup(choices);
   assert.match(html, /Side-by-side duplicate review/);
-  assert.match(html, /Use all matching values/);
+  assert.match(html, /Use matches/);
   assert.match(html, /John Q Smith Jr\./);
   assert.match(html, /John Q Smith Sr\./);
   assert.match(html, /No photo/);
@@ -212,7 +212,7 @@ test("every field has a select on both records and only exact matches are presel
   assert.equal(tags(html, "field-awards").filter((tag) => tag.includes('value="combine"') && inputChecked(tag)).length, 0);
   assert.equal(choices.flagGrid, undefined);
   assert.equal(canConfirmMerge(included, honorees, choices), false);
-  assert.ok(buttons(html).filter((tag) => tag.includes("Merge") || tag.includes("Preview card PDF")).every((tag) => tag.includes("disabled")));
+  assert.ok(buttons(html).filter((tag) => tag.includes(">Merge<") || tag.includes("Preview PDF")).every((tag) => tag.includes("disabled")));
 });
 
 test("use all matching values fills only identical fields", () => {
@@ -301,7 +301,7 @@ test("the survivor is the flag-grid row, including a blank grid, and merge waits
   assert.ok(buttons(blocked).every((tag) => tag.includes("disabled")));
 
   const ready = reviewMarkup(choices);
-  const mergeButtons = buttons(ready).filter((tag) => tag.includes("Merge") || tag.includes("Preview card PDF"));
+  const mergeButtons = buttons(ready).filter((tag) => tag.includes(">Merge<") || tag.includes("Preview PDF"));
   assert.equal(mergeButtons.length, 2);
   assert.ok(mergeButtons.every((tag) => !tag.includes("disabled")));
   const gridRadios = tags(ready, "field-flagGrid").filter((tag) => tag.includes('value="1"') || tag.includes('value="2"'));
@@ -448,7 +448,21 @@ test("the review step previews the card and names only the fields still to choos
   assert.match(review, /ReviewStepActions/);
   assert.match(review, /previewCard\(\)/);
   assert.match(review, /StillToChoose/);
-  assert.match(confirm, /Preview card PDF|onPreview=\{\(\) => void previewCard\(\)\}/);
+  assert.match(confirm, /Preview PDF|onPreview=\{\(\) => void previewCard\(\)\}/);
+  assert.match(review, /label="Back to groups"/);
+  assert.match(confirm, /label="Back to review"/);
+  assert.match(screen, />\s*Review\s*</);
+  assert.match(screen, /DuplicateHistoryLink/);
+  assert.match(screen, /label=\{busy \? "Loading" : "Refresh"\}/);
+  assert.match(screen, />\s*Confirm\s*</);
+  assert.doesNotMatch(screen, /Review side by side/);
+  assert.doesNotMatch(screen, /Continue to confirm/);
+  assert.doesNotMatch(screen, /Merge history/);
+  assert.doesNotMatch(screen, /Confirm not duplicates</);
+  const chrome = readFileSync(new URL("../src/duplicateChrome.js", import.meta.url), "utf8");
+  assert.match(chrome, /"aria-label": label/);
+  assert.match(chrome, /title: label/);
+  assert.match(chrome, /"History"/);
   assert.match(confirm, /StillToChoose/);
   assert.match(screen, /Fields that match exactly are preselected/);
   assert.match(screen, /Everything else, including the flag grid, needs a pick/);
@@ -484,8 +498,8 @@ test("the review step previews the card and names only the fields still to choos
       createElement(StillToChoose, { includedIds: included, choices: loaded })
     )
   );
-  const previewButtons = buttons(waiting).filter((tag) => tag.includes("Preview card PDF"));
-  const continueButtons = buttons(waiting).filter((tag) => tag.includes("Continue to confirm"));
+  const previewButtons = buttons(waiting).filter((tag) => tag.includes("Preview PDF"));
+  const continueButtons = buttons(waiting).filter((tag) => tag.includes(">Continue<"));
   assert.equal(previewButtons.length, 1);
   assert.equal(continueButtons.length, 1);
   assert.match(previewButtons[0], /disabled/);
@@ -504,7 +518,7 @@ test("the review step previews the card and names only the fields still to choos
       createElement(StillToChoose, { includedIds: included, choices: readyChoices })
     )
   );
-  assert.doesNotMatch(buttons(readyHtml).find((tag) => tag.includes("Preview card PDF")), /disabled/);
+  assert.doesNotMatch(buttons(readyHtml).find((tag) => tag.includes("Preview PDF")), /disabled/);
   assert.doesNotMatch(readyHtml, /Still to choose/);
 });
 
@@ -598,12 +612,13 @@ test("a changed resulting row highlights, then clears, and reduced motion does n
   assert.match(css, /\.resultField\.resultFlash\s*\{[^}]*animation:\s*resultFlash 1s/);
   assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)\s*\{[^}]*\.resultField\.resultFlash\s*\{[^}]*animation:\s*none/);
   const selected = css.slice(css.indexOf(".mergeChoice.isSelected {"), css.indexOf(".mergeChoice.isSelected strong"));
-  assert.match(selected, /background:\s*#0A2342/i);
-  assert.match(selected, /color:\s*#FFFFFF/i);
-  assert.ok(contrast("#FFFFFF", "#0A2342") >= 4.5);
+  assert.match(selected, /background:\s*#e7eef8/i);
+  assert.match(selected, /color:\s*#0A2342/i);
+  assert.match(selected, /outline:[^;]*solid\s+#0A2342/i);
+  assert.doesNotMatch(selected, /background:\s*#0A2342/i);
+  assert.ok(contrast("#0A2342", "#E7EEF8") >= 4.5);
   assert.ok(contrast("#162033", "#FFF4D6") >= 4.5);
   assert.ok(contrast("#162033", "#FFE08A") >= 4.5);
-  assert.ok(contrast("#F4C95D", "#0A2342") >= 3);
 });
 
 test("the preview note names an off-screen field and stays out of the layout", () => {
@@ -683,7 +698,14 @@ test("merge history lists newest first and shows when undo is blocked", () => {
   assert.match(html, /John Q Smith Jr\./);
   assert.match(html, /admin@example.com/);
   assert.match(html, />Undo</);
+  assert.match(html, /class="destructive"/);
   assert.match(html, /Undone /);
+  assert.match(html, /aria-label="Back to duplicates"/);
+  assert.match(html, /title="Back to duplicates"/);
+  assert.match(html, /aria-label="Refresh"/);
+  assert.match(html, /title="Refresh"/);
+  assert.doesNotMatch(html, />Back to duplicates</);
+  assert.doesNotMatch(html, />Refresh</);
 
   const blocked = renderToStaticMarkup(
     createElement(MergeHistoryScreen, {
@@ -692,13 +714,27 @@ test("merge history lists newest first and shows when undo is blocked", () => {
       loadError: "",
       busy: false,
       error: "This merge cannot be undone because the surviving record was edited after the merge.",
+      errorId: newer.id,
       onUndo() {},
       onBack() {},
       onReload() {}
     })
   );
-  assert.match(blocked, /role="alert"/);
-  assert.match(blocked, /edited after the merge/);
+  const row = blocked.slice(blocked.indexOf("<li"), blocked.indexOf("</li>") + 5);
+  const beforeList = blocked.slice(0, blocked.indexOf("<ol"));
+  assert.doesNotMatch(beforeList, /role="alert"/);
+  assert.match(row, /class="destructive"/);
+  assert.match(row, />Undo</);
+  assert.ok(row.indexOf(">Undo<") < row.indexOf('role="alert"'));
+  assert.match(row, /class="message error"/);
+  assert.match(row, /edited after the merge/);
+  const historyCss = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  assert.match(historyCss, /\.mergeHistoryActions\s*\{[^}]*align-items:\s*flex-end/);
+  assert.match(historyCss, /button\.destructive\s*\{[^}]*color:\s*#8b1e2c/);
+  assert.equal(2.75 * 16, 44);
+  assert.match(historyCss, /\.duplicateIconButton\s*\{[^}]*min-width:\s*2\.75rem/);
+  assert.match(historyCss, /\.duplicateIconButton\s*\{[^}]*min-height:\s*2\.75rem/);
+  assert.match(historyCss, /\.mergeStepFooterActions\s*\{[^}]*flex-direction:\s*row-reverse/);
 });
 
 test("merge history is linked from duplicates and stays off the admin nav", () => {

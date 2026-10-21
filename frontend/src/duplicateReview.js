@@ -443,7 +443,7 @@ export function UseMatchingButton({ disabled, onClick }) {
   return h(
     "button",
     { type: "button", className: "secondary", disabled, onClick },
-    "Use all matching values"
+    "Use matches"
   );
 }
 
@@ -453,32 +453,42 @@ export function SharedFieldChoices({ includedCount, choices, onNoPhoto, onCombin
     "div",
     { className: "mergeSharedChoices" },
     h(
-      "label",
-      { className: choiceClass(Boolean(choices?.photo?.noPhoto)) },
-      h("input", {
-        type: "radio",
-        name: "field-photo",
-        value: "none",
-        checked: Boolean(choices?.photo?.noPhoto),
-        "aria-checked": Boolean(choices?.photo?.noPhoto),
-        disabled,
-        onChange: onNoPhoto
-      }),
-      h("span", null, h("strong", null, "No photo"))
+      "div",
+      { className: "mergeSharedField" },
+      h("h3", null, "Photo"),
+      h(
+        "label",
+        { className: choiceClass(Boolean(choices?.photo?.noPhoto)) },
+        h("input", {
+          type: "radio",
+          name: "field-photo",
+          value: "none",
+          checked: Boolean(choices?.photo?.noPhoto),
+          "aria-checked": Boolean(choices?.photo?.noPhoto),
+          disabled,
+          onChange: onNoPhoto
+        }),
+        h("span", null, h("strong", null, "No photo"))
+      )
     ),
     h(
-      "label",
-      { className: choiceClass(Boolean(choices?.awards?.combine) && !choices?.awards?.useCustom) },
-      h("input", {
-        type: "radio",
-        name: "field-awards",
-        value: "combine",
-        checked: Boolean(choices?.awards?.combine) && !choices?.awards?.useCustom,
-        "aria-checked": Boolean(choices?.awards?.combine) && !choices?.awards?.useCustom,
-        disabled: includedCount < 2,
-        onChange: onCombine
-      }),
-      h("span", null, h("strong", null, "Combine both"))
+      "div",
+      { className: "mergeSharedField" },
+      h("h3", null, "Awards"),
+      h(
+        "label",
+        { className: choiceClass(Boolean(choices?.awards?.combine) && !choices?.awards?.useCustom) },
+        h("input", {
+          type: "radio",
+          name: "field-awards",
+          value: "combine",
+          checked: Boolean(choices?.awards?.combine) && !choices?.awards?.useCustom,
+          "aria-checked": Boolean(choices?.awards?.combine) && !choices?.awards?.useCustom,
+          disabled: includedCount < 2,
+          onChange: onCombine
+        }),
+        h("span", null, h("strong", null, "Combine both"))
+      )
     )
   );
 }
@@ -642,7 +652,7 @@ export function ResultingRecord({
       announced.push({ key, label: field.label });
     }
     if (announced.length) {
-      const obstacles = [...document.querySelectorAll(".mergeActions, .mergeChoice, button")].map((node) => node.getBoundingClientRect());
+      const obstacles = [...document.querySelectorAll(".mergeStepFooter, .mergeActions, .mergeChoice, button")].map((node) => node.getBoundingClientRect());
       setNotePlace(previewNotePlacement(obstacles, window.innerHeight));
       setLiveNotes((current) => {
         const rest = current.filter((item) => !announced.some((entry) => entry.key === item.key));
@@ -731,21 +741,52 @@ export function ResultingRecord({
   );
 }
 
-export function ReviewStepActions({ ready, busy, onPreview, onContinue }) {
+function StepFooter({ primaryLabel, primaryClass, primaryDisabled, previewDisabled, onPrimary, onPreview, warning, hint }) {
   return h(
     "div",
-    { className: "mergeActions" },
+    { className: "mergeStepFooter" },
+    warning ? h("p", { className: "mergeWarning" }, warning) : null,
     h(
-      "button",
-      { type: "button", className: "secondary", disabled: !ready || busy, onClick: onPreview },
-      "Preview card PDF"
-    ),
-    h(
-      "button",
-      { type: "button", disabled: !ready, onClick: onContinue },
-      "Continue to confirm"
+      "div",
+      { className: "mergeStepFooterActions" },
+      h(
+        "div",
+        { className: "mergeStepFooterPrimary" },
+        h(
+          "button",
+          {
+            type: "button",
+            className: primaryClass || undefined,
+            disabled: primaryDisabled,
+            onClick: onPrimary
+          },
+          primaryLabel
+        ),
+        hint ?? null
+      ),
+      h(
+        "button",
+        {
+          type: "button",
+          className: "secondary",
+          disabled: previewDisabled,
+          onClick: onPreview
+        },
+        "Preview PDF"
+      )
     )
   );
+}
+
+export function ReviewStepActions({ ready, busy, onPreview, onContinue, hint }) {
+  return h(StepFooter, {
+    primaryLabel: "Continue",
+    primaryDisabled: !ready,
+    previewDisabled: !ready || busy,
+    onPrimary: onContinue,
+    onPreview,
+    hint
+  });
 }
 
 export function StillToChoose({ includedIds, choices }) {
@@ -754,19 +795,15 @@ export function StillToChoose({ includedIds, choices }) {
   return h("p", { className: "helperText" }, text);
 }
 
-export function MergeActions({ ready, busy, onMerge, onPreview }) {
-  return h(
-    "div",
-    { className: "mergeActions" },
-    h(
-      "button",
-      { type: "button", className: "secondary", disabled: !ready || busy, onClick: onPreview },
-      "Preview card PDF"
-    ),
-    h(
-      "button",
-      { type: "button", disabled: !ready || busy, onClick: onMerge },
-      "Merge"
-    )
-  );
+export function MergeActions({ ready, busy, onMerge, onPreview, hint }) {
+  return h(StepFooter, {
+    primaryLabel: "Merge",
+    primaryClass: "mergeCommit",
+    primaryDisabled: !ready || busy,
+    previewDisabled: !ready || busy,
+    onPrimary: onMerge,
+    onPreview,
+    warning: "Other records become inactive and their flag spots are released.",
+    hint
+  });
 }
