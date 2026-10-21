@@ -1,5 +1,6 @@
 import { type FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import packageInfo from "../package.json";
+import { CacheLookupPolicy, type SilentRequest } from "@azure/msal-browser";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
@@ -83,7 +84,17 @@ import {
   submissionPhotoKind
 } from "./submissionDisplay.js";
 import { loginRequest, readMappedAccountClaim } from "./authConfig";
+import {
+  accountIsAdmin,
+  clearStickyAdmin,
+  lookupCachedAdminRole,
+  noteServerAdmin,
+  readStickyAdmin,
+  resolvePublicAdmin
+} from "./accountRoles.js";
+import { isPublicPage } from "./publicRoutes.js";
 import { publishSignInError, subscribeSignInError } from "./signInError";
+import { isQuietAuthRejection, PLEASE_SIGN_IN_AGAIN } from "./tokenRequest.js";
 import knecoLogoBlue from "./assets/kneco-logo-blue.png";
 import pfohFooterLogo from "./assets/pfoh-footer-logo.png";
 
@@ -377,6 +388,8 @@ function printCardFailureMessage(error: unknown) {
 }
 
 function reportableErrorMessage(error: unknown, fallback: string) {
+  if (isQuietAuthRejection(error)) return "";
+
   if (error instanceof ApiError) {
     return error.message;
   }
@@ -431,7 +444,8 @@ export default function App() {
   const [honoreeSearchPerformed, setHonoreeSearchPerformed] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
 
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminFromApi, setIsAdmin] = useState(false);
+  const [cachedApiAdmin, setCachedApiAdmin] = useState(false);
   const [reviewLoadError, setReviewLoadError] = useState("");
   const [printLoadError, setPrintLoadError] = useState("");
   const [flagMapLoadError, setFlagMapLoadError] = useState("");
@@ -580,6 +594,11 @@ export default function App() {
   ];
   const isPrintingRoute = activeRoute === "/admin/printing";
   const isAdminRoute = activeRoute.startsWith("/admin");
+  const stickyAdmin = adminFromApi || readStickyAdmin(window.sessionStorage, account?.homeAccountId ?? "");
+  const publicAdmin = isPublicPage(activeRoute)
+    ? resolvePublicAdmin({ account, sticky: stickyAdmin, cachedApiAdmin })
+    : null;
+  const isAdmin = publicAdmin ? publicAdmin.isAdmin : adminFromApi;
   const chrome = kioskChrome(kioskLocked, isAdmin);
 
   const adminAlertItems = useMemo(
@@ -779,8 +798,12 @@ export default function App() {
     );
   }, [form.serviceBranchCategoryId, serviceBranches]);
 
+  const activeRouteRef = useRef(activeRoute);
+  activeRouteRef.current = activeRoute;
+
   useEffect(() => subscribeSignInError((message) => {
     if (kioskLockedRef.current) return;
+    if (isPublicPage(activeRouteRef.current)) return;
     if (message) setError(message);
   }), []);
 
@@ -818,6 +841,10 @@ export default function App() {
   profileInstanceRef.current = instance;
 
   useEffect(() => {
+    if (isPublicPage(activeRoute)) {
+      return;
+    }
+
     if (kioskLocked || !isAuthenticated || !accountKey) {
       profileLoadGate.current.reset();
       setSavedDisplayName("");
@@ -859,7 +886,7 @@ export default function App() {
       cancelled = true;
       profileLoadGate.current.release(accountKey);
     };
-  }, [isAuthenticated, accountKey, kioskLocked]);
+  }, [isAuthenticated, accountKey, kioskLocked, activeRoute]);
 
   async function openProfile() {
     if (kioskLockedRef.current || !account) return;
@@ -973,6 +1000,9 @@ export default function App() {
 
   async function signOut() {
     if (kioskLockedRef.current) return;
+    clearStickyAdmin(window.sessionStorage, account?.homeAccountId);
+    setIsAdmin(false);
+    setCachedApiAdmin(false);
     await instance.logoutRedirect();
   }
 
@@ -1197,7 +1227,9 @@ export default function App() {
 
     const decision = decideAdminLoad([pendingResult, queueResult, positionsResult]);
     if (!decision.isAdmin) {
+      noteServerAdmin(window.sessionStorage, account.homeAccountId, false);
       setIsAdmin(false);
+      setCachedApiAdmin(false);
       setPendingReviews([]);
       setPrintQueue([]);
       setPrintHistory([]);
@@ -1210,6 +1242,7 @@ export default function App() {
       return;
     }
 
+    noteServerAdmin(window.sessionStorage, account.homeAccountId, true);
     setIsAdmin(true);
     setReviewLoadError(decision.errors.review ?? "");
     setPrintLoadError(decision.errors.printing ?? "");
@@ -1280,14 +1313,45 @@ export default function App() {
     void loadAdminData();
   }
 
+  const stickyAccountRef = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = stickyAccountRef.current;
+    if (previous === accountKey) return;
+    if (previous) clearStickyAdmin(window.sessionStorage, previous);
+    stickyAccountRef.current = accountKey;
+    setCachedApiAdmin(false);
+    setIsAdmin(accountKey ? readStickyAdmin(window.sessionStorage, accountKey) : false);
+  }, [accountKey]);
+
+  useEffect(() => {
+    const current = profileAccountRef.current;
+    if (!isPublicPage(activeRoute) || !current) return;
+    if (adminFromApi || accountIsAdmin(current) || readStickyAdmin(window.sessionStorage, current.homeAccountId)) return;
+
+    let cancelled = false;
+    lookupCachedAdminRole({
+      account: current,
+      scopes: loginRequest.scopes,
+      cacheLookupPolicy: CacheLookupPolicy.AccessToken,
+      acquireTokenSilent: (request: SilentRequest) => instance.acquireTokenSilent(request)
+    }).then((result) => {
+      if (!cancelled && result.isAdmin) setCachedApiAdmin(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRoute, accountKey, adminFromApi, instance]);
+
   useEffect(() => {
     if (!kioskChrome(kioskLocked, true).loadSignedInData) return;
+    if (isPublicPage(activeRoute)) return;
     if (isAuthenticated && account) {
       loadData();
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, account?.homeAccountId, kioskLocked]);
+  }, [isAuthenticated, account?.homeAccountId, kioskLocked, activeRoute]);
 
   useEffect(() => {
     const timers: number[] = [];
@@ -3139,7 +3203,17 @@ export default function App() {
             <section className="messageStack" aria-live="polite" aria-atomic="true">
               {error ? (
                 <div className="message error" role="alert">
-                  <span>{error}</span>
+                  <span>
+                    {error}
+                    {error === PLEASE_SIGN_IN_AGAIN ? (
+                      <>
+                        {" "}
+                        <button type="button" onClick={() => void signIn("login")}>
+                          Sign in
+                        </button>
+                      </>
+                    ) : null}
+                  </span>
                   <button
                     type="button"
                     className="messageClose"
@@ -4080,7 +4154,13 @@ export default function App() {
 
           {isAdminRoute && chrome.adminLinks ? (
             <div id="admin" className="adminSectionStack" aria-label="Administrator tools">
-              {isDuplicatesRoute ? <DuplicateMerge instance={instance} account={account ?? null} /> : null}
+              {isDuplicatesRoute ? (
+                <DuplicateMerge
+                  instance={instance}
+                  account={account ?? null}
+                  onSignIn={() => void signIn("login")}
+                />
+              ) : null}
 
               {isAdminReviewRoute ? (
               <section className="card adminCard adminReviewCard">
@@ -4629,7 +4709,11 @@ export default function App() {
                 </section>
               )}
 
-              <PrintDuplicateReviews instance={instance} account={account ?? null} />
+              <PrintDuplicateReviews
+                instance={instance}
+                account={account ?? null}
+                onSignIn={() => void signIn("login")}
+              />
 
               <section className="printHistory" aria-label="Print history">
                 <h3>Print history</h3>

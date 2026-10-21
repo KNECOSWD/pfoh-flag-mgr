@@ -48,7 +48,7 @@ test("the profile effect does not depend on the account object", () => {
   const source = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
   const match = source.match(/profileApi\.get\([\s\S]*?\}, \[([^\]]*)\]\);/);
   assert.ok(match, "profile load effect was not found");
-  assert.equal(match[1].replace(/\s+/g, " ").trim(), "isAuthenticated, accountKey, kioskLocked");
+  assert.equal(match[1].replace(/\s+/g, " ").trim(), "isAuthenticated, accountKey, kioskLocked, activeRoute");
   assert.doesNotMatch(match[1], /\baccount\b/);
 });
 
@@ -66,7 +66,7 @@ test("search and lookups are public and do not wait on a token", () => {
   assert.match(api, /publicRequest<ServiceBranchCategory\[\]>/);
 });
 
-test("parallel token requests share one silent call and do not redirect", async () => {
+test("parallel token requests share one silent call and redirect once", async () => {
   const coordinator = createTokenCoordinator();
   let silentCalls = 0;
   let redirects = 0;
@@ -93,7 +93,7 @@ test("parallel token requests share one silent call and do not redirect", async 
   const results = await Promise.allSettled([first, second]);
 
   assert.equal(silentCalls, 1);
-  assert.equal(redirects, 0);
+  assert.equal(redirects, 1);
   assert.equal(results[0].status, "rejected");
   assert.equal(results[1].status, "rejected");
 });
