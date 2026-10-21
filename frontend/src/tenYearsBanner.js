@@ -15,7 +15,6 @@ export function TenYearsBanner() {
     h(
       "div",
       { className: "anniversaryBannerInner" },
-      h("span", { className: "anniversaryBadge", "aria-hidden": "true" }, "10"),
       h(
         "p",
         { className: "anniversaryText" },

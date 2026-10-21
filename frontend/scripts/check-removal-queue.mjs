@@ -61,7 +61,8 @@ test("the header subtitle drops the cost sentence and the dog tag links to Searc
   assert.match(app, /className="heroDogTag"[^>]*alt=""/);
   assert.match(css, /\.hero \.heroDogTagLink:focus-visible[\s\S]*outline:\s*3px solid #ffe08a/);
   assert.match(css, /\.hero \.heroDogTag\s*\{[^}]*width:\s*132px/);
-  assert.match(css, /\.hero \.heroDogTag\s*\{[^}]*width:\s*76px/);
+  assert.match(css, /\.hero \.heroDogTag\s*\{[^}]*width:\s*64px/);
+  assert.doesNotMatch(css, /\.mobileNavToggle\s*\{[^}]*grid-row:\s*2/);
 });
 
 test("the 10 Years banner switches off at the Central Time boundary and stays off admin routes", () => {
@@ -75,6 +76,9 @@ test("the 10 Years banner switches off at the Central Time boundary and stays of
   assert.match(banner, /10 Years of Honor/);
   assert.match(banner, /Celebrating the 10th year of Plano Flags of Honor\./);
   assert.doesNotMatch(banner, /href=/);
+  assert.doesNotMatch(banner, /anniversaryBadge/);
+  const bannerSource = readFileSync(new URL("../src/tenYearsBanner.js", import.meta.url), "utf8");
+  assert.doesNotMatch(bannerSource, /anniversaryBadge/);
 });
 
 test("the footer is navy, drops Rotary, and uses the white KNECO logo", () => {
@@ -85,6 +89,9 @@ test("the footer is navy, drops Rotary, and uses the white KNECO logo", () => {
   assert.match(app, /alt="KNECO, Inc\."/);
   assert.match(css, /footer\.appFooter\.footerNavy/);
   assert.match(css, /footer\.appFooter\.footerNavy \.footerContact a[\s\S]*min-height:\s*2\.75rem/);
+  const navy = css.slice(css.indexOf("footer.appFooter.footerNavy {"), css.indexOf("footer.appFooter.footerNavy .appFooterInner"));
+  assert.match(navy, /rgba\(6,\s*20,\s*48,\s*0?\.88\)\s*100%/);
+  assert.doesNotMatch(navy, /45,\s*8,\s*16/);
 });
 
 test("a zero removal count stays off the admin bar", () => {
