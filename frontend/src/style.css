@@ -8191,8 +8191,9 @@ img.ownedFlagImage {
 }
 
 .appFooterInner {
-  grid-template-columns: minmax(18rem, 1fr) minmax(12rem, auto) minmax(14rem, 0.75fr) !important;
-  grid-template-rows: auto 1fr !important;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
 }
 
 .footerExplore {
@@ -12337,6 +12338,82 @@ header.hero .authBox strong {
     max-width: 100%;
     margin-left: auto;
     flex: 0 1 auto;
+  }
+
+  /* Non-map pages: the dog tag keeps its own column so the title and
+     subtitle sit beside it instead of running underneath. */
+  html:not(.flagMapPage) header.hero > .heroBrand {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.85rem;
+    flex: 1 1 16rem;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+  }
+
+  html:not(.flagMapPage) header.hero .heroDogTagLink {
+    grid-column: 1;
+    align-self: center;
+    position: static;
+    margin: 0;
+  }
+
+  html:not(.flagMapPage) header.hero .heroBrand .heroContent {
+    grid-column: 2;
+    display: grid;
+    align-content: center;
+    min-width: 0;
+    margin: 0;
+  }
+
+  html:not(.flagMapPage) header.hero .authBox {
+    position: static;
+    top: auto;
+    right: auto;
+    width: auto;
+    margin: 0;
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+}
+
+/* Footer columns wrap inside the same fluid inset as the header.
+   Phones keep the stacked footer from the 760px rules. */
+@media (min-width: 761px) {
+  footer.appFooter {
+    overflow: visible;
+    padding-inline: clamp(1rem, (100vw - 73.75rem) / 2, 24rem);
+  }
+
+  footer.appFooter .appFooterInner {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: clamp(1rem, (100vw - 73.75rem) / 2, 24rem) !important;
+    padding-inline: 0 !important;
+    grid-template-columns: none !important;
+  }
+
+  footer.appFooter .footerExplore,
+  footer.appFooter .footerLoop,
+  footer.appFooter .footerContact,
+  footer.appFooter .footerCredit {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    justify-self: auto !important;
+    min-width: 0;
+    flex: 1 1 10rem;
+    max-width: 100%;
+  }
+
+  footer.appFooter .appVersionStamp {
+    padding-inline: 0;
   }
 }
 
