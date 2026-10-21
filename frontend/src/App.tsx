@@ -83,6 +83,7 @@ import {
   submissionPhotoKind
 } from "./submissionDisplay.js";
 import { loginRequest, readMappedAccountClaim } from "./authConfig";
+import { publicPageAdminState } from "./accountRoles.js";
 import { isPublicPage } from "./publicRoutes.js";
 import { publishSignInError, subscribeSignInError } from "./signInError";
 import { isQuietAuthRejection, PLEASE_SIGN_IN_AGAIN } from "./tokenRequest.js";
@@ -435,7 +436,7 @@ export default function App() {
   const [honoreeSearchPerformed, setHonoreeSearchPerformed] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
 
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminFromApi, setIsAdmin] = useState(false);
   const [reviewLoadError, setReviewLoadError] = useState("");
   const [printLoadError, setPrintLoadError] = useState("");
   const [flagMapLoadError, setFlagMapLoadError] = useState("");
@@ -584,6 +585,8 @@ export default function App() {
   ];
   const isPrintingRoute = activeRoute === "/admin/printing";
   const isAdminRoute = activeRoute.startsWith("/admin");
+  const publicAdmin = publicPageAdminState(activeRoute, account);
+  const isAdmin = publicAdmin ? publicAdmin.isAdmin : adminFromApi;
   const chrome = kioskChrome(kioskLocked, isAdmin);
 
   const adminAlertItems = useMemo(
@@ -1291,6 +1294,12 @@ export default function App() {
 
     void loadAdminData();
   }
+
+  useEffect(() => {
+    const state = publicPageAdminState(activeRoute, account);
+    if (!state) return;
+    setIsAdmin(state.isAdmin);
+  }, [activeRoute, account]);
 
   useEffect(() => {
     if (!kioskChrome(kioskLocked, true).loadSignedInData) return;

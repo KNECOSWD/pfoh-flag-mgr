@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { publicPageAdminState } from "../src/accountRoles.js";
 import { duplicateListState } from "../src/duplicateListState.js";
 import { isPublicApiPath } from "../src/publicApi.js";
 import { isPublicPage } from "../src/publicRoutes.js";
@@ -143,6 +144,44 @@ test("the session guard allows one redirect and then asks the person to sign in 
   assert.equal(redirects, 1);
   assert.equal(second[0].status, "rejected");
   assert.equal(bannerForTokenError(second[0].reason), PLEASE_SIGN_IN_AGAIN);
+});
+
+test("an admin account on /find sees the Admin menu and makes no token call", () => {
+  let tokenCalls = 0;
+  const acquireToken = () => {
+    tokenCalls += 1;
+    return "token";
+  };
+
+  const admin = publicPageAdminState("/find", { idTokenClaims: { roles: ["PFOH.Admin"] } });
+  assert.equal(admin.showAdminMenu, true);
+  assert.equal(admin.showAdminActions, true);
+  assert.equal(admin.tokenCalls, 0);
+  assert.equal(tokenCalls, 0);
+  void acquireToken;
+
+  const namedAdmin = publicPageAdminState("/flag-map", { idTokenClaims: { roles: "Admin" } });
+  assert.equal(namedAdmin.showAdminMenu, true);
+  assert.equal(namedAdmin.tokenCalls, 0);
+
+  const supporter = publicPageAdminState("/find", { idTokenClaims: { roles: ["Supporter"] } });
+  assert.equal(supporter.showAdminMenu, false);
+  assert.equal(supporter.showAdminActions, false);
+  assert.equal(supporter.tokenCalls, 0);
+
+  const missing = publicPageAdminState("/find", { idTokenClaims: {} });
+  assert.equal(missing.showAdminMenu, false);
+  assert.equal(missing.isAdmin, false);
+  assert.equal(publicPageAdminState("/find", null).showAdminMenu, false);
+
+  const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const effectStart = app.indexOf("const state = publicPageAdminState(activeRoute, account);");
+  assert.ok(effectStart > 0, "public pages set admin from the account claims");
+  const effect = app.slice(effectStart, app.indexOf("useEffect", effectStart));
+  assert.match(effect, /setIsAdmin\(state\.isAdmin\)/);
+  assert.doesNotMatch(effect, /getToken|acquireToken|profileApi|loadData|fetch\(/);
+  assert.match(app, /const isAdmin = publicAdmin \? publicAdmin\.isAdmin : adminFromApi/);
+  assert.match(app, /chrome\.adminLinks \? \(/);
 });
 
 test("a failed duplicate load does not show a zero count or the empty result", () => {
