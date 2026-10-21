@@ -13198,8 +13198,8 @@ html.isMapFullscreen .publicFlagLevel {
 
 /* Duplicate screens: one icon style for Back and Refresh. Not .iconButton,
    which is hidden with the old search controls and is smaller than a phone
-   tap target. 2.75rem is 44px at the 16px root. The kiosk guard rejects a
-   literal 44px length anywhere in this file, and kiosk controls stay 56px. */
+   tap target. 2.75rem is 44px at the 16px root. The kiosk check measures
+   kiosk selectors and keeps those controls at 56px or larger. */
 .duplicateIconButton {
   display: inline-grid;
   place-items: center;
@@ -13402,5 +13402,615 @@ button.destructive:hover:not(:disabled) {
   .mergeStepFooterPrimary > button,
   .mergeStepFooterActions > button.secondary {
     width: 100%;
+  }
+}
+
+/* 2.2.0 header dog tag, anniversary banner, navy footer, and Removal Queue.
+   Phone tap targets use 2.75rem (44px at a 16px root). Kiosk controls stay 56px. */
+.hero .heroBrand {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  min-width: 0;
+}
+
+.hero .heroDogTagLink {
+  flex: 0 0 auto;
+  display: block;
+  line-height: 0;
+  border-radius: 8px;
+}
+
+.hero .heroDogTag {
+  width: 132px;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.45));
+}
+
+.hero .heroBrand .heroContent {
+  min-width: 0;
+}
+
+.hero .heroDogTagLink:focus-visible {
+  outline: 3px solid #ffe08a;
+  outline-offset: 3px;
+}
+
+@media (max-width: 760px) {
+  .hero .heroBrand {
+    gap: 0.7rem;
+    align-items: center;
+  }
+
+  .hero .heroDogTag {
+    width: 76px;
+  }
+}
+
+@media (max-height: 560px) and (orientation: landscape) {
+  .hero .heroBrand {
+    display: contents !important;
+  }
+
+  .hero .heroDogTagLink {
+    display: none !important;
+  }
+}
+
+.anniversaryBanner {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  background: linear-gradient(90deg, #7a1424 0%, #9b1c31 50%, #7a1424 100%);
+  color: #fff;
+  border-bottom: 3px solid #ffe08a;
+  box-shadow: 0 10px 22px rgba(20, 31, 48, 0.16);
+}
+
+.anniversaryBannerInner {
+  width: min(1180px, calc(100% - 2rem));
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.7rem 0;
+  text-align: center;
+}
+
+.anniversaryBadge {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: #ffe08a;
+  color: #7a1424;
+  font-weight: 900;
+  font-size: 1.35rem;
+  line-height: 1;
+  box-shadow: inset 0 0 0 3px #fff3c4, 0 4px 10px rgba(0, 0, 0, 0.25);
+}
+
+.anniversaryText {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.15rem 0.7rem;
+  margin: 0;
+}
+
+.anniversaryText strong {
+  font-size: 1.35rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ffe08a;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.anniversaryText span {
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.anniversaryStars {
+  color: #ffe08a;
+  letter-spacing: 0.25em;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 760px) {
+  .anniversaryBannerInner {
+    gap: 0.65rem;
+    padding: 0.6rem 3.4rem 0.6rem 0;
+    text-align: left;
+    justify-content: flex-start;
+  }
+
+  .anniversaryBadge {
+    width: 2.6rem;
+    height: 2.6rem;
+    font-size: 1.1rem;
+  }
+
+  .anniversaryText {
+    justify-content: flex-start;
+  }
+
+  .anniversaryText strong {
+    font-size: 1.08rem;
+  }
+
+  .anniversaryText span {
+    font-size: 0.88rem;
+  }
+
+  .anniversaryStars {
+    display: none;
+  }
+
+  .adminAlertBannerLinks a {
+    min-height: 2.75rem !important;
+  }
+}
+
+main > .anniversaryBanner + * {
+  margin-top: 1.25rem;
+}
+
+footer.appFooter.footerNavy {
+  background:
+    linear-gradient(90deg, rgba(3, 12, 30, 0.94) 0%, rgba(6, 20, 48, 0.91) 42%, rgba(6, 20, 48, 0.80) 70%, rgba(45, 8, 16, 0.74) 100%),
+    #102f5f !important;
+  color: #fff !important;
+  border-top: 0 !important;
+}
+
+footer.appFooter.footerNavy .appFooterInner::after {
+  opacity: 0.12 !important;
+  filter: invert(1);
+}
+
+footer.appFooter.footerNavy .footerColumn h2 {
+  color: #ffe08a !important;
+}
+
+footer.appFooter.footerNavy .footerColumn a {
+  color: #fff !important;
+}
+
+footer.appFooter.footerNavy .footerColumn a:hover {
+  color: #ffe08a !important;
+}
+
+footer.appFooter.footerNavy .footerSocials a {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+}
+
+footer.appFooter.footerNavy .footerContact a {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #fff !important;
+  padding: 0.35rem 0.15rem !important;
+  font-weight: 800 !important;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+}
+
+footer.appFooter.footerNavy .footerContact a:hover {
+  color: #ffe08a !important;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  background: transparent !important;
+}
+
+footer.appFooter.footerNavy .footerContact a:focus-visible,
+footer.appFooter.footerNavy .footerColumn a:focus-visible,
+footer.appFooter.footerNavy .footerCredit a:focus-visible {
+  outline: 3px solid #ffe08a !important;
+  outline-offset: 3px;
+}
+
+@media (max-width: 760px) {
+  footer.appFooter.footerNavy .footerContact a {
+    min-height: 2.75rem !important;
+    padding: 0.5rem 0.15rem !important;
+  }
+}
+
+footer.appFooter.footerNavy .footerCredit a {
+  display: inline-flex;
+  background: none;
+  padding: 0;
+}
+
+footer.appFooter.footerNavy .footerCredit span {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+footer.appFooter.footerNavy .footerCredit img {
+  width: 6.75rem !important;
+  max-width: 6.75rem !important;
+  height: auto !important;
+  background: none !important;
+}
+
+footer.appFooter.footerNavy .appVersionStamp {
+  color: rgba(255, 255, 255, 0.65) !important;
+}
+
+.rqIconButton {
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+  border-radius: 12px;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
+.rqTabs {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0 0 1rem;
+  padding: 0.25rem;
+  border-radius: 14px;
+  background: #eef2f8;
+  width: max-content;
+  max-width: 100%;
+}
+
+.rqTabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: #173b73;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.rqTabs button.isActive {
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(23, 59, 115, 0.14);
+}
+
+.rqTabs button:focus-visible {
+  outline: 3px solid #173b73;
+  outline-offset: 2px;
+}
+
+.rqTabs .rqCount {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: #9b1c31;
+  color: #fff;
+  font-size: 0.78rem;
+}
+
+.rqTabs .rqCount.isMuted {
+  background: #c9d3e2;
+  color: #173b73;
+}
+
+.rqToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+  color: #4a5a73;
+  font-size: 0.9rem;
+}
+
+.rqList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.rqItem {
+  display: grid;
+  grid-template-columns: 2.75rem 5.6rem 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.9rem 1rem;
+  border: 1px solid #dbe3ef;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(20, 31, 48, 0.05);
+}
+
+.rqItem.isDone {
+  grid-template-columns: 5.6rem 1fr;
+  background: #f8fafc;
+}
+
+.rqGrid {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  height: 4.4rem;
+  border-radius: 12px;
+  background: #102f5f;
+  color: #fff;
+  text-align: center;
+}
+
+.rqGrid small {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffe08a;
+}
+
+.rqGrid b {
+  font-size: 1.35rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.rqBody {
+  min-width: 0;
+}
+
+.rqBody h3 {
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+  color: #162033;
+}
+
+.rqWhat {
+  margin: 0 0 0.35rem;
+  color: #24344d;
+  font-size: 0.93rem;
+}
+
+.rqMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  margin: 0;
+  color: #5a6a82;
+  font-size: 0.84rem;
+}
+
+.rqMeta a {
+  color: #173b73;
+  font-weight: 700;
+}
+
+.rqSource {
+  display: inline-flex;
+  align-items: center;
+  height: 1.45rem;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: 2px;
+  margin-left: 0.4rem;
+}
+
+.rqSource.manual {
+  background: #e7eefb;
+  color: #173b73;
+}
+
+.rqSource.move {
+  background: #fff1d6;
+  color: #7a4b00;
+}
+
+.rqSource.merge {
+  background: #efe3fb;
+  color: #5b2a8a;
+}
+
+.rqSource.other {
+  background: #e9edf2;
+  color: #3d4a5c;
+}
+
+.rqActions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.rqActions button {
+  min-height: 2.75rem;
+  white-space: nowrap;
+}
+
+.rqItem.isDone .rqGrid {
+  background: #8b98ad;
+}
+
+.rqItem.isDone .rqGrid small {
+  color: #fff;
+}
+
+.rqDoneNote {
+  margin: 0.35rem 0 0;
+  color: #2f6b3f;
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+
+.rqDoneNote.isCanceled {
+  color: #6b4e00;
+}
+
+.rqEmpty {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  padding: 2.5rem 1rem;
+  border: 1px dashed #c9d3e2;
+  border-radius: 16px;
+  background: #f8fafc;
+  text-align: center;
+}
+
+.rqEmpty .rqEmptyIcon {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  background: #e3f1e7;
+  color: #2f6b3f;
+  font-size: 1.6rem;
+  font-weight: 900;
+}
+
+.rqEmpty h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.rqEmpty p {
+  margin: 0;
+  max-width: 34rem;
+  color: #4a5a73;
+}
+
+.rqEmpty .rqEmptyLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-weight: 800;
+  color: #173b73;
+  cursor: pointer;
+}
+
+.rqSelect {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin: -0.4rem 0 -0.4rem -0.4rem;
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.rqSelect input,
+.rqSelectAll input {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: #173b73;
+  cursor: pointer;
+}
+
+.rqSelectAll {
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 800;
+  color: #173b73;
+  cursor: pointer;
+}
+
+.rqItem.isSelected {
+  border-color: #173b73;
+  box-shadow: 0 0 0 2px rgba(23, 59, 115, 0.18);
+}
+
+@media (min-width: 761px) {
+  .removalQueueCard .printCenterHeader .printActions {
+    flex-wrap: nowrap !important;
+    align-self: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .rqTabs {
+    width: 100%;
+  }
+
+  .rqTabs button {
+    flex: 1 1 0;
+    justify-content: center;
+    padding: 0 0.5rem;
+  }
+
+  .rqItem {
+    grid-template-columns: 2.75rem 4.4rem 1fr;
+    gap: 0.75rem;
+    padding: 0.8rem;
+  }
+
+  .rqItem.isDone {
+    grid-template-columns: 4.4rem 1fr;
+  }
+
+  .rqGrid {
+    height: 3.9rem;
+  }
+
+  .rqGrid b {
+    font-size: 1.1rem;
+  }
+
+  .rqActions {
+    grid-column: 1 / -1;
+  }
+
+  .rqActions button {
+    width: 100%;
+  }
+
+  .removalQueueCard .adminHeaderActions {
+    flex-direction: row !important;
+  }
+
+  .removalQueueCard .printCenterHeader .printActions {
+    display: grid !important;
+    grid-template-columns: 2.75rem 1fr !important;
+  }
+
+  .removalQueueCard .printCenterHeader .printActions .selectedCount {
+    grid-column: 1 / -1;
+  }
+
+  .removalQueueCard .printCenterHeader .printActions button {
+    min-height: 2.75rem;
+  }
+
+  .removalQueueCard .printCenterHeader .printActions .rqIconButton {
+    width: 2.75rem;
   }
 }

@@ -24,6 +24,7 @@ public class StartupSchemaSqlTests
     private static readonly Dictionary<string, int> ExpectedExecuteCalls = new(StringComparer.Ordinal)
     {
         ["CardPrintEventSchema"] = 1,
+        ["FlagRemovalQueueSchema"] = 1,
         ["HonoreeClaimSchema"] = 3,
         ["HonoreeMergeAuditSchema"] = 2,
         ["HonoreeNotDuplicatePairSchema"] = 1,

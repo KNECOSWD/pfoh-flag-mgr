@@ -575,13 +575,18 @@ public class AdminReviewController(
             return Conflict(new { message = "This honoree is already assigned to a flag position. Remove the honoree from the current position first." });
         }
 
+        var assignedUtc = DateTime.UtcNow;
         honoree.FlagGridId = flagGrid.Id;
         honoree.ModifiedBy = adminName;
-        honoree.ModifiedDate = DateTime.UtcNow;
+        honoree.ModifiedDate = assignedUtc;
 
         flagGrid.HonoreeId = honoree.Id;
         flagGrid.ModifiedBy = adminName;
-        flagGrid.ModifiedDate = DateTime.UtcNow;
+        flagGrid.ModifiedDate = assignedUtc;
+
+        // Clear then Assign of a different spot turns the open Manual row into a Move.
+        // The same spot cancels that row. A first assignment queues nothing.
+        await FlagRemovalQueue.NoteAssignmentAsync(db, honoree, flagGrid, adminName, assignedUtc, ct);
 
         await db.SaveChangesAsync(ct);
 
@@ -649,7 +654,12 @@ public class AdminReviewController(
                     ct);
         }
 
-        FlagSpotRelease.ClearAssignment(honoree, flagGrid, adminName, DateTime.UtcNow);
+        var clearedUtc = DateTime.UtcNow;
+        FlagSpotRelease.ClearAssignment(honoree, flagGrid, adminName, clearedUtc);
+        if (honoree is not null && !await FlagRemovalQueue.HasOpenAsync(db, honoree.Id, flagGrid.Id, ct))
+        {
+            FlagRemovalQueue.Record(db, honoree, flagGrid, FlagRemovalQueue.Manual, adminName, clearedUtc);
+        }
 
         await db.SaveChangesAsync(ct);
 
@@ -1112,8 +1122,10 @@ public class AdminReviewController(
         var now = DateTime.UtcNow;
         if (change.Honoree is { } honoree)
         {
+            FlagGrid? removedGrid = null;
             if (honoree.FlagGrid is { } linkedGrid && linkedGrid.HonoreeId == honoree.Id)
             {
+                removedGrid = linkedGrid;
                 linkedGrid.HonoreeId = null;
                 linkedGrid.ModifiedBy = adminName;
                 linkedGrid.ModifiedDate = now;
@@ -1123,10 +1135,26 @@ public class AdminReviewController(
                 var grid = await db.FlagGrids.FirstOrDefaultAsync(item => item.Id == gridId, ct);
                 if (grid is not null && grid.HonoreeId == honoree.Id)
                 {
+                    removedGrid = grid;
                     grid.HonoreeId = null;
                     grid.ModifiedBy = adminName;
                     grid.ModifiedDate = now;
                 }
+            }
+
+            if (removedGrid is not null && !await FlagRemovalQueue.HasOpenAsync(db, honoree.Id, removedGrid.Id, ct))
+            {
+                // The admin is confirming the card is already off the field, so the
+                // history row is written already done.
+                FlagRemovalQueue.Record(
+                    db,
+                    honoree,
+                    removedGrid,
+                    FlagRemovalQueue.Other,
+                    adminName,
+                    now,
+                    sourceDetail: FlagRemovalQueue.WithdrawalDetail,
+                    alreadyDone: true);
             }
 
             honoree.FlagGridId = null;
@@ -1242,6 +1270,8 @@ public class AdminReviewController(
                 .FirstOrDefaultAsync(h => h.Id == change.HonoreeId.Value, ct);
         }
 
+        var previousGridId = honoree is { Id: > 0 } ? honoree.FlagGridId : null;
+
         if (honoree is null)
         {
             honoree = new Honoree
@@ -1301,6 +1331,14 @@ public class AdminReviewController(
         honoree.ModifiedBy = adminName;
         honoree.ModifiedDate = DateTime.UtcNow;
 
+        await FlagRemovalQueue.ReleaseReplacedGridAsync(
+            db,
+            honoree,
+            previousGridId,
+            change.FlagGridId,
+            adminName,
+            honoree.ModifiedDate,
+            ct);
         await db.SaveChangesAsync(ct);
 
         if (!string.IsNullOrWhiteSpace(change.PhotoFileName))

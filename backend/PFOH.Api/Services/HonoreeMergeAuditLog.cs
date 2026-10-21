@@ -301,8 +301,10 @@ public static class HonoreeMergeAuditLog
             change.FlagGridId = snap.FlagGridId;
         }
 
+        var undoneUtc = DateTime.UtcNow;
         audit.UndoneBy = TrimAdmin(adminName);
-        audit.UndoneUtc = DateTime.UtcNow;
+        audit.UndoneUtc = undoneUtc;
+        await FlagRemovalQueue.OnMergeUndoneAsync(db, audit, adminName, undoneUtc, ct);
         await db.SaveChangesAsync(ct);
         return null;
     }
