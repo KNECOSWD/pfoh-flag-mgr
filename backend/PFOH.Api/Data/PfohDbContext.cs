@@ -14,6 +14,9 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
     public DbSet<AvailableFlagGrid> AvailableFlagGrids => Set<AvailableFlagGrid>();
 
     public DbSet<FlagClaim> FlagClaims => Set<FlagClaim>();
+    public DbSet<HonoreeClaim> HonoreeClaims => Set<HonoreeClaim>();
+    public DbSet<ReprintDuplicateReview> ReprintDuplicateReviews => Set<ReprintDuplicateReview>();
+    public DbSet<HonoreeNotDuplicatePair> HonoreeNotDuplicatePairs => Set<HonoreeNotDuplicatePair>();
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
     public DbSet<HonoreeSearchResult> HonoreeSearchResults => Set<HonoreeSearchResult>();
     public DbSet<HonoreeChangeRequest> HonoreeChangeRequests => Set<HonoreeChangeRequest>();
@@ -158,7 +161,7 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
 
             entity.HasIndex(e => e.ExternalUserObjectId);
             entity.HasIndex(e => e.FlagGridId);
-            entity.HasIndex(e => e.FlagGridId)
+            entity.HasIndex(e => new { e.FlagGridId, e.ExternalUserObjectId })
                 .HasDatabaseName("UX_FlagClaims_ActiveFlagGrid")
                 .IsUnique()
                 .HasFilter("[ClaimStatus] IN ('Claimed', 'Submitted', 'Approved') AND [FlagGridId] IS NOT NULL");
@@ -249,6 +252,53 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
             entity.Property(e => e.Comment).HasMaxLength(CardPrintEventLimits.CommentMaxLength);
             entity.HasIndex(e => e.CardPrintBatchId).IsUnique();
             entity.HasIndex(e => e.PrintedUtc);
+        });
+
+        modelBuilder.Entity<HonoreeClaim>(entity =>
+        {
+            entity.ToTable("HonoreeClaims", "dbo");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.UserId).HasMaxLength(128).IsRequired();
+            entity.Property(e => e.Email).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.DisplayName).HasMaxLength(255);
+            entity.Property(e => e.ClaimStatus).HasMaxLength(30).IsRequired();
+            entity.HasIndex(e => new { e.HonoreeId, e.UserId }).IsUnique();
+            entity.HasIndex(e => e.UserId);
+            entity.HasOne(e => e.Honoree)
+                .WithMany()
+                .HasForeignKey(e => e.HonoreeId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<ReprintDuplicateReview>(entity =>
+        {
+            entity.ToTable("ReprintDuplicateReviews", "dbo");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Status).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.ResolvedBy).HasMaxLength(255);
+            entity.HasIndex(e => e.DuplicateChangeRequestId).IsUnique();
+            entity.HasIndex(e => e.Status);
+            entity.HasOne(e => e.Honoree)
+                .WithMany()
+                .HasForeignKey(e => e.HonoreeId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<HonoreeNotDuplicatePair>(entity =>
+        {
+            entity.ToTable("HonoreeNotDuplicatePairs", "dbo", table =>
+                table.HasCheckConstraint("CK_HonoreeNotDuplicatePairs_Ordered", "[LowHonoreeId] < [HighHonoreeId]"));
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.MarkedBy).HasMaxLength(255).IsRequired();
+            entity.HasIndex(e => new { e.LowHonoreeId, e.HighHonoreeId }).IsUnique();
+            entity.HasOne(e => e.LowHonoree)
+                .WithMany()
+                .HasForeignKey(e => e.LowHonoreeId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(e => e.HighHonoree)
+                .WithMany()
+                .HasForeignKey(e => e.HighHonoreeId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 }

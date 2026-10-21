@@ -56,13 +56,16 @@ public static class PendingSubmissionGridSchema
     internal const string ActiveFlagGridIndexSql = """
         IF OBJECT_ID(N'dbo.FlagClaims', N'U') IS NOT NULL
         BEGIN
-            DECLARE @activeFlagGridFilter nvarchar(max) = NULL;
-            SELECT @activeFlagGridFilter = filter_definition
-            FROM sys.indexes
-            WHERE object_id = OBJECT_ID(N'dbo.FlagClaims')
-              AND name = N'UX_FlagClaims_ActiveFlagGrid';
+            DECLARE @activeFlagGridCols nvarchar(max) = NULL;
+            SELECT @activeFlagGridCols = STRING_AGG(c.name, N',') WITHIN GROUP (ORDER BY ic.key_ordinal)
+            FROM sys.indexes i
+            INNER JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+            INNER JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+            WHERE i.object_id = OBJECT_ID(N'dbo.FlagClaims')
+              AND i.name = N'UX_FlagClaims_ActiveFlagGrid'
+              AND ic.is_included_column = 0;
 
-            IF @activeFlagGridFilter IS NULL OR @activeFlagGridFilter NOT LIKE N'%[[]FlagGridId] IS NOT NULL%'
+            IF @activeFlagGridCols IS NULL OR @activeFlagGridCols <> N'FlagGridId,ExternalUserObjectId'
             BEGIN
                 IF EXISTS (
                     SELECT 1
@@ -72,7 +75,7 @@ public static class PendingSubmissionGridSchema
                     DROP INDEX [UX_FlagClaims_ActiveFlagGrid] ON [dbo].[FlagClaims];
 
                 CREATE UNIQUE INDEX [UX_FlagClaims_ActiveFlagGrid]
-                    ON [dbo].[FlagClaims]([FlagGridId])
+                    ON [dbo].[FlagClaims]([FlagGridId], [ExternalUserObjectId])
                     WHERE [ClaimStatus] IN (N'Claimed', N'Submitted', N'Approved')
                       AND [FlagGridId] IS NOT NULL;
             END

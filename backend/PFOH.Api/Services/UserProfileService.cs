@@ -340,6 +340,14 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         {
             claim.ExternalUserName = displayName;
         }
+
+        var ownership = await db.HonoreeClaims
+            .Where(claim => claim.UserId == ownerObjectId)
+            .ToListAsync(ct);
+        foreach (var claim in ownership)
+        {
+            claim.DisplayName = displayName;
+        }
     }
 
     private string ExtensionsAppId

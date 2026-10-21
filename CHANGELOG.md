@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.22
+
+- Administrators can open Duplicate honorees, see why records may match, confirm which ones are duplicates, and merge chosen values into one existing record. The other records are set inactive and their flag spots are released. Nothing merges on its own.
+- An honoree can have more than one claimant. A merge keeps every claimant from the merged records.
+- The Print Center lists reprint duplicates that need a person to review them. Approve removes that one queued card. Dismiss keeps both.
+- On the public Flag Map, the search list cannot be given a negative height when the search box sits below the visible area.
+- Duplicate review lists only active records. An inactive or deleted record is left out, and a merge that includes one is refused.
+- An administrator can mark two records as not duplicates. That pair is not listed again. In a larger group, the other pairs stay under review.
+
 ## 2.0.21
 
 - On the public Flag Map, Search honorees opens its results below the search box, inside the screen. A longer list scrolls inside itself. The first result is no longer cut off above the toolbar on iPad Safari in landscape. The toolbar spacing and the phone map fit are unchanged.

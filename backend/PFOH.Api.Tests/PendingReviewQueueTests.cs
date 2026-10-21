@@ -561,12 +561,15 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         var filter = index.GetFilter();
         Assert.NotNull(filter);
         Assert.True(index.IsUnique);
+        Assert.Equal(
+            new[] { "FlagGridId", "ExternalUserObjectId" },
+            index.Properties.Select(property => property.Name).ToArray());
         Assert.Contains("[FlagGridId] IS NOT NULL", filter, StringComparison.Ordinal);
         Assert.Contains("Claimed", filter, StringComparison.Ordinal);
         Assert.Contains("Submitted", filter, StringComparison.Ordinal);
         Assert.Contains("Approved", filter, StringComparison.Ordinal);
         Assert.Contains("UX_FlagClaims_ActiveFlagGrid", PendingSubmissionGridSchema.ActiveFlagGridIndexSql, StringComparison.Ordinal);
-        Assert.Contains("[[]FlagGridId] IS NOT NULL", PendingSubmissionGridSchema.ActiveFlagGridIndexSql, StringComparison.Ordinal);
+        Assert.Contains("ExternalUserObjectId", PendingSubmissionGridSchema.ActiveFlagGridIndexSql, StringComparison.Ordinal);
         Assert.Contains("[FlagGridId] IS NOT NULL", PendingSubmissionGridSchema.ActiveFlagGridIndexSql, StringComparison.Ordinal);
 
         var now = DateTime.UtcNow;

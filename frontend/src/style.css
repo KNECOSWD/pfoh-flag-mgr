@@ -12814,3 +12814,87 @@ html.isMapFullscreen .publicFlagLevel {
   min-height: 32px;
   padding: 4px 12px;
 }
+
+.duplicateGroupList,
+.duplicatePairList,
+.survivorClaimants ul {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.duplicateGroup,
+.mergeColumn,
+.survivorClaimants {
+  border: 1px solid rgba(23, 59, 115, 0.16);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  background: #fff;
+}
+
+.duplicateWhy,
+.duplicatePairList p,
+.notDuplicateConfirm p {
+  margin: 0.35rem 0;
+}
+
+.notDuplicateConfirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.duplicateMemberList {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.5rem 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+.duplicateMemberList li {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.duplicateCheck,
+.mergeField {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.duplicateMemberList span,
+.mergeField em {
+  color: #60708a;
+  font-style: normal;
+}
+
+.mergeBoard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.mergeField {
+  margin: 0.35rem 0;
+}
+
+.mergeField span,
+.duplicateCheck span {
+  display: grid;
+}
+
+.printDuplicateReviews {
+  margin-top: 1.5rem;
+}
+
+@media (max-width: 720px) {
+  .mergeBoard {
+    grid-template-columns: 1fr;
+  }
+}

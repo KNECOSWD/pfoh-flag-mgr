@@ -40,6 +40,8 @@ import { decideAdminLoad } from "./adminAccess.js";
 import { thumbnailLoadKey } from "./authorizedThumbnail.js";
 import { startVersionWatch, versionUrl } from "./versionReload.js";
 import { AdminNavMenu } from "./AdminNavMenu";
+import { DuplicateMerge } from "./DuplicateMerge";
+import { PrintDuplicateReviews } from "./PrintDuplicateReviews";
 import PublicFlagMap from "./PublicFlagMap";
 import {
   clearKioskSession,
@@ -218,7 +220,7 @@ const blankForm: SaveHonoreeChangeRequest = {
   submitterEmailAddress: ""
 };
 
-type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/flag-map" | "/admin/printing";
+type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/duplicates" | "/admin/flag-map" | "/admin/printing";
 
 const appRoutes: AppRoute[] = [
   "/find",
@@ -226,6 +228,7 @@ const appRoutes: AppRoute[] = [
   "/honor-a-hero",
   "/flag-map",
   "/admin/review",
+  "/admin/duplicates",
   "/admin/flag-map",
   "/admin/printing"
 ];
@@ -562,6 +565,7 @@ export default function App() {
   const isMyFlagsRoute = activeRoute === "/my-flags";
   const isHonorHeroRoute = activeRoute === "/honor-a-hero";
   const isAdminReviewRoute = activeRoute === "/admin/review";
+  const isDuplicatesRoute = activeRoute === "/admin/duplicates";
   const isFlagMapRoute = activeRoute === "/admin/flag-map";
   const siteNav: { route: AppRoute; label: string; show: boolean }[] = [
     { route: "/find", label: "Search", show: true },
@@ -570,6 +574,7 @@ export default function App() {
   ];
   const adminNav: { route: AppRoute; label: string }[] = [
     { route: "/admin/review", label: "Review" },
+    { route: "/admin/duplicates", label: "Duplicates" },
     { route: "/admin/printing", label: "Print Center" },
     { route: "/admin/flag-map", label: "Flag Manager" }
   ];
@@ -4059,7 +4064,7 @@ export default function App() {
           {isAdminRoute && !kioskLocked && !isAdmin ? (
             <section className="card guestNotice">
               <h2>Administrator access required</h2>
-              <p>Sign in with an account assigned the PFOH.Admin role to use review, flag map, and printing tools.</p>
+              <p>Sign in with an account assigned the PFOH.Admin role to use review, duplicates, flag map, and printing tools.</p>
               {!isAuthenticated ? (
                 <div className="authChoiceButtons">
                   <button type="button" onClick={() => void signIn("login")}>
@@ -4075,6 +4080,8 @@ export default function App() {
 
           {isAdminRoute && chrome.adminLinks ? (
             <div id="admin" className="adminSectionStack" aria-label="Administrator tools">
+              {isDuplicatesRoute ? <DuplicateMerge instance={instance} account={account ?? null} /> : null}
+
               {isAdminReviewRoute ? (
               <section className="card adminCard adminReviewCard">
                 <div className="sectionHeader">
@@ -4621,6 +4628,8 @@ export default function App() {
                   </div>
                 </section>
               )}
+
+              <PrintDuplicateReviews instance={instance} account={account ?? null} />
 
               <section className="printHistory" aria-label="Print history">
                 <h3>Print history</h3>

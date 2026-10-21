@@ -109,7 +109,7 @@ test("the public nav links Flag Map right after Search, and the admin nav item r
   assert.equal(app.split("siteNav.filter((item) => item.show)").length - 1, 2);
   assert.match(
     app,
-    /const adminNav: \{ route: AppRoute; label: string \}\[\] = \[\s*\{ route: "\/admin\/review", label: "Review" \},\s*\{ route: "\/admin\/printing", label: "Print Center" \},\s*\{ route: "\/admin\/flag-map", label: "Flag Manager" \}\s*\];/
+    /const adminNav: \{ route: AppRoute; label: string \}\[\] = \[\s*\{ route: "\/admin\/review", label: "Review" \},\s*\{ route: "\/admin\/duplicates", label: "Duplicates" \},\s*\{ route: "\/admin\/printing", label: "Print Center" \},\s*\{ route: "\/admin\/flag-map", label: "Flag Manager" \}\s*\];/
   );
   assert.equal(app.split("<AdminNavMenu ").length - 1, 2);
   assert.match(app, /menuId="admin-nav-desktop" layout="bar"/);
@@ -1809,6 +1809,13 @@ test("search results open below the box and stay inside the visible viewport", (
   assert.ok(keyboard.maxHeight > 0);
   assert.equal(keyboard.left, 12, "left is the box left, with offsetLeft only in the width bound");
   assert.equal(keyboard.width, Math.min(366, 16 + 390 - 12 - 8));
+
+  const below = suggestionListFrame(
+    { bottom: 400, left: 12, width: 200 },
+    { height: 100, width: 390, offsetTop: 0, offsetLeft: 0 }
+  );
+  assert.equal(below.maxHeight, 0);
+  assert.ok(below.maxHeight >= 0, "the search list height cannot go negative");
 
   const layer = css.slice(css.indexOf(".publicFlagSuggestLayer {"), css.indexOf(".publicFlagSuggestLayer.isPlaced"));
   assert.match(layer, /position:\s*fixed/);
