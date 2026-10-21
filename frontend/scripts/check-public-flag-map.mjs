@@ -31,6 +31,7 @@ import {
   createWheelBatch,
   cullRects,
   filterFlagMapSuggestions,
+  suggestionListFrame,
   fitView,
   fitWholeField,
   flagMapPageBands,
@@ -1786,6 +1787,37 @@ test("the flag detail keeps its action row pinned below a scrolling body with sa
   assert.match(css, /\.publicFlagDetail \{[^}]*overflow: hidden;[^}]*display: flex;[^}]*flex-direction: column;/);
   assert.match(css, /\.publicFlagDetailScroll \{[^}]*flex: 1 1 auto;[^}]*min-height: 0;[^}]*overflow-y: auto;/);
   assert.match(css, /\.publicFlagDetailActions \{[^}]*flex: none;[^}]*padding-bottom: max\(16px, env\(safe-area-inset-bottom\)\);[^}]*background: #fffdf8;[^}]*border-top: 1px solid/);
+});
+
+test("search results open below the box and stay inside the visible viewport", () => {
+  const wide = suggestionListFrame(
+    { bottom: 54, left: 172, width: 653 },
+    { height: 768, width: 1024, offsetTop: 0, offsetLeft: 0 }
+  );
+  assert.equal(wide.top, 58);
+  assert.equal(wide.maxHeight, 320);
+  assert.ok(wide.top >= 54 + 4);
+  assert.ok(wide.top + wide.maxHeight <= 768 - 8);
+
+  const keyboard = suggestionListFrame(
+    { bottom: 180, left: 12, width: 366 },
+    { height: 220, width: 390, offsetTop: 400, offsetLeft: 16 }
+  );
+  assert.ok(400 > 0, "the keyboard case is panned");
+  assert.equal(keyboard.top, 184, "top is the box bottom plus 4, with no offsetTop added");
+  assert.equal(keyboard.maxHeight, Math.min(320, 400 + 220 - 180 - 8));
+  assert.ok(keyboard.maxHeight > 0);
+  assert.equal(keyboard.left, 12, "left is the box left, with offsetLeft only in the width bound");
+  assert.equal(keyboard.width, Math.min(366, 16 + 390 - 12 - 8));
+
+  const layer = css.slice(css.indexOf(".publicFlagSuggestLayer {"), css.indexOf(".publicFlagSuggestLayer.isPlaced"));
+  assert.match(layer, /position:\s*fixed/);
+  assert.match(layer, /bottom:\s*auto/);
+  assert.match(layer, /overflow-y:\s*auto/);
+  assert.match(layer, /z-index:\s*80/);
+  assert.match(page, /suggestionListFrame\(/);
+  assert.match(page, /visualViewport/);
+  assert.match(page, /createPortal\([\s\S]*publicFlagSuggestLayer[\s\S]*document\.body/);
 });
 
 test("the in-view list sits inside the map controls toolbar group", () => {

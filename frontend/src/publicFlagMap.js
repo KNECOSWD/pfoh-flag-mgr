@@ -66,6 +66,29 @@ export function withApiBase(apiBase, path) {
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+// getBoundingClientRect() and position:fixed both use the layout viewport in
+// iOS Safari. Adding visualViewport.offsetTop to the list top drops it by that
+// many pixels when the keyboard pans the view. offsetTop only grows the height
+// bound, and offsetLeft only grows the width bound.
+export function suggestionListFrame(anchor, viewport = {}) {
+  const gap = 4;
+  const margin = 8;
+  const cap = 320;
+  const offsetTop = Number(viewport.offsetTop) || 0;
+  const offsetLeft = Number(viewport.offsetLeft) || 0;
+  const height = Number(viewport.height);
+  const width = Number(viewport.width);
+  const top = anchor.bottom + gap;
+  const visibleBottom = Number.isFinite(height) && height > 0 ? offsetTop + height : anchor.bottom + cap + margin;
+  const maxHeight = Math.min(cap, visibleBottom - anchor.bottom - margin);
+  const left = anchor.left;
+  let listWidth = Math.max(0, anchor.width);
+  if (Number.isFinite(width) && width > 0) {
+    listWidth = Math.min(listWidth, Math.max(0, offsetLeft + width - anchor.left - margin));
+  }
+  return { top, left, width: listWidth, maxHeight };
+}
+
 export function filterFlagMapSuggestions(index, query, limit = 8) {
   const needle = String(query || "").trim().toLowerCase();
   if (!needle || !Array.isArray(index)) return [];
