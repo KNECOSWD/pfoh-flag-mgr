@@ -149,6 +149,9 @@ public class AdminReviewController(
             }
         }
 
+        Response.Headers[DuplicateReviewGroups.OpenGroupCountHeader] =
+            (await DuplicateReviewGroups.CountOpenAsync(db, ct)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
         try
         {
             return Ok(await AttachClaimantAccountsAsync(submitted, ct));

@@ -38,6 +38,7 @@ import {
   profileApi
 } from "./api";
 import { decideAdminLoad } from "./adminAccess.js";
+import { adminAttentionItems } from "./adminAttention.js";
 import { thumbnailLoadKey } from "./authorizedThumbnail.js";
 import { startVersionWatch, versionUrl } from "./versionReload.js";
 import { AdminNavMenu } from "./AdminNavMenu";
@@ -449,6 +450,7 @@ export default function App() {
   const [printLoadError, setPrintLoadError] = useState("");
   const [flagMapLoadError, setFlagMapLoadError] = useState("");
   const [pendingReviews, setPendingReviews] = useState<AdminReviewItem[]>([]);
+  const [openDuplicateGroups, setOpenDuplicateGroups] = useState(0);
   const [pendingPhotoObjectUrl, setPendingPhotoObjectUrl] = useState("");
   const [submitPhase, setSubmitPhase] = useState("");
   const [cardPreview, setCardPreview] = useState<CardPreviewState | null>(null);
@@ -602,27 +604,13 @@ export default function App() {
 
   const adminAlertItems = useMemo(
     () =>
-      [
-        {
-          key: "pending-review",
-          label: "Pending review",
-          count: pendingReviews.length,
-          route: "/admin/review" as AppRoute
-        },
-        {
-          key: "ready-to-print",
-          label: "Ready to print",
-          count: printQueue.length,
-          route: "/admin/printing" as AppRoute
-        },
-        {
-          key: "multiple-claim-alerts",
-          label: "Multiple-claim alerts",
-          count: claimedByMultipleCount,
-          route: "/admin/review" as AppRoute
-        }
-      ].filter((item) => item.count > 0),
-    [pendingReviews.length, printQueue.length, claimedByMultipleCount]
+      adminAttentionItems({
+        pendingReview: pendingReviews.length,
+        readyToPrint: printQueue.length,
+        duplicatesForReview: openDuplicateGroups,
+        multipleClaimAlerts: claimedByMultipleCount
+      }).map((item) => ({ ...item, route: item.route as AppRoute })),
+    [pendingReviews.length, printQueue.length, openDuplicateGroups, claimedByMultipleCount]
   );
 
   const adminAlertTotalCount = useMemo(
@@ -1230,6 +1218,7 @@ export default function App() {
       setIsAdmin(false);
       setCachedApiAdmin(false);
       setPendingReviews([]);
+      setOpenDuplicateGroups(0);
       setPrintQueue([]);
       setPrintHistory([]);
       setPrintHistoryError("");
@@ -1248,9 +1237,11 @@ export default function App() {
     setFlagMapLoadError(decision.errors.flagMap ?? "");
 
     if (pendingResult.ok) {
-      setPendingReviews(pendingResult.value);
+      setPendingReviews(pendingResult.value.items);
+      setOpenDuplicateGroups(pendingResult.value.openDuplicateGroupCount);
     } else {
       setPendingReviews([]);
+      setOpenDuplicateGroups(0);
     }
 
     if (queueResult.ok) {

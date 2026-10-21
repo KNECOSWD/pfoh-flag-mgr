@@ -106,6 +106,7 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(allowedOrigins)
             .AllowAnyHeader()
+            .WithExposedHeaders(DuplicateReviewGroups.OpenGroupCountHeader)
             .AllowAnyMethod();
     });
 });

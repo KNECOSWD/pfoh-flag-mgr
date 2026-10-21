@@ -35,6 +35,9 @@ jobs:
       - name: Check duplicate review
         run: node --test frontend/scripts/check-duplicate-review.mjs
 
+      - name: Check the admin bar duplicate prompt
+        run: node --test frontend/scripts/check-admin-bar.mjs
+
       - name: Check the Find page intro
         run: node --test frontend/scripts/check-find-search.mjs
 

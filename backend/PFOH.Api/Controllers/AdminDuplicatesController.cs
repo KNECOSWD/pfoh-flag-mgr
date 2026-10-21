@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -13,7 +14,10 @@ namespace PFOH.Api.Controllers;
 [Route("api/admin/duplicates")]
 [Authorize(Policy = "AdminOnly")]
 [EnableRateLimiting("AuthenticatedGet")]
-public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
+public class AdminDuplicatesController(
+    PfohDbContext db,
+    IWebHostEnvironment environment,
+    HonoreeFileStorage fileStorage) : ControllerBase
 {
     [HttpGet("groups")]
     public async Task<ActionResult<IReadOnlyList<DuplicateGroupDto>>> Groups(CancellationToken ct)
@@ -27,45 +31,10 @@ public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
         [FromBody] DuplicateMergeRequest request,
         CancellationToken ct)
     {
-        var ids = (request.DuplicateIds ?? new List<int>()).Where(id => id > 0).Distinct().ToList();
-        if (ids.Count < 2)
+        var prepared = await PrepareMergeAsync(request, track: true, ct);
+        if (prepared.Error is not null)
         {
-            return BadRequest(new { message = "Confirm at least two records before merging." });
-        }
-
-        if (request.SurvivorId <= 0 || !ids.Contains(request.SurvivorId))
-        {
-            return BadRequest(new { message = "Choose the surviving record from the confirmed duplicates. Nothing is selected automatically." });
-        }
-
-        var fields = request.Fields ?? new Dictionary<string, int>();
-        var values = request.Values ?? new Dictionary<string, string?>();
-        var shapeError = HonoreeMergeValues.ValidateShape(fields, values, ids);
-        if (shapeError is not null)
-        {
-            return BadRequest(new { message = shapeError });
-        }
-
-        var honorees = await db.Honorees
-            .Where(honoree => ids.Contains(honoree.Id))
-            .ToListAsync(ct);
-        if (honorees.Count != ids.Count || honorees.Any(honoree => !honoree.IsActive || honoree.DeletedDate != null))
-        {
-            return Conflict(new { message = "One of the confirmed records is inactive or deleted. It was not merged." });
-        }
-
-        var groups = await BuildGroupsAsync(ct);
-        var group = groups.FirstOrDefault(item => ids.All(id => item.Honorees.Any(honoree => honoree.Id == id)));
-        if (group is null)
-        {
-            return BadRequest(new { message = "Confirm records from the same duplicate group. Records that are not in that group are left unchanged." });
-        }
-
-        var survivor = honorees.Single(honoree => honoree.Id == request.SurvivorId);
-        var resolved = await HonoreeMergeValues.ResolveAsync(db, fields, values, ids, ct);
-        if (resolved.Error is not null)
-        {
-            return BadRequest(new { message = resolved.Error });
+            return new ActionResult<DuplicateMergeResultDto>(prepared.Error);
         }
 
         var adminName = User.GetEmail();
@@ -79,7 +48,14 @@ public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
         {
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
             var before = await db.Honorees.CountAsync(ct);
-            var result = await HonoreeMerge.ApplyAsync(db, survivor, honorees, fields, resolved.Custom, adminName, ct);
+            var result = await HonoreeMerge.ApplyAsync(
+                db,
+                prepared.Survivor,
+                prepared.Ordered,
+                prepared.Fields,
+                prepared.Custom,
+                adminName,
+                ct);
             var after = await db.Honorees.CountAsync(ct);
             if (after != before)
             {
@@ -92,10 +68,170 @@ public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
             await transaction.CommitAsync(ct);
             return new DuplicateMergeResultDto(
                 result.SurvivorId,
-                DisplayName(survivor),
+                DisplayName(prepared.Survivor),
                 result.DeactivatedIds,
                 result.Claimants.Select(ToClaimant).ToList());
         });
+    }
+
+    /// <summary>
+    /// Renders the card the merge would save. Nothing is written: no honoree
+    /// update, no print or reprint queue row, and no file upload.
+    /// </summary>
+    [HttpPost("merge-preview/card")]
+    public async Task<IActionResult> PreviewCard(
+        [FromBody] DuplicateMergeRequest request,
+        CancellationToken ct)
+    {
+        var prepared = await PrepareMergeAsync(request, track: false, ct);
+        if (prepared.Error is not null)
+        {
+            return prepared.Error;
+        }
+
+        var preview = new Honoree { IsActive = true };
+        HonoreeMerge.ApplyValues(preview, prepared.Ordered, prepared.Fields, prepared.Custom);
+        var byId = prepared.Ordered.ToDictionary(honoree => honoree.Id);
+        preview.FlagGridId = HonoreeMerge.KeptGridId(byId, prepared.Fields, prepared.Custom);
+        if (preview.ServiceBranchId is int branchId)
+        {
+            preview.ServiceBranch = prepared.Ordered
+                .Select(honoree => honoree.ServiceBranch)
+                .FirstOrDefault(branch => branch?.Id == branchId)
+                ?? await db.ServiceBranches.AsNoTracking().FirstOrDefaultAsync(branch => branch.Id == branchId, ct);
+        }
+
+        if (preview.FlagGridId is int gridId)
+        {
+            preview.FlagGrid = prepared.Ordered
+                .Select(honoree => honoree.FlagGrid)
+                .FirstOrDefault(grid => grid?.Id == gridId)
+                ?? await db.FlagGrids.AsNoTracking().FirstOrDefaultAsync(grid => grid.Id == gridId, ct);
+        }
+
+        var change = new HonoreeChangeRequest
+        {
+            FirstName = preview.FirstName,
+            MiddleName = preview.MiddleName,
+            LastName = preview.LastName,
+            Suffix = preview.Suffix,
+            Nickname = preview.Nickname,
+            Rank = preview.Rank,
+            ServiceBranchId = preview.ServiceBranchId,
+            ServiceBranchCategoryId = preview.ServiceBranchCategoryId,
+            ServiceBranch = preview.ServiceBranch,
+            StartYear = preview.StartYear,
+            EndYear = preview.EndYear,
+            DatesUserEntry = preview.DatesUserEntry,
+            ConflictsServed = preview.ConflictsServed,
+            Awards = preview.Awards,
+            Description = preview.Description,
+            KIA = preview.KIA,
+            PhotoFileName = preview.PhotoFileName,
+            FlagGridId = preview.FlagGridId,
+            FlagGrid = preview.FlagGrid
+        };
+        var honoree = HonoreeCardPdf.FromChangeRequest(change);
+        var pdf = await HonoreeCardPdf.RenderAsync(
+            environment,
+            fileStorage,
+            honoree,
+            null,
+            change.PhotoFileName,
+            null,
+            ct);
+        return File(pdf, "application/pdf", "duplicate-merge-preview.pdf");
+    }
+
+    private async Task<MergePreparation> PrepareMergeAsync(
+        DuplicateMergeRequest request,
+        bool track,
+        CancellationToken ct)
+    {
+        var ids = (request.DuplicateIds ?? new List<int>()).Where(id => id > 0).Distinct().ToList();
+        if (ids.Count < 2)
+        {
+            return MergePreparation.Fail(BadRequest(new { message = "Confirm at least two records before merging." }));
+        }
+
+        var fields = request.Fields ?? new Dictionary<string, int>();
+        var values = request.Values ?? new Dictionary<string, string?>();
+        var shapeError = HonoreeMergeValues.ValidateShape(fields, values, ids, request.CombineAwards);
+        if (shapeError is not null)
+        {
+            return MergePreparation.Fail(BadRequest(new { message = shapeError }));
+        }
+
+        var survivorError = HonoreeMergeValues.SurvivorError(request.SurvivorId, fields["flagGrid"]);
+        if (survivorError is not null)
+        {
+            return MergePreparation.Fail(BadRequest(new { message = survivorError }));
+        }
+
+        IQueryable<Honoree> query = db.Honorees
+            .Include(honoree => honoree.FlagGrid)
+            .Include(honoree => honoree.ServiceBranch)
+            .Where(honoree => ids.Contains(honoree.Id));
+        if (!track)
+        {
+            query = query.AsNoTracking();
+        }
+
+        var honorees = await query.ToListAsync(ct);
+        if (honorees.Count != ids.Count || honorees.Any(honoree => !honoree.IsActive || honoree.DeletedDate != null))
+        {
+            return MergePreparation.Fail(Conflict(new { message = "One of the confirmed records is inactive or deleted. It was not merged." }));
+        }
+
+        var active = await DuplicateReviewGroups.LoadActiveAsync(db, ct);
+        var suppressed = await DuplicateReviewGroups.LoadSuppressedAsync(db, ct);
+        var matched = DuplicateReviewGroups.Match(active, suppressed);
+        if (!matched.Any(group => ids.All(id => group.Ids.Contains(id))))
+        {
+            return MergePreparation.Fail(BadRequest(new { message = "Confirm records from the same duplicate group. Records that are not in that group are left unchanged." }));
+        }
+
+        var resolved = await HonoreeMergeValues.ResolveAsync(db, fields, values, ids, ct);
+        if (resolved.Error is not null || resolved.Custom is null)
+        {
+            return MergePreparation.Fail(BadRequest(new { message = resolved.Error ?? "Choose a value for every field before merging." }));
+        }
+
+        resolved.Custom.CombineAwards = request.CombineAwards && !resolved.Custom.Text.ContainsKey("awards");
+        var ordered = ids.Select(id => honorees.Single(honoree => honoree.Id == id)).ToList();
+        var survivor = ordered.Single(honoree => honoree.Id == fields["flagGrid"]);
+        return new MergePreparation(ordered, survivor, fields, resolved.Custom);
+    }
+
+    private sealed class MergePreparation
+    {
+        public MergePreparation(
+            List<Honoree> ordered,
+            Honoree survivor,
+            Dictionary<string, int> fields,
+            MergeCustom custom)
+        {
+            Ordered = ordered;
+            Survivor = survivor;
+            Fields = fields;
+            Custom = custom;
+        }
+
+        public ActionResult? Error { get; private init; }
+
+        public List<Honoree> Ordered { get; }
+
+        public Honoree Survivor { get; }
+
+        public Dictionary<string, int> Fields { get; }
+
+        public MergeCustom Custom { get; }
+
+        public static MergePreparation Fail(ActionResult error) =>
+            new(new List<Honoree>(), new Honoree(), new Dictionary<string, int>(), new MergeCustom())
+            {
+                Error = error
+            };
     }
 
     [HttpPost("not-duplicates")]
@@ -151,16 +287,7 @@ public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
     {
         await HonoreeClaimStore.SyncAsync(db, ct);
 
-        var honorees = await db.Honorees
-            .AsNoTracking()
-            .Include(honoree => honoree.FlagGrid)
-            .Include(honoree => honoree.ServiceBranch)
-            .Include(honoree => honoree.Sponsor)
-            .Where(honoree => honoree.IsActive && honoree.DeletedDate == null)
-            .OrderBy(honoree => honoree.LastName)
-            .ThenBy(honoree => honoree.FirstName)
-            .ThenBy(honoree => honoree.Id)
-            .ToListAsync(ct);
+        var honorees = await DuplicateReviewGroups.LoadActiveAsync(db, ct);
 
         var ids = honorees.Select(honoree => honoree.Id).ToList();
         var claims = ids.Count == 0
@@ -171,25 +298,9 @@ public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
                 .ToListAsync(ct);
         var claimsByHonoree = claims.GroupBy(claim => claim.HonoreeId).ToDictionary(group => group.Key, group => group.ToList());
 
-        var candidates = honorees.Select(honoree => new DuplicateCandidate(
-            honoree.Id,
-            DisplayName(honoree),
-            honoree.ServiceBranch?.ServiceBranchName,
-            honoree.FlagGrid?.FlagGridName,
-            SponsorName(honoree.Sponsor),
-            honoree.Sponsor?.EmailAddress,
-            honoree.IsActive,
-            honoree.DeletedDate)).ToList();
-
-        var suppressed = await db.HonoreeNotDuplicatePairs
-            .AsNoTracking()
-            .Select(pair => new { pair.LowHonoreeId, pair.HighHonoreeId })
-            .ToListAsync(ct);
-
+        var suppressed = await DuplicateReviewGroups.LoadSuppressedAsync(db, ct);
         var byId = honorees.ToDictionary(honoree => honoree.Id);
-        return HonoreeDuplicateMatcher.Match(
-            candidates,
-            suppressed.Select(pair => (pair.LowHonoreeId, pair.HighHonoreeId)))
+        return DuplicateReviewGroups.Match(honorees, suppressed)
             .Select(group =>
             {
                 var members = group.Ids.Select(id => ToHonoree(byId[id], claimsByHonoree)).ToList();
@@ -247,34 +358,9 @@ public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
     private static DuplicateClaimantDto ToClaimant(HonoreeClaim claim) =>
         new(claim.UserId, claim.DisplayName, claim.Email, claim.ClaimedUtc, claim.ClaimStatus);
 
-    internal static string DisplayName(Honoree honoree)
-    {
-        var name = string.Join(
-            " ",
-            new[] { honoree.FirstName, honoree.MiddleName, honoree.LastName, honoree.Suffix }
-                .Where(part => !string.IsNullOrWhiteSpace(part)));
-        if (string.IsNullOrWhiteSpace(honoree.Nickname))
-        {
-            return name;
-        }
+    internal static string DisplayName(Honoree honoree) => DuplicateReviewGroups.DisplayName(honoree);
 
-        return name.EndsWith($"({honoree.Nickname})", StringComparison.OrdinalIgnoreCase)
-            ? name
-            : $"{name} ({honoree.Nickname})";
-    }
-
-    private static string SponsorName(Sponsor? sponsor)
-    {
-        if (sponsor is null)
-        {
-            return string.Empty;
-        }
-
-        return string.Join(
-            " ",
-            new[] { sponsor.FirstName, sponsor.MiddleName, sponsor.LastName, sponsor.Suffix }
-                .Where(part => !string.IsNullOrWhiteSpace(part)));
-    }
+    private static string SponsorName(Sponsor? sponsor) => DuplicateReviewGroups.SponsorName(sponsor);
 
     private static string ServiceYears(Honoree honoree)
     {
@@ -308,9 +394,15 @@ public sealed class DuplicateMergeRequest
     /// <summary>
     /// Typed values keyed by the same field names as <see cref="Fields"/>.
     /// A key here is saved instead of the record named in <see cref="Fields"/>.
-    /// Photo and awards are not accepted here.
+    /// An empty photo value means no photo. Any other photo text is rejected.
+    /// Awards text is an edit and overrides a record choice or <see cref="CombineAwards"/>.
     /// </summary>
     public Dictionary<string, string?>? Values { get; set; }
+
+    /// <summary>
+    /// Join the included records' award lists. An awards entry in <see cref="Values"/> wins.
+    /// </summary>
+    public bool CombineAwards { get; set; }
 }
 
 public sealed class NotDuplicatePairRequest

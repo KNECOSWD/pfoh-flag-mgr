@@ -218,14 +218,6 @@ public class DuplicateMergeFieldApiTests(PfohApiFactory factory) : IClassFixture
             values = new Dictionary<string, string> { ["photo"] = "typed.jpg" }
         });
 
-        await RejectAsync(client, "A typed awards value is not accepted.", new
-        {
-            survivorId = 2,
-            duplicateIds = new[] { 1, 2 },
-            fields = SourceFields(2, 1, 2),
-            values = new Dictionary<string, string> { ["awards"] = "Medal of Honor" }
-        });
-
         fields = SourceFields(2, 1, 2);
         fields.Remove("serviceBranch");
         await RejectAsync(client, "Type a service branch that already exists", new
@@ -389,15 +381,315 @@ public class DuplicateMergeFieldApiTests(PfohApiFactory factory) : IClassFixture
         Assert.False((await after.Honorees.SingleAsync(honoree => honoree.Id == 8)).IsActive);
         Assert.Equal(24, (await after.Honorees.SingleAsync(honoree => honoree.Id == 9)).FlagGridId);
         Assert.True((await after.Honorees.SingleAsync(honoree => honoree.Id == 9)).IsActive);
+
+        var movedClaims = await after.FlagClaims.Where(claim => claim.Id == 31 || claim.Id == 32).ToListAsync();
+        Assert.Equal(2, movedClaims.Count);
+        Assert.All(movedClaims, claim => Assert.Equal(2, claim.HonoreeId));
+        var claimants = await after.HonoreeClaims
+            .Where(claim => claim.HonoreeId == 2 && claim.ClaimStatus == "Claimed")
+            .OrderBy(claim => claim.Email)
+            .ToListAsync();
+        Assert.Equal(new[] { "ada@example.com", "bea@example.com" }, claimants.Select(claim => claim.Email).ToArray());
     }
 
-    private static object GridValue(Dictionary<string, int> fields, string gridName) => new
+    [Fact]
+    public async Task A_merge_with_a_field_left_unchosen_returns_400()
     {
-        survivorId = 2,
-        duplicateIds = new[] { 1, 2 },
-        fields,
-        values = new Dictionary<string, string> { ["flagGrid"] = gridName }
-    };
+        await ResetAsync();
+        await SeedPairAsync();
+        var client = factory.CreateClient();
+        var fields = SourceFields(2, 1, 2);
+        fields.Remove("nickname");
+
+        var response = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields
+        }));
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Choose a value for every field", body);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Equal("John", (await db.Honorees.SingleAsync(honoree => honoree.Id == 2)).FirstName);
+        Assert.True((await db.Honorees.SingleAsync(honoree => honoree.Id == 1)).IsActive);
+        Assert.True((await db.Honorees.SingleAsync(honoree => honoree.Id == 2)).IsActive);
+    }
+
+    [Fact]
+    public async Task Explicit_survivor_that_disagrees_with_the_flag_grid_is_rejected()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        var client = factory.CreateClient();
+        var fields = SourceFields(2, 1, 2);
+        fields["flagGrid"] = 2;
+
+        var mismatch = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 1,
+            duplicateIds = new[] { 1, 2 },
+            fields
+        }));
+        var mismatchBody = await mismatch.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.BadRequest, mismatch.StatusCode);
+        Assert.Contains("flag grid you selected", mismatchBody);
+
+        fields["flagGrid"] = 99;
+        var outside = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields
+        }));
+        var outsideBody = await outside.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.BadRequest, outside.StatusCode);
+        Assert.Contains("included records", outsideBody);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Equal(2, await db.Honorees.CountAsync(honoree => honoree.IsActive && honoree.DeletedDate == null));
+        Assert.Equal("Kept bio", (await db.Honorees.SingleAsync(honoree => honoree.Id == 2)).Description);
+    }
+
+    [Fact]
+    public async Task Combined_and_edited_awards_use_the_edit_path_rules()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var right = await db.Honorees.SingleAsync(honoree => honoree.Id == 2);
+            right.Awards = "Purple Heart\nBronze  Star";
+            await db.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient();
+        var fields = SourceFields(2, 1, 2);
+        fields.Remove("awards");
+        var combined = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields,
+            combineAwards = true
+        }));
+        var combinedBody = await combined.Content.ReadAsStringAsync();
+        Assert.True(combined.StatusCode == HttpStatusCode.OK, combinedBody);
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var after = check.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Equal("Bronze Star\nPurple Heart", (await after.Honorees.SingleAsync(honoree => honoree.Id == 2)).Awards);
+    }
+
+    [Fact]
+    public async Task An_edited_awards_value_is_saved()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        var client = factory.CreateClient();
+        var fields = SourceFields(2, 1, 2);
+        fields.Remove("awards");
+        var merged = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields,
+            values = new Dictionary<string, string> { ["awards"] = "  Medal of Honor\r\nSilver Star  " }
+        }));
+        var body = await merged.Content.ReadAsStringAsync();
+        Assert.True(merged.StatusCode == HttpStatusCode.OK, body);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Equal("Medal of Honor\nSilver Star", (await db.Honorees.SingleAsync(honoree => honoree.Id == 2)).Awards);
+    }
+
+    [Fact]
+    public async Task Card_preview_is_admin_only_returns_a_pdf_and_writes_nothing()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        var client = factory.CreateClient();
+        int honorees;
+        int claims;
+        int changes;
+        int prints;
+        int reprints;
+        int gridHolders;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            honorees = await db.Honorees.CountAsync();
+            claims = await db.FlagClaims.CountAsync();
+            changes = await db.HonoreeChangeRequests.CountAsync();
+            prints = await db.CardPrintEvents.CountAsync();
+            reprints = await db.ReprintDuplicateReviews.CountAsync();
+            gridHolders = await db.FlagGrids.CountAsync(grid => grid.HonoreeId != null);
+        }
+
+        var pdfs = factory.Files.Pdfs.Count;
+        var photos = factory.Files.Photos.Count;
+        var deletedPhotos = factory.Files.DeletedPendingPhotos.Count;
+
+        var missingFields = SourceFields(2, 1, 2);
+        missingFields.Remove("nickname");
+        var missing = new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields = missingFields
+        };
+        var previewMissing = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge-preview/card", missing));
+        var mergeMissing = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", missing));
+        var previewMissingBody = await previewMissing.Content.ReadAsStringAsync();
+        var mergeMissingBody = await mergeMissing.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.BadRequest, previewMissing.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, mergeMissing.StatusCode);
+        Assert.Contains("Choose a value for every field", previewMissingBody);
+        Assert.Equal(mergeMissingBody, previewMissingBody);
+
+        var mismatch = new
+        {
+            survivorId = 1,
+            duplicateIds = new[] { 1, 2 },
+            fields = SourceFields(2, 1, 2)
+        };
+        var previewMismatch = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge-preview/card", mismatch));
+        var mergeMismatch = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", mismatch));
+        Assert.Equal(HttpStatusCode.BadRequest, previewMismatch.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, mergeMismatch.StatusCode);
+        Assert.Contains("flag grid you selected", await previewMismatch.Content.ReadAsStringAsync());
+        Assert.Contains("flag grid you selected", await mergeMismatch.Content.ReadAsStringAsync());
+
+        var member = new HttpRequestMessage(HttpMethod.Post, "/api/admin/duplicates/merge-preview/card")
+        {
+            Content = JsonContent.Create(new
+            {
+                survivorId = 2,
+                duplicateIds = new[] { 1, 2 },
+                fields = SourceFields(2, 1, 2)
+            })
+        };
+        member.Headers.Add(TestAuthHandler.OidHeader, "member-1");
+        member.Headers.Add(TestAuthHandler.EmailHeader, "member@example.com");
+        member.Headers.Add(TestAuthHandler.NameHeader, "Member");
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(member)).StatusCode);
+
+        var anonymous = new HttpRequestMessage(HttpMethod.Post, "/api/admin/duplicates/merge-preview/card")
+        {
+            Content = JsonContent.Create(new
+            {
+                survivorId = 2,
+                duplicateIds = new[] { 1, 2 },
+                fields = SourceFields(2, 1, 2)
+            })
+        };
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.SendAsync(anonymous)).StatusCode);
+
+        var previewFields = SourceFields(2, 1, 2);
+        previewFields.Remove("firstName");
+        var previewBody = new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields = previewFields,
+            values = new Dictionary<string, string> { ["firstName"] = "Patricia  Ann" }
+        };
+        var preview = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge-preview/card", previewBody));
+        var previewError = preview.StatusCode == HttpStatusCode.OK ? "" : await preview.Content.ReadAsStringAsync();
+        Assert.True(preview.StatusCode == HttpStatusCode.OK, previewError);
+        Assert.Equal("application/pdf", preview.Content.Headers.ContentType?.MediaType);
+        var pdf = await preview.Content.ReadAsByteArrayAsync();
+        Assert.True(pdf.Length > 4);
+        Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(pdf, 0, 4));
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            Assert.Equal(honorees, await db.Honorees.CountAsync());
+            Assert.Equal(claims, await db.FlagClaims.CountAsync());
+            Assert.Equal(changes, await db.HonoreeChangeRequests.CountAsync());
+            Assert.Equal(prints, await db.CardPrintEvents.CountAsync());
+            Assert.Equal(reprints, await db.ReprintDuplicateReviews.CountAsync());
+            Assert.Equal(gridHolders, await db.FlagGrids.CountAsync(grid => grid.HonoreeId != null));
+            Assert.Equal("John", (await db.Honorees.SingleAsync(honoree => honoree.Id == 2)).FirstName);
+            Assert.True((await db.Honorees.SingleAsync(honoree => honoree.Id == 1)).IsActive);
+            Assert.Equal(12, (await db.Honorees.SingleAsync(honoree => honoree.Id == 2)).FlagGridId);
+        }
+
+        Assert.Equal(pdfs, factory.Files.Pdfs.Count);
+        Assert.Equal(photos, factory.Files.Photos.Count);
+        Assert.Equal(deletedPhotos, factory.Files.DeletedPendingPhotos.Count);
+
+        var merged = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", previewBody));
+        var mergedBody = await merged.Content.ReadAsStringAsync();
+        Assert.True(merged.StatusCode == HttpStatusCode.OK, mergedBody);
+        await using var saved = factory.Services.CreateAsyncScope();
+        var savedDb = saved.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Equal("Patricia Ann", (await savedDb.Honorees.SingleAsync(honoree => honoree.Id == 2)).FirstName);
+    }
+
+    [Fact]
+    public async Task Pending_review_reports_the_open_duplicate_group_count()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        var client = factory.CreateClient();
+
+        var pending = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/review/pending"));
+        Assert.Equal(HttpStatusCode.OK, pending.StatusCode);
+        Assert.Equal("1", pending.Headers.GetValues("X-Open-Duplicate-Groups").Single());
+        var groups = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/duplicates/groups"));
+        var listed = await groups.Content.ReadFromJsonAsync<List<GroupBody>>(Json);
+        Assert.Single(listed!);
+
+        var dismissed = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/not-duplicates", new
+        {
+            leftId = 1,
+            rightId = 2
+        }));
+        Assert.Equal(HttpStatusCode.OK, dismissed.StatusCode);
+        var after = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/review/pending"));
+        Assert.Equal("0", after.Headers.GetValues("X-Open-Duplicate-Groups").Single());
+        var empty = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/duplicates/groups"));
+        Assert.Empty((await empty.Content.ReadFromJsonAsync<List<GroupBody>>(Json))!);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            db.HonoreeNotDuplicatePairs.RemoveRange(db.HonoreeNotDuplicatePairs);
+            var inactive = await db.Honorees.SingleAsync(honoree => honoree.Id == 1);
+            inactive.IsActive = false;
+            await db.SaveChangesAsync();
+        }
+
+        var inactiveCount = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/review/pending"));
+        Assert.Equal("0", inactiveCount.Headers.GetValues("X-Open-Duplicate-Groups").Single());
+
+        var member = new HttpRequestMessage(HttpMethod.Get, "/api/admin/review/pending");
+        member.Headers.Add(TestAuthHandler.OidHeader, "member-1");
+        member.Headers.Add(TestAuthHandler.EmailHeader, "member@example.com");
+        member.Headers.Add(TestAuthHandler.NameHeader, "Member");
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(member)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/admin/review/pending")).StatusCode);
+    }
+
+    private static object GridValue(Dictionary<string, int> fields, string gridName)
+    {
+        var copy = new Dictionary<string, int>(fields) { ["flagGrid"] = 2 };
+        return new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields = copy,
+            values = new Dictionary<string, string> { ["flagGrid"] = gridName }
+        };
+    }
 
     private async Task RejectAsync(HttpClient client, string expected, object body)
     {

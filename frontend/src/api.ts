@@ -610,7 +610,8 @@ async function request<T>(
   instance: IPublicClientApplication,
   account: AccountInfo,
   url: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  capture?: { headers?: Headers }
 ): Promise<T> {
   const method = options.method ?? "GET";
   if (isPublicApiPath(url)) {
@@ -640,6 +641,8 @@ async function request<T>(
   if (!response.ok) {
     throw await buildApiError(response, method, url);
   }
+
+  if (capture) capture.headers = response.headers;
 
   if (response.status === 204) {
     return undefined as T;
@@ -776,8 +779,16 @@ export const lookupApi = {
 };
 
 export const adminApi = {
-  pending: (instance: IPublicClientApplication, account: AccountInfo) =>
-    request<AdminReviewItem[]>(instance, account, "/api/admin/review/pending"),
+  pending: async (instance: IPublicClientApplication, account: AccountInfo) => {
+    const capture: { headers?: Headers } = {};
+    const items = await request<AdminReviewItem[]>(instance, account, "/api/admin/review/pending", {}, capture);
+    const raw = capture.headers?.get("X-Open-Duplicate-Groups");
+    const parsed = raw == null ? 0 : Number(raw);
+    return {
+      items,
+      openDuplicateGroupCount: Number.isFinite(parsed) && parsed >= 0 ? parsed : 0
+    };
+  },
 
   printQueue: (instance: IPublicClientApplication, account: AccountInfo) =>
     request<AdminPrintQueueItem[]>(instance, account, "/api/admin/review/approved-reprint-queue"),
@@ -885,10 +896,28 @@ export const adminApi = {
       duplicateIds: number[];
       fields: Record<string, number>;
       values?: Record<string, string>;
+      combineAwards?: boolean;
     }
   ) =>
     request<DuplicateMergeResult>(instance, account, "/api/admin/duplicates/merge", {
       method: "POST",
+      body: JSON.stringify(body)
+    }),
+
+  previewMergeCard: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    body: {
+      survivorId: number;
+      duplicateIds: number[];
+      fields: Record<string, number>;
+      values?: Record<string, string>;
+      combineAwards?: boolean;
+    }
+  ) =>
+    fetchAuthorizedBlob(instance, account, `${apiBase}/api/admin/duplicates/merge-preview/card`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     }),
 

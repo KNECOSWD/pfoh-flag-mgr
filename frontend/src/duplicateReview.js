@@ -10,11 +10,11 @@ export const mergeFields = [
   { key: "serviceBranch", label: "Service branch", serverLabel: "Service branch", custom: "text", required: true, maxLength: 200, serverMax: 200, placeholder: "Existing branch name", value: (honoree) => honoree.serviceBranchName || "" },
   { key: "serviceYears", label: "Years of service", serverLabel: "Service years", custom: "text", maxLength: 500, serverMax: 500, placeholder: "1942 - 1945", value: (honoree) => honoree.serviceYears },
   { key: "conflictsServed", label: "Conflicts served", serverLabel: "Conflicts served", custom: "textarea", value: (honoree) => honoree.conflictsServed },
-  { key: "awards", label: "Awards", custom: false, value: (honoree) => honoree.awards },
+  { key: "awards", label: "Awards", serverLabel: "Awards", custom: "textarea", value: (honoree) => honoree.awards },
   { key: "description", label: "Bio", serverLabel: "Honoree description", custom: "textarea", required: true, value: (honoree) => honoree.description },
   { key: "kia", label: "Killed in action", serverLabel: "Killed in action", custom: "text", maxLength: 5, placeholder: "Yes or No", value: (honoree) => (honoree.kia ? "Yes" : "No") },
   { key: "photo", label: "Photo", custom: false, value: (honoree) => honoree.photoFileName || "" },
-  { key: "flagGrid", label: "Flag grid", serverLabel: "Flag grid", custom: "text", maxLength: 100, serverMax: 100, placeholder: "AA-10", value: (honoree) => honoree.flagGridName || "" },
+  { key: "flagGrid", label: "Flag grid", serverLabel: "Flag grid", custom: "text", picker: true, maxLength: 100, serverMax: 100, placeholder: "AA-10", value: (honoree) => honoree.flagGridName || "" },
   { key: "phone", label: "Phone", serverLabel: "Phone", custom: "text", maxLength: 50, serverMax: 50, value: (honoree) => honoree.phoneNumber },
   { key: "email", label: "Email", serverLabel: "Email", custom: "text", maxLength: 255, serverMax: 255, value: (honoree) => honoree.emailAddress },
   { key: "sponsor", label: "Sponsor", serverLabel: "Sponsor", custom: "text", maxLength: 400, serverMax: 400, placeholder: "Existing sponsor name", value: (honoree) => honoree.sponsorName }
@@ -60,10 +60,37 @@ export function normalizeMergeText(value, multiline) {
   return text;
 }
 
+// The saved text is normalized, and a single trailing space or newline stays
+// so the next word or line can be typed. A finished value matches the save.
+export function previewDraft(raw, multiline) {
+  const saved = normalizeMergeText(raw, multiline);
+  if (multiline && raw === `${saved}\n`) return raw;
+  if (!multiline && raw === `${saved} `) return raw;
+  return saved;
+}
+
+export function canonicalKia(value) {
+  const text = normalizeMergeText(value, false).toLowerCase();
+  if (text === "yes" || text === "true" || text === "y") return "Yes";
+  if (text === "no" || text === "false" || text === "n") return "No";
+  return null;
+}
+
+function emailIssue(text) {
+  if (text.length === 0) return null;
+  if (text.length > 255) return "Email must be 255 characters or fewer.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) return "Email is not a valid email address.";
+  return null;
+}
+
 export function customValueIssue(field, raw) {
   if (!field?.custom) return null;
-  const text = normalizeMergeText(raw, field.custom === "textarea");
+  const text = field.key === "kia"
+    ? (canonicalKia(raw) ?? normalizeMergeText(raw, false))
+    : normalizeMergeText(raw, field.custom === "textarea");
   const label = field.serverLabel || field.label;
+  if (field.key === "kia" && canonicalKia(raw) == null) return "Killed in action must be Yes or No.";
+  if (field.key === "email") return emailIssue(text);
   if (field.required && text.length === 0) return `${label} is required.`;
   if (field.serverMax && text.length > field.serverMax) {
     return `${label} must be ${field.serverMax} characters or fewer.`;
@@ -71,49 +98,123 @@ export function customValueIssue(field, raw) {
   return null;
 }
 
-function emptyChoice() {
-  return { useCustom: false, sourceId: null, custom: "", explicit: false };
+export function normalizedCustom(field, raw) {
+  if (field.key === "kia") return canonicalKia(raw) ?? normalizeMergeText(raw, false);
+  return normalizeMergeText(raw, field.custom === "textarea");
+}
+
+export function splitAwardItems(value) {
+  const text = String(value ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const items = [];
+  for (const line of text.split("\n")) {
+    for (const piece of line.split(/[;,]/)) {
+      const item = normalizeMergeText(piece, false);
+      if (item) items.push(item);
+    }
+  }
+  return items;
+}
+
+function awardDelimiter(sources) {
+  let hasNewline = false;
+  let hasSemicolon = false;
+  let hasComma = false;
+  for (const source of sources) {
+    const text = String(source ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    if (text.includes("\n")) hasNewline = true;
+    if (String(source ?? "").includes(";")) hasSemicolon = true;
+    if (String(source ?? "").includes(",")) hasComma = true;
+  }
+  if (hasNewline) return "\n";
+  if (hasSemicolon && !hasComma) return "; ";
+  if (hasComma && !hasSemicolon) return ", ";
+  return "\n";
+}
+
+export function combineAwardLists(lists) {
+  const sources = (lists ?? []).map((value) => String(value ?? ""));
+  const delimiter = awardDelimiter(sources);
+  const seen = new Set();
+  const items = [];
+  for (const source of sources) {
+    for (const item of splitAwardItems(source)) {
+      if (seen.has(item)) continue;
+      seen.add(item);
+      items.push(item);
+    }
+  }
+  return items.join(delimiter);
+}
+
+export function blankChoice() {
+  return { useCustom: false, sourceId: null, custom: "", explicit: false, noPhoto: false, combine: false };
+}
+
+export function survivorIdFromChoices(choices, includedIds) {
+  const id = choices?.flagGrid?.sourceId ?? null;
+  if (id == null || !(includedIds ?? []).includes(id)) return null;
+  return id;
 }
 
 function fieldResolved(field, choice, includedIds) {
   if (!choice) return false;
+  if (field.key === "photo") {
+    if (choice.noPhoto) return true;
+    return choice.sourceId != null && includedIds.includes(choice.sourceId);
+  }
+  if (field.key === "flagGrid") {
+    if (choice.sourceId == null || !includedIds.includes(choice.sourceId)) return false;
+    if (choice.useCustom) return customValueIssue(field, choice.custom) == null;
+    return true;
+  }
+  if (field.key === "awards" && choice.combine && !choice.useCustom) return true;
   if (choice.useCustom && field.custom) return customValueIssue(field, choice.custom) == null;
   return choice.sourceId != null && includedIds.includes(choice.sourceId);
 }
 
-export function choicesForSurvivor(survivorId, includedHonorees) {
+export function applyMatchingValues(includedHonorees, previous) {
+  const next = { ...(previous ?? {}) };
   const included = includedHonorees ?? [];
-  return Object.fromEntries(
-    mergeFields.map((field) => {
-      const shared = !recordsDiffer(included.map((honoree) => field.value(honoree)));
-      return [field.key, shared
-        ? { useCustom: false, sourceId: survivorId, custom: "", explicit: false }
-        : emptyChoice()];
-    })
-  );
-}
-
-export function choicesAfterIncludedChange(survivorId, includedHonorees, previous) {
-  const next = choicesForSurvivor(survivorId, includedHonorees);
-  const includedIds = new Set((includedHonorees ?? []).map((honoree) => honoree.id));
+  if (included.length < 2) return next;
   for (const field of mergeFields) {
-    const prior = previous?.[field.key];
-    if (!prior?.explicit) continue;
-    if (prior.useCustom && field.custom) {
-      next[field.key] = prior;
-      continue;
-    }
-    if (prior.sourceId != null && includedIds.has(prior.sourceId)) {
-      next[field.key] = prior;
-    }
+    const values = included.map((honoree) => field.value(honoree));
+    if (recordsDiffer(values)) continue;
+    next[field.key] = {
+      useCustom: false,
+      sourceId: included[0].id,
+      custom: "",
+      explicit: true,
+      noPhoto: false,
+      combine: false
+    };
   }
   return next;
 }
 
-export function canConfirmMerge(survivorId, includedIds, honorees, choices) {
-  if (survivorId == null || !includedIds?.includes(survivorId) || includedIds.length < 2) return false;
+export function choicesAfterIncludedChange(includedHonorees, previous) {
+  const includedIds = new Set((includedHonorees ?? []).map((honoree) => honoree.id));
+  const next = {};
+  for (const field of mergeFields) {
+    const prior = previous?.[field.key];
+    if (!prior) continue;
+    if (field.key === "flagGrid") {
+      if (prior.sourceId != null && includedIds.has(prior.sourceId)) next[field.key] = prior;
+      continue;
+    }
+    if (prior.useCustom || prior.noPhoto || prior.combine) {
+      next[field.key] = prior;
+      continue;
+    }
+    if (prior.sourceId != null && includedIds.has(prior.sourceId)) next[field.key] = prior;
+  }
+  return next;
+}
+
+export function canConfirmMerge(includedIds, honorees, choices) {
+  if (!includedIds || includedIds.length < 2) return false;
   const included = (honorees ?? []).filter((honoree) => includedIds.includes(honoree.id));
   if (included.length < 2) return false;
+  if (survivorIdFromChoices(choices, includedIds) == null) return false;
   return mergeFields.every((field) => fieldResolved(field, choices?.[field.key], includedIds));
 }
 
@@ -124,38 +225,86 @@ export function displayValue(field, honoree) {
   return text || "Blank";
 }
 
+export function previewValue(field, honorees, choice) {
+  if (field.key === "photo" && choice?.noPhoto) {
+    return { display: "No photo", input: "", custom: false, issue: null, saved: "" };
+  }
+  if (field.key === "awards" && choice?.combine && !choice.useCustom) {
+    const saved = combineAwardLists((honorees ?? []).map((honoree) => field.value(honoree)));
+    return { display: saved || "Blank", input: saved, custom: false, issue: null, saved };
+  }
+  if (choice?.useCustom && field.custom) {
+    const issue = customValueIssue(field, choice.custom);
+    const saved = normalizedCustom(field, choice.custom);
+    const input = field.key === "kia"
+      ? saved
+      : previewDraft(String(choice.custom ?? ""), field.custom === "textarea");
+    return { display: issue || saved || "Blank", input, custom: true, issue, saved };
+  }
+  const honoree = (honorees ?? []).find((item) => item.id === choice?.sourceId);
+  if (!honoree) return { display: "Not chosen", input: "", custom: false, issue: null, saved: "" };
+  if (field.key === "photo") {
+    const name = field.value(honoree);
+    return { display: name || "No photo", input: name, custom: false, issue: null, saved: name };
+  }
+  const raw = String(field.value(honoree) ?? "");
+  return { display: raw.trim() ? raw : "Blank", input: raw, custom: false, issue: null, saved: raw };
+}
+
 export function previewRows(honorees, choices) {
   return mergeFields.map((field) => {
-    const choice = choices?.[field.key];
-    if (choice?.useCustom && field.custom) {
-      const issue = customValueIssue(field, choice.custom);
-      const typed = normalizeMergeText(choice.custom, field.custom === "textarea");
-      return { key: field.key, label: field.label, value: issue || typed || "Blank" };
-    }
-    const honoree = honorees.find((item) => item.id === choice?.sourceId);
-    return { key: field.key, label: field.label, value: honoree ? displayValue(field, honoree) : "Not chosen" };
+    const preview = previewValue(field, honorees, choices?.[field.key]);
+    return { key: field.key, label: field.label, value: preview.display, custom: preview.custom };
   });
 }
 
-export function buildMergeRequest(survivorId, honorees, choices) {
+export function buildMergeRequest(honorees, choices) {
   /** @type {Record<string, number>} */
   const fields = {};
   /** @type {Record<string, string>} */
   const values = {};
+  let combineAwards = false;
   for (const field of mergeFields) {
     const choice = choices?.[field.key];
-    if (field.custom && choice?.useCustom) {
-      values[field.key] = normalizeMergeText(choice.custom, field.custom === "textarea");
+    if (!choice) continue;
+    if (field.key === "photo") {
+      if (choice.noPhoto) {
+        values.photo = "";
+        continue;
+      }
+      if (choice.sourceId) fields.photo = choice.sourceId;
       continue;
     }
-    if (choice?.sourceId) fields[field.key] = choice.sourceId;
+    if (field.key === "awards") {
+      if (choice.useCustom) {
+        values.awards = normalizedCustom(field, choice.custom);
+        continue;
+      }
+      if (choice.combine) {
+        combineAwards = true;
+        continue;
+      }
+      if (choice.sourceId) fields.awards = choice.sourceId;
+      continue;
+    }
+    if (field.key === "flagGrid") {
+      if (choice.sourceId) fields.flagGrid = choice.sourceId;
+      if (choice.useCustom) values.flagGrid = normalizedCustom(field, choice.custom);
+      continue;
+    }
+    if (field.custom && choice.useCustom) {
+      values[field.key] = normalizedCustom(field, choice.custom);
+      continue;
+    }
+    if (choice.sourceId) fields[field.key] = choice.sourceId;
   }
   const body = {
-    survivorId,
+    survivorId: choices?.flagGrid?.sourceId ?? 0,
     duplicateIds: honorees.map((honoree) => honoree.id),
     fields
   };
   if (Object.keys(values).length > 0) body.values = values;
+  if (combineAwards) body.combineAwards = true;
   return body;
 }
 
@@ -176,31 +325,44 @@ function photoBlock(honoree) {
   return h("div", { className: "duplicateNoPhoto", role: "img", "aria-label": "No photo" }, "No photo");
 }
 
-export function MergePreview({ rows }) {
-  if (!rows) {
-    return h(
-      "section",
-      { className: "mergePreview", "aria-label": "Merged record preview" },
-      h("h3", null, "Merged record preview"),
-      h("p", null, "Choose a surviving record to preview the merged values. Nothing is selected automatically.")
-    );
-  }
-
+export function UseMatchingButton({ disabled, onClick }) {
   return h(
-    "section",
-    { className: "mergePreview", "aria-label": "Merged record preview" },
-    h("h3", null, "Merged record preview"),
+    "button",
+    { type: "button", className: "secondary", disabled, onClick },
+    "Use all matching values"
+  );
+}
+
+export function SharedFieldChoices({ includedCount, choices, onNoPhoto, onCombine }) {
+  const disabled = includedCount < 1;
+  return h(
+    "div",
+    { className: "mergeSharedChoices" },
     h(
-      "dl",
-      null,
-      rows.map((row) =>
-        h(
-          "div",
-          { key: row.key, "data-preview": row.key },
-          h("dt", null, row.label),
-          h("dd", null, row.value)
-        )
-      )
+      "label",
+      { className: "mergeChoice" },
+      h("input", {
+        type: "radio",
+        name: "field-photo",
+        value: "none",
+        checked: Boolean(choices?.photo?.noPhoto),
+        disabled,
+        onChange: onNoPhoto
+      }),
+      h("span", null, h("strong", null, "No photo"))
+    ),
+    h(
+      "label",
+      { className: "mergeChoice" },
+      h("input", {
+        type: "radio",
+        name: "field-awards",
+        value: "combine",
+        checked: Boolean(choices?.awards?.combine) && !choices?.awards?.useCustom,
+        disabled: includedCount < 2,
+        onChange: onCombine
+      }),
+      h("span", null, h("strong", null, "Combine both"))
     )
   );
 }
@@ -208,16 +370,11 @@ export function MergePreview({ rows }) {
 export function DuplicateReviewBoard({
   honorees,
   includedIds,
-  survivorId,
   choices,
   onToggleIncluded,
-  onSurvivor,
-  onChooseSource,
-  onCustom
+  onChooseSource
 }) {
-  const survivorChosen = survivorId != null;
   const nameDiffers = recordsDiffer(honorees.map(fullName));
-  const photoDiffers = recordsDiffer(honorees.map((honoree) => honoree.photoFileName || ""));
 
   return h(
     "div",
@@ -239,145 +396,128 @@ export function DuplicateReviewBoard({
           h("span", null, `Include record #${honoree.id} in the merge`)
         ),
         h(
-          "label",
-          { className: "duplicateCheck" },
-          h("input", {
-            type: "radio",
-            name: "duplicate-survivor",
-            value: String(honoree.id),
-            checked: survivorId === honoree.id,
-            disabled: !included,
-            onChange: () => onSurvivor(honoree.id)
-          }),
-          h("span", null, `Keep record #${honoree.id} as the surviving record`)
-        ),
-        h(
           "div",
           { className: nameDiffers ? "mergeIdentity isDiff" : "mergeIdentity", "data-field": "fullName" },
           photoBlock(honoree),
           h("h3", null, name),
           differsFlag(nameDiffers)
         ),
-        h(
-          "div",
-          { className: photoDiffers ? "mergeField isDiff" : "mergeField", "data-field": "photo" },
-          h(
-            "label",
-            { className: "mergeChoice" },
-            h("input", {
-              type: "radio",
-              name: "field-photo",
-              value: String(honoree.id),
-              checked: !choices?.photo?.useCustom && choices?.photo?.sourceId === honoree.id,
-              disabled: !survivorChosen || !included,
-              onChange: () => onChooseSource("photo", honoree.id)
-            }),
+        mergeFields.map((field) => {
+          const differs = recordsDiffer(honorees.map((item) => field.value(item)));
+          const choice = choices?.[field.key];
+          const sourceChecked = field.key === "flagGrid"
+            ? choice?.sourceId === honoree.id
+            : !choice?.useCustom && !choice?.noPhoto && !choice?.combine && choice?.sourceId === honoree.id;
+          return h(
+            "div",
+            {
+              key: field.key,
+              className: differs ? "mergeField isDiff" : "mergeField",
+              "data-field": field.key
+            },
             h(
-              "span",
-              null,
-              h("strong", null, "Photo"),
-              " ",
-              differsFlag(photoDiffers),
-              h("em", null, honoree.photoFileName ? honoree.photoFileName : "No photo")
-            )
-          )
-        ),
-        mergeFields
-          .filter((field) => field.key !== "photo")
-          .map((field) => {
-            const differs = recordsDiffer(honorees.map((item) => field.value(item)));
-            const choice = choices?.[field.key];
-            const sourceChecked = !choice?.useCustom && choice?.sourceId === honoree.id;
-            return h(
-              "div",
-              {
-                key: field.key,
-                className: differs ? "mergeField isDiff" : "mergeField",
-                "data-field": field.key
-              },
+              "label",
+              { className: "mergeChoice" },
+              h("input", {
+                type: "radio",
+                name: `field-${field.key}`,
+                value: String(honoree.id),
+                checked: sourceChecked,
+                disabled: !included,
+                onChange: () => onChooseSource(field.key, honoree.id)
+              }),
               h(
-                "label",
-                { className: "mergeChoice" },
-                h("input", {
-                  type: "radio",
-                  name: `field-${field.key}`,
-                  value: String(honoree.id),
-                  checked: sourceChecked,
-                  disabled: !survivorChosen || !included,
-                  onChange: () => onChooseSource(field.key, honoree.id)
-                }),
-                h(
-                  "span",
-                  null,
-                  h("strong", null, field.label),
-                  " ",
-                  differsFlag(differs),
-                  h("em", { className: field.key === "awards" || field.key === "description" ? "mergeMultiline" : undefined }, displayValue(field, honoree))
-                )
+                "span",
+                null,
+                h("strong", null, field.label),
+                " ",
+                differsFlag(differs),
+                h("em", { className: field.key === "awards" || field.key === "description" || field.key === "conflictsServed" ? "mergeMultiline" : undefined }, displayValue(field, honoree))
               )
-            );
-          })
+            )
+          );
+        })
       );
     })
   );
 }
 
-// Custom inputs are rendered once per field, under the columns, so a phone
-// stack does not repeat a text box inside every record.
-export function DuplicateCustomFields({ survivorId, choices, onCustom }) {
-  const survivorChosen = survivorId != null;
+function customTag(show) {
+  if (!show) return null;
+  return h("span", { className: "customTag" }, "custom");
+}
+
+export function ResultingRecord({ honorees, choices, onEdit, onGrid }) {
   return h(
-    "div",
-    { className: "mergeCustomFields" },
-    h("h3", null, "Or type a value"),
-    mergeFields
-      .filter((field) => field.custom)
-      .map((field) => {
-        const choice = choices?.[field.key];
-        const useCustom = Boolean(choice?.useCustom);
-        const inputId = `custom-${field.key}`;
-        const control =
-          field.custom === "textarea"
-            ? h("textarea", {
-                id: inputId,
-                rows: 3,
-                maxLength: field.maxLength,
-                disabled: !survivorChosen,
-                value: choice?.custom ?? "",
-                onChange: (event) => onCustom(field.key, event.target.value)
-              })
-            : h("input", {
-                id: inputId,
-                type: "text",
-                maxLength: field.maxLength,
-                placeholder: field.placeholder || "Custom value",
-                disabled: !survivorChosen,
-                value: choice?.custom ?? "",
-                onChange: (event) => onCustom(field.key, event.target.value)
-              });
+    "section",
+    { className: "mergePreview", "aria-label": "Resulting record" },
+    h("h3", null, "Resulting record"),
+    h(
+      "div",
+      { className: "resultGrid" },
+      mergeFields.map((field) => {
+        const preview = previewValue(field, honorees, choices?.[field.key]);
+        const inputId = `result-${field.key}`;
+        let control;
+        if (field.key === "photo") {
+          control = h("p", { className: "resultPhoto" }, preview.display);
+        } else if (field.picker) {
+          control = h("input", {
+            id: inputId,
+            type: "text",
+            maxLength: field.maxLength,
+            placeholder: field.placeholder || "AA-10",
+            "aria-label": "Flag grid",
+            value: preview.input,
+            onChange: (event) => onGrid(event.target.value)
+          });
+        } else if (field.custom === "textarea") {
+          control = h("textarea", {
+            id: inputId,
+            rows: field.key === "description" ? 4 : 3,
+            maxLength: field.maxLength,
+            value: preview.input,
+            onChange: (event) => onEdit(field.key, event.target.value)
+          });
+        } else {
+          control = h("input", {
+            id: inputId,
+            type: "text",
+            maxLength: field.maxLength,
+            placeholder: preview.display === "Not chosen" ? "Not chosen" : field.placeholder,
+            value: preview.input,
+            onChange: (event) => onEdit(field.key, event.target.value)
+          });
+        }
         return h(
           "div",
-          { key: field.key, className: "mergeCustom", "data-custom": field.key },
+          { key: field.key, className: "resultField", "data-preview": field.key, "data-custom": preview.custom ? "true" : "false" },
+          h("label", { htmlFor: field.key === "photo" ? undefined : inputId }, field.label, " ", customTag(preview.custom)),
           h(
-            "label",
-            { className: "mergeChoice" },
-            h("input", {
-              type: "radio",
-              name: `field-${field.key}`,
-              value: "custom",
-              checked: useCustom,
-              disabled: !survivorChosen,
-              onChange: () => onCustom(field.key, choice?.custom ?? "")
-            }),
-            h("span", null, h("strong", null, field.label))
-          ),
-          h("label", { className: "mergeCustomInput", htmlFor: inputId }, "Custom value", control)
+            "div",
+            { className: "resultControl" },
+            control,
+            preview.issue ? h("p", { className: "message error", role: "alert" }, preview.issue) : null
+          )
         );
-      }),
+      })
+    )
+  );
+}
+
+export function MergeActions({ ready, busy, onMerge, onPreview }) {
+  return h(
+    "div",
+    { className: "mergeActions" },
     h(
-      "p",
-      { className: "helperText" },
-      "Photo and awards keep one record's photo or awards. Those are a file and a stored set, so they have no typed value."
+      "button",
+      { type: "button", className: "secondary", disabled: !ready || busy, onClick: onPreview },
+      "Preview card PDF"
+    ),
+    h(
+      "button",
+      { type: "button", disabled: !ready || busy, onClick: onMerge },
+      "Merge"
     )
   );
 }

@@ -13008,7 +13008,7 @@ html.isMapFullscreen .publicFlagLevel {
   margin: 0.5rem 0 0;
 }
 
-.mergePreview div {
+.mergePreview dl > div {
   display: grid;
   grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr);
   gap: 0.5rem;
@@ -13024,6 +13024,66 @@ html.isMapFullscreen .publicFlagLevel {
   overflow-wrap: anywhere;
 }
 
+.resultGrid {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.5rem;
+}
+
+.resultField {
+  display: grid;
+  grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.resultField label {
+  font-weight: 700;
+}
+
+.resultControl input,
+.resultControl textarea {
+  width: 100%;
+  max-width: 100%;
+  min-height: 2.75rem;
+  box-sizing: border-box;
+  font-size: 1rem;
+}
+
+.resultPhoto {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.customTag {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid #1d6b4f;
+  border-radius: 999px;
+  background: #e5f6ee;
+  color: #145c42;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
+.mergeSharedChoices,
+.mergeActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin: 0.75rem 0;
+}
+
+.mergeActions button {
+  min-height: 2.75rem;
+}
+
 .printDuplicateReviews {
   margin-top: 1.5rem;
 }
@@ -13033,7 +13093,8 @@ html.isMapFullscreen .publicFlagLevel {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .mergePreview div {
+  .mergePreview dl > div,
+  .resultField {
     grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -252,20 +252,22 @@ public class DuplicateMergeApiTests(PfohApiFactory factory) : IClassFixture<Pfoh
     }
 
     [Fact]
-    public async Task Merge_without_a_chosen_survivor_does_nothing()
+    public async Task An_explicit_survivor_that_disagrees_with_the_flag_grid_does_nothing()
     {
         await ResetAsync();
         await SeedPairAsync();
         var client = factory.CreateClient();
+        var fields = Fields(2, 1, 1);
+        fields["flagGrid"] = 2;
         var response = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
         {
-            survivorId = 0,
+            survivorId = 1,
             duplicateIds = new[] { 1, 2 },
-            fields = Fields(2, 1, 1)
+            fields
         }));
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("Choose the surviving record", body);
+        Assert.Contains("flag grid you selected", body);
         Assert.Equal(2, await CountActiveAsync());
     }
 
