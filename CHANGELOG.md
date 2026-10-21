@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.1
+
+- The phone menu button sits inside the header, vertically centered, at 2.75rem. On a short landscape phone it stays in its own grid cell instead of dropping onto the banner.
+- The phone header keeps the dog tag at 64px with space before the menu button. The title stays on one line, and the banner sits directly under the header.
+- The footer gradient ends in navy. On a wide screen, Contact Us and Built by KNECO sit under the social icons. On an upright phone those footer blocks are centered, along with other short stacked headings and call-to-action buttons. Paragraphs, form fields, tables, admin lists, and the map controls stay left aligned.
+- On the Flag Map from 761px up, the dog tag fits the header band and the brand stays on one line. From 761 to 1279 the existing menu holds the nav. The name, Profile, and Sign out stay visible, and a long name still ends at 220px. From 1280 the full nav is inline.
+- The 10 Years banner no longer shows the extra gold 10. The sentence is unchanged, on a shorter band.
+
 ## 2.2.0
 
 - The header shows the Plano Flags of Honor dog tag. It links to Search, and the subtitle reads “Find an honoree or submit a tribute.”
