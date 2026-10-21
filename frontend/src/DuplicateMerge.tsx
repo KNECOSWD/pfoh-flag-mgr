@@ -8,6 +8,8 @@ import {
   type DuplicateHonoree,
   type DuplicateMergeResult
 } from "./api";
+import { duplicateListState } from "./duplicateListState.js";
+import { isQuietAuthRejection, PLEASE_SIGN_IN_AGAIN } from "./tokenRequest.js";
 
 const fields: { key: string; label: string; value: (honoree: DuplicateHonoree) => string }[] = [
   { key: "firstName", label: "First name", value: (honoree) => honoree.firstName },
@@ -49,18 +51,22 @@ function uniqueClaimants(honorees: DuplicateHonoree[]) {
 
 export function DuplicateMergeScreen({
   groups,
+  loaded,
   loadError,
   busy,
   onMerge,
   onNotDuplicates,
-  onReload
+  onReload,
+  onSignIn
 }: {
   groups: DuplicateGroup[];
+  loaded: boolean;
   loadError: string;
   busy: boolean;
   onMerge: (body: { survivorId: number; duplicateIds: number[]; fields: Record<string, number> }) => Promise<DuplicateMergeResult>;
   onNotDuplicates: (leftId: number, rightId: number) => Promise<void>;
   onReload: () => void;
+  onSignIn?: () => void;
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<number[]>([]);
@@ -73,6 +79,7 @@ export function DuplicateMergeScreen({
   const [pendingPair, setPendingPair] = useState<{ leftId: number; rightId: number } | null>(null);
 
   const group = groups.find((item) => item.groupKey === openKey) ?? null;
+  const listState = duplicateListState({ loaded, loadError, count: groups.length });
   const confirmedHonorees = useMemo(
     () => (group ? group.honorees.filter((honoree) => confirmed.includes(honoree.id)) : []),
     [group, confirmed]
@@ -143,7 +150,7 @@ export function DuplicateMergeScreen({
           <p className="eyebrow">Administrator</p>
           <h2>
             Duplicate honorees
-            <span className="countBadge">{groups.length}</span>
+            {listState.showCount ? <span className="countBadge">{groups.length}</span> : null}
           </h2>
           <p className="helperText">
             Likely duplicates are listed for review. Only active records are included. Nothing is merged, removed, or edited until you confirm a group and choose the values to keep. A pair you mark as not duplicates is left out of this list.
@@ -154,14 +161,25 @@ export function DuplicateMergeScreen({
         </button>
       </div>
 
-      {loadError ? <p className="message error" role="alert">{loadError}</p> : null}
+      {listState.showError ? (
+        <div className="duplicateLoadFailure">
+          <p className="message error" role="alert">{loadError}</p>
+          {listState.showRetry ? (
+            <button type="button" onClick={onReload}>Retry</button>
+          ) : null}
+          {loadError === PLEASE_SIGN_IN_AGAIN && onSignIn ? (
+            <button type="button" onClick={onSignIn}>Sign in</button>
+          ) : null}
+        </div>
+      ) : null}
       {error ? <p className="message error" role="alert">{error}</p> : null}
       {message ? <p className="message" role="status">{message}</p> : null}
 
-      {step === "list" ? (
-        groups.length === 0 ? (
-          <p className="compactEmptyState">No likely duplicate honorees were found.</p>
-        ) : (
+      {listState.showEmpty ? (
+        <p className="compactEmptyState">No likely duplicate honorees were found.</p>
+      ) : null}
+
+      {listState.showList && step === "list" ? (
           <div className="duplicateGroupList">
             {groups.map((item, index) => (
               <article key={item.groupKey} className="duplicateGroup">
@@ -186,7 +204,6 @@ export function DuplicateMergeScreen({
               </article>
             ))}
           </div>
-        )
       ) : null}
 
       {step === "confirm" && group ? (
@@ -355,12 +372,15 @@ export function DuplicateMergeScreen({
 
 export function DuplicateMerge({
   instance,
-  account
+  account,
+  onSignIn
 }: {
   instance: IPublicClientApplication;
   account: AccountInfo | null;
+  onSignIn?: () => void;
 }) {
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -370,7 +390,11 @@ export function DuplicateMerge({
     try {
       setGroups(await adminApi.duplicateGroups(instance, account));
       setLoadError("");
+      setLoaded(true);
     } catch (err) {
+      if (isQuietAuthRejection(err)) return;
+      setGroups([]);
+      setLoaded(false);
       setLoadError(err instanceof ApiError ? err.serverMessage || err.message : "The duplicate list could not be loaded.");
     } finally {
       setBusy(false);
@@ -388,9 +412,11 @@ export function DuplicateMerge({
   return (
     <DuplicateMergeScreen
       groups={groups}
+      loaded={loaded}
       loadError={loadError}
       busy={busy}
       onReload={() => void load()}
+      onSignIn={onSignIn}
       onMerge={(body) => adminApi.mergeDuplicates(instance, account, body)}
       onNotDuplicates={async (leftId, rightId) => {
         await adminApi.markNotDuplicates(instance, account, leftId, rightId);

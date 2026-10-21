@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.1.1
+
+- Fix-only release on top of 2.1.0. 2.1.0 is the duplicate merge tool, which was first published as 2.0.22.
+- Search, the public Flag Map, and other public pages do not request a sign-in token and do not show an authentication banner.
+- When a signed-in request loses its session, or the sign-in response is missing its code, the page starts one sign-in redirect. A second failure in that browser session asks the person to sign in again.
+- Duplicate honorees shows an error and a Retry button when the list cannot be loaded. It does not show a count of zero unless the list loaded and was empty. The Print Center flagged-duplicate list follows the same rule.
+
+## 2.1.0
+
+- The duplicate merge tool, first published as 2.0.22. That was a feature release and should have been a minor version. The records are the same as 2.0.22: administrators can review and merge duplicate honorees, an honoree can have more than one claimant, and the Print Center can review flagged reprint duplicates.
+
 ## 2.0.22
 
 - Administrators can open Duplicate honorees, see why records may match, confirm which ones are duplicates, and merge chosen values into one existing record. The other records are set inactive and their flag spots are released. Nothing merges on its own.

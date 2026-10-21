@@ -59,6 +59,9 @@ jobs:
       - name: Check network retry
         run: node --test frontend/scripts/check-token-retry.mjs
 
+      - name: Check sign-in redirect
+        run: node --test frontend/scripts/check-auth-redirect.mjs
+
       - name: Check submit photo preparation
         run: node --test frontend/scripts/check-submit-photo.mjs
 

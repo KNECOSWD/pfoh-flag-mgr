@@ -9,6 +9,7 @@ import { MsalProvider } from "@azure/msal-react";
 import { msalConfig } from "./authConfig";
 import App from "./App";
 import { publishSignInError, readAuthErrorFromLocation } from "./signInError";
+import { isRecoverableAuthError } from "./tokenRequest.js";
 import "./style.css";
 
 const msalInstance = new PublicClientApplication(msalConfig);
@@ -21,10 +22,11 @@ msalInstance.addEventCallback((event) => {
     }
   }
 
-  if (
-    event.eventType === EventType.LOGIN_FAILURE ||
-    event.eventType === EventType.ACQUIRE_TOKEN_FAILURE
-  ) {
+  if (event.eventType === EventType.LOGIN_FAILURE) {
+    publishSignInError(event.error);
+  }
+
+  if (event.eventType === EventType.ACQUIRE_TOKEN_FAILURE && !isRecoverableAuthError(event.error)) {
     publishSignInError(event.error);
   }
 

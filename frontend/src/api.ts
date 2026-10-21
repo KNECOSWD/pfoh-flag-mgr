@@ -5,7 +5,13 @@ import {
 } from "@azure/msal-browser";
 import { loginRequest } from "./authConfig";
 import { isPublicApiPath } from "./publicApi.js";
-import { isRetryableNetworkError, sharedTokenRequest, withNetworkRetry } from "./tokenRequest.js";
+import {
+  bannerForTokenError,
+  isQuietAuthRejection,
+  isRetryableNetworkError,
+  sharedTokenRequest,
+  withNetworkRetry
+} from "./tokenRequest.js";
 
 export class ApiError extends Error {
   status: number;
@@ -567,10 +573,23 @@ async function getToken(instance: IPublicClientApplication, account: AccountInfo
         const response = await instance.acquireTokenSilent({ ...loginRequest, account });
         return response.accessToken;
       },
-      redirect: () => instance.acquireTokenRedirect({ ...loginRequest, account }),
+      redirect: () =>
+        instance.acquireTokenRedirect({
+          ...loginRequest,
+          account,
+          redirectStartPage: window.location.href
+        }),
       isInteractionRequired: (error: unknown) => error instanceof InteractionRequiredAuthError
     });
   } catch (error) {
+    const banner = bannerForTokenError(error);
+    if (banner === "") {
+      throw isQuietAuthRejection(error) ? error : new Error("Authentication is being refreshed.");
+    }
+    if (banner) {
+      throw new ApiError(banner, 0);
+    }
+
     const requestId = supportCode();
     throw new ApiError(
       [

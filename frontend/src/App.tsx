@@ -83,7 +83,9 @@ import {
   submissionPhotoKind
 } from "./submissionDisplay.js";
 import { loginRequest, readMappedAccountClaim } from "./authConfig";
+import { isPublicPage } from "./publicRoutes.js";
 import { publishSignInError, subscribeSignInError } from "./signInError";
+import { isQuietAuthRejection, PLEASE_SIGN_IN_AGAIN } from "./tokenRequest.js";
 import knecoLogoBlue from "./assets/kneco-logo-blue.png";
 import pfohFooterLogo from "./assets/pfoh-footer-logo.png";
 
@@ -377,6 +379,8 @@ function printCardFailureMessage(error: unknown) {
 }
 
 function reportableErrorMessage(error: unknown, fallback: string) {
+  if (isQuietAuthRejection(error)) return "";
+
   if (error instanceof ApiError) {
     return error.message;
   }
@@ -779,8 +783,12 @@ export default function App() {
     );
   }, [form.serviceBranchCategoryId, serviceBranches]);
 
+  const activeRouteRef = useRef(activeRoute);
+  activeRouteRef.current = activeRoute;
+
   useEffect(() => subscribeSignInError((message) => {
     if (kioskLockedRef.current) return;
+    if (isPublicPage(activeRouteRef.current)) return;
     if (message) setError(message);
   }), []);
 
@@ -818,6 +826,10 @@ export default function App() {
   profileInstanceRef.current = instance;
 
   useEffect(() => {
+    if (isPublicPage(activeRoute)) {
+      return;
+    }
+
     if (kioskLocked || !isAuthenticated || !accountKey) {
       profileLoadGate.current.reset();
       setSavedDisplayName("");
@@ -859,7 +871,7 @@ export default function App() {
       cancelled = true;
       profileLoadGate.current.release(accountKey);
     };
-  }, [isAuthenticated, accountKey, kioskLocked]);
+  }, [isAuthenticated, accountKey, kioskLocked, activeRoute]);
 
   async function openProfile() {
     if (kioskLockedRef.current || !account) return;
@@ -1282,12 +1294,13 @@ export default function App() {
 
   useEffect(() => {
     if (!kioskChrome(kioskLocked, true).loadSignedInData) return;
+    if (isPublicPage(activeRoute)) return;
     if (isAuthenticated && account) {
       loadData();
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, account?.homeAccountId, kioskLocked]);
+  }, [isAuthenticated, account?.homeAccountId, kioskLocked, activeRoute]);
 
   useEffect(() => {
     const timers: number[] = [];
@@ -3139,7 +3152,17 @@ export default function App() {
             <section className="messageStack" aria-live="polite" aria-atomic="true">
               {error ? (
                 <div className="message error" role="alert">
-                  <span>{error}</span>
+                  <span>
+                    {error}
+                    {error === PLEASE_SIGN_IN_AGAIN ? (
+                      <>
+                        {" "}
+                        <button type="button" onClick={() => void signIn("login")}>
+                          Sign in
+                        </button>
+                      </>
+                    ) : null}
+                  </span>
                   <button
                     type="button"
                     className="messageClose"
@@ -4080,7 +4103,13 @@ export default function App() {
 
           {isAdminRoute && chrome.adminLinks ? (
             <div id="admin" className="adminSectionStack" aria-label="Administrator tools">
-              {isDuplicatesRoute ? <DuplicateMerge instance={instance} account={account ?? null} /> : null}
+              {isDuplicatesRoute ? (
+                <DuplicateMerge
+                  instance={instance}
+                  account={account ?? null}
+                  onSignIn={() => void signIn("login")}
+                />
+              ) : null}
 
               {isAdminReviewRoute ? (
               <section className="card adminCard adminReviewCard">
@@ -4629,7 +4658,11 @@ export default function App() {
                 </section>
               )}
 
-              <PrintDuplicateReviews instance={instance} account={account ?? null} />
+              <PrintDuplicateReviews
+                instance={instance}
+                account={account ?? null}
+                onSignIn={() => void signIn("login")}
+              />
 
               <section className="printHistory" aria-label="Print history">
                 <h3>Print history</h3>

@@ -1,3 +1,5 @@
+import { isRecoverableAuthError, PLEASE_SIGN_IN_AGAIN } from "./tokenRequest.js";
+
 type SignInListener = (message: string) => void;
 
 let currentMessage = "";
@@ -7,6 +9,10 @@ export function signInFailureMessage(error: unknown) {
   const text = errorText(error);
   if (/AADSTS50146/i.test(text)) {
     return "Sign-in did not complete (AADSTS50146). Mapped claims need api.acceptMappedClaims set to true on the pfoh-flags-spa and pfoh-flags-api app registrations, with requestedAccessTokenVersion 2. Search and the public pages still work.";
+  }
+
+  if (isRecoverableAuthError(error)) {
+    return PLEASE_SIGN_IN_AGAIN;
   }
 
   if (text) {
