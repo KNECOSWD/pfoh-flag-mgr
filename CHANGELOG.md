@@ -6,6 +6,7 @@
 - The resulting record shows the chosen photo as a thumbnail. No photo, and a chosen record that has no photo, show No photo. A photo that has not been chosen stays Not chosen.
 - Fields that match exactly on the included records are preselected when a group opens and when the included records change. The flag grid is never preselected, even when the grids match or are both blank. A preselected field can still be changed or edited. Use all matching values still does not replace a custom edit or an explicit choice.
 - A pick, Use all matching values, or a custom edit that changes a resulting value highlights that row for about a second. Reduced motion keeps a steady highlight instead of an animation. The chosen value stays marked on the record. If that row is off the screen, a short note names the field and then goes away. Opening a group and the automatic exact-match picks do not highlight.
+- Merge history opens. The table that stores each merge is created when the site starts. A brace in the default value had stopped that create before it reached the database, so the page returned an error.
 
 ## 2.1.3
 
