@@ -65,7 +65,6 @@ public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
             return BadRequest(new { message = "Confirm records from the same duplicate group. Records that are not in that group are left unchanged." });
         }
 
-        var before = await db.Honorees.CountAsync(ct);
         var survivor = honorees.Single(honoree => honoree.Id == request.SurvivorId);
         var adminName = User.GetEmail();
         if (string.IsNullOrWhiteSpace(adminName))
@@ -73,18 +72,28 @@ public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
             adminName = User.GetDisplayName() ?? "PFOH.Admin";
         }
 
-        var result = await HonoreeMerge.ApplyAsync(db, survivor, honorees, fields, adminName, ct);
-        var after = await db.Honorees.CountAsync(ct);
-        if (after != before)
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
         {
-            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "The merge stopped because it would have created or removed a record." });
-        }
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var before = await db.Honorees.CountAsync(ct);
+            var result = await HonoreeMerge.ApplyAsync(db, survivor, honorees, fields, adminName, ct);
+            var after = await db.Honorees.CountAsync(ct);
+            if (after != before)
+            {
+                await transaction.RollbackAsync(ct);
+                return (ActionResult<DuplicateMergeResultDto>)StatusCode(
+                    StatusCodes.Status500InternalServerError,
+                    new { message = "The merge stopped because it would have created or removed a record." });
+            }
 
-        return Ok(new DuplicateMergeResultDto(
-            result.SurvivorId,
-            DisplayName(survivor),
-            result.DeactivatedIds,
-            result.Claimants.Select(ToClaimant).ToList()));
+            await transaction.CommitAsync(ct);
+            return new DuplicateMergeResultDto(
+                result.SurvivorId,
+                DisplayName(survivor),
+                result.DeactivatedIds,
+                result.Claimants.Select(ToClaimant).ToList());
+        });
     }
 
     [HttpPost("not-duplicates")]
