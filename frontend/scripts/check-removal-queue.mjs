@@ -60,8 +60,9 @@ test("the header subtitle drops the cost sentence and the dog tag links to Searc
   assert.match(app, /onClick=\{\(event\) => handleRouteLink\(event, "\/find"\)\}/);
   assert.match(app, /className="heroDogTag"[^>]*alt=""/);
   assert.match(css, /\.hero \.heroDogTagLink:focus-visible[\s\S]*outline:\s*3px solid #ffe08a/);
-  assert.match(css, /\.hero \.heroDogTag\s*\{[^}]*width:\s*132px/);
-  assert.match(css, /\.hero \.heroDogTag\s*\{[^}]*width:\s*64px/);
+  assert.match(css, /\.hero \.heroDogTag\s*\{[^}]*width:\s*clamp\(4rem, 10vw, 8\.25rem\)/);
+  assert.match(css, /\.hero \.heroDogTag\s*\{[^}]*aspect-ratio:\s*480 \/ 315/);
+  assert.match(css, /\.hero \.heroDogTag\s*\{[^}]*width:\s*clamp\(3\.5rem, 18vw, 4rem\)/);
   assert.doesNotMatch(css, /\.mobileNavToggle\s*\{[^}]*grid-row:\s*2/);
 });
 

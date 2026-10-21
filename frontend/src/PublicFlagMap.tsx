@@ -59,6 +59,8 @@ import {
   withApiBase,
   zoneLabelSizes,
   sectionLabelSizes,
+  sectionLetterPlan,
+  pavilionColumnIndex,
   zoomAt,
   flagMapEscapeTarget,
   pinnedAxisLabels,
@@ -370,6 +372,7 @@ export default function PublicFlagMap({
   const shareUrl = selected ? flagDeepLink(window.location.href, selected.flagGridId) : "";
 
   const sectionLabels = useMemo(() => (field ? sectionLabelSizes(field.zones, renderScale) : null), [field, renderScale]);
+  const letterPlan = useMemo(() => sectionLetterPlan(field?.zones ?? [], renderScale), [field, renderScale]);
   const visibleZones = useMemo(() => {
     if (!field) return [];
     const keys = new Set(visibleZoneKeys);
@@ -1721,16 +1724,19 @@ export default function PublicFlagMap({
           ) : null}
           {visibleZones.map((zone) => {
             const sizes = zoneLabelSizes(zone, renderScale, sectionLabels);
+            const sparse = letterPlan.sparse;
+            const shown = !sparse || pavilionColumnIndex(zone.section) % letterPlan.stride === 0;
+            const letterSize = sparse && shown && renderScale > 0 ? letterPlan.screenPx / renderScale : sizes.letter;
             return (
               <button
                 key={zone.label}
                 type="button"
-                className={["publicFlagTile publicFlagZone", sizes.narrow ? "isNarrow" : "", sizes.tiny ? "isTiny" : ""].filter(Boolean).join(" ")}
+                className={["publicFlagTile publicFlagZone", sizes.narrow ? "isNarrow" : "", sizes.tiny ? "isTiny" : "", sparse && shown ? "isSparse" : "", sparse && !shown ? "isThinned" : ""].filter(Boolean).join(" ")}
                 style={{ left: zone.x, top: zone.y, width: zone.width, height: zone.height, paddingTop: sizes.top || undefined }}
                 aria-label={`${zone.label}, ${zone.occupiedCount} of ${zone.flagCount} flags`}
                 onClick={() => acceptClick(() => zoomToZone(zone))}
               >
-                {sizes.letter ? <strong className={sizes.letterStacked ? "isUpright" : undefined} style={{ fontSize: sizes.letter, minHeight: sizes.letterBlock || undefined }}>{zone.section}</strong> : null}
+                {sizes.letter ? <strong className={!sparse && sizes.letterStacked ? "isUpright" : undefined} style={{ fontSize: letterSize, minHeight: !sparse && sizes.letterBlock ? sizes.letterBlock : undefined }}>{zone.section}</strong> : null}
               </button>
             );
           })}

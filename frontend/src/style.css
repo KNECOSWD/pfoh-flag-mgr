@@ -12,14 +12,6 @@
 body {
   margin: 0;
   min-width: 320px;
-  background: #f2f5f9;
-}
-
-button,
-input,
-select,
-textarea {
-  font: inherit;
 }
 
 button {
@@ -74,17 +66,13 @@ main {
   overflow: hidden;
   display: flex;
   justify-content: space-between;
-  align-items: center;
   gap: 1.25rem;
-  min-height: 210px;
 
   /* Full-bleed header, with inner content aligned to the same 1180px page column. */
   width: 100vw;
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
   margin-top: -2rem;
-
-  padding-block: 2rem;
   padding-inline: max(2rem, calc((100vw - 1180px) / 2 + 1rem));
 
   border: 0;
@@ -99,7 +87,6 @@ main {
   position: absolute;
   inset: 0;
   z-index: -3;
-  background-image: url("./assets/american-flag-wave.png");
   background-image: image-set(
     url("./assets/american-flag-wave.webp") type("image/webp"),
     url("./assets/american-flag-wave.png") type("image/png")
@@ -143,7 +130,6 @@ main {
   max-width: 760px;
   margin: 0;
   color: #f3f6fb;
-  font-size: 0.98rem;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 
@@ -408,7 +394,6 @@ main {
   justify-content: flex-end;
   gap: 0.65rem;
   margin-left: auto;
-  flex-wrap: wrap;
 }
 
 .honoreeActionButtons button {
@@ -702,7 +687,6 @@ td span {
 
 .adminStats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
   margin: 0.75rem 0 1.2rem;
 }
@@ -730,14 +714,8 @@ td span {
 }
 
 .selectedCount {
-  min-height: 2.45rem;
   display: inline-flex;
   align-items: center;
-  padding: 0 0.75rem;
-  border: 1px solid #dbe4f0;
-  border-radius: 12px;
-  background: #f8fafd;
-  color: #173b73;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -768,8 +746,6 @@ td span {
   opacity: 1;
   box-shadow: none;
 }
-
-
 
 
 /* Admin access control */
@@ -847,8 +823,6 @@ td span {
 
 .ownedFlagCard {
   display: grid;
-  grid-template-columns: 78px minmax(0, 1.4fr) minmax(220px, 0.8fr) auto;
-  align-items: center;
   gap: 1rem;
   border: 1px solid #e4ebf5;
   border-radius: 18px;
@@ -898,7 +872,6 @@ td span {
 }
 
 .ownedFlagActions {
-  display: flex;
   justify-content: flex-end;
 }
 
@@ -940,10 +913,6 @@ td span {
     font-size: 0.85rem;
   }
 
-  .ownedFlagCard {
-    grid-template-columns: 1fr;
-  }
-
   .ownedFlagImage {
     width: 96px;
     height: 96px;
@@ -961,38 +930,6 @@ td span {
     flex-direction: column;
   }
 
-  .hero {
-    min-height: 185px;
-    margin-top: -2rem;
-    padding-block: 1.35rem;
-    padding-inline: 1rem;
-  }
-
-  .hero::after {
-    right: -150px;
-    bottom: -150px;
-  }
-
-  .hero::after {
-    right: 0.75rem;
-    max-width: 240px;
-    font-size: 1.15rem;
-    opacity: 0.85;
-  }
-
-  .authBox {
-    position: static;
-    align-self: flex-start;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    margin-top: 0.85rem;
-  }
-
-  .authBox strong {
-    max-width: 180px;
-    text-align: left;
-  }
-
   .gridForm {
     grid-template-columns: 1fr;
   }
@@ -1000,18 +937,6 @@ td span {
   .actions {
     justify-content: flex-start;
     flex-wrap: wrap;
-  }
-
-  .searchBar {
-    grid-template-columns: 1fr;
-  }
-
-  .honoreeCard {
-    grid-template-columns: 1fr;
-  }
-
-  .detailGrid {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -1067,61 +992,22 @@ td span {
 /* Portrait/mobile hero refinements */
 
 @media (max-width: 760px) {
-  main {
-    width: min(100% - 1rem, 1180px);
-    padding-top: 1rem;
-  }
 
   .hero {
-    min-height: 230px;
-    display: block;
-    padding: 4.75rem 1rem 1.65rem;
     margin-top: -1rem;
   }
 
-  .hero::before {
-    background-size: cover;
-    background-position: center top;
-    opacity: 0.92;
-  }
-
-  .hero::after {
-    background:
-      linear-gradient(
-        180deg,
-        rgba(3, 12, 30, 0.96) 0%,
-        rgba(6, 20, 48, 0.88) 42%,
-        rgba(6, 20, 48, 0.70) 72%,
-        rgba(45, 8, 16, 0.72) 100%
-      );
-  }
-
   .authBox {
-    top: 0.85rem;
     left: 1rem;
-    right: 1rem;
-    justify-content: space-between;
-    gap: 0.75rem;
   }
 
   .authBox strong {
-    max-width: calc(100vw - 9.5rem);
     text-align: left;
-  }
-
-  .hero h1 {
-    max-width: 16rem;
-    font-size: clamp(2rem, 11vw, 3.25rem);
-  }
-
-  .hero p {
-    max-width: 34rem;
   }
 }
 
 @media (max-width: 430px) {
   .hero {
-    min-height: 245px;
     padding-top: 4.5rem;
   }
 
@@ -1145,55 +1031,16 @@ td span {
    Keeps the patriotic header from splitting into an awkward bright/right-half panel
    on narrow phone screens and prevents the account controls from crowding the title. */
 @media (max-width: 760px) {
-  main {
-    width: 100%;
-    padding-top: 0;
-  }
-
-  .hero {
-    width: 100%;
-    margin: 0;
-    min-height: 260px;
-    display: grid;
-    grid-template-columns: 1fr;
-    align-content: end;
-    justify-content: start;
-    align-items: end;
-    gap: 0.85rem;
-    padding: 1.25rem 1rem 1rem;
-    overflow: hidden;
-  }
 
   .hero::before {
     inset: 0;
-    background-size: cover;
-    background-position: center center;
-    opacity: 0.95;
-    transform: scale(1.04);
     transform-origin: center;
   }
 
   .hero::after {
-    inset: 0 !important;
     right: auto !important;
     bottom: auto !important;
-    max-width: none !important;
-    width: auto !important;
-    height: auto !important;
     font-size: inherit !important;
-    opacity: 1;
-    background:
-      linear-gradient(
-        90deg,
-        rgba(3, 12, 30, 0.92) 0%,
-        rgba(6, 20, 48, 0.82) 46%,
-        rgba(6, 20, 48, 0.60) 100%
-      ),
-      linear-gradient(
-        180deg,
-        rgba(0, 0, 0, 0.14) 0%,
-        rgba(0, 0, 0, 0.22) 100%
-      );
   }
 
   .hero > div:first-child {
@@ -1202,40 +1049,13 @@ td span {
     padding-right: 0;
   }
 
-  .hero h1 {
-    font-size: clamp(3rem, 16vw, 4.4rem);
-    line-height: 0.9;
-    letter-spacing: -0.06em;
-  }
-
-  .hero p {
-    max-width: 100%;
-  }
-
-  .authBox {
-    position: relative;
-    top: auto;
-    right: auto;
-    width: 100%;
-    align-self: start;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0.75rem;
-    margin-top: 0;
-  }
-
   .authBox strong {
-    max-width: calc(100% - 120px);
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .authBox button {
     margin-left: auto;
     white-space: nowrap;
-    border-radius: 999px;
     padding-inline: 1rem;
   }
 
@@ -1248,19 +1068,6 @@ td span {
 }
 
 @media (max-width: 430px) {
-  .hero {
-    min-height: 245px;
-    padding-inline: 0.85rem;
-  }
-
-  .hero h1 {
-    font-size: clamp(2.7rem, 17vw, 3.8rem);
-  }
-
-  .hero .eyebrow {
-    font-size: 0.68rem;
-    letter-spacing: 0.13em;
-  }
 
   .authBox {
     font-size: 0.82rem;
@@ -1703,16 +1510,12 @@ img {
    Keep the header compact, readable, and intentionally responsive on phones. */
 @media (max-width: 760px) {
   .hero {
-    min-height: 21rem !important;
-    padding: max(0.85rem, env(safe-area-inset-top)) 1.25rem 1.2rem !important;
     justify-content: flex-end !important;
     gap: 0.8rem !important;
     border-radius: 0 !important;
   }
 
   .hero::before {
-    background-size: cover !important;
-    background-position: center center !important;
     opacity: 1 !important;
     transform: none !important;
   }
@@ -1738,13 +1541,7 @@ img {
   }
 
   .hero h1 {
-    max-width: none !important;
-    white-space: nowrap !important;
-    font-size: clamp(2.85rem, 13.2vw, 4.15rem) !important;
-    line-height: 0.92 !important;
-    letter-spacing: -0.075em !important;
-    margin: 0.15rem 0 0.45rem !important;
-    text-shadow: 0 5px 18px rgba(0, 0, 0, 0.58) !important;
+    text-shadow: 0 5px 18px rgba(0, 0, 0, 0.58);
   }
 
   .hero p {
@@ -1755,7 +1552,6 @@ img {
   }
 
   .hero .eyebrow {
-    font-size: 0.72rem !important;
     letter-spacing: 0.18em !important;
     text-shadow: 0 3px 10px rgba(0, 0, 0, 0.62) !important;
   }
@@ -1795,13 +1591,8 @@ img {
 
 @media (max-width: 430px) {
   .hero {
-    min-height: 19.5rem !important;
     padding-left: 1rem !important;
     padding-right: 1rem !important;
-  }
-
-  .hero h1 {
-    font-size: clamp(2.45rem, 12.4vw, 3.25rem) !important;
   }
 
   .hero p {
@@ -1918,15 +1709,6 @@ img {
   }
 }
 
-
-/* Claimed flag unclaim action */
-.ownedFlagActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
-  align-items: center;
-}
-
 .ownedFlagActions button.secondary {
   background: #eef3f9;
   color: #0f376b;
@@ -1944,7 +1726,6 @@ img {
   width: min(100% - 2rem, 72rem);
   margin: 2rem auto 1.5rem;
   padding: 1rem 1.25rem;
-  display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.85rem;
@@ -2141,7 +1922,6 @@ img {
   border-radius: 1.2rem;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 12px 26px rgba(20, 31, 48, 0.10);
-  display: flex;
   align-items: center;
   gap: 0.55rem;
   flex-wrap: wrap;
@@ -2186,14 +1966,6 @@ img {
   background: #173b73;
   color: #ffffff;
   font-weight: 900;
-}
-
-.infoIconButton {
-  margin-left: 0.65rem;
-  vertical-align: middle;
-  font-style: italic;
-  font-family: Georgia, serif;
-  box-shadow: none;
 }
 
 .modalBackdrop {
@@ -2351,11 +2123,6 @@ img {
     font-size: 0.86rem;
   }
 
-  .ownedFlagCard {
-    grid-template-columns: 82px minmax(0, 1fr);
-    align-items: start;
-  }
-
   .ownedFlagMeta,
   .ownedFlagActions,
   .miniTimeline,
@@ -2363,28 +2130,8 @@ img {
     grid-column: 1 / -1;
   }
 
-  .ownedFlagActions {
-    width: 100%;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    margin-top: 0.75rem;
-  }
-
-  .ownedFlagActions button {
-    width: 100%;
-    min-width: 0;
-  }
-
   .adminStats {
-    display: grid;
     grid-template-columns: repeat(4, minmax(9rem, 1fr));
-    overflow-x: auto;
-    padding-bottom: 0.25rem;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .statCard {
-    min-width: 9rem;
   }
 }
 
@@ -2398,16 +2145,9 @@ img {
   }
 }
 
-
-/* Header navigation as traditional text links */
-.hero {
-  align-items: flex-start;
-}
-
 .heroContent {
   min-width: 0;
   display: grid;
-  gap: 0.75rem;
 }
 
 .heroNav {
@@ -2415,17 +2155,11 @@ img {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.45rem 1.15rem;
-  margin-bottom: 0.45rem;
 }
 
 .heroNav a {
   color: #ffffff;
   text-decoration: none;
-  font-weight: 800;
-  font-size: 0.95rem;
-  letter-spacing: 0.01em;
-  text-shadow: 0 2px 7px rgba(0, 0, 0, 0.45);
-  opacity: 0.92;
   border-bottom: 2px solid transparent;
   padding: 0.15rem 0;
 }
@@ -2435,11 +2169,6 @@ img {
   opacity: 1;
   border-bottom-color: #ffffff;
   outline: none;
-}
-
-.heroNav a[href="#nominate"] {
-  color: #ffe6ec;
-  border-bottom-color: rgba(255, 230, 236, 0.5);
 }
 
 .siteNav {
@@ -2452,38 +2181,15 @@ img {
 }
 
 .infoIconButton {
-  width: 1.9rem;
-  min-width: 1.9rem;
-  height: 1.9rem;
-  margin-left: 0.5rem;
-  padding: 0;
-  border-radius: 999px;
-  background: #173b73;
-  color: #ffffff;
   font-style: italic;
   font-family: Georgia, serif;
-  font-size: 1rem;
-  line-height: 1;
-  box-shadow: none;
-  vertical-align: 0.12em;
 }
 
 @media (max-width: 760px) {
-  .hero {
-    gap: 1rem;
-  }
 
   .heroNav {
     gap: 0.35rem 0.85rem;
     margin-bottom: 0.25rem;
-  }
-
-  .heroNav a {
-    font-size: 0.86rem;
-  }
-
-  .authBox {
-    width: 100%;
   }
 }
 
@@ -2494,10 +2200,6 @@ img {
     flex-wrap: nowrap;
     padding-bottom: 0.25rem;
     -webkit-overflow-scrolling: touch;
-  }
-
-  .heroNav a {
-    flex: 0 0 auto;
   }
 }
 
@@ -2521,30 +2223,15 @@ img {
 .heroNav {
   order: 3;
   flex: 1 0 100%;
-  align-self: flex-end;
-  margin-top: 0.45rem;
   margin-bottom: 0;
-  padding-top: 0.85rem;
   border-top: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .infoIconButton {
-  width: 1.45rem;
-  min-width: 1.45rem;
-  height: 1.45rem;
-  margin-left: 0.4rem;
-  padding: 0;
-  border-radius: 999px;
-  font-size: 0.78rem;
-  line-height: 1;
-  vertical-align: 0.18em;
   box-shadow: none;
 }
 
 @media (max-width: 760px) {
-  .hero {
-    align-items: flex-start;
-  }
 
   .heroContent,
   .authBox,
@@ -2555,15 +2242,6 @@ img {
   .heroNav {
     width: 100%;
     flex-basis: 100%;
-    margin-top: 0.5rem;
-    padding-top: 0.75rem;
-  }
-
-  .infoIconButton {
-    width: 1.35rem;
-    min-width: 1.35rem;
-    height: 1.35rem;
-    font-size: 0.72rem;
   }
 }
 
@@ -2636,27 +2314,10 @@ img {
 }
 
 @media (max-width: 760px) {
-  .hero {
-    min-height: 168px;
-    padding-block: 1.1rem 0.7rem;
-  }
 
   .heroNav {
     margin-top: 0.5rem;
     padding-top: 0.5rem;
-  }
-
-  .heroNav a {
-    font-size: 0.82rem;
-    font-weight: 650;
-  }
-
-  .infoIconButton {
-    width: 1.1rem;
-    min-width: 1.1rem;
-    height: 1.1rem;
-    min-height: 1.1rem !important;
-    font-size: 0.6rem;
   }
 }
 
@@ -2667,46 +2328,13 @@ img {
 }
 
 @media (max-width: 760px) {
-  .hero {
-    min-height: 142px;
-    padding-block: 1rem 0.65rem;
-    row-gap: 0.65rem;
-  }
-
-  .heroSubtitle {
-    display: none;
-  }
-
-  .mobileNavToggle {
-    order: 3;
-    width: 100%;
-    min-height: 2.25rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    margin-top: 0.35rem;
-    padding: 0.45rem 0.65rem;
-    border: 1px solid rgba(255, 255, 255, 0.26);
-    border-radius: 0.65rem;
-    background: rgba(255, 255, 255, 0.08);
-    color: #ffffff;
-    box-shadow: none;
-    font-size: 0.88rem;
-    font-weight: 700;
-    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
-  }
 
   .mobileNavToggle span {
-    font-size: 0.72rem;
     opacity: 0.9;
   }
 
   .heroNav,
   .heroNav.isOpen {
-    order: 4;
-    width: 100%;
-    flex-basis: 100%;
     max-width: 100%;
     margin-top: 0;
     padding-top: 0.45rem;
@@ -2716,29 +2344,10 @@ img {
     gap: 0;
   }
 
-  .heroNav {
-    display: none;
-  }
-
-  .heroNav.isOpen {
-    display: grid;
-    grid-template-columns: 1fr;
-    padding: 0.45rem;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 0.8rem;
-    background: rgba(4, 13, 31, 0.58);
-    backdrop-filter: blur(4px);
-  }
-
   .heroNav a {
     width: 100%;
-    min-height: 2rem;
     display: flex;
     align-items: center;
-    padding: 0.35rem 0.45rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
-    font-size: 0.86rem;
-    font-weight: 650;
     opacity: 0.95;
   }
 
@@ -2772,124 +2381,16 @@ img {
 /* Mobile experience pass: compact header, search, cards, admin mobile cards, sticky print actions */
 @media (max-width: 760px) {
   main {
-    width: min(100% - 1rem, 1180px);
     padding-top: 0;
-  }
-
-  .hero {
-    min-height: 118px;
-    padding-block: 0.85rem 0.55rem;
-    padding-inline: 0.9rem;
-    row-gap: 0.5rem;
-  }
-
-  .hero h1 {
-    font-size: clamp(1.75rem, 11vw, 2.55rem);
-    margin: 0.05rem 0 0;
-  }
-
-  .hero .eyebrow {
-    font-size: 0.66rem;
-    letter-spacing: 0.13em;
-  }
-
-  .heroSubtitle {
-    display: none;
-  }
-
-  .authBox {
-    top: 0.75rem;
-    right: 0.75rem;
-    gap: 0.45rem;
-  }
-
-  .authBox strong {
-    max-width: 120px;
-    font-size: 0.78rem;
-  }
-
-  .authBox button {
-    min-height: 1.85rem;
-    padding: 0.3rem 0.65rem;
-    font-size: 0.78rem;
-  }
-
-  .mobileNavToggle {
-    min-height: 2rem;
-    margin-top: 0.2rem;
-    padding: 0.35rem 0.55rem;
-    font-size: 0.8rem;
-  }
-
-  .heroNav.isOpen {
-    padding: 0.35rem;
-  }
-
-  .heroNav a {
-    min-height: 1.85rem;
-    padding: 0.32rem 0.4rem;
-    font-size: 0.82rem;
-  }
-
-  .card,
-  .messageStack {
-    margin-top: 0.8rem;
-  }
-
-  .card {
-    border-radius: 16px;
-    padding: 0.95rem;
-  }
-
-  .sectionHeader {
-    gap: 0.65rem;
-  }
-
-  .sectionHeader h2 {
-    font-size: 1.38rem;
   }
 
   .helperText {
     font-size: 0.9rem;
   }
 
-  .searchCard {
-    padding: 0.95rem;
-  }
-
-  .searchHeader {
-    margin-bottom: 0.6rem;
-  }
-
-  .searchBar {
-    grid-template-columns: 1fr;
-    gap: 0.55rem;
-    margin-top: 0.75rem;
-  }
-
-  .searchBar input {
-    min-height: 2.8rem;
-    font-size: 1rem;
-  }
-
-  .searchBar button[type="submit"] {
-    width: 100%;
-  }
-
   .searchBar button.secondary {
-    min-height: 2rem;
     width: auto;
-    justify-self: center;
     padding-inline: 0.4rem;
-    background: transparent;
-    color: #173b73;
-  }
-
-  .honoreeCard {
-    grid-template-columns: 72px minmax(0, 1fr);
-    gap: 0.75rem;
-    border-radius: 15px;
-    padding: 0.75rem;
   }
 
   .honoreeCard img,
@@ -2897,10 +2398,6 @@ img {
     width: 72px;
     height: 72px;
     border-radius: 12px;
-  }
-
-  .detailGrid {
-    grid-template-columns: 1fr;
   }
 
   .cardActions,
@@ -2914,17 +2411,6 @@ img {
     width: 100%;
   }
 
-  .ownedFlagGrid {
-    gap: 0.75rem;
-  }
-
-  .ownedFlagCard {
-    grid-template-columns: 72px minmax(0, 1fr);
-    gap: 0.65rem 0.75rem;
-    padding: 0.75rem;
-    border-radius: 15px;
-  }
-
   .ownedFlagImage {
     width: 72px;
     height: 72px;
@@ -2936,37 +2422,19 @@ img {
   }
 
   .ownedFlagMeta {
-    grid-column: 1 / -1;
     flex-direction: row;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    margin-top: 0.2rem;
   }
 
   .ownedFlagMeta span:not(.status) {
     font-size: 0.82rem;
   }
 
-  .ownedFlagActions {
-    grid-column: 1 / -1;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.45rem;
-    width: 100%;
-    margin-top: 0.3rem;
-  }
-
   .ownedFlagActions button {
-    min-height: 2.15rem;
-    min-width: 0;
-    width: 100%;
     padding: 0.45rem 0.65rem;
   }
 
   .miniTimeline {
     grid-column: 1 / -1;
-    gap: 0.3rem;
-    margin-top: 0.35rem;
   }
 
   .miniTimeline span {
@@ -3107,7 +2575,6 @@ img {
     bottom: 0.65rem;
     z-index: 20;
     display: grid;
-    grid-template-columns: 1fr 1fr;
     gap: 0.45rem;
     padding: 0.6rem;
     border: 1px solid rgba(15, 55, 107, 0.12);
@@ -3159,87 +2626,16 @@ img {
 
 /* Mobile screenshot tightening pass */
 @media (max-width: 760px) {
-  main {
-    width: min(100% - 0.75rem, 1180px);
-    padding-bottom: 3rem;
-  }
-
-  .hero {
-    min-height: 0;
-    padding-block: 0.8rem 0.65rem;
-    padding-inline: 0.9rem;
-    row-gap: 0.45rem;
-    background-position: center center;
-  }
-
-  .heroContent {
-    gap: 0.28rem;
-    padding-top: 0.15rem;
-  }
-
-  .hero .eyebrow {
-    font-size: 0.58rem;
-    letter-spacing: 0.12em;
-  }
-
-  .hero h1 {
-    font-size: clamp(1.95rem, 10vw, 2.75rem);
-    line-height: 0.95;
-    margin: 0.15rem 0 0;
-    letter-spacing: -0.055em;
-  }
 
   .authBox {
     top: auto;
     right: auto;
-    position: relative;
-    order: 2;
-    width: 100%;
-    justify-content: space-between;
-    margin-top: 0.2rem;
-  }
-
-  .authBox strong {
-    max-width: calc(100% - 7rem);
-    font-size: 0.82rem;
-  }
-
-  .authBox button {
-    min-height: 1.9rem;
-    padding: 0.34rem 0.72rem;
-    font-size: 0.78rem;
-  }
-
-  .mobileNavToggle {
-    order: 3;
-    width: 100%;
-    min-height: 1.95rem;
-    margin-top: 0.15rem;
-    padding: 0.34rem 0.55rem;
-    border-radius: 0.55rem;
-    font-size: 0.8rem;
-  }
-
-  .heroNav.isOpen {
-    margin-top: 0.15rem;
   }
 
   .searchCard,
   .ownershipCard,
   .adminCard {
     border-radius: 15px;
-  }
-
-  .searchCard {
-    margin-top: 0.75rem;
-    padding: 0.85rem;
-  }
-
-  .searchHeader h2 {
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 1.25rem;
   }
 
   .infoIconButton {
@@ -3253,30 +2649,7 @@ img {
   }
 
   .searchHeader .helperText {
-    font-size: 0.84rem;
     line-height: 1.3;
-  }
-
-  .searchBar {
-    gap: 0.45rem;
-    margin-top: 0.65rem;
-  }
-
-  .searchBar input {
-    min-height: 2.45rem;
-    padding: 0.55rem 0.7rem;
-    font-size: 0.9rem;
-    border-radius: 0.75rem;
-  }
-
-  .searchBar button[type="submit"] {
-    min-height: 2.45rem;
-    border-radius: 0.75rem;
-  }
-
-  .searchBar button.secondary {
-    min-height: 1.6rem;
-    padding: 0.2rem 0.35rem;
   }
 
   .ownershipCard {
@@ -3291,64 +2664,17 @@ img {
     font-size: 0.86rem;
     line-height: 1.35;
   }
-
-  .ownedFlagCard {
-    padding: 0.7rem;
-  }
 }
 
 @media (max-width: 420px) {
-  .hero h1 {
-    font-size: clamp(1.8rem, 11vw, 2.35rem);
-  }
-
-  .hero .eyebrow {
-    font-size: 0.54rem;
-  }
-
-  .searchBar input {
-    font-size: 0.84rem;
-  }
 }
 
 
 /* Mobile fix: true circular info icon and shorter header */
 @media (max-width: 760px) {
-  .hero {
-    min-height: 0;
-    padding-block: 0.55rem 0.45rem;
-    row-gap: 0.35rem;
-  }
-
-  .heroContent {
-    gap: 0.15rem;
-  }
-
-  .hero h1 {
-    font-size: clamp(1.55rem, 9vw, 2.15rem);
-    line-height: 0.92;
-    margin: 0.08rem 0 0;
-  }
-
-  .hero .eyebrow {
-    font-size: 0.5rem;
-    letter-spacing: 0.12em;
-  }
-
-  .authBox {
-    margin-top: 0.05rem;
-  }
 
   .mobileNavToggle {
-    margin-top: 0.05rem;
-    min-height: 1.75rem;
     padding-block: 0.26rem;
-  }
-
-  .searchHeader h2 {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
   }
 
   .searchHeader .infoIconButton {
@@ -3376,16 +2702,9 @@ img {
     transform: none;
     box-shadow: none;
   }
-
-  .searchCard {
-    margin-top: 0.55rem;
-  }
 }
 
 @media (max-width: 420px) {
-  .hero h1 {
-    font-size: clamp(1.45rem, 9vw, 2rem);
-  }
 
   .searchHeader .infoIconButton {
     flex-basis: 1.05rem;
@@ -3403,77 +2722,7 @@ img {
 /* Mobile hero reduction and modern search controls */
 @media (max-width: 760px) {
   .hero {
-    min-height: 0;
-    padding-block: 0.48rem 0.42rem;
     padding-inline: 0.85rem;
-    row-gap: 0.22rem;
-  }
-
-  .heroContent {
-    gap: 0.08rem;
-    padding-top: 0.05rem;
-  }
-
-  .hero .eyebrow {
-    font-size: 0.48rem;
-    letter-spacing: 0.115em;
-  }
-
-  .hero h1 {
-    font-size: clamp(1.42rem, 8.8vw, 1.95rem);
-    line-height: 0.9;
-    margin: 0.06rem 0 0;
-  }
-
-  .authBox {
-    margin-top: 0;
-    align-items: center;
-  }
-
-  .authBox strong {
-    font-size: 0.78rem;
-  }
-
-  .authBox button {
-    min-height: 1.72rem;
-    padding: 0.26rem 0.62rem;
-    font-size: 0.74rem;
-  }
-
-  .mobileNavToggle {
-    margin-top: 0;
-    min-height: 1.62rem;
-    padding: 0.24rem 0.5rem;
-    border-radius: 0.48rem;
-    font-size: 0.76rem;
-  }
-
-  .mobileNavToggle span {
-    font-size: 0.64rem;
-  }
-
-  .heroNav.isOpen {
-    margin-top: 0.12rem;
-    padding: 0.28rem;
-    border-radius: 0.62rem;
-  }
-
-  .heroNav a {
-    min-height: 1.7rem;
-    padding: 0.26rem 0.35rem;
-    font-size: 0.78rem;
-  }
-
-  .searchCard {
-    padding: 0.78rem;
-  }
-
-  .searchHeader {
-    margin-bottom: 0.48rem;
-  }
-
-  .searchHeader h2 {
-    font-size: 1.18rem;
   }
 
   .searchHeader .helperText {
@@ -3536,9 +2785,6 @@ img {
 }
 
 @media (max-width: 420px) {
-  .hero h1 {
-    font-size: clamp(1.35rem, 8.6vw, 1.8rem);
-  }
 
   .hero .eyebrow {
     font-size: 0.45rem;
@@ -3564,67 +2810,12 @@ img {
 /* Mobile cropped hero header */
 @media (max-width: 760px) {
   .hero {
-    height: 11.6rem;
-    max-height: 11.6rem;
-    min-height: 0;
-    overflow: hidden;
     padding-block: 0.5rem 0.45rem;
     background-position: center 44%;
-  }
-
-  .hero::before {
-    background-size: cover;
-    background-position: center 46%;
-    transform: scale(1.04);
-  }
-
-  .hero::after {
-    background:
-      linear-gradient(
-        90deg,
-        rgba(3, 12, 30, 0.88) 0%,
-        rgba(6, 20, 48, 0.78) 48%,
-        rgba(45, 8, 16, 0.58) 100%
-      );
-  }
-
-  .hero.mobileMenuOpen {
-    height: auto;
-    max-height: none;
-    min-height: 11.6rem;
-    overflow: visible;
-  }
-
-  .hero h1 {
-    font-size: clamp(1.38rem, 8.4vw, 1.85rem);
-  }
-
-  .authBox {
-    margin-top: 0;
-  }
-
-  .mobileNavToggle {
-    margin-top: 0;
-  }
-
-  .searchCard {
-    margin-top: 0.55rem;
   }
 }
 
 @media (max-width: 420px) {
-  .hero {
-    height: 10.8rem;
-    max-height: 10.8rem;
-  }
-
-  .hero.mobileMenuOpen {
-    min-height: 10.8rem;
-  }
-
-  .hero h1 {
-    font-size: clamp(1.32rem, 8.2vw, 1.72rem);
-  }
 }
 
 
@@ -3744,17 +2935,11 @@ img {
   border: 0 !important;
 }
 
-.nativeSearchBar {
-  display: block;
-  position: relative;
-}
-
 .nativeSearchBar input[type="search"] {
   width: 100%;
   appearance: auto;
   -webkit-appearance: searchfield;
   padding-left: 2.55rem;
-  padding-right: 1rem;
   background-color: #ffffff;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23173b73' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'%3E%3C/circle%3E%3Cline x1='16.65' y1='16.65' x2='21' y2='21'%3E%3C/line%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -3763,7 +2948,6 @@ img {
 }
 
 .nativeSearchBar input[type="search"]::-webkit-search-cancel-button {
-  -webkit-appearance: searchfield-cancel-button;
   cursor: pointer;
 }
 
@@ -3776,104 +2960,28 @@ img {
 
 @media (max-width: 760px) {
   .hero {
-    height: 8.9rem;
-    max-height: 8.9rem;
-    min-height: 0;
-    overflow: hidden;
-    display: flex;
     flex-wrap: wrap;
-    align-content: flex-start;
-    align-items: flex-start;
-    gap: 0.22rem 0.5rem;
-    padding: 0.55rem 0.75rem 0.5rem;
-  }
-
-  .hero.mobileMenuOpen {
-    height: auto;
-    max-height: none;
-    min-height: 8.9rem;
-    overflow: visible;
   }
 
   .heroContent {
     order: 1;
     flex: 1 1 calc(100% - 8rem);
-    min-width: 0;
-    gap: 0.08rem;
     padding-top: 0.05rem;
   }
 
-  .hero .eyebrow {
-    font-size: 0.48rem;
-    letter-spacing: 0.11em;
-    line-height: 1.1;
-  }
-
-  .hero h1 {
-    display: block;
-    font-size: clamp(1.55rem, 8.5vw, 2.05rem);
-    line-height: 0.95;
-    margin: 0.12rem 0 0;
-    letter-spacing: -0.055em;
-  }
-
-  .heroSubtitle {
-    display: none !important;
-  }
-
   .authBox {
-    position: static !important;
     order: 2;
     flex: 0 0 auto;
-    width: auto;
-    margin: 0 0 0 auto;
-    align-self: flex-start;
-    justify-content: flex-end;
-    gap: 0.38rem;
-  }
-
-  .authBox strong {
-    max-width: 7rem;
-    font-size: 0.72rem;
-  }
-
-  .authBox button {
-    min-height: 1.62rem;
-    padding: 0.24rem 0.58rem;
-    font-size: 0.72rem;
   }
 
   .mobileNavToggle {
     order: 3;
     flex: 1 0 100%;
-    width: 100%;
-    min-height: 1.64rem;
-    margin-top: 0.1rem;
-    padding: 0.24rem 0.5rem;
-    border-radius: 0.48rem;
-    font-size: 0.76rem;
   }
 
   .heroNav,
   .heroNav.isOpen {
     order: 4;
-    flex-basis: 100%;
-  }
-
-  .heroNav.isOpen {
-    margin-top: 0.12rem;
-    padding: 0.28rem;
-    border-radius: 0.62rem;
-  }
-
-  .heroNav a {
-    min-height: 1.65rem;
-    padding: 0.24rem 0.35rem;
-    font-size: 0.78rem;
-  }
-
-  .searchCard {
-    margin-top: 0.55rem;
   }
 
   .nativeSearchBar {
@@ -3881,7 +2989,6 @@ img {
   }
 
   .nativeSearchBar input[type="search"] {
-    min-height: 2.45rem;
     border-radius: 999px;
     padding: 0.52rem 0.85rem 0.52rem 2.35rem;
     background-position: 0.85rem center;
@@ -3900,22 +3007,6 @@ img {
 }
 
 @media (max-width: 420px) {
-  .hero {
-    height: 8.25rem;
-    max-height: 8.25rem;
-  }
-
-  .hero.mobileMenuOpen {
-    min-height: 8.25rem;
-  }
-
-  .hero h1 {
-    font-size: clamp(1.45rem, 8.4vw, 1.85rem);
-  }
-
-  .authBox strong {
-    max-width: 6.25rem;
-  }
 
   .nativeSearchBar input[type="search"] {
     min-height: 2.35rem;
@@ -3960,18 +3051,6 @@ img {
 }
 
 @media (max-width: 760px) {
-  .hero {
-    height: 6.6rem;
-    max-height: 6.6rem;
-    min-height: 0;
-    overflow: hidden;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-content: start;
-    align-items: start;
-    gap: 0.22rem 0.55rem;
-    padding: 0.48rem 0.7rem 0.42rem;
-  }
 
   .hero.mobileMenuOpen {
     height: auto;
@@ -3985,54 +3064,17 @@ img {
     grid-row: 1;
     min-width: 0;
     padding: 0;
-    gap: 0;
   }
 
   .hero .eyebrow {
     display: none;
   }
 
-  .hero h1 {
-    display: block;
-    font-size: clamp(1.65rem, 8.2vw, 2rem);
-    line-height: 0.92;
-    margin: 0;
-    letter-spacing: -0.055em;
-  }
-
-  .heroSubtitle {
-    display: none !important;
-  }
-
   .authBox {
     position: static !important;
     grid-column: 2;
     grid-row: 1;
-    width: auto;
-    margin: 0;
     align-self: start;
-    justify-content: flex-end;
-    gap: 0.35rem;
-  }
-
-  .authBox strong {
-    max-width: 6rem;
-    font-size: 0.68rem;
-  }
-
-  .authBox button {
-    min-height: 1.55rem;
-    padding: 0.22rem 0.54rem;
-    font-size: 0.7rem;
-  }
-
-  .mobileNavToggle {
-    width: auto;
-    min-height: 1.55rem;
-    margin: 0;
-    padding: 0.22rem 0.48rem;
-    border-radius: 0.46rem;
-    font-size: 0.74rem;
   }
 
   .mobileNavToggle span {
@@ -4047,18 +3089,6 @@ img {
     flex-basis: auto;
   }
 
-  .heroNav.isOpen {
-    margin-top: 0.1rem;
-    padding: 0.25rem;
-    border-radius: 0.58rem;
-  }
-
-  .heroNav a {
-    min-height: 1.55rem;
-    padding: 0.22rem 0.34rem;
-    font-size: 0.76rem;
-  }
-
   .searchCard {
     margin-top: 0.48rem;
   }
@@ -4070,10 +3100,6 @@ img {
 
   .nativeSearchClear {
     right: 0.45rem;
-    width: 1.55rem;
-    min-width: 1.55rem;
-    height: 1.55rem;
-    min-height: 1.55rem;
     font-size: 1.05rem;
   }
 }
@@ -4313,7 +3339,6 @@ img {
 @media (max-width: 760px) {
   .adminHeaderActions {
     width: 100%;
-    justify-content: flex-start;
   }
 
   .exportExcelButton {
@@ -4416,7 +3441,6 @@ img.ownedFlagImage {
 
 .photoRotationControls {
   display: flex;
-  align-items: center;
   gap: 0.55rem;
   flex-wrap: wrap;
   margin-top: 0.55rem;
@@ -4483,7 +3507,6 @@ img.ownedFlagImage {
 }
 
 .flagSeatLegend {
-  margin: 0.5rem 0 0.85rem;
   color: #53627a;
   font-size: 0.82rem;
   font-weight: 700;
@@ -4493,7 +3516,6 @@ img.ownedFlagImage {
   width: 0.8rem;
   height: 0.8rem;
   display: inline-block;
-  margin-right: 0.25rem;
   border-radius: 0.22rem;
   vertical-align: -0.12rem;
 }
@@ -4503,11 +3525,6 @@ img.ownedFlagImage {
   border: 1px solid #9ed9b0;
 }
 
-.legendOccupied {
-  background: #fff1f1;
-  border: 1px solid #f0b3b3;
-}
-
 .legendSelected {
   background: #e8f2ff;
   border: 1px solid #7fa7de;
@@ -4515,73 +3532,30 @@ img.ownedFlagImage {
 
 .flagSeatMap {
   display: grid;
-  gap: 0.55rem;
-  max-height: 34rem;
   overflow: auto;
   padding: 0.25rem 0.2rem 0.55rem 0;
 }
 
 .flagSeatRow {
   display: grid;
-  grid-template-columns: 3.5rem minmax(0, 1fr);
-  gap: 0.45rem;
-  align-items: stretch;
 }
 
 .flagSeatRowLabel {
   display: grid;
   place-items: center;
-  min-height: 3.9rem;
-  border-radius: 0.8rem;
   background: #173b73;
   color: #ffffff;
   font-weight: 900;
-  letter-spacing: 0.08em;
 }
 
 .flagSeatCells {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(8.2rem, 1fr));
-  gap: 0.45rem;
-}
-
-.flagSeat {
-  min-height: 4.25rem;
-  display: grid;
-  gap: 0.15rem;
-  align-content: start;
-  padding: 0.55rem;
-  border-radius: 0.8rem;
-  border: 1px solid #dbe5f2;
-  background: #ffffff;
-  box-shadow: 0 8px 18px rgba(20, 31, 48, 0.05);
-}
-
-.flagSeat strong {
-  color: #071a3b;
-  font-size: 0.9rem;
-}
-
-.flagSeat span {
-  color: #53627a;
-  font-size: 0.78rem;
-  line-height: 1.2;
 }
 
 .flagSeat small {
   color: #718098;
   font-size: 0.72rem;
   line-height: 1.2;
-}
-
-.flagSeat.isOpen {
-  background: #f2fbf5;
-  border-color: #b9e3c5;
-}
-
-.flagSeat.isOccupied {
-  background: #fff7f7;
-  border-color: #f2c7c7;
 }
 
 .flagSeat.canAssign {
@@ -4607,27 +3581,6 @@ img.ownedFlagImage {
 }
 
 @media (max-width: 760px) {
-  .flagPositionManager {
-    padding: 0.75rem;
-  }
-
-  .flagSeatRow {
-    grid-template-columns: 2.6rem minmax(0, 1fr);
-  }
-
-  .flagSeatRowLabel {
-    min-height: 3.4rem;
-    font-size: 0.82rem;
-  }
-
-  .flagSeatCells {
-    grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
-  }
-
-  .flagSeat {
-    min-height: 3.9rem;
-    padding: 0.48rem;
-  }
 }
 
 
@@ -4667,10 +3620,8 @@ img.ownedFlagImage {
 /* Flag position filters */
 .flagPositionFilters {
   display: grid;
-  grid-template-columns: minmax(13rem, 1.4fr) minmax(8rem, 0.7fr) auto auto;
   gap: 0.65rem;
   align-items: end;
-  margin: 0.75rem 0;
   padding: 0.75rem;
   border: 1px solid #dce6f3;
   border-radius: 0.9rem;
@@ -4712,20 +3663,10 @@ img.ownedFlagImage {
   height: 1rem;
 }
 
-.filteredFlagPositionSummary {
-  margin-top: -0.25rem;
-}
-
 @media (max-width: 900px) {
-  .flagPositionFilters {
-    grid-template-columns: 1fr 1fr;
-  }
 }
 
 @media (max-width: 560px) {
-  .flagPositionFilters {
-    grid-template-columns: 1fr;
-  }
 
   .flagOpenOnlyToggle {
     justify-content: flex-start;
@@ -4751,7 +3692,6 @@ img.ownedFlagImage {
   border-radius: 0.7rem;
   padding: 0.5rem 0.7rem;
   background: #ffffff;
-  color: #071a3b;
   font-size: 0.95rem;
 }
 
@@ -4761,10 +3701,6 @@ img.ownedFlagImage {
   gap: 0.65rem;
   flex-wrap: wrap;
   margin-top: 1rem;
-}
-
-.flagAssignmentHelp {
-  margin: 0.65rem 0 0.4rem;
 }
 
 @media (max-width: 560px) {
@@ -4788,8 +3724,6 @@ img.ownedFlagImage {
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgba(7, 26, 59, 0.56);
-  backdrop-filter: blur(3px);
 }
 
 .assignFlagModalOverlay .assignFlagModal {
@@ -4893,7 +3827,6 @@ img.ownedFlagImage {
 }
 
 .assignFlagModal .sectionHeader {
-  align-items: flex-start;
   gap: 1rem;
   margin-bottom: 0.85rem;
 }
@@ -5107,9 +4040,6 @@ img.ownedFlagImage {
 }
 
 .flagSeat.isReserved {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
-  color: #64748b;
   box-shadow: none;
 }
 
@@ -5119,10 +4049,6 @@ img.ownedFlagImage {
   color: #64748b;
 }
 
-.flagSeat.isReserved {
-  filter: grayscale(0.25);
-}
-
 .flagSeat.isReserved .seatAction {
   display: none;
 }
@@ -5130,59 +4056,15 @@ img.ownedFlagImage {
 
 /* Compact flag grid seat-map redesign */
 .flagMapToolbar {
-  display: grid;
   grid-template-columns: auto minmax(18rem, 1fr);
-  gap: 0.65rem;
-  align-items: center;
   margin: 0.65rem 0 0.75rem;
-  padding: 0.55rem;
-  border: 1px solid #dce6f3;
-  border-radius: 0.95rem;
-  background: #ffffff;
-}
-
-.flagMapToolbar .flagSeatLegend {
-  margin: 0;
-}
-
-.flagMapToolbar .flagPositionFilters {
-  display: grid;
-  grid-template-columns: minmax(10rem, 1fr) minmax(8rem, 0.45fr) auto;
-  gap: 0.55rem;
-  align-items: end;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-.flagMapToolbar .flagPositionFilters input[type="search"],
-.flagMapToolbar .flagPositionFilters select {
-  min-height: 2.1rem;
-  padding: 0.35rem 0.55rem;
-  border-radius: 0.55rem;
-  font-size: 0.84rem;
-}
-
-.flagMapToolbar .fieldLabelText {
-  font-size: 0.76rem;
-  letter-spacing: 0.04em;
-}
-
-.flagMapToolbar .subtleRefreshButton {
-  min-height: 2.1rem;
-  padding: 0.34rem 0.58rem;
-  font-size: 0.8rem;
 }
 
 .flagSeatMap {
   gap: 0.4rem;
-  max-height: 36rem;
 }
 
 .flagSeatRow {
-  grid-template-columns: 2.25rem minmax(0, 1fr);
-  gap: 0.35rem;
   align-items: start;
 }
 
@@ -5190,30 +4072,17 @@ img.ownedFlagImage {
   position: sticky;
   left: 0;
   z-index: 1;
-  min-height: 2.55rem;
-  border-radius: 0.55rem;
-  font-size: 0.82rem;
   letter-spacing: 0.03em;
-}
-
-.flagSeatCells {
-  grid-template-columns: repeat(auto-fill, minmax(5.7rem, 1fr));
-  gap: 0.35rem;
 }
 
 .flagSeat {
   width: 100%;
-  min-height: 3.15rem;
   display: grid;
   gap: 0.16rem;
   align-content: start;
   justify-items: start;
-  padding: 0.42rem 0.48rem;
-  border-radius: 0.55rem;
   border: 1px solid #dbe5f2;
   background: #ffffff;
-  color: #071a3b;
-  box-shadow: none;
   text-align: left;
   cursor: pointer;
 }
@@ -5225,34 +4094,14 @@ img.ownedFlagImage {
   box-shadow: 0 0 0 3px rgba(23, 59, 115, 0.09);
 }
 
-.flagSeat strong {
-  font-size: 0.82rem;
-  line-height: 1.1;
-}
-
 .flagSeat span {
   width: 100%;
-  color: #53627a;
-  font-size: 0.72rem;
-  line-height: 1.15;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.flagSeat.isOpen {
-  background: #f2fbf5;
-  border-color: #b9e3c5;
-}
-
-.flagSeat.isOccupied {
-  background: #fff7f7;
-  border-color: #f2c7c7;
-}
-
 .flagSeat.isReserved {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
   color: #64748b;
   filter: grayscale(0.22);
 }
@@ -5399,70 +4248,12 @@ img.ownedFlagImage {
   font-size: 0.72rem;
 }
 
-.adminStandalonePanel {
-  margin: 1.05rem -0.15rem 1rem;
-  border: 1px solid #cddbeb;
-  border-top: 3px solid #173b73;
-  background: linear-gradient(180deg, #fbfdff 0%, #f7faff 100%);
-  box-shadow: 0 18px 42px rgba(15, 40, 74, 0.08);
-}
-
-.adminStandalonePanel > .sectionHeader {
-  padding-bottom: 0.55rem;
-  border-bottom: 1px solid #e0e8f3;
-}
-
 .flagMapToolbar {
-  display: flex;
-  align-items: end;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.42rem 0.5rem;
-  border-radius: 0.85rem;
 }
 
 .flagMapToolbar .flagSeatLegend {
-  flex: 0 0 auto;
   display: flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.flagMapToolbar .legendButton {
-  min-height: 1.9rem;
-  padding: 0.28rem 0.55rem;
-  font-size: 0.76rem;
-}
-
-.flagMapToolbar .flagPositionFilters {
-  flex: 1 1 auto;
-  display: grid;
-  grid-template-columns: minmax(11rem, 1fr) minmax(7.8rem, 0.42fr) auto;
-  gap: 0.45rem;
-  align-items: end;
-}
-
-.flagMapToolbar .flagPositionFilters label {
-  gap: 0.18rem;
-}
-
-.flagMapToolbar .fieldLabelText {
-  font-size: 0.68rem;
-  letter-spacing: 0.04em;
-}
-
-.flagMapToolbar .flagPositionFilters input[type="search"],
-.flagMapToolbar .flagPositionFilters select {
-  min-height: 1.95rem;
-  padding: 0.28rem 0.5rem;
-  border-radius: 0.5rem;
-  font-size: 0.78rem;
-}
-
-.flagMapToolbar .subtleRefreshButton {
-  min-height: 1.95rem;
-  padding: 0.28rem 0.52rem;
-  font-size: 0.74rem;
 }
 
 .flagSeatMap {
@@ -5470,65 +4261,14 @@ img.ownedFlagImage {
   padding-top: 0.15rem;
 }
 
-.flagSeatCells {
-  grid-template-columns: repeat(auto-fill, minmax(5.15rem, 1fr));
-  gap: 0.28rem;
-}
-
 .flagSeat {
-  min-height: 2.55rem;
-  padding: 0.32rem 0.38rem;
-  border-width: 1.4px;
-  border-radius: 0.48rem;
   color: #071a3b;
-}
-
-.flagSeat strong {
-  color: #061a38;
-  font-size: 0.76rem;
-  font-weight: 950;
-}
-
-.flagSeat span {
-  color: #263a5b;
-  font-size: 0.64rem;
-  font-weight: 700;
-}
-
-.flagSeat.isOccupied span {
-  color: #33415c;
-}
-
-.flagSeat.isSelected,
-.flagSeat.isSelected:hover,
-.flagSeat.isSelected:focus-visible {
-  border-color: #173b73;
-  box-shadow: 0 0 0 3px rgba(23, 59, 115, 0.16);
-}
-
-.flagSeatRow {
-  grid-template-columns: 1.9rem minmax(0, 1fr);
-  gap: 0.3rem;
-}
-
-.flagSeatRowLabel {
-  min-height: 2.4rem;
-  border-radius: 0.48rem;
-  font-size: 0.72rem;
 }
 
 .compactPrintCenter.isCollapsedEmpty {
   margin: 0.65rem 0 0.75rem;
   padding: 0.55rem 0.7rem;
   background: #f8fbff;
-}
-
-.compactPrintCenter.isCollapsedEmpty summary {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.compactPrintCenter.isCollapsedEmpty .pdfHealth {
-  padding: 0.35rem 0.55rem;
 }
 
 .reprintQueuePanel {
@@ -5569,20 +4309,10 @@ img.ownedFlagImage {
 }
 
 .compactEmptyState {
-  margin: 0.65rem 0 0;
   color: #53627a;
-  font-size: 0.9rem;
 }
 
 @media (max-width: 980px) {
-  .flagMapToolbar {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
-
-  .flagMapToolbar .flagPositionFilters {
-    grid-template-columns: 1fr 1fr auto;
-  }
 }
 
 @media (max-width: 620px) {
@@ -5592,18 +4322,6 @@ img.ownedFlagImage {
 
   .compactAdminStats .statCard {
     min-width: 7.5rem;
-  }
-
-  .flagMapToolbar .flagPositionFilters {
-    grid-template-columns: 1fr;
-  }
-
-  .flagSeatCells {
-    grid-template-columns: repeat(auto-fill, minmax(4.7rem, 1fr));
-  }
-
-  .flagSeat {
-    min-height: 2.35rem;
   }
 }
 
@@ -5640,9 +4358,6 @@ img.ownedFlagImage {
 
 .flagMapToolbar {
   display: flex;
-  align-items: end;
-  gap: 0.55rem;
-  padding: 0.35rem 0;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -5664,9 +4379,7 @@ img.ownedFlagImage {
 .flagMapToolbar .flagPositionFilters {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: minmax(12rem, 1fr) minmax(8rem, 0.4fr) auto;
   gap: 0.45rem;
-  align-items: end;
   margin: 0;
   padding: 0;
   border: 0;
@@ -5711,26 +4424,18 @@ img.ownedFlagImage {
 }
 
 .flagSeat strong {
-  color: #061a38;
   font-size: 0.74rem;
-  font-weight: 950;
   line-height: 1.1;
 }
 
 .flagSeat span {
-  color: #263a5b;
   font-size: 0.63rem;
-  font-weight: 750;
   line-height: 1.12;
 }
 
 .flagSeat.isOccupied {
   background: #f7f9fc;
   border-color: #cbd8e7;
-}
-
-.flagSeat.isOccupied span {
-  color: #344761;
 }
 
 .flagSeat.isOccupied:hover,
@@ -5963,7 +4668,6 @@ img.ownedFlagImage {
 /* Admin three-card layout */
 .adminSectionStack {
   display: grid;
-  gap: 1rem;
 }
 
 .adminSectionStack > .card,
@@ -6021,13 +4725,6 @@ img.ownedFlagImage {
 }
 
 @media (max-width: 760px) {
-  .adminCardSummary {
-    gap: 0.35rem;
-  }
-
-  .adminCardSummary span {
-    font-size: 0.74rem;
-  }
 }
 
 
@@ -6091,10 +4788,6 @@ img.ownedFlagImage {
 }
 
 @media (max-width: 760px) {
-  .adminSectionStack {
-    margin-top: 1rem;
-    gap: 0.85rem;
-  }
 
   .appConfirmModal {
     width: min(100% - 1rem, 32rem);
@@ -6118,8 +4811,6 @@ img.ownedFlagImage {
   }
 
   main {
-    width: 100%;
-    max-width: 100%;
     padding: 0 0.72rem 2.5rem;
   }
 
@@ -6191,36 +4882,14 @@ img.ownedFlagImage {
 
   /* Compact mobile hero */
   .hero {
-    width: calc(100% + 1.44rem);
-    min-height: 116px;
     margin: 0 -0.72rem 0;
-    padding: 0.74rem 0.72rem 0.62rem;
     display: grid;
     grid-template-columns: 1fr;
     align-items: start;
-    gap: 0.42rem;
-    border-radius: 0 0 1rem 1rem;
     box-shadow: 0 10px 22px rgba(20, 31, 48, 0.20);
   }
 
-  .hero::before {
-    background-size: 160% auto;
-    background-position: center 43%;
-    opacity: 0.95;
-  }
-
-  .hero::after {
-    background:
-      linear-gradient(
-        90deg,
-        rgba(3, 12, 30, 0.92) 0%,
-        rgba(6, 20, 48, 0.82) 54%,
-        rgba(45, 8, 16, 0.56) 100%
-      );
-  }
-
   .heroContent {
-    gap: 0.22rem;
     width: 100%;
   }
 
@@ -6232,9 +4901,6 @@ img.ownedFlagImage {
   .hero h1 {
     display: block;
     margin: 0;
-    font-size: clamp(2.15rem, 14vw, 3.35rem);
-    line-height: 0.94;
-    letter-spacing: -0.07em;
   }
 
   .heroSubtitle {
@@ -6242,16 +4908,10 @@ img.ownedFlagImage {
   }
 
   .authBox {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.55rem;
     margin: 0.18rem 0 0;
   }
 
   .authBox strong {
-    max-width: 58vw;
     font-size: 0.88rem;
     line-height: 1.1;
     overflow: hidden;
@@ -6259,28 +4919,7 @@ img.ownedFlagImage {
   }
 
   .authBox button {
-    min-height: 2rem;
-    padding: 0.35rem 0.72rem;
     font-size: 0.78rem;
-  }
-
-  .mobileNavToggle {
-    min-height: 2rem;
-    margin-top: 0.16rem;
-    padding: 0.34rem 0.58rem;
-    border-radius: 0.56rem;
-    font-size: 0.82rem;
-  }
-
-  .heroNav.isOpen {
-    padding: 0.35rem;
-    border-radius: 0.68rem;
-  }
-
-  .heroNav a {
-    min-height: 1.9rem;
-    padding: 0.32rem 0.4rem;
-    font-size: 0.82rem;
   }
 
   /* Search */
@@ -6414,27 +5053,11 @@ img.ownedFlagImage {
   }
 
   .ownedFlagCard {
-    grid-template-columns: 3.9rem minmax(0, 1fr);
-    gap: 0.68rem;
-    padding: 0.75rem;
     border-radius: 0.95rem;
-  }
-
-  .ownedFlagImage,
-  .ownedFlagImagePlaceholder {
-    width: 3.9rem;
-    height: 3.9rem;
-    border-radius: 0.75rem;
-  }
-
-  .ownedFlagMain h3 {
-    font-size: 1.02rem;
-    line-height: 1.15;
   }
 
   .ownedFlagMain p {
     margin-top: 0.18rem;
-    font-size: 0.84rem;
   }
 
   .ownedFlagMeta {
@@ -6454,17 +5077,11 @@ img.ownedFlagImage {
   .ownedFlagActions {
     grid-column: 1 / -1;
     width: 100%;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.45rem;
-    margin-top: 0.25rem;
   }
 
   .ownedFlagActions button {
     width: 100%;
     min-width: 0;
-    min-height: 2.45rem;
-    border-radius: 0.75rem;
     font-size: 0.88rem;
   }
 
@@ -6782,9 +5399,7 @@ img.ownedFlagImage {
   }
 
   .hero {
-    width: calc(100% + 1.1rem);
     margin-inline: -0.55rem;
-    min-height: 108px;
     padding-inline: 0.58rem;
   }
 
@@ -6794,7 +5409,6 @@ img.ownedFlagImage {
 
   .card {
     padding: 0.78rem;
-    border-radius: 0.88rem;
   }
 
   .honoreeCard,
@@ -6840,17 +5454,9 @@ img.ownedFlagImage {
 }
 
 @media (max-width: 760px) {
-  body {
-    padding-bottom: max(3rem, env(safe-area-inset-bottom));
-  }
-
-  main {
-    padding-bottom: max(6rem, calc(4rem + env(safe-area-inset-bottom)));
-  }
 
   .hero {
     min-height: 0 !important;
-    max-height: none;
     /* Right padding keeps the brand clear of the 2.75rem menu button. */
     padding: 0.85rem 4.5rem 0.85rem 1rem !important;
     row-gap: 0.32rem;
@@ -6869,27 +5475,14 @@ img.ownedFlagImage {
 
   .hero .eyebrow {
     font-size: 0.56rem !important;
-    letter-spacing: 0.24em;
     line-height: 1;
   }
 
   .hero h1 {
     max-width: 100%;
-    font-size: 2rem !important;
-    line-height: 1.05 !important;
+    line-height: 1.05;
     letter-spacing: -0.04em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: clip;
-  }
-
-  /* Phone titles other than the Flag Map. The Flag Map band keeps the rule above. */
-  html:not(.flagMapPage) .hero h1 {
-    font-size: clamp(1.5rem, 8.4vw, 2rem) !important;
-    white-space: normal;
-    overflow: visible;
-    text-overflow: unset;
-    overflow-wrap: break-word;
+    text-wrap: balance;
   }
 
   .hero .authBox {
@@ -6897,25 +5490,11 @@ img.ownedFlagImage {
   }
 
   .mobileNavToggle {
-    width: 2.75rem;
-    height: 2.75rem;
-    min-height: 2.75rem !important;
     margin-top: 0 !important;
-    padding: 0 !important;
-    border-radius: 0.75rem !important;
-    font-size: 0 !important;
   }
 
   .heroNav.isOpen {
     margin-top: 0.22rem !important;
-    padding: 0.32rem !important;
-    border-radius: 0.68rem !important;
-  }
-
-  .heroNav a {
-    min-height: 1.75rem !important;
-    padding: 0.27rem 0.38rem !important;
-    font-size: 0.8rem !important;
   }
 
   .mobileAccountMenu {
@@ -6923,7 +5502,6 @@ img.ownedFlagImage {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 0.45rem;
     align-items: center;
-    padding: 0.45rem 0.38rem 0.1rem;
     border-top: 1px solid rgba(255, 255, 255, 0.14);
   }
 
@@ -6952,7 +5530,6 @@ img.ownedFlagImage {
   .ownedFlagCard {
     display: grid !important;
     grid-template-columns: 4.25rem minmax(0, 1fr) !important;
-    align-items: start;
     gap: 0.65rem;
     padding: 0.78rem !important;
   }
@@ -7017,10 +5594,6 @@ img.ownedFlagImage {
 
   html:not(.flagMapPage) .hero h1 {
     font-size: clamp(1.5rem, 8.4vw, 2rem) !important;
-  }
-
-  .mobileNavToggle {
-    width: 2.75rem;
   }
 
   .ownedFlagCard {
@@ -7112,7 +5685,6 @@ img.ownedFlagImage {
 @media (max-width: 760px) {
   .hero {
     position: relative;
-    overflow: visible !important;
   }
 
   .mobileNavToggle {
@@ -7174,9 +5746,6 @@ img.ownedFlagImage {
 
   .heroNav.isOpen {
     position: absolute;
-    top: calc(100% + 0.46rem);
-    left: 0.72rem;
-    right: 0.72rem;
     width: auto !important;
     max-width: none !important;
     display: grid !important;
@@ -7186,7 +5755,6 @@ img.ownedFlagImage {
     padding: 0.45rem !important;
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 0.95rem !important;
-    background: rgba(5, 17, 40, 0.96) !important;
     box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
     backdrop-filter: blur(10px);
   }
@@ -7194,14 +5762,11 @@ img.ownedFlagImage {
   .heroNav.isOpen::before {
     content: "";
     position: absolute;
-    top: -0.43rem;
-    right: 1.25rem;
     width: 0.72rem;
     height: 0.72rem;
     transform: rotate(45deg);
     border-left: 1px solid rgba(255, 255, 255, 0.18);
     border-top: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(5, 17, 40, 0.96);
   }
 
   .heroNav a {
@@ -7237,11 +5802,6 @@ img.ownedFlagImage {
     height: 2.75rem !important;
     min-height: 2.75rem !important;
     padding: 0 !important;
-  }
-
-  .heroNav.isOpen {
-    left: 0.58rem;
-    right: 0.58rem;
   }
 }
 
@@ -7639,14 +6199,14 @@ img.ownedFlagImage {
 
   .hero h1 {
     grid-area: title;
-    max-width: calc(100vw - 8rem) !important;
-    margin: 0 !important;
-    font-size: clamp(1.6rem, 5.8vw, 2.25rem) !important;
-    line-height: 0.92 !important;
-    letter-spacing: -0.07em !important;
-    white-space: nowrap !important;
-    overflow: hidden;
-    text-overflow: clip;
+    max-width: calc(100vw - 8rem);
+    margin: 0;
+    font-size: clamp(1.35rem, 4.6vw, 2rem);
+    line-height: 1.05;
+    letter-spacing: -0.04em;
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: break-word;
   }
 
   .heroSubtitle,
@@ -8203,30 +6763,11 @@ img.ownedFlagImage {
     overflow-x: hidden;
   }
 
-  main {
-    width: 100% !important;
-    max-width: 100% !important;
-    padding-left: 0.7rem !important;
-    padding-right: 0.7rem !important;
-    box-sizing: border-box;
-  }
-
   .hero {
-    width: 100vw !important;
-    max-width: 100vw !important;
     margin-left: calc(50% - 50vw) !important;
     margin-right: calc(50% - 50vw) !important;
     margin-top: 0 !important;
     margin-bottom: 0.65rem !important;
-    border-radius: 0 !important;
-    box-sizing: border-box;
-  }
-
-  .hero::before {
-    width: 100%;
-    background-repeat: no-repeat !important;
-    background-size: cover !important;
-    background-position: center 38% !important;
   }
 
   .desktopHeroNav,
@@ -8238,36 +6779,12 @@ img.ownedFlagImage {
     display: inline-flex !important;
     visibility: visible !important;
     opacity: 1 !important;
-    z-index: 9200 !important;
-  }
-
-  .mobileDrawerOverlay {
-    position: fixed !important;
-    inset: 0 !important;
-    z-index: 9000 !important;
-    display: block !important;
-    background: rgba(4, 13, 31, 0.50) !important;
-    backdrop-filter: blur(2px);
   }
 
   .mobileDrawerContent {
-    position: fixed !important;
-    top: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
-    left: auto !important;
-    z-index: 9001 !important;
-    width: min(86vw, 22rem) !important;
-    min-width: min(86vw, 19rem) !important;
-    max-width: 22rem !important;
-    height: 100dvh !important;
-    max-height: 100dvh !important;
-    display: grid !important;
     grid-template-rows: auto minmax(0, 1fr) auto;
-    overflow: hidden;
     padding: max(0.75rem, env(safe-area-inset-top)) 0.85rem max(0.75rem, env(safe-area-inset-bottom)) !important;
     border-left: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 0 !important;
     background: #071a3b !important;
     color: #ffffff;
     box-shadow: -18px 0 44px rgba(0, 0, 0, 0.34);
@@ -8296,15 +6813,6 @@ img.ownedFlagImage {
 
   .mobileDrawerAccount {
     padding-top: 0.55rem;
-  }
-
-  main > .card,
-  main > .messageStack,
-  main > .adminSectionStack {
-    width: min(100%, 58rem) !important;
-    max-width: calc(100vw - 1.4rem) !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
   }
 }
 
@@ -8359,12 +6867,10 @@ img.ownedFlagImage {
   .hero {
     width: 100vw !important;
     max-width: 100vw !important;
-    min-height: 72px !important;
     margin: 0 calc(50% - 50vw) 0.7rem !important;
     padding: 0.42rem max(0.9rem, env(safe-area-inset-right)) 0.46rem max(0.9rem, env(safe-area-inset-left)) !important;
     border-radius: 0 !important;
     box-sizing: border-box !important;
-    overflow: hidden !important;
   }
 
   .hero::before {
@@ -8377,8 +6883,6 @@ img.ownedFlagImage {
   }
 
   .hero h1 {
-    max-width: calc(100vw - 7.5rem) !important;
-    overflow: hidden !important;
     text-overflow: clip !important;
   }
 
@@ -8583,16 +7087,6 @@ img.ownedFlagImage {
   main {
     padding-left: 0.65rem !important;
     padding-right: 0.65rem !important;
-  }
-
-  .hero {
-    min-height: 60px !important;
-    padding-top: 0.32rem !important;
-    padding-bottom: 0.34rem !important;
-  }
-
-  .hero h1 {
-    font-size: clamp(1.42rem, 4.7vw, 1.95rem) !important;
   }
 
   .adminPrintingCard .printActions {
@@ -8826,10 +7320,6 @@ img.ownedFlagImage {
   color: #ffffff;
 }
 
-.desktopHeroNav a.isActive {
-  border-bottom-color: rgba(255, 255, 255, 0.72);
-}
-
 .mobileDrawerNav a.isActive {
   box-shadow: inset 3px 0 0 #ffd56a;
 }
@@ -8853,7 +7343,6 @@ img.ownedFlagImage {
 
 /* Administrator alert banner */
 .adminAlertBanner {
-  width: min(100%, 92rem);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.9rem;
@@ -8861,8 +7350,6 @@ img.ownedFlagImage {
   margin: 0 auto 1rem;
   padding: 0.7rem 0.85rem;
   border: 1px solid #d8e4f2;
-  border-left: 5px solid #8f1727;
-  border-radius: 1rem;
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
   box-shadow: 0 14px 34px rgba(7, 26, 59, 0.10);
 }
@@ -8932,13 +7419,10 @@ img.ownedFlagImage {
 
 @media (max-width: 760px) {
   .adminAlertBanner {
-    width: min(100%, 34rem) !important;
-    max-width: calc(100vw - 1.44rem) !important;
     grid-template-columns: 1fr;
     gap: 0.65rem;
     margin: 0 auto 0.85rem;
     padding: 0.68rem;
-    border-radius: 0.9rem;
   }
 
   .adminAlertBannerLinks {
@@ -8953,11 +7437,7 @@ img.ownedFlagImage {
 
 @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
   .adminAlertBanner {
-    width: 100% !important;
-    max-width: 100% !important;
     grid-template-columns: minmax(0, 1fr) auto;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
   }
 
   .adminAlertBannerLinks a {
@@ -8969,8 +7449,6 @@ img.ownedFlagImage {
 /* Review actions dropdown */
 .reviewActionsMenu {
   position: relative;
-  width: max-content;
-  min-width: 10.5rem;
 }
 
 .reviewActionsMenu summary {
@@ -8979,7 +7457,6 @@ img.ownedFlagImage {
   align-items: center;
   justify-content: space-between;
   gap: 0.45rem;
-  width: 100%;
   padding: 0.42rem 0.65rem;
   border: 1px solid #cfd8e8;
   border-radius: 0.7rem;
@@ -9012,18 +7489,15 @@ img.ownedFlagImage {
 }
 
 .reviewActionsPanel {
-  position: absolute;
   top: calc(100% + 0.35rem);
   right: 0;
   z-index: 30;
-  width: min(15rem, 72vw);
   display: grid;
   gap: 0.35rem;
   padding: 0.45rem;
   border: 1px solid #dce6f3;
   border-radius: 0.85rem;
   background: #ffffff;
-  box-shadow: 0 18px 42px rgba(7, 26, 59, 0.18);
 }
 
 .reviewActionsPanel button {
@@ -9238,11 +7712,7 @@ img.ownedFlagImage {
 .appFooterInner {
   position: relative;
   width: min(1180px, calc(100% - 2rem));
-  min-height: 24rem;
   display: grid;
-  grid-template-columns: minmax(14rem, 1fr) minmax(12rem, 0.9fr) minmax(13rem, 0.8fr);
-  grid-template-rows: auto 1fr auto;
-  gap: 2.25rem 3rem;
   margin: 0 auto;
   padding: 4.5rem 0 2rem;
 }
@@ -9250,11 +7720,6 @@ img.ownedFlagImage {
 .appFooterInner::after {
   content: "";
   position: absolute;
-  right: -18rem;
-  bottom: -8rem;
-  width: 45rem;
-  height: 18rem;
-  opacity: 0.34;
   pointer-events: none;
   background:
     linear-gradient(30deg, transparent 0 18%, rgba(23, 59, 115, 0.14) 18% 19%, transparent 19% 38%, rgba(23, 59, 115, 0.14) 38% 39%, transparent 39% 58%, rgba(23, 59, 115, 0.14) 58% 59%, transparent 59%),
@@ -9267,13 +7732,11 @@ img.ownedFlagImage {
   z-index: 1;
   display: grid;
   align-content: start;
-  gap: 1rem;
 }
 
 .footerColumn h2 {
   margin: 0 0 1rem;
   color: #0f4fc1;
-  font-size: 1.02rem;
   line-height: 1.1;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -9282,7 +7745,6 @@ img.ownedFlagImage {
 .footerColumn a,
 .footerContact a {
   color: #092b65;
-  font-size: 1.08rem;
   font-weight: 650;
   line-height: 1.25;
   text-decoration: none;
@@ -9297,25 +7759,17 @@ img.ownedFlagImage {
   text-underline-offset: 0.2rem;
 }
 
-.footerLoop {
-  justify-self: center;
-}
-
 .footerSocials {
   display: flex;
   gap: 0.65rem;
 }
 
 .footerSocials a {
-  width: 2.35rem;
-  height: 2.35rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 1px solid rgba(23, 59, 115, 0.18);
   border-radius: 999px;
-  color: #1c65ff;
-  background: rgba(255, 255, 255, 0.22);
   font-size: 1.05rem;
   font-weight: 900;
 }
@@ -9323,13 +7777,9 @@ img.ownedFlagImage {
 .footerBrand {
   position: relative;
   z-index: 1;
-  grid-column: 1 / 2;
-  grid-row: 3;
-  align-self: end;
 }
 
 .footerBrand img {
-  width: min(23rem, 100%);
   max-width: 100%;
   height: auto;
   display: block;
@@ -9338,22 +7788,14 @@ img.ownedFlagImage {
 .footerContact {
   position: relative;
   z-index: 1;
-  grid-column: 3 / 4;
-  grid-row: 3;
-  align-self: center;
-  justify-self: end;
 }
 
 .footerCredit {
   position: relative;
   z-index: 1;
-  grid-column: 1 / 3;
-  grid-row: 4;
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
-  margin-top: 1.25rem;
-  color: #75839a;
   font-size: 0.92rem;
 }
 
@@ -9362,8 +7804,6 @@ img.ownedFlagImage {
 }
 
 .footerCredit img {
-  width: 7.8rem;
-  max-width: 32vw;
   height: auto;
   display: block;
 }
@@ -9377,23 +7817,9 @@ img.ownedFlagImage {
 }
 
 @media (max-width: 760px) {
-  .appFooter {
-    margin-top: 1.5rem;
-  }
 
   .appFooterInner {
-    width: min(100% - 1.44rem, 34rem);
-    min-height: 0;
-    grid-template-columns: 1fr;
-    grid-template-rows: auto;
-    gap: 1.6rem;
     padding: 2.25rem 0 1.8rem;
-  }
-
-  .appFooterInner::after {
-    right: -18rem;
-    bottom: -6rem;
-    opacity: 0.22;
   }
 
   .footerLoop {
@@ -9412,116 +7838,38 @@ img.ownedFlagImage {
   .footerContact a {
     font-size: 1rem;
   }
-
-  .footerBrand img {
-    width: min(100%, 22rem);
-  }
 }
 
 @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
   .appFooterInner {
     width: calc(100% - 1.4rem);
-    min-height: 15rem;
-    grid-template-columns: minmax(12rem, 1fr) minmax(11rem, 0.8fr) minmax(11rem, 0.7fr);
-    gap: 1.2rem 1.5rem;
     padding: 2.25rem 0 1.4rem;
-  }
-
-  .footerColumn a,
-  .footerContact a {
-    font-size: 0.96rem;
-  }
-
-  .footerBrand img {
-    width: 19rem;
-  }
-}
-
-
-/* Search page height and footer credit polish */
-@media (min-width: 761px) {
-  .searchCard {
-    min-height: clamp(18rem, 36vh, 26rem);
-    display: grid;
-    align-content: start;
   }
 }
 
 @media (min-width: 1100px) {
-  .searchCard {
-    min-height: clamp(20rem, 42vh, 30rem);
-  }
 }
 
 /* Move KNECO credit into a cleaner footer bottom rail. */
 .footerCredit {
-  grid-column: 1 / -1 !important;
-  grid-row: auto !important;
-  justify-self: center;
-  width: min(100%, 42rem);
-  justify-content: center;
-  margin-top: 0.75rem;
-  padding-top: 1.1rem;
-  border-top: 1px solid rgba(15, 50, 108, 0.12);
   color: #6f7e96;
 }
 
-.footerCredit span {
-  font-size: 0.86rem;
-}
-
-.footerCredit img {
-  width: 6.9rem;
-  max-width: 28vw;
-}
-
 @media (max-width: 760px) {
-  .searchCard {
-    min-height: 15rem;
-  }
 
   .footerCredit {
     justify-self: stretch;
-    width: 100%;
-    justify-content: flex-start;
-    margin-top: 0.3rem;
-    padding-top: 0.9rem;
-  }
-
-  .footerCredit img {
-    width: 6.3rem;
   }
 }
 
 @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
-  .searchCard {
-    min-height: 12rem;
-  }
 
   .footerCredit {
-    justify-self: center;
     justify-content: center;
   }
 }
 
-
-/* Align admin alert with page content and footer bottom row */
-.adminAlertBanner {
-  width: min(1180px, calc(100% - 2rem)) !important;
-  max-width: min(1180px, calc(100% - 2rem)) !important;
-}
-
-.footerBrand {
-  grid-column: 1 / 2 !important;
-  grid-row: 3 !important;
-  align-self: center;
-}
-
 .footerCredit {
-  grid-column: 2 / 3 !important;
-  grid-row: 3 !important;
-  justify-self: center;
-  align-self: center;
   width: auto !important;
   justify-content: center;
   margin-top: 0 !important;
@@ -9529,23 +7877,11 @@ img.ownedFlagImage {
   border-top: 0 !important;
 }
 
-.footerContact {
-  grid-column: 3 / 4 !important;
-  grid-row: 3 !important;
-  align-self: center;
-  justify-self: end;
-}
-
 .footerCredit img {
-  width: 7.35rem;
   max-width: 100%;
 }
 
 @media (max-width: 760px) {
-  .adminAlertBanner {
-    width: min(100%, 34rem) !important;
-    max-width: calc(100vw - 1.44rem) !important;
-  }
 
   .footerBrand,
   .footerCredit,
@@ -9554,40 +7890,15 @@ img.ownedFlagImage {
     grid-row: auto !important;
     justify-self: start;
   }
-
-  .footerCredit {
-    width: 100% !important;
-    justify-content: flex-start;
-    padding-top: 0.9rem !important;
-    border-top: 1px solid rgba(15, 50, 108, 0.12) !important;
-  }
 }
 
 @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
-  .adminAlertBanner {
-    width: calc(100% - 1.4rem) !important;
-    max-width: calc(100% - 1.4rem) !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-  }
-
-  .footerBrand {
-    grid-column: 1 / 2 !important;
-    grid-row: 3 !important;
-  }
 
   .footerCredit {
-    grid-column: 2 / 3 !important;
-    grid-row: 3 !important;
     justify-self: center;
     width: auto !important;
     padding-top: 0 !important;
     border-top: 0 !important;
-  }
-
-  .footerContact {
-    grid-column: 3 / 4 !important;
-    grid-row: 3 !important;
   }
 }
 
@@ -9653,7 +7964,6 @@ img.ownedFlagImage {
 /* Search card CTA spacing and footer contact polish */
 @media (min-width: 761px) {
   .searchCard {
-    min-height: clamp(16rem, 29vh, 24rem) !important;
     display: grid;
     align-content: start;
   }
@@ -9678,9 +7988,6 @@ img.ownedFlagImage {
 }
 
 @media (min-width: 1100px) {
-  .searchCard {
-    min-height: clamp(17rem, 34vh, 26rem) !important;
-  }
 }
 
 /* Style Contact Us as an intentional footer pill/button. */
@@ -9709,9 +8016,6 @@ img.ownedFlagImage {
 }
 
 @media (max-width: 760px) {
-  .searchCard {
-    min-height: 13rem !important;
-  }
 
   .searchCard::after {
     content: "Can’t find your honoree? Submit an honoree";
@@ -9730,17 +8034,9 @@ img.ownedFlagImage {
     font-weight: 850;
     line-height: 1.15;
   }
-
-  .footerContact a {
-    min-height: 2.25rem;
-    padding: 0.42rem 0.82rem;
-  }
 }
 
 @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
-  .searchCard {
-    min-height: 10rem !important;
-  }
 
   .searchCard::after {
     margin-top: 0.95rem;
@@ -9784,7 +8080,6 @@ img.ownedFlagImage {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.8rem;
-  margin-top: clamp(2rem, 6vh, 4rem);
 }
 
 .inlineHowItWorks > div {
@@ -9827,7 +8122,6 @@ img.ownedFlagImage {
   .inlineHowItWorks {
     grid-template-columns: 1fr;
     gap: 0.55rem;
-    margin-top: 1.25rem;
   }
 
   .inlineHowItWorks > div {
@@ -9846,7 +8140,6 @@ img.ownedFlagImage {
 @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
   .inlineHowItWorks {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    margin-top: 0.9rem;
     gap: 0.5rem;
   }
 
@@ -9863,29 +8156,14 @@ img.ownedFlagImage {
 
 /* Final design polish: nav, how-it-works, footer, socials */
 .desktopHeroNav a.isActive {
-  border: 1px solid rgba(255, 255, 255, 0.16) !important;
   border-bottom-color: rgba(255, 213, 106, 0.78) !important;
-  border-radius: 999px !important;
-  background: rgba(255, 255, 255, 0.10) !important;
-  box-shadow: inset 0 -2px 0 rgba(255, 213, 106, 0.70) !important;
-}
-
-.desktopHeroNav a.isActive:hover,
-.desktopHeroNav a.isActive:focus-visible {
-  background: rgba(255, 255, 255, 0.16) !important;
 }
 
 .inlineHowItWorks {
   margin-top: clamp(1.35rem, 4vh, 2.65rem) !important;
 }
 
-.appFooterInner {
-  padding-top: 3.85rem !important;
-}
-
 .footerSocials a {
-  width: 2.55rem !important;
-  height: 2.55rem !important;
   border-color: rgba(23, 59, 115, 0.28) !important;
   background: rgba(255, 255, 255, 0.46) !important;
   color: #0f4fc1 !important;
@@ -9904,41 +8182,17 @@ img.ownedFlagImage {
   .inlineHowItWorks {
     margin-top: 1rem !important;
   }
-
-  .appFooterInner {
-    padding-top: 2rem !important;
-  }
 }
 
 @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
   .inlineHowItWorks {
     margin-top: 0.65rem !important;
   }
-
-  .appFooterInner {
-    padding-top: 1.8rem !important;
-  }
-}
-
-
-/* Sticky shorter footer + right-aligned stay-in-the-loop */
-main {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.appFooter {
-  margin-top: auto !important;
 }
 
 .appFooterInner {
-  min-height: 0 !important;
   grid-template-columns: minmax(18rem, 1fr) minmax(12rem, auto) minmax(14rem, 0.75fr) !important;
   grid-template-rows: auto 1fr !important;
-  gap: 0.6rem 2.25rem !important;
-  padding-top: 2.6rem !important;
-  padding-bottom: 1.35rem !important;
 }
 
 .footerExplore {
@@ -9965,7 +8219,6 @@ main {
   grid-row: 2 !important;
   justify-self: center;
   align-self: start;
-  padding-top: 0.45rem;
 }
 
 .footerContact {
@@ -9975,28 +8228,10 @@ main {
   align-self: start;
 }
 
-.footerColumn {
-  gap: 0.7rem !important;
-}
-
-.footerColumn h2 {
-  margin-bottom: 0.65rem !important;
-}
-
-.footerBrand img {
-  width: min(20rem, 100%) !important;
-}
-
-.footerCredit img {
-  width: 6.75rem !important;
-}
-
 .appFooterInner::after {
   right: -14rem !important;
-  bottom: -10rem !important;
   width: 40rem !important;
   height: 14rem !important;
-  opacity: 0.26 !important;
 }
 
 @media (max-width: 760px) {
@@ -10005,12 +8240,7 @@ main {
   }
 
   .appFooterInner {
-    min-height: 0 !important;
-    grid-template-columns: 1fr !important;
     grid-template-rows: auto !important;
-    gap: 1.2rem !important;
-    padding-top: 1.65rem !important;
-    padding-bottom: 1.35rem !important;
   }
 
   .footerExplore,
@@ -10026,15 +8256,6 @@ main {
   .footerLoop {
     text-align: left;
   }
-
-  .footerBrand img {
-    width: min(100%, 20rem) !important;
-  }
-
-  .footerCredit {
-    width: 100% !important;
-    justify-content: flex-start !important;
-  }
 }
 
 @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
@@ -10043,12 +8264,8 @@ main {
   }
 
   .appFooterInner {
-    min-height: 12rem !important;
     grid-template-columns: minmax(14rem, 1fr) minmax(9rem, auto) minmax(12rem, 0.75fr) !important;
     grid-template-rows: auto auto !important;
-    gap: 0.9rem 1.25rem !important;
-    padding-top: 1.45rem !important;
-    padding-bottom: 1rem !important;
   }
 
   .footerLoop {
@@ -10070,10 +8287,6 @@ main {
   .footerContact {
     grid-column: 3 / 4 !important;
     grid-row: 2 !important;
-  }
-
-  .footerBrand img {
-    width: 17rem !important;
   }
 
   .footerColumn a,
@@ -10185,21 +8398,6 @@ main {
   opacity: 0.20 !important;
 }
 
-/* Flag Map is an admin workspace, so let it use more horizontal space than normal content pages. */
-main > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
-  width: min(1540px, calc(100% - 2rem)) !important;
-  max-width: min(1540px, calc(100% - 2rem)) !important;
-}
-
-.adminSectionStack:has(.flagPositionManager.adminStandalonePanel) .flagPositionManager.adminStandalonePanel {
-  width: 100% !important;
-  max-width: 100% !important;
-}
-
-.flagPositionManager .flagSeatCells {
-  grid-template-columns: repeat(auto-fill, minmax(5.9rem, 1fr));
-}
-
 /* Hide zero-value review summary noise and tighten empty review pages. */
 .adminReviewCard .adminCardSummary:empty {
   display: none;
@@ -10238,22 +8436,6 @@ main > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
 @media (max-width: 760px) {
   .appFooterInner {
     min-height: 0 !important;
-    gap: 0.95rem !important;
-    padding-top: 1.35rem !important;
-    padding-bottom: 1rem !important;
-  }
-
-  .footerBrand img {
-    width: min(100%, 17rem) !important;
-  }
-
-  main > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
-    width: min(100%, 34rem) !important;
-    max-width: calc(100vw - 1.44rem) !important;
-  }
-
-  .flagPositionManager .flagSeatCells {
-    grid-template-columns: repeat(auto-fill, minmax(4.2rem, 1fr));
   }
 
   .adminPrintingCard .printCenterHeader {
@@ -10276,11 +8458,6 @@ main > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
 
   .footerBrand img {
     width: 14.5rem !important;
-  }
-
-  main > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
-    width: calc(100% - 1.4rem) !important;
-    max-width: calc(100% - 1.4rem) !important;
   }
 }
 
@@ -10666,16 +8843,6 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
   .searchCard .nativeSearchBar,
   .searchCard .searchBar {
     min-height: 0 !important;
-    display: grid !important;
-    grid-template-columns: 1fr !important;
-    gap: 0.6rem !important;
-    align-items: stretch !important;
-    padding: 0 !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-    background-image: none !important;
-    box-shadow: none !important;
   }
 
   .searchCard .nativeSearchBar::before,
@@ -10686,21 +8853,7 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
 
   .searchCard .nativeSearchBar input[type="search"],
   .searchCard .searchBar input[type="search"] {
-    width: 100% !important;
-    min-height: 2.85rem !important;
     display: block !important;
-    padding: 0.55rem 0.9rem !important;
-    border: 1px solid #cad7e8 !important;
-    border-radius: 999px !important;
-    background: #ffffff !important;
-    background-image: none !important;
-    box-shadow: inset 0 1px 2px rgba(15, 55, 107, 0.04) !important;
-    color: #071a3b !important;
-    font-size: 1rem !important;
-    text-align: left !important;
-    caret-color: #173b73 !important;
-    -webkit-appearance: none !important;
-    appearance: none !important;
   }
 
   .searchCard .nativeSearchBar input[type="search"]::placeholder,
@@ -10711,20 +8864,12 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
   }
 
   .searchCard .searchActionButtons {
-    width: 100% !important;
-    display: grid !important;
     grid-template-columns: minmax(0, 1fr) minmax(0, 0.75fr) !important;
-    gap: 0.5rem !important;
   }
 
   .searchCard .searchSubmitButton,
   .searchCard .searchClearButton {
-    width: 100% !important;
-    min-height: 2.55rem !important;
     justify-content: center !important;
-    border-radius: 999px !important;
-    padding: 0.55rem 0.7rem !important;
-    font-size: 0.95rem !important;
   }
 }
 
@@ -10745,13 +8890,10 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
 @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
   .searchCard .nativeSearchBar,
   .searchCard .searchBar {
-    grid-template-columns: minmax(0, 1fr) auto !important;
     align-items: center !important;
   }
 
   .searchCard .searchActionButtons {
-    width: auto !important;
-    display: inline-flex !important;
     gap: 0.4rem !important;
   }
 
@@ -10985,15 +9127,11 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
     overflow: visible !important;
   }
 
-  html:not(.flagMapPage) .hero h1 {
-    white-space: normal !important;
+  .hero h1 {
+    white-space: normal;
+    overflow: visible;
     overflow-wrap: break-word;
-    font-size: clamp(1.5rem, 8.4vw, 2rem) !important;
-  }
-
-  html.flagMapPage .hero h1 {
-    white-space: nowrap !important;
-    font-size: 2rem !important;
+    font-size: clamp(1.35rem, 4.8vw, 2rem);
   }
 
   .hero .heroLead {
@@ -11146,9 +9284,7 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
   .appConfirmModal.cardPreviewModal {
     width: 100% !important;
     max-width: 100% !important;
-    height: 100% !important;
     height: 100dvh !important;
-    max-height: 100% !important;
     max-height: 100dvh !important;
     border-radius: 0 !important;
   }
@@ -11164,9 +9300,7 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
   .appConfirmModal.cardPreviewModal {
     width: 100% !important;
     max-width: 100% !important;
-    height: 100% !important;
     height: 100dvh !important;
-    max-height: 100% !important;
     max-height: 100dvh !important;
     border-radius: 0 !important;
     overflow: hidden !important;
@@ -11933,6 +10067,26 @@ html.flagMapKiosk a {
   box-shadow: inset 0 0 0 calc(var(--px, 1px) * 0.5) rgba(243, 226, 167, 0.85);
 }
 
+/* When a phone column is too narrow for a readable letter, keep every other
+   section name and let it sit across the gap. The hidden ones stay in the DOM. */
+.publicFlagZone.isSparse {
+  overflow: visible;
+  z-index: 2;
+}
+
+.publicFlagZone.isSparse strong {
+  position: relative;
+  z-index: 2;
+  max-width: none;
+  overflow: visible;
+  line-height: 1;
+  text-shadow: 0 0.08em 0.2em rgba(4, 13, 31, 0.9);
+}
+
+.publicFlagZone.isThinned strong {
+  visibility: hidden;
+}
+
 .publicFlagZone .isUpright {
   max-width: none;
   max-height: none;
@@ -12455,260 +10609,40 @@ html.flagMapPage main {
   padding: 0;
 }
 
+/* Flag Map uses the same content-sized header as the rest of the site.
+   --flag-map-header is only the opening-fit allowance, not a fixed band. */
 html.flagMapPage .hero.publicMapHero {
-  height: var(--flag-map-header, 92px) !important;
-  min-height: 0 !important;
-  max-height: var(--flag-map-header, 92px) !important;
-  margin: 0 !important;
-  padding: 8px 16px !important;
-  overflow: hidden;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  overflow: visible;
   align-items: center;
-  flex-wrap: nowrap;
-  row-gap: 0.35rem;
+  flex-wrap: wrap;
+  row-gap: 0.5rem;
 }
 
-html.flagMapPage .hero.publicMapHero h1 {
-  margin: 0;
-  font-size: 1.35rem;
-  line-height: 1.1;
+html.flagMapPage .hero.publicMapHero h1,
+html.flagMapPage .hero.publicMapHero .heroContent > * {
+  max-width: none;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  overflow-wrap: break-word;
 }
 
-html.flagMapPage .hero.publicMapHero .heroNav {
-  flex: 1 1 0;
-  order: 0;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  row-gap: 0.2rem;
-  align-content: center;
-}
-
-html.flagMapPage .hero.publicMapHero .authBox {
-  position: static;
-  margin-left: auto;
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-html.flagMapPage .hero.publicMapHero .authBox button {
-  min-height: 36px;
-  margin-left: 0;
-  padding: 4px 10px;
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-/* Flag Map band at 761px and up: the dog tag fits the strip, and the brand stays one line. */
-@media (min-width: 761px) {
-  html.flagMapPage .hero.publicMapHero {
-    display: flex !important;
-    flex-direction: row !important;
-    flex-wrap: nowrap !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    box-sizing: border-box;
-  }
-
-  html.flagMapPage .hero.publicMapHero .heroBrand {
-    flex: 0 0 auto;
-    gap: 0.75rem;
-    align-items: center;
-    min-width: 0;
-  }
-
-  html.flagMapPage .hero.publicMapHero .heroDogTagLink {
-    flex: 0 0 auto;
-  }
-
-  html.flagMapPage .hero.publicMapHero .heroDogTag {
-    width: auto;
-    height: calc(var(--flag-map-header, 92px) - 30px);
-    max-height: calc(var(--flag-map-header, 92px) - 30px);
-  }
-
-  html.flagMapPage .hero.publicMapHero .heroContent {
-    flex: 0 0 auto;
-    width: auto !important;
-    max-width: none !important;
-    min-width: 0;
-  }
-
-  html.flagMapPage .hero.publicMapHero .heroContent > * {
-    max-width: none !important;
-    white-space: nowrap !important;
-  }
-
-  html.flagMapPage .hero.publicMapHero h1 {
-    max-width: none !important;
-    white-space: nowrap !important;
-    text-wrap: nowrap;
-  }
-
-  html.flagMapPage .hero.publicMapHero .authBox {
-    order: 4;
-    position: static !important;
-    width: auto !important;
-    margin: 0 0 0 auto !important;
-    flex: 0 1 auto !important;
-  }
-
-  html.flagMapPage .hero.publicMapHero .authBox strong {
-    max-width: 220px;
-    min-width: 4rem;
-    flex: 0 1 auto;
-  }
-
-  html.flagMapPage .hero.publicMapHero .authActions,
-  html.flagMapPage .hero.publicMapHero .authActions button {
-    flex: 0 0 auto;
-    white-space: nowrap;
-  }
-}
-
-@media (min-width: 1280px) {
-  html.flagMapPage .hero.publicMapHero .authBox {
-    flex: 0 0 auto !important;
-  }
-}
-
-/* 761–1279: the signed-in nav does not fit, so it uses the existing menu and drawer. */
-@media (min-width: 761px) and (max-width: 1279px) {
-  html.flagMapPage .hero.publicMapHero .desktopHeroNav {
-    display: none !important;
-  }
-
-  html.flagMapPage .hero.publicMapHero .mobileNavToggle {
-    display: inline-flex !important;
-    position: static !important;
-    top: auto !important;
-    right: auto !important;
-    transform: none !important;
-    order: 5;
-    flex: 0 0 auto;
-    align-items: center;
-    justify-content: center;
-    width: 2.75rem;
-    height: 2.75rem;
-    min-width: 2.75rem;
-    min-height: 2.75rem;
-    margin: 0 0 0 0.75rem;
-    padding: 0;
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    border-radius: 0.75rem;
-    background: rgba(4, 13, 31, 0.55);
-    color: #fff;
-    box-shadow: none;
-    font-size: 0;
-  }
-
-  html.flagMapPage .hero.publicMapHero .mobileNavToggle .mobileNavIcon {
-    font-size: 1.25rem;
-    line-height: 1;
-  }
-
-  html.flagMapPage .hero.publicMapHero .mobileNavToggle span:not(.mobileNavIcon) {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-  }
-
-  html.flagMapPage .mobileDrawerOverlay {
-    position: fixed;
-    inset: 0;
-    z-index: 9000;
-    display: block;
-    background: rgba(4, 13, 31, 0.48);
-  }
-
-  html.flagMapPage .mobileDrawerContent {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 9001;
-    width: min(86vw, 22rem);
-    display: grid;
-    grid-template-rows: auto 1fr auto;
-    gap: 0.7rem;
-    padding: 0.85rem;
-    border-left: 1px solid rgba(255, 255, 255, 0.14);
-    background: #071a3b;
-    color: #fff;
-    box-shadow: -18px 0 44px rgba(0, 0, 0, 0.34);
-  }
-
-  html.flagMapPage .mobileDrawerHeader {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 0.8rem;
-  }
-
-  html.flagMapPage .mobileDrawerTitle {
-    margin: 0.1rem 0 0;
-    color: #fff;
-    font-size: 1.45rem;
-  }
-
-  html.flagMapPage .mobileDrawerNav {
-    display: grid;
-    align-content: start;
-    gap: 0.28rem;
-    overflow-y: auto;
-  }
-
-  html.flagMapPage .mobileDrawerNav a,
-  html.flagMapPage .mobileDrawerNav .adminNavButton {
-    min-height: 2.55rem;
-    display: flex;
-    align-items: center;
-    padding: 0.58rem 0.68rem;
-    border-radius: 0.72rem;
-    color: #fff;
-    font-size: 0.98rem;
-    font-weight: 850;
-    text-decoration: none;
-    background: transparent;
-    box-shadow: none;
-  }
-
-  html.flagMapPage .mobileDrawerAccount {
-    display: grid;
-    gap: 0.35rem;
-    padding-top: 0.7rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.14);
-  }
-
-  html.flagMapPage .mobileDrawerAccount button {
-    width: 100%;
-    min-height: 2.35rem;
-  }
-}
-
-@media (max-width: 760px) {
-  html.flagMapPage .hero.publicMapHero {
-    padding: 0.85rem 4.5rem 0.85rem 1rem !important;
-  }
-
-  html.flagMapPage .hero.publicMapHero h1 {
-    font-size: 1.45rem !important;
-    white-space: nowrap !important;
-  }
-
-  html.flagMapPage .hero.publicMapHero .heroDogTag {
-    width: 64px;
-    height: auto;
-    max-height: none;
-  }
+html.flagMapPage .hero.publicMapHero .heroDogTag {
+  width: clamp(3.5rem, 10vw, 8.25rem);
+  height: auto;
+  max-height: none;
+  aspect-ratio: 480 / 315;
 }
 
 html.flagMapPage .publicFlagMap {
   display: flex;
   flex-direction: column;
-  height: calc(100dvh - var(--flag-map-header, 92px) - var(--flag-map-bottom, 28px));
+  height: auto;
+  min-height: calc(100dvh - var(--flag-map-header, 7.5rem) - var(--flag-map-bottom, 1.75rem));
   max-width: none;
   margin: 0;
   padding: var(--flag-map-pad-top, 6px) var(--flag-map-side, 16px) var(--flag-map-pad-bottom, 4px);
@@ -12749,15 +10683,17 @@ html.flagMapPage .publicFlagToolbar {
 
 html.flagMapPage .publicFlagStage {
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: clamp(18rem, 62dvh, 52rem);
   display: flex;
 }
 
 html.flagMapPage .publicFlagViewport {
   flex: 1 1 auto;
   width: 100%;
-  height: auto !important;
-  min-height: 0 !important;
+  height: auto;
+  /* Short landscape used to collapse to a strip. The floor keeps a usable
+     map and the page scrolls. Wider windows still fill the remaining view. */
+  min-height: clamp(18rem, 62dvh, 52rem);
   max-height: none;
 }
 
@@ -13684,7 +11620,8 @@ button.destructive:hover:not(:disabled) {
 }
 
 .hero .heroDogTag {
-  width: 132px;
+  width: clamp(4rem, 10vw, 8.25rem);
+  aspect-ratio: 480 / 315;
   height: auto;
   display: block;
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.45));
@@ -13706,7 +11643,7 @@ button.destructive:hover:not(:disabled) {
   }
 
   .hero .heroDogTag {
-    width: 64px;
+    width: clamp(3.5rem, 18vw, 4rem);
   }
 }
 
@@ -14315,5 +12252,106 @@ footer.appFooter.footerNavy .appVersionStamp {
 
   .removalQueueCard .printCenterHeader .printActions .rqIconButton {
     width: 2.75rem;
+  }
+}
+
+/* 3.0.0 shared header.
+   One content-sized bar, one hamburger breakpoint (760px, plus the existing
+   short-landscape rule), fluid type, and the same side inset as the 1180px
+   content column: max(1rem, (viewport - 73.75rem) / 2). */
+header.hero {
+  height: auto;
+  max-height: none;
+  padding-inline: clamp(1rem, (100vw - 73.75rem) / 2, 24rem);
+}
+
+header.hero h1 {
+  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  overflow-wrap: break-word;
+  text-wrap: balance;
+}
+
+header.hero .authBox {
+  /* Absolute auth is positioned against the padding edge, so the same
+     fluid inset has to be repeated here. In-flow auth ignores right. */
+  right: clamp(1rem, (100vw - 73.75rem) / 2, 24rem);
+}
+
+header.hero .authActions,
+header.hero .authActions button {
+  flex: 0 0 auto;
+}
+
+header.hero .authBox button,
+header.hero .heroNav a,
+header.hero .mobileNavToggle {
+  min-height: 2.75rem;
+}
+
+header.hero .heroNav a {
+  display: inline-flex;
+  align-items: center;
+}
+
+header.hero .authBox strong {
+  max-width: none;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+}
+
+@media (min-width: 761px) and (max-width: 1023px) {
+  header.hero {
+    min-height: 0;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.65rem 1rem;
+    padding-block: 0.85rem;
+    overflow: visible;
+  }
+
+  header.hero h1 {
+    font-size: clamp(1.65rem, 0.7rem + 2.4vw, 2.35rem);
+    line-height: 1.08;
+  }
+
+  header.hero .heroContent {
+    flex: 1 1 12rem;
+    min-width: 0;
+    max-width: none;
+  }
+
+  header.hero .heroContent > * {
+    max-width: none;
+    white-space: normal;
+  }
+
+  header.hero .authBox {
+    position: static;
+    width: auto;
+    max-width: 100%;
+    margin-left: auto;
+    flex: 0 1 auto;
+  }
+}
+
+@media (min-width: 761px) {
+  html.flagMapPage header.hero.publicMapHero .authBox {
+    position: static;
+    width: auto;
+    max-width: 100%;
+    margin: 0 0 0 auto;
+    flex: 0 1 auto;
+  }
+
+  html.flagMapPage header.hero.publicMapHero .heroNav {
+    flex: 1 0 100%;
+    order: 3;
+    min-width: 0;
   }
 }
