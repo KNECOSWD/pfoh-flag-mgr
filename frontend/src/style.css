@@ -12875,9 +12875,13 @@ html.isMapFullscreen .publicFlagLevel {
 
 .mergeBoard {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 0.75rem;
   margin: 0.75rem 0;
+}
+
+.mergeColumn {
+  min-width: 0;
 }
 
 .mergeField {
@@ -12889,12 +12893,147 @@ html.isMapFullscreen .publicFlagLevel {
   display: grid;
 }
 
+.mergeIdentity,
+.mergeField.isDiff,
+.mergeCustom.isDiff {
+  background: #fff4d6;
+  border-radius: 8px;
+}
+
+.mergeIdentity.isDiff,
+.mergeField.isDiff {
+  padding: 0.45rem 0.5rem;
+}
+
+.mergeIdentity {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: start;
+}
+
+.duplicatePhoto,
+.duplicateNoPhoto {
+  width: 120px;
+  height: 150px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #eef2f7;
+}
+
+.duplicateNoPhoto {
+  display: grid;
+  place-items: center;
+  border: 1px dashed #8aa0bd;
+  color: #173b73;
+  font-weight: 700;
+  text-align: center;
+}
+
+.differsFlag {
+  display: inline-block;
+  margin: 0 0.35rem 0 0;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid #c47b00;
+  border-radius: 999px;
+  background: #ffe0a3;
+  color: #7a3e00;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.duplicateCheck,
+.mergeChoice {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.55rem;
+  min-height: 2.75rem;
+  font-weight: 400;
+}
+
+.duplicateCheck input,
+.mergeChoice input {
+  width: 1.15rem;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  min-height: 1.15rem;
+  margin-top: 0.2rem;
+  padding: 0;
+  flex: 0 0 auto;
+  box-shadow: none;
+}
+
+.mergeMultiline {
+  white-space: pre-wrap;
+}
+
+.mergeCustomFields {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.mergeCustom {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.mergeCustomInput {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.mergeCustom input[type="text"],
+.mergeCustom textarea {
+  width: 100%;
+  max-width: 100%;
+  min-height: 2.75rem;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+.mergePreview {
+  margin: 0.75rem 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(23, 59, 115, 0.16);
+  border-radius: 12px;
+  background: #f7f9fc;
+}
+
+.mergePreview dl {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.5rem 0 0;
+}
+
+.mergePreview div {
+  display: grid;
+  grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.mergePreview dt {
+  font-weight: 700;
+}
+
+.mergePreview dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .printDuplicateReviews {
   margin-top: 1.5rem;
 }
 
 @media (max-width: 720px) {
   .mergeBoard {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mergePreview div {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

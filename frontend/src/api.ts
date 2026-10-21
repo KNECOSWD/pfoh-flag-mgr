@@ -880,7 +880,12 @@ export const adminApi = {
   mergeDuplicates: (
     instance: IPublicClientApplication,
     account: AccountInfo,
-    body: { survivorId: number; duplicateIds: number[]; fields: Record<string, number> }
+    body: {
+      survivorId: number;
+      duplicateIds: number[];
+      fields: Record<string, number>;
+      values?: Record<string, string>;
+    }
   ) =>
     request<DuplicateMergeResult>(instance, account, "/api/admin/duplicates/merge", {
       method: "POST",

@@ -32,6 +32,12 @@ jobs:
       - name: Check the shared version
         run: node --test frontend/scripts/check-version.mjs
 
+      - name: Check duplicate review
+        run: node --test frontend/scripts/check-duplicate-review.mjs
+
+      - name: Check the Find page intro
+        run: node --test frontend/scripts/check-find-search.mjs
+
       - name: Check mapped phone and organization claims
         run: node --test frontend/scripts/check-entra-claims.mjs
 

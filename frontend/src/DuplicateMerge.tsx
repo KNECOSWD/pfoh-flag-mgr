@@ -9,27 +9,19 @@ import {
   type DuplicateMergeResult
 } from "./api";
 import { duplicateListState } from "./duplicateListState.js";
+import {
+  DuplicateCustomFields,
+  DuplicateReviewBoard,
+  MergePreview,
+  buildMergeRequest,
+  canConfirmMerge,
+  choicesAfterIncludedChange,
+  choicesForSurvivor,
+  previewRows
+} from "./duplicateReview.js";
 import { isQuietAuthRejection, PLEASE_SIGN_IN_AGAIN } from "./tokenRequest.js";
 
-const fields: { key: string; label: string; value: (honoree: DuplicateHonoree) => string }[] = [
-  { key: "firstName", label: "First name", value: (honoree) => honoree.firstName },
-  { key: "middleName", label: "Middle name", value: (honoree) => honoree.middleName || "" },
-  { key: "lastName", label: "Last name", value: (honoree) => honoree.lastName },
-  { key: "suffix", label: "Suffix", value: (honoree) => honoree.suffix || "" },
-  { key: "nickname", label: "Nickname", value: (honoree) => honoree.nickname || "" },
-  { key: "rank", label: "Rank", value: (honoree) => honoree.rank },
-  { key: "serviceBranch", label: "Service branch", value: (honoree) => honoree.serviceBranchName || "" },
-  { key: "serviceYears", label: "Service years", value: (honoree) => honoree.serviceYears },
-  { key: "conflictsServed", label: "Conflicts served", value: (honoree) => honoree.conflictsServed },
-  { key: "awards", label: "Awards", value: (honoree) => honoree.awards },
-  { key: "description", label: "Bio", value: (honoree) => honoree.description },
-  { key: "kia", label: "Killed in action", value: (honoree) => (honoree.kia ? "Yes" : "No") },
-  { key: "photo", label: "Photo", value: (honoree) => honoree.photoFileName || "No photo" },
-  { key: "flagGrid", label: "Flag grid", value: (honoree) => honoree.flagGridName || "No flag grid" },
-  { key: "phone", label: "Phone", value: (honoree) => honoree.phoneNumber },
-  { key: "email", label: "Email", value: (honoree) => honoree.emailAddress },
-  { key: "sponsor", label: "Sponsor", value: (honoree) => honoree.sponsorName }
-];
+type FieldChoice = { useCustom: boolean; sourceId: number | null; custom: string; explicit?: boolean };
 
 function claimantLabel(claimant: DuplicateClaimant) {
   const name = claimant.name?.trim() || claimant.email;
@@ -63,16 +55,21 @@ export function DuplicateMergeScreen({
   loaded: boolean;
   loadError: string;
   busy: boolean;
-  onMerge: (body: { survivorId: number; duplicateIds: number[]; fields: Record<string, number> }) => Promise<DuplicateMergeResult>;
+  onMerge: (body: {
+    survivorId: number;
+    duplicateIds: number[];
+    fields: Record<string, number>;
+    values?: Record<string, string>;
+  }) => Promise<DuplicateMergeResult>;
   onNotDuplicates: (leftId: number, rightId: number) => Promise<void>;
   onReload: () => void;
   onSignIn?: () => void;
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
-  const [confirmed, setConfirmed] = useState<number[]>([]);
-  const [step, setStep] = useState<"list" | "confirm" | "merge" | "done">("list");
+  const [included, setIncluded] = useState<number[]>([]);
+  const [step, setStep] = useState<"list" | "review" | "confirm" | "done">("list");
   const [survivorId, setSurvivorId] = useState<number | null>(null);
-  const [choices, setChoices] = useState<Record<string, number | null>>({});
+  const [choices, setChoices] = useState<Record<string, FieldChoice>>({});
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState<DuplicateMergeResult | null>(null);
@@ -80,26 +77,61 @@ export function DuplicateMergeScreen({
 
   const group = groups.find((item) => item.groupKey === openKey) ?? null;
   const listState = duplicateListState({ loaded, loadError, count: groups.length });
-  const confirmedHonorees = useMemo(
-    () => (group ? group.honorees.filter((honoree) => confirmed.includes(honoree.id)) : []),
-    [group, confirmed]
+  const includedHonorees = useMemo(
+    () => (group ? group.honorees.filter((honoree) => included.includes(honoree.id)) : []),
+    [group, included]
   );
-  const keptClaimants = useMemo(() => uniqueClaimants(confirmedHonorees), [confirmedHonorees]);
+  const keptClaimants = useMemo(() => uniqueClaimants(includedHonorees), [includedHonorees]);
+  const preview = survivorId != null && group ? previewRows(group.honorees, choices) : null;
+  const ready = canConfirmMerge(survivorId, included, group?.honorees ?? [], choices);
 
   function openGroup(next: DuplicateGroup) {
     setOpenKey(next.groupKey);
-    setConfirmed([]);
+    setIncluded([]);
     setSurvivorId(null);
     setChoices({});
     setResult(null);
     setError("");
     setMessage("");
     setPendingPair(null);
-    setStep("confirm");
+    setStep("review");
   }
 
-  function toggleConfirmed(id: number) {
-    setConfirmed((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  function toggleIncluded(id: number) {
+    setIncluded((current) => {
+      const removing = current.includes(id);
+      const next = removing ? current.filter((item) => item !== id) : [...current, id];
+      if (removing && survivorId === id) {
+        setSurvivorId(null);
+        setChoices({});
+      } else if (survivorId != null) {
+        const includedHonorees = (group?.honorees ?? []).filter((honoree) => next.includes(honoree.id));
+        setChoices((existing) => choicesAfterIncludedChange(survivorId, includedHonorees, existing));
+      }
+      return next;
+    });
+  }
+
+  function chooseSurvivor(id: number) {
+    const nextIncluded = included.includes(id) ? included : [...included, id];
+    const includedHonorees = (group?.honorees ?? []).filter((honoree) => nextIncluded.includes(honoree.id));
+    setIncluded(nextIncluded);
+    setSurvivorId(id);
+    setChoices(choicesForSurvivor(id, includedHonorees) as Record<string, FieldChoice>);
+  }
+
+  function chooseSource(key: string, sourceId: number) {
+    setChoices((current) => ({
+      ...current,
+      [key]: { useCustom: false, sourceId, custom: current[key]?.custom ?? "", explicit: true }
+    }));
+  }
+
+  function chooseCustom(key: string, custom: string) {
+    setChoices((current) => ({
+      ...current,
+      [key]: { useCustom: true, sourceId: null, custom, explicit: true }
+    }));
   }
 
   async function confirmNotDuplicates() {
@@ -118,21 +150,12 @@ export function DuplicateMergeScreen({
   }
 
   async function merge() {
-    if (!group || survivorId == null) {
+    if (!group || !ready || survivorId == null) {
       setError("Choose the surviving record from the confirmed duplicates. Nothing is selected automatically.");
       return;
     }
-    const missing = fields.some((field) => choices[field.key] == null);
-    if (missing) {
-      setError("Choose a value for every field before merging.");
-      return;
-    }
     setError("");
-    const body = {
-      survivorId,
-      duplicateIds: confirmedHonorees.map((honoree) => honoree.id),
-      fields: Object.fromEntries(fields.map((field) => [field.key, choices[field.key] as number]))
-    };
+    const body = buildMergeRequest(survivorId, includedHonorees, choices);
     try {
       const merged = await onMerge(body);
       setResult(merged);
@@ -153,7 +176,7 @@ export function DuplicateMergeScreen({
             {listState.showCount ? <span className="countBadge">{groups.length}</span> : null}
           </h2>
           <p className="helperText">
-            Likely duplicates are listed for review. Only active records are included. Nothing is merged, removed, or edited until you confirm a group and choose the values to keep. A pair you mark as not duplicates is left out of this list.
+            Likely duplicates are listed for review. Only active records are included. Open a group to compare the records side by side. Nothing is merged until you choose the surviving record and confirm the values. A pair you mark as not duplicates is left out of this list.
           </p>
         </div>
         <button type="button" className="secondary" onClick={onReload} disabled={busy}>
@@ -199,15 +222,15 @@ export function DuplicateMergeScreen({
                   ))}
                 </ul>
                 <button type="button" onClick={() => openGroup(item)}>
-                  Open group
+                  Review side by side
                 </button>
               </article>
             ))}
           </div>
       ) : null}
 
-      {step === "confirm" && group ? (
-        <div className="duplicateConfirm">
+      {step === "review" && group ? (
+        <div className="duplicateMergeStep">
           <button type="button" className="secondary" onClick={() => setStep("list")}>
             Back to groups
           </button>
@@ -246,88 +269,26 @@ export function DuplicateMergeScreen({
               );
             })}
           </ul>
-          <fieldset>
-            <legend>Confirm the records that are actual duplicates</legend>
-            {group.honorees.map((honoree) => (
-              <label key={honoree.id} className="duplicateCheck">
-                <input
-                  type="checkbox"
-                  checked={confirmed.includes(honoree.id)}
-                  onChange={() => toggleConfirmed(honoree.id)}
-                />
-                <span>
-                  <strong>{honoree.name}</strong> #{honoree.id}
-                  {honoree.claimants.length > 0
-                    ? ` · Claimed by ${honoree.claimants.map(claimantLabel).join(", ")}`
-                    : " · Not claimed"}
-                </span>
-              </label>
-            ))}
-          </fieldset>
-          <button
-            type="button"
-            disabled={confirmed.length < 2}
-            onClick={() => {
-              setSurvivorId(null);
-              setChoices({});
-              setStep("merge");
-            }}
-          >
-            Continue to merge
-          </button>
-          {confirmed.length < 2 ? (
-            <p className="helperText">Confirm at least two records before merging.</p>
-          ) : null}
-        </div>
-      ) : null}
-
-      {step === "merge" && group ? (
-        <div className="duplicateMergeStep">
-          <button type="button" className="secondary" onClick={() => setStep("confirm")}>
-            Back to confirm
-          </button>
           <h3>Choose the surviving record</h3>
-          <p className="helperText">The chosen values are written into that existing record. No new record is created.</p>
-          <div className="mergeBoard">
-            {confirmedHonorees.map((honoree) => (
-              <article key={honoree.id} className="mergeColumn">
-                <label className="duplicateCheck">
-                  <input
-                    type="radio"
-                    name="duplicate-survivor"
-                    checked={survivorId === honoree.id}
-                    onChange={() => setSurvivorId(honoree.id)}
-                  />
-                  <span>Keep record #{honoree.id}</span>
-                </label>
-                <h4>{honoree.name}</h4>
-                {fields.map((field) => (
-                  <label key={field.key} className="mergeField">
-                    <input
-                      type="radio"
-                      name={`field-${field.key}`}
-                      checked={choices[field.key] === honoree.id}
-                      onChange={() => setChoices((current) => ({ ...current, [field.key]: honoree.id }))}
-                    />
-                    <span>
-                      <strong>{field.label}</strong>
-                      <em>{field.value(honoree) || "Blank"}</em>
-                    </span>
-                  </label>
-                ))}
-                <p className="duplicateClaimants">
-                  <strong>Claimants</strong>
-                  {honoree.claimants.length === 0
-                    ? " None"
-                    : ` ${honoree.claimants.map(claimantLabel).join(", ")}`}
-                </p>
-              </article>
-            ))}
-          </div>
+          <p className="helperText">
+            Nothing is selected automatically. After you choose the surviving record, each field that differs stays unset until you pick a record's value or type one. Fields that match on the included records keep that shared value. The chosen values are written into the surviving record. No new record is created.
+          </p>
+          <DuplicateReviewBoard
+            honorees={group.honorees}
+            includedIds={included}
+            survivorId={survivorId}
+            choices={choices}
+            onToggleIncluded={toggleIncluded}
+            onSurvivor={chooseSurvivor}
+            onChooseSource={chooseSource}
+            onCustom={chooseCustom}
+          />
+          <DuplicateCustomFields survivorId={survivorId} choices={choices} onCustom={chooseCustom} />
+          <MergePreview rows={preview} />
           <section className="survivorClaimants" aria-label="Claimants the survivor will keep">
             <h3>Claimants the survivor will keep</h3>
             {keptClaimants.length === 0 ? (
-              <p>None of the confirmed records is claimed.</p>
+              <p>None of the included records is claimed.</p>
             ) : (
               <ul>
                 {keptClaimants.map((claimant) => (
@@ -336,7 +297,38 @@ export function DuplicateMergeScreen({
               </ul>
             )}
           </section>
-          <button type="button" onClick={() => void merge()} disabled={busy || survivorId == null}>
+          <button type="button" disabled={!ready} onClick={() => setStep("confirm")}>
+            Continue to confirm
+          </button>
+          {!ready ? (
+            <p className="helperText">Choose the surviving record from at least two included records, then choose a value for every field that differs. Nothing is selected automatically.</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {step === "confirm" && group && preview ? (
+        <div className="duplicateMergeStep">
+          <button type="button" className="secondary" onClick={() => setStep("review")}>
+            Back to review
+          </button>
+          <h3>Confirm the merged record</h3>
+          <p className="helperText">
+            These values will be written onto the surviving record. The other included records will be set inactive and their flag spots released. Claimants move to the surviving record.
+          </p>
+          <MergePreview rows={preview} />
+          <section className="survivorClaimants" aria-label="Claimants the survivor will keep">
+            <h3>Claimants the survivor will keep</h3>
+            {keptClaimants.length === 0 ? (
+              <p>None of the included records is claimed.</p>
+            ) : (
+              <ul>
+                {keptClaimants.map((claimant) => (
+                  <li key={claimant.userId}>{claimantLabel(claimant)}</li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <button type="button" onClick={() => void merge()} disabled={busy || !ready}>
             Merge into the surviving record
           </button>
         </div>

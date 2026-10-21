@@ -39,15 +39,11 @@ public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
         }
 
         var fields = request.Fields ?? new Dictionary<string, int>();
-        var missing = DuplicateMergeFields.Keys.Where(key => !fields.ContainsKey(key)).ToList();
-        if (missing.Count > 0)
+        var values = request.Values ?? new Dictionary<string, string?>();
+        var shapeError = HonoreeMergeValues.ValidateShape(fields, values, ids);
+        if (shapeError is not null)
         {
-            return BadRequest(new { message = "Choose a value for every field before merging." });
-        }
-
-        if (fields.Values.Any(id => !ids.Contains(id)))
-        {
-            return BadRequest(new { message = "Each kept value has to come from one of the confirmed records." });
+            return BadRequest(new { message = shapeError });
         }
 
         var honorees = await db.Honorees
@@ -66,6 +62,12 @@ public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
         }
 
         var survivor = honorees.Single(honoree => honoree.Id == request.SurvivorId);
+        var resolved = await HonoreeMergeValues.ResolveAsync(db, fields, values, ids, ct);
+        if (resolved.Error is not null)
+        {
+            return BadRequest(new { message = resolved.Error });
+        }
+
         var adminName = User.GetEmail();
         if (string.IsNullOrWhiteSpace(adminName))
         {
@@ -77,7 +79,7 @@ public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
         {
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
             var before = await db.Honorees.CountAsync(ct);
-            var result = await HonoreeMerge.ApplyAsync(db, survivor, honorees, fields, adminName, ct);
+            var result = await HonoreeMerge.ApplyAsync(db, survivor, honorees, fields, resolved.Custom, adminName, ct);
             var after = await db.Honorees.CountAsync(ct);
             if (after != before)
             {
@@ -302,6 +304,13 @@ public sealed class DuplicateMergeRequest
     public List<int> DuplicateIds { get; set; } = new();
 
     public Dictionary<string, int> Fields { get; set; } = new();
+
+    /// <summary>
+    /// Typed values keyed by the same field names as <see cref="Fields"/>.
+    /// A key here is saved instead of the record named in <see cref="Fields"/>.
+    /// Photo and awards are not accepted here.
+    /// </summary>
+    public Dictionary<string, string?>? Values { get; set; }
 }
 
 public sealed class NotDuplicatePairRequest

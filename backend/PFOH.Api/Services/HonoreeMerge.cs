@@ -47,37 +47,56 @@ public static class HonoreeMerge
         Honoree survivor,
         IReadOnlyList<Honoree> confirmed,
         IReadOnlyDictionary<string, int> fields,
+        MergeCustom? custom,
         string adminName,
         CancellationToken ct)
     {
         var byId = confirmed.ToDictionary(honoree => honoree.Id);
         var now = DateTime.UtcNow;
+        custom ??= new MergeCustom();
 
-        survivor.FirstName = Text(byId, fields, "firstName", honoree => honoree.FirstName);
-        survivor.MiddleName = Optional(byId, fields, "middleName", honoree => honoree.MiddleName);
-        survivor.LastName = Text(byId, fields, "lastName", honoree => honoree.LastName);
-        survivor.Suffix = Optional(byId, fields, "suffix", honoree => honoree.Suffix);
-        survivor.Nickname = Optional(byId, fields, "nickname", honoree => honoree.Nickname);
-        survivor.Rank = Text(byId, fields, "rank", honoree => honoree.Rank);
-        survivor.ConflictsServed = Text(byId, fields, "conflictsServed", honoree => honoree.ConflictsServed);
+        survivor.FirstName = ReadText(byId, fields, custom, "firstName", honoree => honoree.FirstName);
+        survivor.MiddleName = ReadOptional(byId, fields, custom, "middleName", honoree => honoree.MiddleName);
+        survivor.LastName = ReadText(byId, fields, custom, "lastName", honoree => honoree.LastName);
+        survivor.Suffix = ReadOptional(byId, fields, custom, "suffix", honoree => honoree.Suffix);
+        survivor.Nickname = ReadOptional(byId, fields, custom, "nickname", honoree => honoree.Nickname);
+        survivor.Rank = ReadText(byId, fields, custom, "rank", honoree => honoree.Rank);
+        survivor.ConflictsServed = ReadText(byId, fields, custom, "conflictsServed", honoree => honoree.ConflictsServed);
         survivor.Awards = Text(byId, fields, "awards", honoree => honoree.Awards);
-        survivor.Description = Text(byId, fields, "description", honoree => honoree.Description);
-        survivor.KIA = byId[fields["kia"]].KIA;
+        survivor.Description = ReadText(byId, fields, custom, "description", honoree => honoree.Description);
+        survivor.KIA = custom.HasKia ? custom.Kia : byId[fields["kia"]].KIA;
         survivor.PhotoFileName = Text(byId, fields, "photo", honoree => honoree.PhotoFileName);
-        survivor.PhoneNumber = Text(byId, fields, "phone", honoree => honoree.PhoneNumber);
-        survivor.EmailAddress = Text(byId, fields, "email", honoree => honoree.EmailAddress);
-        survivor.SponsorId = byId[fields["sponsor"]].SponsorId;
+        survivor.PhoneNumber = ReadText(byId, fields, custom, "phone", honoree => honoree.PhoneNumber);
+        survivor.EmailAddress = ReadText(byId, fields, custom, "email", honoree => honoree.EmailAddress);
+        survivor.SponsorId = custom.HasSponsor ? custom.SponsorId : byId[fields["sponsor"]].SponsorId;
 
-        var branch = byId[fields["serviceBranch"]];
-        survivor.ServiceBranchId = branch.ServiceBranchId;
-        survivor.ServiceBranchCategoryId = branch.ServiceBranchCategoryId;
+        if (custom.HasBranch)
+        {
+            survivor.ServiceBranchId = custom.BranchId;
+            survivor.ServiceBranchCategoryId = custom.BranchCategoryId;
+        }
+        else
+        {
+            var branch = byId[fields["serviceBranch"]];
+            survivor.ServiceBranchId = branch.ServiceBranchId;
+            survivor.ServiceBranchCategoryId = branch.ServiceBranchCategoryId;
+        }
 
-        var years = byId[fields["serviceYears"]];
-        survivor.StartYear = years.StartYear;
-        survivor.EndYear = years.EndYear;
-        survivor.DatesUserEntry = years.DatesUserEntry ?? string.Empty;
+        if (custom.HasYears)
+        {
+            survivor.StartYear = custom.StartYear;
+            survivor.EndYear = custom.EndYear;
+            survivor.DatesUserEntry = custom.DatesUserEntry ?? string.Empty;
+        }
+        else
+        {
+            var years = byId[fields["serviceYears"]];
+            survivor.StartYear = years.StartYear;
+            survivor.EndYear = years.EndYear;
+            survivor.DatesUserEntry = years.DatesUserEntry ?? string.Empty;
+        }
 
-        var keptGridId = byId[fields["flagGrid"]].FlagGridId;
+        var keptGridId = custom.HasGrid ? custom.FlagGridId : byId[fields["flagGrid"]].FlagGridId;
         var gridIds = confirmed
             .Select(honoree => honoree.FlagGridId)
             .Where(id => id.HasValue)
@@ -174,7 +193,14 @@ public static class HonoreeMerge
         var seenSpot = new HashSet<(int GridId, string UserId)>();
         foreach (var claim in holdingSpot)
         {
-            if (!seenSpot.Add((claim.FlagGridId!.Value, claim.ExternalUserObjectId)))
+            // The grid release above may already have cleared this claim in memory
+            // while the query still saw the stored spot.
+            if (claim.FlagGridId is not int gridId)
+            {
+                continue;
+            }
+
+            if (!seenSpot.Add((gridId, claim.ExternalUserObjectId)))
             {
                 claim.FlagGridId = null;
             }
@@ -184,6 +210,29 @@ public static class HonoreeMerge
         await HonoreeClaimStore.SyncAsync(db, ct);
         var claimants = await HonoreeClaimStore.ActiveForHonoreeAsync(db, survivor.Id, ct);
         return new HonoreeMergeResult(survivor.Id, deactivatedIds, claimants);
+    }
+
+    private static string ReadText(
+        IReadOnlyDictionary<int, Honoree> byId,
+        IReadOnlyDictionary<string, int> fields,
+        MergeCustom custom,
+        string key,
+        Func<Honoree, string?> read) =>
+        custom.Text.TryGetValue(key, out var typed) ? typed : Text(byId, fields, key, read);
+
+    private static string? ReadOptional(
+        IReadOnlyDictionary<int, Honoree> byId,
+        IReadOnlyDictionary<string, int> fields,
+        MergeCustom custom,
+        string key,
+        Func<Honoree, string?> read)
+    {
+        if (custom.Text.TryGetValue(key, out var typed))
+        {
+            return string.IsNullOrEmpty(typed) ? null : typed;
+        }
+
+        return Optional(byId, fields, key, read);
     }
 
     private static string Text(

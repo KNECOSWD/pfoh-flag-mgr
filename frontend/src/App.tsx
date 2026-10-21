@@ -92,6 +92,7 @@ import {
   readStickyAdmin,
   resolvePublicAdmin
 } from "./accountRoles.js";
+import { FindSearchFrame } from "./findSearchLayout.js";
 import { isPublicPage } from "./publicRoutes.js";
 import { publishSignInError, subscribeSignInError } from "./signInError";
 import { isQuietAuthRejection, PLEASE_SIGN_IN_AGAIN } from "./tokenRequest.js";
@@ -182,8 +183,6 @@ function isSubmitHonoreeIntent(intent: { action: string }) {
 const publicCopy = {
   title: "HONOR A HERO",
   subtitle: "Find an honoree or submit a tribute. No cost to look or submit a hero.",
-  intro:
-    "Search our honoree records—no account needed. To submit a new honoree record or suggest changes to an existing record, log in or create an account. All submissions and changes require administrator approval before they appear publicly.",
   searchHeading: "Search honoree records",
   searchHelp:
     "Search by name, military branch, rank, submitter’s name, or flag grid location. A flag grid location is the spot on the field, such as AA-10.",
@@ -3723,24 +3722,20 @@ export default function App() {
           ) : null}
 
           {isFindRoute ? (
-          <section id="search" className="card searchCard">
-            <p className="searchIntro">{publicCopy.intro}</p>
-            <div className="sectionHeader searchHeader">
-              <div>
-                <h2>
-                  {publicCopy.searchHeading}
-                  <button
-                    type="button"
-                    className="infoIconButton"
-                    onClick={() => setShowHowItWorks(true)}
-                    aria-label="How this works"
-                  >
-                    i
-                  </button>
-                </h2>
-                <p className="helperText">{publicCopy.searchHelp}</p>
-              </div>
-            </div>
+          <FindSearchFrame
+            heading={publicCopy.searchHeading}
+            help={publicCopy.searchHelp}
+            infoButton={
+              <button
+                type="button"
+                className="infoIconButton"
+                onClick={() => setShowHowItWorks(true)}
+                aria-label="How this works"
+              >
+                i
+              </button>
+            }
+          >
 
             <form className="searchBar nativeSearchBar" onSubmit={searchHonorees}>
               <label className="visuallyHidden" htmlFor="honoree-search">
@@ -3998,7 +3993,7 @@ export default function App() {
                 <p className="helperText">{publicCopy.loginRequired}</p>
               </div>
             ) : null}
-          </section>
+          </FindSearchFrame>
           ) : null}
 
           {isMyFlagsRoute && isAuthenticated ? (
