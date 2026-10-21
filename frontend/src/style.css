@@ -6883,6 +6883,15 @@ img.ownedFlagImage {
     text-overflow: clip;
   }
 
+  /* Phone titles other than the Flag Map. The Flag Map band keeps the rule above. */
+  html:not(.flagMapPage) .hero h1 {
+    font-size: clamp(1.5rem, 8.4vw, 2rem) !important;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    overflow-wrap: break-word;
+  }
+
   .hero .authBox {
     display: none !important;
   }
@@ -7006,8 +7015,8 @@ img.ownedFlagImage {
     background-position: center 32% !important;
   }
 
-  .hero h1 {
-    font-size: 2rem !important;
+  html:not(.flagMapPage) .hero h1 {
+    font-size: clamp(1.5rem, 8.4vw, 2rem) !important;
   }
 
   .mobileNavToggle {
@@ -10976,7 +10985,13 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
     overflow: visible !important;
   }
 
-  .hero h1 {
+  html:not(.flagMapPage) .hero h1 {
+    white-space: normal !important;
+    overflow-wrap: break-word;
+    font-size: clamp(1.5rem, 8.4vw, 2rem) !important;
+  }
+
+  html.flagMapPage .hero h1 {
     white-space: nowrap !important;
     font-size: 2rem !important;
   }
