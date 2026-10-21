@@ -22,7 +22,7 @@ test("the duplicates prompt shows the count, hides at zero, and matches the othe
   assert.deepEqual(duplicatesOnly, [
     {
       key: "duplicates-for-review",
-      label: "Duplicates for review",
+      label: "Duplicates",
       count: 4,
       route: "/admin/duplicates"
     }

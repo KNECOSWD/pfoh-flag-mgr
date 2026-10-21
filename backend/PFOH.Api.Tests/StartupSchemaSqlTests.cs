@@ -16,6 +16,22 @@ public class StartupSchemaSqlTests
         @"ExecuteSqlRaw(?:Async)?\s*\(\s*(?<arg>SchemaSql\.ForExecuteSqlRaw\([^)]+\)|[^,\r\n)]+)",
         RegexOptions.CultureInvariant);
 
+    /// <summary>
+    /// ExecuteCall stops an argument at the first newline, so a call whose
+    /// argument starts on the next line can be missed. The counts below are
+    /// the calls each startup schema actually makes.
+    /// </summary>
+    private static readonly Dictionary<string, int> ExpectedExecuteCalls = new(StringComparer.Ordinal)
+    {
+        ["CardPrintEventSchema"] = 1,
+        ["HonoreeClaimSchema"] = 3,
+        ["HonoreeMergeAuditSchema"] = 2,
+        ["HonoreeNotDuplicatePairSchema"] = 1,
+        ["PendingSubmissionGridSchema"] = 2,
+        ["ReprintDuplicateReviewSchema"] = 1,
+        ["UserProfileSchema"] = 2
+    };
+
     [Fact]
     public void Every_startup_schema_statement_survives_ef_formatting()
     {
@@ -83,8 +99,16 @@ public class StartupSchemaSqlTests
             Assert.NotNull(schemaType);
 
             var ensure = source.Split("EnsureAsync", 2)[1];
+            Assert.True(
+                ExpectedExecuteCalls.TryGetValue(className, out var expected),
+                $"{className} has no expected ExecuteSqlRaw count.");
+            var mentioned = Regex.Matches(ensure, @"\bExecuteSqlRaw(?:Async)?\b").Count;
+            Assert.Equal(expected, mentioned);
             var calls = ExecuteCall.Matches(ensure);
-            Assert.NotEmpty(calls);
+            Assert.Equal(expected, calls.Count);
+            Assert.True(
+                Regex.Matches(ensure, @"ExecuteSqlRaw(?:Async)?\s*\(\s*\r?\n").Count == 0,
+                $"{className} splits ExecuteSqlRaw across lines, which the startup SQL guard does not see.");
 
             foreach (Match call in calls)
             {

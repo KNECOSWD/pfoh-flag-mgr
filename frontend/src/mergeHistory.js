@@ -1,4 +1,5 @@
 import { createElement as h } from "react";
+import { DuplicateIconButton } from "./duplicateChrome.js";
 
 export function formatMergeWhen(value) {
   if (!value) return "";
@@ -33,6 +34,7 @@ export function MergeHistoryScreen({
   loadError,
   busy,
   error,
+  errorId,
   onUndo,
   onBack,
   onReload
@@ -57,23 +59,22 @@ export function MergeHistoryScreen({
       ),
       h(
         "div",
-        { className: "adminHeaderActions" },
+        { className: "adminHeaderActions duplicateHeaderActions" },
         onBack
-          ? h(
-              "button",
-              { type: "button", className: "secondary", onClick: onBack },
-              "Back to duplicates"
-            )
+          ? h(DuplicateIconButton, { kind: "back", label: "Back to duplicates", onClick: onBack })
           : null,
-        h(
-          "button",
-          { type: "button", className: "secondary", onClick: onReload, disabled: busy },
-          busy ? "Loading..." : "Refresh"
-        )
+        h(DuplicateIconButton, {
+          kind: "refresh",
+          label: busy ? "Loading" : "Refresh",
+          disabled: busy,
+          onClick: onReload
+        })
       )
     ),
     loadError ? h("p", { className: "message error", role: "alert" }, loadError) : null,
-    error ? h("p", { className: "message error", role: "alert" }, error) : null,
+    error && !rows.some((row) => row.id === errorId)
+      ? h("p", { className: "message error", role: "alert" }, error)
+      : null,
     loaded && rows.length === 0 ? h("p", null, "No merges have been recorded.") : null,
     rows.length
       ? h(
@@ -94,14 +95,21 @@ export function MergeHistoryScreen({
                     `Undone ${formatMergeWhen(row.undoneUtc)}${row.undoneBy ? ` by ${row.undoneBy}` : ""}.`
                   )
                 : h(
-                    "button",
-                    {
-                      type: "button",
-                      className: "secondary",
-                      disabled: busy,
-                      onClick: () => onUndo?.(row.id)
-                    },
-                    "Undo"
+                    "div",
+                    { className: "mergeHistoryActions" },
+                    h(
+                      "button",
+                      {
+                        type: "button",
+                        className: "destructive",
+                        disabled: busy,
+                        onClick: () => onUndo?.(row.id)
+                      },
+                      "Undo"
+                    ),
+                    error && errorId === row.id
+                      ? h("p", { className: "message error", role: "alert" }, error)
+                      : null
                   )
             )
           )

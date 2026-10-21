@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.5
+
+- The admin bar shortens the duplicate prompt to Duplicates. It stays an equal chip with Pending review and Ready to print.
+- Duplicate honorees, review, confirm, and merge history share one header row. History is a short text link. Refresh and every Back control are the same icon button, with a tooltip and a name for the screen reader. On a phone the icon is at least 44 pixels.
+- Each duplicate group has one Review button. On a phone that button spans the card.
+- Review and confirm share one footer. Continue or Merge is on the right, and Preview PDF is beside it. On a phone the primary button is full width on top and Preview PDF is below it. The fields still to choose stay directly under that primary button.
+- A chosen field is a navy outline with a light tint. Photo and Awards name the No photo and Combine both choices. Use matches and Confirm are the shorter labels.
+- Merge is darker than Continue, and a short line above it says the other records become inactive and their flag spots are released.
+- Undo is a red outline on the right of its row. When a merge cannot be undone, that message is an error under that row's Undo.
+
 ## 2.1.4
 
 - On the duplicate review step, Preview card PDF sits with Continue to confirm. It opens the same card preview as the confirm step. While a field still needs a pick, both steps name the remaining fields.

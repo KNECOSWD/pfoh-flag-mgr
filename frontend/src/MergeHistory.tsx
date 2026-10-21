@@ -18,6 +18,7 @@ export function MergeHistory({
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [errorId, setErrorId] = useState<number | null>(null);
 
   async function load() {
     if (!account) return;
@@ -46,12 +47,14 @@ export function MergeHistory({
     if (!account) return;
     setBusy(true);
     setError("");
+    setErrorId(null);
     try {
       await adminApi.undoMerge(instance, account, id);
       await load();
     } catch (err) {
       if (isQuietAuthRejection(err)) return;
       setError(err instanceof ApiError ? err.serverMessage || err.message : "The merge could not be undone.");
+      setErrorId(id);
     } finally {
       setBusy(false);
     }
@@ -66,6 +69,7 @@ export function MergeHistory({
       loadError={loadError}
       busy={busy}
       error={error}
+      errorId={errorId}
       onUndo={(id: number) => void undo(id)}
       onBack={onBack}
       onReload={() => void load()}
