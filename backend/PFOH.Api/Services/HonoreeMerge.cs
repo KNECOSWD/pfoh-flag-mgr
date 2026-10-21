@@ -193,7 +193,14 @@ public static class HonoreeMerge
         var seenSpot = new HashSet<(int GridId, string UserId)>();
         foreach (var claim in holdingSpot)
         {
-            if (!seenSpot.Add((claim.FlagGridId!.Value, claim.ExternalUserObjectId)))
+            // The grid release above may already have cleared this claim in memory
+            // while the query still saw the stored spot.
+            if (claim.FlagGridId is not int gridId)
+            {
+                continue;
+            }
+
+            if (!seenSpot.Add((gridId, claim.ExternalUserObjectId)))
             {
                 claim.FlagGridId = null;
             }

@@ -3,7 +3,7 @@
 ## 2.1.2
 
 - Duplicate honorees opens a side-by-side review. Each active record is a column with the full name, including a suffix such as Jr., Sr., II, or III, the photo or a no-photo state, the bio, branch, years of service, awards, and the other stored fields. A field that is not the same on every record is marked differs.
-- The surviving record is not selected for you. Merge stays unavailable until you choose one. Each field then starts from that record, and you can keep another record's value or type a value for that field. Photo and awards stay a choice of which record's photo or awards to keep. A preview shows the merged values before you confirm.
+- The surviving record is not selected for you. Fields that differ stay unset until you choose a record's value or type one. Fields that match on the included records keep that shared value. Merge stays unavailable until every differing field is chosen. Photo and awards stay a choice of which record's photo or awards to keep. The preview uses the same text cleanup as the save, including length checks. A deleted, reserved, or outside-held flag grid is rejected. A grid held by a record in the merge can move to the survivor.
 - The merge writes those chosen or typed values onto the surviving record. The other records in the merge are set inactive and their flag spots are released. Claimants stay with the survivor. Only active records are listed, and pairs marked not duplicates stay out of the list.
 - The Find page no longer shows the intro paragraph above Search honoree records. The heading, search box, and three step cards stay.
 

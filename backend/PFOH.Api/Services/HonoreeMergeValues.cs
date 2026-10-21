@@ -400,28 +400,40 @@ public static class HonoreeMergeValues
         var matches = await db.FlagGrids
             .AsNoTracking()
             .Where(grid => grid.FlagGridName.ToLower() == lowered)
-            .Select(grid => new { grid.Id, grid.HonoreeId })
+            .Select(grid => new { grid.Id, grid.HonoreeId, grid.Reserved, grid.DeletedDate })
             .ToListAsync(ct);
-        if (matches.Count != 1)
+        // Deleted grids are not assignable, matching flag-position assignment.
+        var live = matches.Where(grid => grid.DeletedDate == null).ToList();
+        if (live.Count == 0)
         {
-            return matches.Count == 0
-                ? "Type a flag grid location that already exists, or choose one of the records."
-                : "More than one flag grid has that location. Choose the flag grid from one of the records.";
+            return matches.Count > 0
+                ? "That flag grid was deleted and cannot be assigned."
+                : "Type a flag grid location that already exists, or choose one of the records.";
         }
 
-        var holder = matches[0].HonoreeId;
-        if (holder is int holderId && !duplicateIds.Contains(holderId))
+        if (live.Count != 1)
         {
-            var heldBySomeoneElse = await db.Honorees.AsNoTracking().AnyAsync(
-                honoree => honoree.Id == holderId && honoree.IsActive && honoree.DeletedDate == null,
-                ct);
-            if (heldBySomeoneElse)
-            {
-                return "That flag grid is already assigned to a record that is not part of this merge.";
-            }
+            return "More than one flag grid has that location. Choose the flag grid from one of the records.";
         }
 
-        custom.FlagGridId = matches[0].Id;
+        var chosen = live[0];
+        if (chosen.Reserved)
+        {
+            return "This flag position is reserved and cannot be assigned.";
+        }
+
+        var holders = await db.Honorees
+            .AsNoTracking()
+            .Where(honoree => honoree.FlagGridId == chosen.Id)
+            .Select(honoree => honoree.Id)
+            .ToListAsync(ct);
+        var pointedOutside = chosen.HonoreeId is int pointed && !duplicateIds.Contains(pointed);
+        if (pointedOutside || holders.Any(id => !duplicateIds.Contains(id)))
+        {
+            return "That flag grid is already assigned to a record that is not part of this merge.";
+        }
+
+        custom.FlagGridId = chosen.Id;
         return null;
     }
 

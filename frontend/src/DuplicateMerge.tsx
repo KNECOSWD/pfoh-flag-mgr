@@ -15,12 +15,13 @@ import {
   MergePreview,
   buildMergeRequest,
   canConfirmMerge,
+  choicesAfterIncludedChange,
   choicesForSurvivor,
   previewRows
 } from "./duplicateReview.js";
 import { isQuietAuthRejection, PLEASE_SIGN_IN_AGAIN } from "./tokenRequest.js";
 
-type FieldChoice = { useCustom: boolean; sourceId: number | null; custom: string };
+type FieldChoice = { useCustom: boolean; sourceId: number | null; custom: string; explicit?: boolean };
 
 function claimantLabel(claimant: DuplicateClaimant) {
   const name = claimant.name?.trim() || claimant.email;
@@ -82,7 +83,7 @@ export function DuplicateMergeScreen({
   );
   const keptClaimants = useMemo(() => uniqueClaimants(includedHonorees), [includedHonorees]);
   const preview = survivorId != null && group ? previewRows(group.honorees, choices) : null;
-  const ready = canConfirmMerge(survivorId, included);
+  const ready = canConfirmMerge(survivorId, included, group?.honorees ?? [], choices);
 
   function openGroup(next: DuplicateGroup) {
     setOpenKey(next.groupKey);
@@ -98,45 +99,38 @@ export function DuplicateMergeScreen({
 
   function toggleIncluded(id: number) {
     setIncluded((current) => {
-      const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
-      if (current.includes(id)) {
-        if (survivorId === id) {
-          setSurvivorId(null);
-          setChoices({});
-        } else if (survivorId != null) {
-          setChoices((existing) => {
-            const updated = { ...existing };
-            for (const key of Object.keys(updated)) {
-              const choice = updated[key];
-              if (choice && !choice.useCustom && choice.sourceId === id) {
-                updated[key] = { useCustom: false, sourceId: survivorId, custom: "" };
-              }
-            }
-            return updated;
-          });
-        }
+      const removing = current.includes(id);
+      const next = removing ? current.filter((item) => item !== id) : [...current, id];
+      if (removing && survivorId === id) {
+        setSurvivorId(null);
+        setChoices({});
+      } else if (survivorId != null) {
+        const includedHonorees = (group?.honorees ?? []).filter((honoree) => next.includes(honoree.id));
+        setChoices((existing) => choicesAfterIncludedChange(survivorId, includedHonorees, existing));
       }
       return next;
     });
   }
 
   function chooseSurvivor(id: number) {
-    setIncluded((current) => (current.includes(id) ? current : [...current, id]));
+    const nextIncluded = included.includes(id) ? included : [...included, id];
+    const includedHonorees = (group?.honorees ?? []).filter((honoree) => nextIncluded.includes(honoree.id));
+    setIncluded(nextIncluded);
     setSurvivorId(id);
-    setChoices(choicesForSurvivor(id) as Record<string, FieldChoice>);
+    setChoices(choicesForSurvivor(id, includedHonorees) as Record<string, FieldChoice>);
   }
 
   function chooseSource(key: string, sourceId: number) {
     setChoices((current) => ({
       ...current,
-      [key]: { useCustom: false, sourceId, custom: current[key]?.custom ?? "" }
+      [key]: { useCustom: false, sourceId, custom: current[key]?.custom ?? "", explicit: true }
     }));
   }
 
   function chooseCustom(key: string, custom: string) {
     setChoices((current) => ({
       ...current,
-      [key]: { useCustom: true, sourceId: null, custom }
+      [key]: { useCustom: true, sourceId: null, custom, explicit: true }
     }));
   }
 
@@ -277,7 +271,7 @@ export function DuplicateMergeScreen({
           </ul>
           <h3>Choose the surviving record</h3>
           <p className="helperText">
-            Nothing is selected automatically. After you choose the surviving record, each field starts with that record's value. You can keep another record's value or type a value. The chosen values are written into the surviving record. No new record is created.
+            Nothing is selected automatically. After you choose the surviving record, each field that differs stays unset until you pick a record's value or type one. Fields that match on the included records keep that shared value. The chosen values are written into the surviving record. No new record is created.
           </p>
           <DuplicateReviewBoard
             honorees={group.honorees}
@@ -307,7 +301,7 @@ export function DuplicateMergeScreen({
             Continue to confirm
           </button>
           {!ready ? (
-            <p className="helperText">Choose the surviving record from at least two included records. Nothing is selected automatically.</p>
+            <p className="helperText">Choose the surviving record from at least two included records, then choose a value for every field that differs. Nothing is selected automatically.</p>
           ) : null}
         </div>
       ) : null}

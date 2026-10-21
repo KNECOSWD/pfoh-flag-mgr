@@ -9,6 +9,7 @@ import {
   buildMergeRequest,
   canConfirmMerge,
   choicesForSurvivor,
+  mergeFields,
   previewRows,
   recordsDiffer
 } from "../src/duplicateReview.js";
@@ -124,8 +125,17 @@ test("side-by-side review shows names, photos, and differs labels with nothing s
   assert.match(html, /data-custom="firstName"/);
 });
 
-test("choosing a survivor selects that record's fields and a custom value replaces one", () => {
-  const choices = choicesForSurvivor(2);
+test("choosing a survivor leaves differing fields empty until each one is chosen", () => {
+  const choices = choicesForSurvivor(2, honorees);
+  for (const key of ["firstName", "middleName", "lastName", "nickname"]) {
+    assert.equal(choices[key].sourceId, 2, `${key} matches on both records`);
+    assert.equal(choices[key].useCustom, false);
+  }
+  for (const key of ["suffix", "rank", "serviceBranch", "serviceYears", "conflictsServed", "awards", "description", "kia", "photo", "flagGrid", "phone", "email", "sponsor"]) {
+    assert.equal(choices[key].sourceId, null, `${key} differs and stays unset`);
+    assert.equal(choices[key].useCustom, false);
+  }
+
   const selected = reviewMarkup({
     survivorId: 2,
     includedIds: [1, 2],
@@ -133,15 +143,34 @@ test("choosing a survivor selects that record's fields and a custom value replac
     preview: previewRows(honorees, choices)
   });
   const description = tags(selected, "field-description");
-  assert.equal(description.filter((tag) => tag.includes('value="2"') && tag.includes("checked")).length, 1);
-  assert.equal(description.filter((tag) => tag.includes('value="1"') && tag.includes("checked")).length, 0);
-  assert.match(selected, /data-preview="description"[\s\S]*Kept bio/);
-  assert.match(selected, /data-preview="photo"[\s\S]*No photo/);
-  assert.equal(canConfirmMerge(2, [1, 2]), true);
+  assert.equal(description.filter((tag) => tag.includes("checked")).length, 0);
+  assert.match(selected, /data-preview="description"[\s\S]*Not chosen/);
+  assert.match(selected, /data-preview="firstName"[\s\S]*John/);
+  assert.equal(canConfirmMerge(2, [1, 2], honorees, choices), false);
+
+  const filled = { ...choices };
+  for (const field of mergeFields) {
+    if (field.key === "description" || filled[field.key].sourceId != null) continue;
+    filled[field.key] = { useCustom: false, sourceId: 1, custom: "", explicit: true };
+  }
+  assert.equal(canConfirmMerge(2, [1, 2], honorees, filled), false);
+  filled.description = { useCustom: false, sourceId: 2, custom: "", explicit: true };
+  assert.equal(canConfirmMerge(2, [1, 2], honorees, filled), true);
+
+  const ready = reviewMarkup({
+    survivorId: 2,
+    includedIds: [1, 2],
+    choices: filled,
+    preview: previewRows(honorees, filled)
+  });
+  const chosenDescription = tags(ready, "field-description");
+  assert.equal(chosenDescription.filter((tag) => tag.includes('value="2"') && tag.includes("checked")).length, 1);
+  assert.match(ready, /data-preview="description"[\s\S]*Kept bio/);
+  assert.match(ready, /data-preview="photo"[\s\S]*john\.jpg/);
 
   const customChoices = {
-    ...choices,
-    firstName: { useCustom: true, sourceId: null, custom: "Patricia" }
+    ...filled,
+    firstName: { useCustom: true, sourceId: null, custom: "Patricia", explicit: true }
   };
   const custom = reviewMarkup({
     survivorId: 2,
@@ -154,15 +183,37 @@ test("choosing a survivor selects that record's fields and a custom value replac
   assert.equal(firstName.filter((tag) => tag.includes("checked") && !tag.includes('value="custom"')).length, 0);
   assert.match(custom, /data-preview="firstName"[\s\S]*Patricia/);
   assert.match(custom, /value="Patricia"/);
+  assert.equal(canConfirmMerge(2, [1, 2], honorees, customChoices), true);
 
   const body = buildMergeRequest(2, honorees, customChoices);
   assert.equal(body.survivorId, 2);
   assert.deepEqual(body.duplicateIds, [1, 2]);
   assert.equal(body.values.firstName, "Patricia");
   assert.equal(body.fields.firstName, undefined);
-  assert.equal(body.fields.photo, 2);
-  assert.equal(body.fields.awards, 2);
+  assert.equal(body.fields.photo, 1);
+  assert.equal(body.fields.awards, 1);
   assert.equal(body.values.photo, undefined);
   assert.equal(body.values.awards, undefined);
   assert.equal(body.fields.description, 2);
+});
+
+test("a typed value with inner double spaces previews and is sent as the saved text", () => {
+  const choices = choicesForSurvivor(2, honorees);
+  for (const field of mergeFields) {
+    if (choices[field.key].sourceId == null) {
+      choices[field.key] = { useCustom: false, sourceId: 2, custom: "", explicit: true };
+    }
+  }
+  const typed = "Patricia  Ann";
+  choices.firstName = { useCustom: true, sourceId: null, custom: typed, explicit: true };
+  const preview = previewRows(honorees, choices).find((row) => row.key === "firstName");
+  assert.equal(preview.value, "Patricia Ann");
+  const body = buildMergeRequest(2, honorees, choices);
+  assert.equal(body.values.firstName, preview.value);
+  assert.equal(canConfirmMerge(2, [1, 2], honorees, choices), true);
+
+  const tooLong = { ...choices, firstName: { useCustom: true, sourceId: null, custom: "A".repeat(201), explicit: true } };
+  const blocked = previewRows(honorees, tooLong).find((row) => row.key === "firstName");
+  assert.equal(blocked.value, "First name must be 200 characters or fewer.");
+  assert.equal(canConfirmMerge(2, [1, 2], honorees, tooLong), false);
 });

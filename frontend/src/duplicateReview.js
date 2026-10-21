@@ -1,23 +1,23 @@
 import { createElement as h } from "react";
 
 export const mergeFields = [
-  { key: "firstName", label: "First name", custom: "text", maxLength: 200, value: (honoree) => honoree.firstName },
-  { key: "middleName", label: "Middle name", custom: "text", maxLength: 200, value: (honoree) => honoree.middleName || "" },
-  { key: "lastName", label: "Last name", custom: "text", maxLength: 200, value: (honoree) => honoree.lastName },
-  { key: "suffix", label: "Suffix", custom: "text", maxLength: 100, value: (honoree) => honoree.suffix || "" },
-  { key: "nickname", label: "Nickname", custom: "text", maxLength: 200, value: (honoree) => honoree.nickname || "" },
-  { key: "rank", label: "Rank", custom: "text", maxLength: 200, value: (honoree) => honoree.rank },
-  { key: "serviceBranch", label: "Service branch", custom: "text", maxLength: 200, placeholder: "Existing branch name", value: (honoree) => honoree.serviceBranchName || "" },
-  { key: "serviceYears", label: "Years of service", custom: "text", maxLength: 500, placeholder: "1942 - 1945", value: (honoree) => honoree.serviceYears },
-  { key: "conflictsServed", label: "Conflicts served", custom: "textarea", value: (honoree) => honoree.conflictsServed },
+  { key: "firstName", label: "First name", serverLabel: "First name", custom: "text", required: true, maxLength: 200, serverMax: 200, value: (honoree) => honoree.firstName },
+  { key: "middleName", label: "Middle name", serverLabel: "Middle name", custom: "text", maxLength: 200, serverMax: 200, value: (honoree) => honoree.middleName || "" },
+  { key: "lastName", label: "Last name", serverLabel: "Last name", custom: "text", required: true, maxLength: 200, serverMax: 200, value: (honoree) => honoree.lastName },
+  { key: "suffix", label: "Suffix", serverLabel: "Suffix", custom: "text", maxLength: 100, serverMax: 100, value: (honoree) => honoree.suffix || "" },
+  { key: "nickname", label: "Nickname", serverLabel: "Nickname", custom: "text", maxLength: 200, serverMax: 200, value: (honoree) => honoree.nickname || "" },
+  { key: "rank", label: "Rank", serverLabel: "Rank", custom: "text", maxLength: 200, serverMax: 200, value: (honoree) => honoree.rank },
+  { key: "serviceBranch", label: "Service branch", serverLabel: "Service branch", custom: "text", required: true, maxLength: 200, serverMax: 200, placeholder: "Existing branch name", value: (honoree) => honoree.serviceBranchName || "" },
+  { key: "serviceYears", label: "Years of service", serverLabel: "Service years", custom: "text", maxLength: 500, serverMax: 500, placeholder: "1942 - 1945", value: (honoree) => honoree.serviceYears },
+  { key: "conflictsServed", label: "Conflicts served", serverLabel: "Conflicts served", custom: "textarea", value: (honoree) => honoree.conflictsServed },
   { key: "awards", label: "Awards", custom: false, value: (honoree) => honoree.awards },
-  { key: "description", label: "Bio", custom: "textarea", value: (honoree) => honoree.description },
-  { key: "kia", label: "Killed in action", custom: "text", maxLength: 5, placeholder: "Yes or No", value: (honoree) => (honoree.kia ? "Yes" : "No") },
+  { key: "description", label: "Bio", serverLabel: "Honoree description", custom: "textarea", required: true, value: (honoree) => honoree.description },
+  { key: "kia", label: "Killed in action", serverLabel: "Killed in action", custom: "text", maxLength: 5, placeholder: "Yes or No", value: (honoree) => (honoree.kia ? "Yes" : "No") },
   { key: "photo", label: "Photo", custom: false, value: (honoree) => honoree.photoFileName || "" },
-  { key: "flagGrid", label: "Flag grid", custom: "text", maxLength: 100, placeholder: "AA-10", value: (honoree) => honoree.flagGridName || "" },
-  { key: "phone", label: "Phone", custom: "text", maxLength: 50, value: (honoree) => honoree.phoneNumber },
-  { key: "email", label: "Email", custom: "text", maxLength: 255, value: (honoree) => honoree.emailAddress },
-  { key: "sponsor", label: "Sponsor", custom: "text", maxLength: 400, placeholder: "Existing sponsor name", value: (honoree) => honoree.sponsorName }
+  { key: "flagGrid", label: "Flag grid", serverLabel: "Flag grid", custom: "text", maxLength: 100, serverMax: 100, placeholder: "AA-10", value: (honoree) => honoree.flagGridName || "" },
+  { key: "phone", label: "Phone", serverLabel: "Phone", custom: "text", maxLength: 50, serverMax: 50, value: (honoree) => honoree.phoneNumber },
+  { key: "email", label: "Email", serverLabel: "Email", custom: "text", maxLength: 255, serverMax: 255, value: (honoree) => honoree.emailAddress },
+  { key: "sponsor", label: "Sponsor", serverLabel: "Sponsor", custom: "text", maxLength: 400, serverMax: 400, placeholder: "Existing sponsor name", value: (honoree) => honoree.sponsorName }
 ];
 
 export function fullName(honoree) {
@@ -35,14 +35,86 @@ export function recordsDiffer(values) {
   return new Set(values.map(normalizeCompare)).size > 1;
 }
 
-export function choicesForSurvivor(survivorId) {
+function isControlCharacter(character) {
+  const code = character.codePointAt(0);
+  return code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+}
+
+// Same text cleanup the merge API applies before it saves a typed value.
+export function normalizeMergeText(value, multiline) {
+  if (value == null || value === "") return "";
+  let buffer = "";
+  const source = String(value).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  for (const character of source) {
+    if (character === "\n" || character === "\t") {
+      buffer += multiline && character === "\n" ? "\n" : " ";
+      continue;
+    }
+    if (isControlCharacter(character)) continue;
+    buffer += character;
+  }
+  let text = buffer.trim();
+  if (!multiline) {
+    while (text.includes("  ")) text = text.replaceAll("  ", " ");
+  }
+  return text;
+}
+
+export function customValueIssue(field, raw) {
+  if (!field?.custom) return null;
+  const text = normalizeMergeText(raw, field.custom === "textarea");
+  const label = field.serverLabel || field.label;
+  if (field.required && text.length === 0) return `${label} is required.`;
+  if (field.serverMax && text.length > field.serverMax) {
+    return `${label} must be ${field.serverMax} characters or fewer.`;
+  }
+  return null;
+}
+
+function emptyChoice() {
+  return { useCustom: false, sourceId: null, custom: "", explicit: false };
+}
+
+function fieldResolved(field, choice, includedIds) {
+  if (!choice) return false;
+  if (choice.useCustom && field.custom) return customValueIssue(field, choice.custom) == null;
+  return choice.sourceId != null && includedIds.includes(choice.sourceId);
+}
+
+export function choicesForSurvivor(survivorId, includedHonorees) {
+  const included = includedHonorees ?? [];
   return Object.fromEntries(
-    mergeFields.map((field) => [field.key, { useCustom: false, sourceId: survivorId, custom: "" }])
+    mergeFields.map((field) => {
+      const shared = !recordsDiffer(included.map((honoree) => field.value(honoree)));
+      return [field.key, shared
+        ? { useCustom: false, sourceId: survivorId, custom: "", explicit: false }
+        : emptyChoice()];
+    })
   );
 }
 
-export function canConfirmMerge(survivorId, includedIds) {
-  return survivorId != null && includedIds.includes(survivorId) && includedIds.length >= 2;
+export function choicesAfterIncludedChange(survivorId, includedHonorees, previous) {
+  const next = choicesForSurvivor(survivorId, includedHonorees);
+  const includedIds = new Set((includedHonorees ?? []).map((honoree) => honoree.id));
+  for (const field of mergeFields) {
+    const prior = previous?.[field.key];
+    if (!prior?.explicit) continue;
+    if (prior.useCustom && field.custom) {
+      next[field.key] = prior;
+      continue;
+    }
+    if (prior.sourceId != null && includedIds.has(prior.sourceId)) {
+      next[field.key] = prior;
+    }
+  }
+  return next;
+}
+
+export function canConfirmMerge(survivorId, includedIds, honorees, choices) {
+  if (survivorId == null || !includedIds?.includes(survivorId) || includedIds.length < 2) return false;
+  const included = (honorees ?? []).filter((honoree) => includedIds.includes(honoree.id));
+  if (included.length < 2) return false;
+  return mergeFields.every((field) => fieldResolved(field, choices?.[field.key], includedIds));
 }
 
 export function displayValue(field, honoree) {
@@ -56,11 +128,12 @@ export function previewRows(honorees, choices) {
   return mergeFields.map((field) => {
     const choice = choices?.[field.key];
     if (choice?.useCustom && field.custom) {
-      const typed = String(choice.custom ?? "").trim();
-      return { key: field.key, label: field.label, value: typed || "Blank" };
+      const issue = customValueIssue(field, choice.custom);
+      const typed = normalizeMergeText(choice.custom, field.custom === "textarea");
+      return { key: field.key, label: field.label, value: issue || typed || "Blank" };
     }
     const honoree = honorees.find((item) => item.id === choice?.sourceId);
-    return { key: field.key, label: field.label, value: honoree ? displayValue(field, honoree) : "Blank" };
+    return { key: field.key, label: field.label, value: honoree ? displayValue(field, honoree) : "Not chosen" };
   });
 }
 
@@ -72,7 +145,7 @@ export function buildMergeRequest(survivorId, honorees, choices) {
   for (const field of mergeFields) {
     const choice = choices?.[field.key];
     if (field.custom && choice?.useCustom) {
-      values[field.key] = choice.custom ?? "";
+      values[field.key] = normalizeMergeText(choice.custom, field.custom === "textarea");
       continue;
     }
     if (choice?.sourceId) fields[field.key] = choice.sourceId;

@@ -307,6 +307,98 @@ public class DuplicateMergeFieldApiTests(PfohApiFactory factory) : IClassFixture
         Assert.Equal(3, await after.Honorees.CountAsync(honoree => honoree.IsActive && honoree.DeletedDate == null));
     }
 
+    [Fact]
+    public async Task Custom_value_with_inner_double_spaces_is_saved_as_the_preview_text()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        var client = factory.CreateClient();
+        var fields = SourceFields(2, 1, 2);
+        fields.Remove("firstName");
+        var merged = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields,
+            values = new Dictionary<string, string> { ["firstName"] = "Patricia  Ann" }
+        }));
+        var body = await merged.Content.ReadAsStringAsync();
+        Assert.True(merged.StatusCode == HttpStatusCode.OK, body);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var survivor = await db.Honorees.SingleAsync(honoree => honoree.Id == 2);
+        Assert.Equal("Patricia Ann", survivor.FirstName);
+    }
+
+    [Fact]
+    public async Task Flag_grid_custom_values_follow_assignment_rules()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var now = DateTime.UtcNow;
+            var deleted = Grid(21, "DD-1", now);
+            deleted.DeletedDate = now;
+            deleted.DeletedBy = "seed";
+            var reserved = Grid(22, "RR-1", now);
+            reserved.Reserved = true;
+            db.FlagGrids.Add(deleted);
+            db.FlagGrids.Add(reserved);
+            db.FlagGrids.Add(Grid(23, "II-1", now));
+            db.FlagGrids.Add(Grid(24, "OO-1", now));
+            var inactive = Honoree(8, "Inactive", "Holder", "Inactive bio", "", 23, now);
+            inactive.IsActive = false;
+            var outside = Honoree(9, "Active", "Holder", "Outside bio", "", 24, now);
+            db.Honorees.Add(inactive);
+            db.Honorees.Add(outside);
+            await db.SaveChangesAsync();
+            db.FlagGrids.Single(grid => grid.Id == 23).HonoreeId = 8;
+            db.FlagGrids.Single(grid => grid.Id == 24).HonoreeId = 9;
+            await db.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient();
+        var fields = SourceFields(2, 1, 2);
+        fields.Remove("flagGrid");
+
+        await RejectAsync(client, "deleted", GridValue(fields, "DD-1"));
+        await RejectAsync(client, "reserved", GridValue(fields, "RR-1"));
+        await RejectAsync(client, "not part of this merge", GridValue(fields, "II-1"));
+        await RejectAsync(client, "not part of this merge", GridValue(fields, "OO-1"));
+
+        var merged = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", GridValue(fields, "AA-1")));
+        var body = await merged.Content.ReadAsStringAsync();
+        Assert.True(merged.StatusCode == HttpStatusCode.OK, body);
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var after = check.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var survivor = await after.Honorees.SingleAsync(honoree => honoree.Id == 2);
+        var other = await after.Honorees.SingleAsync(honoree => honoree.Id == 1);
+        Assert.Equal(11, survivor.FlagGridId);
+        Assert.True(survivor.IsActive);
+        Assert.False(other.IsActive);
+        Assert.Null(other.FlagGridId);
+        Assert.Equal(2, (await after.FlagGrids.SingleAsync(grid => grid.Id == 11)).HonoreeId);
+        Assert.Null((await after.FlagGrids.SingleAsync(grid => grid.Id == 12)).HonoreeId);
+        Assert.Equal(8, (await after.FlagGrids.SingleAsync(grid => grid.Id == 23)).HonoreeId);
+        Assert.Equal(9, (await after.FlagGrids.SingleAsync(grid => grid.Id == 24)).HonoreeId);
+        Assert.Equal(23, (await after.Honorees.SingleAsync(honoree => honoree.Id == 8)).FlagGridId);
+        Assert.False((await after.Honorees.SingleAsync(honoree => honoree.Id == 8)).IsActive);
+        Assert.Equal(24, (await after.Honorees.SingleAsync(honoree => honoree.Id == 9)).FlagGridId);
+        Assert.True((await after.Honorees.SingleAsync(honoree => honoree.Id == 9)).IsActive);
+    }
+
+    private static object GridValue(Dictionary<string, int> fields, string gridName) => new
+    {
+        survivorId = 2,
+        duplicateIds = new[] { 1, 2 },
+        fields,
+        values = new Dictionary<string, string> { ["flagGrid"] = gridName }
+    };
+
     private async Task RejectAsync(HttpClient client, string expected, object body)
     {
         var response = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", body));
