@@ -364,6 +364,27 @@ export type CardPrintEvent = {
   comment?: string | null;
 };
 
+export type RemovalQueueItem = {
+  id: number;
+  honoreeId?: number | null;
+  honoreeName: string;
+  flagGridId: number;
+  flagGridName: string;
+  newFlagGridId?: number | null;
+  newFlagGridName?: string | null;
+  source: string;
+  sourceDetail?: string | null;
+  mergeAuditId?: number | null;
+  createdUtc: string;
+  createdBy: string;
+  doneUtc?: string | null;
+  doneBy?: string | null;
+  canceledUtc?: string | null;
+  canceledBy?: string | null;
+  cancelReason?: string | null;
+  loggedAlreadyDone: boolean;
+};
+
 export type AdminPrintQueueItem = {
   changeRequestId: number;
   claimId: number;
@@ -967,6 +988,26 @@ export const adminApi = {
   dismissReprintDuplicate: (instance: IPublicClientApplication, account: AccountInfo, id: number) =>
     request<{ message: string }>(instance, account, `/api/admin/print/duplicate-reviews/${id}/dismiss`, {
       method: "POST"
+    }),
+
+  removalQueue: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    status: "open" | "done" = "open"
+  ) =>
+    request<RemovalQueueItem[]>(instance, account, `/api/admin/removal-queue?status=${status}`),
+
+  removalQueueCount: (instance: IPublicClientApplication, account: AccountInfo) =>
+    request<{ count: number }>(instance, account, "/api/admin/removal-queue/count"),
+
+  markRemovalDone: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    ids: number[]
+  ) =>
+    request<{ count: number }>(instance, account, "/api/admin/removal-queue/done", {
+      method: "POST",
+      body: JSON.stringify({ ids })
     }),
 
   flagPositions: (instance: IPublicClientApplication, account: AccountInfo) =>

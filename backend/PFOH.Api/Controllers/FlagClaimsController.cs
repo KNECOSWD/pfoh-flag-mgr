@@ -835,6 +835,8 @@ public class FlagClaimsController(
                 .FirstOrDefaultAsync(h => h.Id == change.HonoreeId.Value, ct);
         }
 
+        var previousGridId = honoree is { Id: > 0 } ? honoree.FlagGridId : null;
+
         if (honoree is null)
         {
             honoree = new Honoree
@@ -879,6 +881,14 @@ public class FlagClaimsController(
         honoree.ModifiedBy = adminName;
         honoree.ModifiedDate = DateTime.UtcNow;
 
+        await FlagRemovalQueue.ReleaseReplacedGridAsync(
+            db,
+            honoree,
+            previousGridId,
+            change.FlagGridId,
+            adminName,
+            honoree.ModifiedDate,
+            ct);
         await db.SaveChangesAsync(ct);
 
         var finalPhotoFileName = await fileStorage.PromoteImageAsync(change.PhotoFileName, honoree.Id, ct);

@@ -98,8 +98,10 @@ import { FindSearchFrame } from "./findSearchLayout.js";
 import { isPublicPage } from "./publicRoutes.js";
 import { publishSignInError, subscribeSignInError } from "./signInError";
 import { isQuietAuthRejection, PLEASE_SIGN_IN_AGAIN } from "./tokenRequest.js";
-import knecoLogoBlue from "./assets/kneco-logo-blue.png";
-import pfohFooterLogo from "./assets/pfoh-footer-logo.png";
+import dogTagIcon from "./assets/pfoh-dogtag-icon-480.png";
+import knecoLogoWhite from "./assets/kneco-logo-white-216.png";
+import { RemovalQueue } from "./RemovalQueue";
+import { showTenYearsBanner, TenYearsBanner } from "./tenYearsBanner.js";
 
 const RETURN_INTENT_KEY = "pfoh-return-intent";
 
@@ -184,7 +186,7 @@ function isSubmitHonoreeIntent(intent: { action: string }) {
 
 const publicCopy = {
   title: "HONOR A HERO",
-  subtitle: "Find an honoree or submit a tribute. No cost to look or submit a hero.",
+  subtitle: "Find an honoree or submit a tribute.",
   searchHeading: "Search honoree records",
   searchHelp:
     "Search by name, military branch, rank, submitter’s name, or flag grid location. A flag grid location is the spot on the field, such as AA-10.",
@@ -232,7 +234,7 @@ const blankForm: SaveHonoreeChangeRequest = {
   submitterEmailAddress: ""
 };
 
-type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/duplicates" | "/admin/duplicates/history" | "/admin/flag-map" | "/admin/printing";
+type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/duplicates" | "/admin/duplicates/history" | "/admin/flag-map" | "/admin/printing" | "/admin/removal-queue";
 
 const appRoutes: AppRoute[] = [
   "/find",
@@ -243,7 +245,8 @@ const appRoutes: AppRoute[] = [
   "/admin/duplicates",
   "/admin/duplicates/history",
   "/admin/flag-map",
-  "/admin/printing"
+  "/admin/printing",
+  "/admin/removal-queue"
 ];
 
 function normalizeAppRoute(pathname: string): AppRoute {
@@ -453,6 +456,7 @@ export default function App() {
   const [flagMapLoadError, setFlagMapLoadError] = useState("");
   const [pendingReviews, setPendingReviews] = useState<AdminReviewItem[]>([]);
   const [openDuplicateGroups, setOpenDuplicateGroups] = useState(0);
+  const [removalQueueCount, setRemovalQueueCount] = useState(0);
   const [pendingPhotoObjectUrl, setPendingPhotoObjectUrl] = useState("");
   const [submitPhase, setSubmitPhase] = useState("");
   const [cardPreview, setCardPreview] = useState<CardPreviewState | null>(null);
@@ -594,9 +598,11 @@ export default function App() {
     { route: "/admin/review", label: "Review" },
     { route: "/admin/duplicates", label: "Duplicates" },
     { route: "/admin/printing", label: "Print Center" },
-    { route: "/admin/flag-map", label: "Flag Manager" }
+    { route: "/admin/flag-map", label: "Flag Manager" },
+    { route: "/admin/removal-queue", label: "Removal Queue" }
   ];
   const isPrintingRoute = activeRoute === "/admin/printing";
+  const isRemovalQueueRoute = activeRoute === "/admin/removal-queue";
   const isAdminRoute = activeRoute.startsWith("/admin");
   const stickyAdmin = adminFromApi || readStickyAdmin(window.sessionStorage, account?.homeAccountId ?? "");
   const publicAdmin = isPublicPage(activeRoute)
@@ -611,9 +617,10 @@ export default function App() {
         pendingReview: pendingReviews.length,
         readyToPrint: printQueue.length,
         duplicatesForReview: openDuplicateGroups,
+        removalQueue: removalQueueCount,
         multipleClaimAlerts: claimedByMultipleCount
       }).map((item) => ({ ...item, route: item.route as AppRoute })),
-    [pendingReviews.length, printQueue.length, openDuplicateGroups, claimedByMultipleCount]
+    [pendingReviews.length, printQueue.length, openDuplicateGroups, removalQueueCount, claimedByMultipleCount]
   );
 
   const adminAlertTotalCount = useMemo(
@@ -1209,19 +1216,21 @@ export default function App() {
   async function loadAdminData() {
     if (!account) return;
 
-    const [pendingResult, queueResult, positionsResult] = await Promise.all([
+    const [pendingResult, queueResult, positionsResult, removalResult] = await Promise.all([
       loadAdminPanel("review", "Pending honoree reviews could not be loaded.", () => adminApi.pending(instance, account)),
       loadAdminPanel("printing", "The honoree print queue could not be loaded.", () => adminApi.printQueue(instance, account)),
-      loadAdminPanel("flagMap", "The flag map could not be loaded.", () => adminApi.flagPositions(instance, account))
+      loadAdminPanel("flagMap", "The flag map could not be loaded.", () => adminApi.flagPositions(instance, account)),
+      loadAdminPanel("removal", "The removal queue could not be loaded.", () => adminApi.removalQueueCount(instance, account))
     ]);
 
-    const decision = decideAdminLoad([pendingResult, queueResult, positionsResult]);
+    const decision = decideAdminLoad([pendingResult, queueResult, positionsResult, removalResult]);
     if (!decision.isAdmin) {
       noteServerAdmin(window.sessionStorage, account.homeAccountId, false);
       setIsAdmin(false);
       setCachedApiAdmin(false);
       setPendingReviews([]);
       setOpenDuplicateGroups(0);
+      setRemovalQueueCount(0);
       setPrintQueue([]);
       setPrintHistory([]);
       setPrintHistoryError("");
@@ -1261,6 +1270,12 @@ export default function App() {
       setFlagPositions(positionsResult.value);
     } else {
       setFlagPositions([]);
+    }
+
+    if (removalResult.ok) {
+      setRemovalQueueCount(removalResult.value.count);
+    } else {
+      setRemovalQueueCount(0);
     }
 
     void loadPrintHistory();
@@ -2985,11 +3000,20 @@ export default function App() {
     <main>
       {versionReloadNotice()}
       <header className={mobileNavOpen ? "hero mobileMenuOpen" : isPublicFlagMapRoute ? "hero publicMapHero" : "hero"}>
-        <div className="heroContent">
-
-          <p className="eyebrow">Plano Flags of Honor</p>
-          <h1>{isPublicFlagMapRoute ? "Public Flag Map" : publicCopy.title}</h1>
-          {isPublicFlagMapRoute ? null : <p className="heroLead">{publicCopy.subtitle}</p>}
+        <div className="heroBrand">
+          <a
+            className="heroDogTagLink"
+            href="/find"
+            aria-label="Plano Flags of Honor, go to Search"
+            onClick={(event) => handleRouteLink(event, "/find")}
+          >
+            <img className="heroDogTag" src={dogTagIcon} width={480} height={315} alt="" />
+          </a>
+          <div className="heroContent">
+            <p className="eyebrow">Plano Flags of Honor</p>
+            <h1>{isPublicFlagMapRoute ? "Public Flag Map" : publicCopy.title}</h1>
+            {isPublicFlagMapRoute ? null : <p className="heroLead">{publicCopy.subtitle}</p>}
+          </div>
         </div>
 
         <div className="authBox">
@@ -3132,6 +3156,7 @@ export default function App() {
             </Dialog.Portal>
           </Dialog.Root>
       </header>
+      {!isAdminRoute && showTenYearsBanner() ? <TenYearsBanner /> : null}
 
           {!isPublicFlagMapRoute ? (
           <>
@@ -4127,7 +4152,7 @@ export default function App() {
           {isAdminRoute && !kioskLocked && !isAdmin ? (
             <section className="card guestNotice">
               <h2>Administrator access required</h2>
-              <p>Sign in with an account assigned the PFOH.Admin role to use review, duplicates, flag map, and printing tools.</p>
+              <p>Sign in with an account assigned the PFOH.Admin role to use review, duplicates, flag map, printing, and removal queue tools.</p>
               {!isAuthenticated ? (
                 <div className="authChoiceButtons">
                   <button type="button" onClick={() => void signIn("login")}>
@@ -4157,6 +4182,15 @@ export default function App() {
                   instance={instance}
                   account={account ?? null}
                   onBack={() => navigateToRoute("/admin/duplicates")}
+                />
+              ) : null}
+
+              {isRemovalQueueRoute ? (
+                <RemovalQueue
+                  instance={instance}
+                  account={account ?? null}
+                  onChanged={() => { void loadAdminData(); }}
+                  onNavigate={(href) => navigateToRoute(href as AppRoute)}
                 />
               ) : null}
 
@@ -5053,7 +5087,7 @@ export default function App() {
             />
           )}
 
-      <footer className="appFooter" aria-label="Plano Flags of Honor footer">
+      <footer className="appFooter footerNavy" aria-label="Plano Flags of Honor footer">
         <div className="appFooterInner">
           <div className="footerColumn footerExplore">
             <h2>Explore</h2>
@@ -5086,10 +5120,6 @@ export default function App() {
             </div>
           </div>
 
-          <div className="footerBrand">
-            <img src={pfohFooterLogo} alt="Rotary Clubs of Plano and Plano Flags of Honor Rotary Community Corps" />
-          </div>
-
           <div className="footerContact">
             <a href="https://planoflagsofhonor.com/contact-us/" target="_blank" rel="noreferrer">
               Contact Us
@@ -5099,7 +5129,7 @@ export default function App() {
           <div className="footerCredit">
             <span>Built by</span>
             <a href="https://www.kneco.com" target="_blank" rel="noreferrer" aria-label="KNECO, Inc. website">
-              <img src={knecoLogoBlue} alt="KNECO, Inc." />
+              <img src={knecoLogoWhite} width={216} height={46} alt="KNECO, Inc." />
             </a>
           </div>
         </div>

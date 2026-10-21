@@ -26,14 +26,14 @@ const ICONS = {
 
 /**
  * Compact icon button shared by Back and Refresh on the duplicate screens.
- * @param {{ label: string, kind: "back" | "refresh", disabled?: boolean, onClick?: () => void }} props
+ * @param {{ label: string, kind: "back" | "refresh", disabled?: boolean, onClick?: () => void, className?: string }} props
  */
-export function DuplicateIconButton({ label, kind, disabled, onClick }) {
+export function DuplicateIconButton({ label, kind, disabled, onClick, className }) {
   return h(
     "button",
     {
       type: "button",
-      className: "duplicateIconButton",
+      className: ["duplicateIconButton", className].filter(Boolean).join(" "),
       title: label,
       "aria-label": label,
       disabled,

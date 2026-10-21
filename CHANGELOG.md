@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.0
+
+- The header shows the Plano Flags of Honor dog tag. It links to Search, and the subtitle reads “Find an honoree or submit a tribute.”
+- The footer uses the header’s navy background. The Rotary logo is gone. The KNECO credit is the white logo, and Contact Us is a text link.
+- Public pages show a “10 Years of Honor” banner through the end of April 21, 2027 Central Time. It does not appear on administrator pages or the kiosk.
+- Removal Queue lists flag cards to pull when a spot is cleared, moved, released by a merge, or left behind by an approved change. Open items can be marked done one at a time or in a selection. Done items stay as history. A withdrawal that was already off the field is logged as done. Undoing a merge cancels the open pull, or asks for the card to be put back if it was already pulled.
+
 ## 2.1.5
 
 - The admin bar shortens the duplicate prompt to Duplicates. It stays an equal chip with Pending review and Ready to print.

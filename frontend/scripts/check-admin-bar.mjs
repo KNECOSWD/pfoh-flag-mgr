@@ -41,14 +41,19 @@ test("the duplicates prompt shows the count, hides at zero, and matches the othe
     pendingReview: 2,
     readyToPrint: 1,
     duplicatesForReview: 3,
+    removalQueue: 3,
     multipleClaimAlerts: 1
   });
   assert.deepEqual(together.map((item) => item.key), [
     "pending-review",
     "ready-to-print",
     "duplicates-for-review",
+    "removal-queue",
     "multiple-claim-alerts"
   ]);
+  assert.equal(together.find((item) => item.key === "removal-queue")?.label, "Removal queue");
+  assert.equal(together.find((item) => item.key === "removal-queue")?.route, "/admin/removal-queue");
+  assert.equal(adminAttentionItems({ removalQueue: 0 }).find((item) => item.key === "removal-queue"), undefined);
   assert.equal(showAdminAttention(true, together), true);
   assert.equal(showAdminAttention(true, adminAttentionItems({ duplicatesForReview: 0 })), false);
   assert.equal(showAdminAttention(false, together), false);
@@ -57,7 +62,7 @@ test("the duplicates prompt shows the count, hides at zero, and matches the othe
 test("the count comes from the existing pending request and adds no authenticated fetch", () => {
   const load = loadAdminData();
   assert.match(load, /if \(!account\) return;/);
-  assert.equal(load.match(/loadAdminPanel\(/g).length, 3);
+  assert.equal(load.match(/loadAdminPanel\(/g).length, 4);
   assert.equal(load.match(/Promise\.all\(/g).length, 1);
   assert.doesNotMatch(load, /duplicateGroups/);
   assert.doesNotMatch(load, /\/api\/admin\/duplicates/);
@@ -71,6 +76,9 @@ test("the count comes from the existing pending request and adds no authenticate
   assert.doesNotMatch(pending, /duplicates\/groups/);
 
   assert.match(app, /duplicatesForReview: openDuplicateGroups/);
+  assert.match(app, /removalQueue: removalQueueCount/);
+  assert.match(load, /removalQueueCount/);
+  assert.match(load, /setRemovalQueueCount\(0\)/);
   assert.match(app, /chrome\.adminBanner && adminAlertItems\.length > 0/);
   assert.match(app, /aria-label="Administrator notifications"/);
   assert.match(app, /href=\{item\.route\}/);

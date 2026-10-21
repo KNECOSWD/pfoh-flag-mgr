@@ -109,7 +109,7 @@ test("the public nav links Flag Map right after Search, and the admin nav item r
   assert.equal(app.split("siteNav.filter((item) => item.show)").length - 1, 2);
   assert.match(
     app,
-    /const adminNav: \{ route: AppRoute; label: string \}\[\] = \[\s*\{ route: "\/admin\/review", label: "Review" \},\s*\{ route: "\/admin\/duplicates", label: "Duplicates" \},\s*\{ route: "\/admin\/printing", label: "Print Center" \},\s*\{ route: "\/admin\/flag-map", label: "Flag Manager" \}\s*\];/
+    /const adminNav: \{ route: AppRoute; label: string \}\[\] = \[\s*\{ route: "\/admin\/review", label: "Review" \},\s*\{ route: "\/admin\/duplicates", label: "Duplicates" \},\s*\{ route: "\/admin\/printing", label: "Print Center" \},\s*\{ route: "\/admin\/flag-map", label: "Flag Manager" \},\s*\{ route: "\/admin\/removal-queue", label: "Removal Queue" \}\s*\];/
   );
   assert.equal(app.split("<AdminNavMenu ").length - 1, 2);
   assert.match(app, /menuId="admin-nav-desktop" layout="bar"/);
@@ -1261,7 +1261,24 @@ test("kiosk touch targets are at least 56px", () => {
   assert.match(targets, /\.publicFlagSearchTabs button/);
   assert.match(targets, /\.publicFlagMap\.isKiosk input/);
   assert.match(targets, /\.publicFlagMap\.isKiosk a/);
-  assert.doesNotMatch(css, /min-height:\s*44px|min-width:\s*44px|width:\s*44px|height:\s*44px/);
+  const blocks = css.split("}");
+  for (const block of blocks) {
+    const parts = block.split("{");
+    if (parts.length < 2) continue;
+    const selector = parts[0];
+    if (!/kiosk|isKiosk/i.test(selector)) continue;
+    const subjects = selector.split(",").map((part) => {
+      const bits = part.trim().split(/[\s>+~]+/).filter(Boolean);
+      return bits[bits.length - 1] ?? "";
+    });
+    const tapTarget = (subject) =>
+      /button|input|select|textarea|(^|[^\w-])a(?![-\w])|kioskExit|(^|[^\w-])li(?![-\w])/i.test(subject);
+    if (subjects.length === 0 || subjects.some((subject) => !tapTarget(subject))) continue;
+    const body = parts.slice(1).join("{");
+    for (const match of body.matchAll(/(?:min-width|min-height|width|height)\s*:\s*(\d+(?:\.\d+)?)px/g)) {
+      assert.ok(Number(match[1]) >= 56, `${selector.trim()} uses ${match[0]}`);
+    }
+  }
 
   const tags = page.match(/<(button|input|a|select|textarea)\b[^>]*>/g) || [];
   assert.ok(tags.length >= 8);

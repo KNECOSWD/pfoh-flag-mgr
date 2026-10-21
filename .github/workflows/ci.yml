@@ -38,6 +38,9 @@ jobs:
       - name: Check the admin bar duplicate prompt
         run: node --test frontend/scripts/check-admin-bar.mjs
 
+      - name: Check the removal queue
+        run: node --test frontend/scripts/check-removal-queue.mjs
+
       - name: Check the Find page intro
         run: node --test frontend/scripts/check-find-search.mjs
 

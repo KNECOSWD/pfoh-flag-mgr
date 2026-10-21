@@ -22,6 +22,7 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
     public DbSet<HonoreeSearchResult> HonoreeSearchResults => Set<HonoreeSearchResult>();
     public DbSet<HonoreeChangeRequest> HonoreeChangeRequests => Set<HonoreeChangeRequest>();
     public DbSet<CardPrintEvent> CardPrintEvents => Set<CardPrintEvent>();
+    public DbSet<FlagRemovalQueueItem> FlagRemovalQueueItems => Set<FlagRemovalQueueItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -314,6 +315,30 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
             entity.Property(e => e.MergedBy).HasMaxLength(255).IsRequired();
             entity.Property(e => e.UndoneBy).HasMaxLength(255);
             entity.HasIndex(e => e.MergedUtc);
+        });
+
+        modelBuilder.Entity<FlagRemovalQueueItem>(entity =>
+        {
+            entity.ToTable("FlagRemovalQueueItems", "dbo");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.HonoreeName).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.FlagGridName).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.NewFlagGridName).HasMaxLength(50);
+            entity.Property(e => e.Source).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.SourceDetail).HasMaxLength(200);
+            entity.Property(e => e.CreatedBy).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.DoneBy).HasMaxLength(256);
+            entity.Property(e => e.CanceledBy).HasMaxLength(256);
+            entity.Property(e => e.CancelReason).HasMaxLength(200);
+            entity.HasIndex(e => new { e.FlagGridName, e.Id })
+                .HasDatabaseName("IX_FlagRemovalQueueItems_Open")
+                .HasFilter("[DoneUtc] IS NULL AND [CanceledUtc] IS NULL");
+            entity.HasIndex(e => e.MergeAuditId)
+                .HasDatabaseName("IX_FlagRemovalQueueItems_MergeAuditId");
+            entity.HasOne(e => e.MergeAudit)
+                .WithMany()
+                .HasForeignKey(e => e.MergeAuditId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 }

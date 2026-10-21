@@ -76,6 +76,14 @@ public static class HonoreeMerge
                 .Where(grid => gridIds.Contains(grid.Id))
                 .ToDictionaryAsync(grid => grid.Id, ct);
 
+        var survivorName = FlagRemovalQueue.DisplayName(survivor);
+        string? keptSpotName = keptGridId is int keptId && grids.TryGetValue(keptId, out var keptNamed)
+            ? keptNamed.FlagGridName
+            : null;
+        var mergeDetail = keptSpotName is null
+            ? $"Spot released when this record was merged into {survivorName}."
+            : $"Spot released when this record was merged into {survivorName}, who kept spot {keptSpotName}.";
+
         var released = new HashSet<int>();
         foreach (var other in confirmed.Where(honoree => honoree.Id != survivor.Id))
         {
@@ -83,9 +91,19 @@ public static class HonoreeMerge
             {
                 FlagSpotRelease.ClearAssignment(other, otherGrid, adminName, now);
                 released.Add(otherGridId);
+                FlagRemovalQueue.Record(
+                    db,
+                    other,
+                    otherGrid,
+                    FlagRemovalQueue.Merge,
+                    adminName,
+                    now,
+                    mergeAudit: audit,
+                    sourceDetail: mergeDetail);
             }
             else
             {
+                // No grid row to release. A stale FlagGridId is cleared and does not queue a pull.
                 other.FlagGridId = null;
                 other.ModifiedBy = adminName;
                 other.ModifiedDate = now;
@@ -100,6 +118,15 @@ public static class HonoreeMerge
         {
             FlagSpotRelease.ClearAssignment(survivor, previousGrid, adminName, now);
             released.Add(previousGridId);
+            FlagRemovalQueue.Record(
+                db,
+                survivor,
+                previousGrid,
+                FlagRemovalQueue.Merge,
+                adminName,
+                now,
+                mergeAudit: audit,
+                sourceDetail: mergeDetail);
         }
 
         if (keptGridId is int keep && grids.TryGetValue(keep, out var keptGrid))
