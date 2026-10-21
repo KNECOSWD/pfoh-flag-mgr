@@ -868,6 +868,17 @@ export const adminApi = {
       body: JSON.stringify(body)
     }),
 
+  markNotDuplicates: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    leftId: number,
+    rightId: number
+  ) =>
+    request<{ lowHonoreeId: number; highHonoreeId: number }>(instance, account, "/api/admin/duplicates/not-duplicates", {
+      method: "POST",
+      body: JSON.stringify({ leftId, rightId })
+    }),
+
   reprintDuplicateReviews: (instance: IPublicClientApplication, account: AccountInfo) =>
     request<ReprintDuplicateReview[]>(instance, account, "/api/admin/print/duplicate-reviews"),
 

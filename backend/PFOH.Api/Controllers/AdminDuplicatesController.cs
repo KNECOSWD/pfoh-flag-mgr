@@ -50,19 +50,19 @@ public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
             return BadRequest(new { message = "Each kept value has to come from one of the confirmed records." });
         }
 
+        var honorees = await db.Honorees
+            .Where(honoree => ids.Contains(honoree.Id))
+            .ToListAsync(ct);
+        if (honorees.Count != ids.Count || honorees.Any(honoree => !honoree.IsActive || honoree.DeletedDate != null))
+        {
+            return Conflict(new { message = "One of the confirmed records is inactive or deleted. It was not merged." });
+        }
+
         var groups = await BuildGroupsAsync(ct);
         var group = groups.FirstOrDefault(item => ids.All(id => item.Honorees.Any(honoree => honoree.Id == id)));
         if (group is null)
         {
             return BadRequest(new { message = "Confirm records from the same duplicate group. Records that are not in that group are left unchanged." });
-        }
-
-        var honorees = await db.Honorees
-            .Where(honoree => ids.Contains(honoree.Id) && honoree.IsActive && honoree.DeletedDate == null)
-            .ToListAsync(ct);
-        if (honorees.Count != ids.Count)
-        {
-            return Conflict(new { message = "One of the confirmed records is no longer active. Refresh the list and confirm the group again." });
         }
 
         var before = await db.Honorees.CountAsync(ct);
@@ -86,6 +86,55 @@ public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
             result.DeactivatedIds,
             result.Claimants.Select(ToClaimant).ToList()));
     }
+
+    [HttpPost("not-duplicates")]
+    public async Task<ActionResult<NotDuplicatePairDto>> MarkNotDuplicates(
+        [FromBody] NotDuplicatePairRequest request,
+        CancellationToken ct)
+    {
+        if (request.LeftId <= 0 || request.RightId <= 0 || request.LeftId == request.RightId)
+        {
+            return BadRequest(new { message = "Choose two different records." });
+        }
+
+        var low = Math.Min(request.LeftId, request.RightId);
+        var high = Math.Max(request.LeftId, request.RightId);
+        var existing = await db.HonoreeNotDuplicatePairs
+            .FirstOrDefaultAsync(pair => pair.LowHonoreeId == low && pair.HighHonoreeId == high, ct);
+        if (existing is not null)
+        {
+            return Ok(ToPair(existing));
+        }
+
+        var found = await db.Honorees
+            .Where(honoree => honoree.Id == low || honoree.Id == high)
+            .Select(honoree => honoree.Id)
+            .ToListAsync(ct);
+        if (found.Count != 2)
+        {
+            return BadRequest(new { message = "Both records have to exist before they can be marked as not duplicates." });
+        }
+
+        var adminName = User.GetEmail();
+        if (string.IsNullOrWhiteSpace(adminName))
+        {
+            adminName = User.GetDisplayName() ?? "PFOH.Admin";
+        }
+
+        var row = new HonoreeNotDuplicatePair
+        {
+            LowHonoreeId = low,
+            HighHonoreeId = high,
+            MarkedBy = adminName,
+            MarkedUtc = DateTime.UtcNow
+        };
+        db.HonoreeNotDuplicatePairs.Add(row);
+        await db.SaveChangesAsync(ct);
+        return Ok(ToPair(row));
+    }
+
+    private static NotDuplicatePairDto ToPair(HonoreeNotDuplicatePair pair) =>
+        new(pair.LowHonoreeId, pair.HighHonoreeId, pair.MarkedBy, pair.MarkedUtc);
 
     private async Task<IReadOnlyList<DuplicateGroupDto>> BuildGroupsAsync(CancellationToken ct)
     {
@@ -117,10 +166,19 @@ public class AdminDuplicatesController(PfohDbContext db) : ControllerBase
             honoree.ServiceBranch?.ServiceBranchName,
             honoree.FlagGrid?.FlagGridName,
             SponsorName(honoree.Sponsor),
-            honoree.Sponsor?.EmailAddress)).ToList();
+            honoree.Sponsor?.EmailAddress,
+            honoree.IsActive,
+            honoree.DeletedDate)).ToList();
+
+        var suppressed = await db.HonoreeNotDuplicatePairs
+            .AsNoTracking()
+            .Select(pair => new { pair.LowHonoreeId, pair.HighHonoreeId })
+            .ToListAsync(ct);
 
         var byId = honorees.ToDictionary(honoree => honoree.Id);
-        return HonoreeDuplicateMatcher.Match(candidates)
+        return HonoreeDuplicateMatcher.Match(
+            candidates,
+            suppressed.Select(pair => (pair.LowHonoreeId, pair.HighHonoreeId)))
             .Select(group =>
             {
                 var members = group.Ids.Select(id => ToHonoree(byId[id], claimsByHonoree)).ToList();
@@ -236,6 +294,19 @@ public sealed class DuplicateMergeRequest
 
     public Dictionary<string, int> Fields { get; set; } = new();
 }
+
+public sealed class NotDuplicatePairRequest
+{
+    public int LeftId { get; set; }
+
+    public int RightId { get; set; }
+}
+
+public sealed record NotDuplicatePairDto(
+    int LowHonoreeId,
+    int HighHonoreeId,
+    string MarkedBy,
+    DateTime MarkedUtc);
 
 public sealed record DuplicateGroupDto(
     string GroupKey,

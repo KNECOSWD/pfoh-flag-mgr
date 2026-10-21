@@ -41,9 +41,28 @@ public static class HonoreeDuplicateMatcher
         ["GRID"] = "assigned to the same flag grid, which holds only one flag"
     };
 
-    public static IReadOnlyList<DuplicateMatchGroup> Match(IReadOnlyList<DuplicateCandidate> records)
+    public static IReadOnlyList<DuplicateMatchGroup> Match(
+        IReadOnlyList<DuplicateCandidate> records,
+        IEnumerable<(int Left, int Right)>? suppressedPairs = null)
     {
-        var prepared = records.Select(Prepare).ToList();
+        var suppressed = new HashSet<(int, int)>();
+        if (suppressedPairs is not null)
+        {
+            foreach (var (left, right) in suppressedPairs)
+            {
+                if (left == right || left <= 0 || right <= 0)
+                {
+                    continue;
+                }
+
+                suppressed.Add(left < right ? (left, right) : (right, left));
+            }
+        }
+
+        var prepared = records
+            .Where(record => record.IsActive && record.DeletedDate is null)
+            .Select(Prepare)
+            .ToList();
         var edges = new Dictionary<(int, int), HashSet<string>>();
 
         for (var i = 0; i < prepared.Count; i++)
@@ -53,6 +72,12 @@ public static class HonoreeDuplicateMatcher
                 var a = prepared[i];
                 var b = prepared[j];
                 if (a.Full.Length == 0 || a.Id == b.Id)
+                {
+                    continue;
+                }
+
+                var pairKey = a.Id < b.Id ? (a.Id, b.Id) : (b.Id, a.Id);
+                if (suppressed.Contains(pairKey))
                 {
                     continue;
                 }
@@ -144,6 +169,11 @@ public static class HonoreeDuplicateMatcher
         foreach (var memberIds in members.Values)
         {
             var ids = memberIds.OrderBy(id => id).ToArray();
+            if (ids.Length < 2)
+            {
+                continue;
+            }
+
             var codes = new HashSet<string>(StringComparer.Ordinal);
             var pairs = new List<DuplicateMatchPair>();
             foreach (var (key, reasons) in edges)
@@ -292,7 +322,9 @@ public sealed record DuplicateCandidate(
     string? ServiceBranch,
     string? FlagGrid,
     string? Submitter,
-    string? SubmitterEmail);
+    string? SubmitterEmail,
+    bool IsActive = true,
+    DateTime? DeletedDate = null);
 
 public sealed record DuplicateMatchGroup(
     string Likelihood,

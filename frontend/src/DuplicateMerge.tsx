@@ -52,12 +52,14 @@ export function DuplicateMergeScreen({
   loadError,
   busy,
   onMerge,
+  onNotDuplicates,
   onReload
 }: {
   groups: DuplicateGroup[];
   loadError: string;
   busy: boolean;
   onMerge: (body: { survivorId: number; duplicateIds: number[]; fields: Record<string, number> }) => Promise<DuplicateMergeResult>;
+  onNotDuplicates: (leftId: number, rightId: number) => Promise<void>;
   onReload: () => void;
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -68,6 +70,7 @@ export function DuplicateMergeScreen({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState<DuplicateMergeResult | null>(null);
+  const [pendingPair, setPendingPair] = useState<{ leftId: number; rightId: number } | null>(null);
 
   const group = groups.find((item) => item.groupKey === openKey) ?? null;
   const confirmedHonorees = useMemo(
@@ -84,11 +87,27 @@ export function DuplicateMergeScreen({
     setResult(null);
     setError("");
     setMessage("");
+    setPendingPair(null);
     setStep("confirm");
   }
 
   function toggleConfirmed(id: number) {
     setConfirmed((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  async function confirmNotDuplicates() {
+    if (!pendingPair) return;
+    setError("");
+    try {
+      await onNotDuplicates(pendingPair.leftId, pendingPair.rightId);
+      setPendingPair(null);
+      setStep("list");
+      setOpenKey(null);
+      setMessage("Those two records will no longer be listed as duplicates of each other. Other pairs stay under review.");
+      onReload();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.serverMessage || err.message : "The decision could not be saved.");
+    }
   }
 
   async function merge() {
@@ -127,7 +146,7 @@ export function DuplicateMergeScreen({
             <span className="countBadge">{groups.length}</span>
           </h2>
           <p className="helperText">
-            Likely duplicates are listed for review. Nothing is merged, removed, or edited until you confirm a group and choose the values to keep.
+            Likely duplicates are listed for review. Only active records are included. Nothing is merged, removed, or edited until you confirm a group and choose the values to keep. A pair you mark as not duplicates is left out of this list.
           </p>
         </div>
         <button type="button" className="secondary" onClick={onReload} disabled={busy}>
@@ -179,11 +198,36 @@ export function DuplicateMergeScreen({
           <p className="duplicateWhy">{group.explanation}</p>
           <h3>Why these may be duplicates</h3>
           <ul className="duplicatePairList">
-            {group.pairs.map((pair) => (
-              <li key={`${pair.leftId}-${pair.rightId}`}>
-                Records {pair.leftId} and {pair.rightId}: {pair.explanation}
-              </li>
-            ))}
+            {group.pairs.map((pair) => {
+              const confirming = pendingPair?.leftId === pair.leftId && pendingPair.rightId === pair.rightId;
+              return (
+                <li key={`${pair.leftId}-${pair.rightId}`}>
+                  <p>Records {pair.leftId} and {pair.rightId}: {pair.explanation}</p>
+                  {confirming ? (
+                    <div className="notDuplicateConfirm" role="group" aria-label="Confirm not duplicates">
+                      <p>
+                        Mark records {pair.leftId} and {pair.rightId} as not duplicates? They will not be listed together again. Other pairs in this group stay under review.
+                      </p>
+                      <button type="button" disabled={busy} onClick={() => void confirmNotDuplicates()}>
+                        Confirm not duplicates
+                      </button>
+                      <button type="button" className="secondary" onClick={() => setPendingPair(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => setPendingPair({ leftId: pair.leftId, rightId: pair.rightId })}
+                    >
+                      Not duplicates
+                    </button>
+                  )}
+                </li>
+              );
+            })}
           </ul>
           <fieldset>
             <legend>Confirm the records that are actual duplicates</legend>
@@ -348,6 +392,9 @@ export function DuplicateMerge({
       busy={busy}
       onReload={() => void load()}
       onMerge={(body) => adminApi.mergeDuplicates(instance, account, body)}
+      onNotDuplicates={async (leftId, rightId) => {
+        await adminApi.markNotDuplicates(instance, account, leftId, rightId);
+      }}
     />
   );
 }

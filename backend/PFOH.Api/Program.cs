@@ -388,6 +388,18 @@ try
 
     try
     {
+        await HonoreeNotDuplicatePairSchema.EnsureAsync(startupDb, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(
+            ex,
+            "STARTUP CLEANUP FAILED while ensuring dbo.HonoreeNotDuplicatePairs. {Failure}",
+            ex.ToString());
+    }
+
+    try
+    {
         await CardPrintEventSchema.EnsureAsync(startupDb, CancellationToken.None);
     }
     catch (Exception ex)

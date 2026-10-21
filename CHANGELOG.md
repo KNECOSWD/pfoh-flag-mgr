@@ -6,6 +6,8 @@
 - An honoree can have more than one claimant. A merge keeps every claimant from the merged records.
 - The Print Center lists reprint duplicates that need a person to review them. Approve removes that one queued card. Dismiss keeps both.
 - On the public Flag Map, the search list cannot be given a negative height when the search box sits below the visible area.
+- Duplicate review lists only active records. An inactive or deleted record is left out, and a merge that includes one is refused.
+- An administrator can mark two records as not duplicates. That pair is not listed again. In a larger group, the other pairs stay under review.
 
 ## 2.0.21
 

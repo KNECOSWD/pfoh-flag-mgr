@@ -16,6 +16,7 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
     public DbSet<FlagClaim> FlagClaims => Set<FlagClaim>();
     public DbSet<HonoreeClaim> HonoreeClaims => Set<HonoreeClaim>();
     public DbSet<ReprintDuplicateReview> ReprintDuplicateReviews => Set<ReprintDuplicateReview>();
+    public DbSet<HonoreeNotDuplicatePair> HonoreeNotDuplicatePairs => Set<HonoreeNotDuplicatePair>();
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
     public DbSet<HonoreeSearchResult> HonoreeSearchResults => Set<HonoreeSearchResult>();
     public DbSet<HonoreeChangeRequest> HonoreeChangeRequests => Set<HonoreeChangeRequest>();
@@ -280,6 +281,23 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
             entity.HasOne(e => e.Honoree)
                 .WithMany()
                 .HasForeignKey(e => e.HonoreeId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<HonoreeNotDuplicatePair>(entity =>
+        {
+            entity.ToTable("HonoreeNotDuplicatePairs", "dbo", table =>
+                table.HasCheckConstraint("CK_HonoreeNotDuplicatePairs_Ordered", "[LowHonoreeId] < [HighHonoreeId]"));
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.MarkedBy).HasMaxLength(255).IsRequired();
+            entity.HasIndex(e => new { e.LowHonoreeId, e.HighHonoreeId }).IsUnique();
+            entity.HasOne(e => e.LowHonoree)
+                .WithMany()
+                .HasForeignKey(e => e.LowHonoreeId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(e => e.HighHonoree)
+                .WithMany()
+                .HasForeignKey(e => e.HighHonoreeId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
     }

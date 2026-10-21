@@ -94,6 +94,51 @@ public class HonoreeDuplicateMatcherTests
         Assert.Contains("same name submitted by the same sponsor", group.Explanation);
     }
 
+    [Fact]
+    public void Inactive_and_deleted_candidates_are_left_out_and_a_short_group_is_dropped()
+    {
+        var inactive = new DuplicateCandidate(3, "John Smith", "Army", "AA-10", null, null, IsActive: false);
+        var deleted = new DuplicateCandidate(4, "John Smith", "Army", "AA-10", null, null, DeletedDate: DateTime.UtcNow);
+        var groups = HonoreeDuplicateMatcher.Match(new[]
+        {
+            Person(1, "John Smith", "Army", "AA-10", null),
+            Person(2, "John Smith", "Army", "AA-11", null),
+            inactive,
+            deleted
+        });
+
+        var group = Assert.Single(groups);
+        Assert.Equal(new[] { 1, 2 }, group.Ids);
+
+        var alone = HonoreeDuplicateMatcher.Match(new[]
+        {
+            Person(1, "John Smith", "Army", null, null),
+            inactive
+        });
+        Assert.Empty(alone);
+    }
+
+    [Fact]
+    public void A_dismissed_pair_is_removed_and_the_other_edge_keeps_its_group()
+    {
+        var records = new[]
+        {
+            Person(1, "John Smith", "Army", "AA-1", null),
+            Person(2, "John Smith", "Army", "YY-9", null),
+            Person(3, "Grace Hopper", "Navy", "AA-1", null)
+        };
+
+        var before = Assert.Single(HonoreeDuplicateMatcher.Match(records));
+        Assert.Equal(new[] { 1, 2, 3 }, before.Ids);
+        Assert.Contains(before.Pairs, pair => pair.LeftId == 1 && pair.RightId == 2);
+        Assert.Contains(before.Pairs, pair => pair.LeftId == 1 && pair.RightId == 3);
+
+        var after = Assert.Single(HonoreeDuplicateMatcher.Match(records, new[] { (2, 1) }));
+        Assert.Equal(new[] { 1, 3 }, after.Ids);
+        Assert.DoesNotContain(after.Pairs, pair => pair.LeftId == 1 && pair.RightId == 2);
+        Assert.Contains(after.Pairs, pair => pair.LeftId == 1 && pair.RightId == 3);
+    }
+
     private static DuplicateCandidate Person(int id, string name, string branch, string? grid, string? email) =>
         new(id, name, branch, grid, null, email);
 }
@@ -130,6 +175,25 @@ public class HonoreeClaimSchemaTests
         Assert.Contains("UX_ReprintDuplicateReviews_Duplicate", sql);
         Assert.DoesNotContain("ALTER TABLE [dbo].[HonoreeChangeRequests]", sql);
         Assert.DoesNotContain("DROP COLUMN", sql);
+    }
+
+    [Fact]
+    public void Not_duplicate_pair_sql_is_idempotent()
+    {
+        var sql = HonoreeNotDuplicatePairSchema.CreateSql;
+        Assert.Contains("IF OBJECT_ID(N'[dbo].[HonoreeNotDuplicatePairs]', N'U') IS NULL", sql);
+        Assert.Contains("CREATE TABLE [dbo].[HonoreeNotDuplicatePairs]", sql);
+        Assert.Contains("[LowHonoreeId] int NOT NULL", sql);
+        Assert.Contains("[HighHonoreeId] int NOT NULL", sql);
+        Assert.Contains("[MarkedBy] nvarchar(255) NOT NULL", sql);
+        Assert.Contains("[MarkedUtc] datetime2 NOT NULL", sql);
+        Assert.Contains("CHECK ([LowHonoreeId] < [HighHonoreeId])", sql);
+        Assert.Contains("UX_HonoreeNotDuplicatePairs_Pair", sql);
+        Assert.Contains("([LowHonoreeId], [HighHonoreeId])", sql);
+        Assert.DoesNotContain("DROP TABLE [dbo].[Honorees]", sql);
+        Assert.DoesNotContain("DROP TABLE [dbo].[FlagClaims]", sql);
+        Assert.DoesNotContain("DROP COLUMN", sql);
+        Assert.Equal(1, sql.Split("CREATE TABLE [dbo].[HonoreeNotDuplicatePairs]").Length - 1);
     }
 }
 
@@ -203,6 +267,200 @@ public class DuplicateMergeApiTests(PfohApiFactory factory) : IClassFixture<Pfoh
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("Choose the surviving record", body);
         Assert.Equal(2, await CountActiveAsync());
+    }
+
+    [Fact]
+    public async Task Inactive_and_deleted_records_are_excluded_from_groups()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var now = DateTime.UtcNow;
+            var inactive = Honoree(3, "John", "Smith", "Inactive bio", "inactive.jpg", null, now, branchId: 1);
+            inactive.IsActive = false;
+            var deleted = Honoree(4, "John", "Smith", "Deleted bio", "deleted.jpg", null, now, branchId: 1);
+            deleted.DeletedDate = now;
+            db.Honorees.Add(inactive);
+            db.Honorees.Add(deleted);
+            await db.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient();
+        var listed = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/duplicates/groups"));
+        Assert.Equal(HttpStatusCode.OK, listed.StatusCode);
+        var groups = await listed.Content.ReadFromJsonAsync<List<GroupResponse>>(Json);
+        var group = Assert.Single(groups!);
+        Assert.Equal(new[] { 1, 2 }, group.Honorees.Select(honoree => honoree.Id).OrderBy(id => id).ToArray());
+    }
+
+    [Fact]
+    public async Task A_previously_merged_record_does_not_reappear()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            db.Honorees.Add(Honoree(3, "John", "Smith", "Third bio", "photo-3.jpg", null, DateTime.UtcNow, branchId: 1));
+            await db.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient();
+        var merged = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields = Fields(2, 1, 1)
+        }));
+        Assert.Equal(HttpStatusCode.OK, merged.StatusCode);
+
+        var listed = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/duplicates/groups"));
+        var groups = await listed.Content.ReadFromJsonAsync<List<GroupResponse>>(Json);
+        var group = Assert.Single(groups!);
+        var ids = group.Honorees.Select(honoree => honoree.Id).OrderBy(id => id).ToArray();
+        Assert.Equal(new[] { 2, 3 }, ids);
+        Assert.DoesNotContain(1, ids);
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var after = check.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var mergedAway = await after.Honorees.SingleAsync(honoree => honoree.Id == 1);
+        Assert.False(mergedAway.IsActive);
+    }
+
+    [Fact]
+    public async Task Merging_an_inactive_or_deleted_record_is_rejected()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var inactive = await db.Honorees.SingleAsync(honoree => honoree.Id == 1);
+            inactive.IsActive = false;
+            await db.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient();
+        var rejected = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields = Fields(2, 1, 1)
+        }));
+        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+        var body = await rejected.Content.ReadAsStringAsync();
+        Assert.Contains("inactive or deleted", body);
+        Assert.Contains("was not merged", body);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var left = await db.Honorees.SingleAsync(honoree => honoree.Id == 1);
+            var right = await db.Honorees.SingleAsync(honoree => honoree.Id == 2);
+            Assert.False(left.IsActive);
+            Assert.Equal("Photo bio", left.Description);
+            Assert.True(right.IsActive);
+            Assert.Equal("Kept bio", right.Description);
+            var keptGrid = await db.FlagGrids.SingleAsync(grid => grid.Id == 12);
+            Assert.Equal(2, keptGrid.HonoreeId);
+        }
+
+        await ResetAsync();
+        await SeedPairAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var deleted = await db.Honorees.SingleAsync(honoree => honoree.Id == 1);
+            deleted.DeletedDate = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        var deletedMerge = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields = Fields(2, 1, 1)
+        }));
+        Assert.Equal(HttpStatusCode.Conflict, deletedMerge.StatusCode);
+        await using var after = factory.Services.CreateAsyncScope();
+        var afterDb = after.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Equal("Kept bio", (await afterDb.Honorees.SingleAsync(honoree => honoree.Id == 2)).Description);
+        Assert.True((await afterDb.Honorees.SingleAsync(honoree => honoree.Id == 2)).IsActive);
+        Assert.NotNull((await afterDb.Honorees.SingleAsync(honoree => honoree.Id == 1)).DeletedDate);
+    }
+
+    [Fact]
+    public async Task A_dismissed_pair_is_not_reported_again_and_the_pair_key_ignores_order()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        var client = factory.CreateClient();
+
+        var first = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/not-duplicates", new
+        {
+            leftId = 2,
+            rightId = 1
+        }));
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var saved = await first.Content.ReadFromJsonAsync<PairSave>(Json);
+        Assert.Equal(1, saved!.LowHonoreeId);
+        Assert.Equal(2, saved.HighHonoreeId);
+
+        var second = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/not-duplicates", new
+        {
+            leftId = 1,
+            rightId = 2
+        }));
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var row = await db.HonoreeNotDuplicatePairs.SingleAsync();
+            Assert.Equal(1, row.LowHonoreeId);
+            Assert.Equal(2, row.HighHonoreeId);
+            Assert.True(row.LowHonoreeId < row.HighHonoreeId);
+            Assert.Equal("admin@example.com", row.MarkedBy);
+        }
+
+        var listed = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/duplicates/groups"));
+        var groups = await listed.Content.ReadFromJsonAsync<List<GroupResponse>>(Json);
+        Assert.Empty(groups!);
+    }
+
+    [Fact]
+    public async Task Dismissing_one_pair_in_a_group_of_three_keeps_the_other_pair()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            db.Honorees.Add(Honoree(3, "Grace", "Hopper", "Other bio", "hopper.jpg", 11, DateTime.UtcNow));
+            await db.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient();
+        var before = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/duplicates/groups"));
+        var beforeGroups = await before.Content.ReadFromJsonAsync<List<GroupResponse>>(Json);
+        var beforeGroup = Assert.Single(beforeGroups!);
+        Assert.Equal(new[] { 1, 2, 3 }, beforeGroup.Honorees.Select(honoree => honoree.Id).OrderBy(id => id).ToArray());
+
+        var dismissed = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/not-duplicates", new
+        {
+            leftId = 1,
+            rightId = 2
+        }));
+        Assert.Equal(HttpStatusCode.OK, dismissed.StatusCode);
+
+        var after = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/duplicates/groups"));
+        var groups = await after.Content.ReadFromJsonAsync<List<GroupResponse>>(Json);
+        var group = Assert.Single(groups!);
+        Assert.Equal(new[] { 1, 3 }, group.Honorees.Select(honoree => honoree.Id).OrderBy(id => id).ToArray());
+        Assert.DoesNotContain(group.Pairs, pair => pair.LeftId == 1 && pair.RightId == 2);
+        Assert.Contains(group.Pairs, pair => pair.LeftId == 1 && pair.RightId == 3);
     }
 
     [Fact]
@@ -283,6 +541,7 @@ public class DuplicateMergeApiTests(PfohApiFactory factory) : IClassFixture<Pfoh
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
         db.Database.EnsureCreated();
         db.ReprintDuplicateReviews.RemoveRange(db.ReprintDuplicateReviews);
+        db.HonoreeNotDuplicatePairs.RemoveRange(db.HonoreeNotDuplicatePairs);
         db.HonoreeClaims.RemoveRange(db.HonoreeClaims);
         db.HonoreeChangeRequests.RemoveRange(db.HonoreeChangeRequests);
         db.FlagClaims.RemoveRange(db.FlagClaims);
@@ -385,8 +644,10 @@ public class DuplicateMergeApiTests(PfohApiFactory factory) : IClassFixture<Pfoh
         return request;
     }
 
-    private sealed record GroupResponse(string Likelihood, string Explanation, List<HonoreeRow> Honorees);
+    private sealed record GroupResponse(string Likelihood, string Explanation, List<HonoreeRow> Honorees, List<PairRow> Pairs);
     private sealed record HonoreeRow(int Id);
+    private sealed record PairRow(int LeftId, int RightId);
+    private sealed record PairSave(int LowHonoreeId, int HighHonoreeId);
     private sealed record ClaimantRow(string ClaimantEmail);
 }
 
@@ -523,6 +784,7 @@ public class ReprintDuplicateReviewTests(PfohApiFactory factory) : IClassFixture
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
         db.Database.EnsureCreated();
         db.ReprintDuplicateReviews.RemoveRange(db.ReprintDuplicateReviews);
+        db.HonoreeNotDuplicatePairs.RemoveRange(db.HonoreeNotDuplicatePairs);
         db.HonoreeClaims.RemoveRange(db.HonoreeClaims);
         db.HonoreeChangeRequests.RemoveRange(db.HonoreeChangeRequests);
         db.FlagClaims.RemoveRange(db.FlagClaims);

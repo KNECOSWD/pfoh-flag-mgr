@@ -12834,8 +12834,17 @@ html.isMapFullscreen .publicFlagLevel {
   background: #fff;
 }
 
-.duplicateWhy {
+.duplicateWhy,
+.duplicatePairList p,
+.notDuplicateConfirm p {
   margin: 0.35rem 0;
+}
+
+.notDuplicateConfirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
 }
 
 .duplicateMemberList {
