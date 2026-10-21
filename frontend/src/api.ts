@@ -178,6 +178,71 @@ export type HonoreeChangeRequest = {
 };
 
 
+export type DuplicateClaimant = {
+  userId: string;
+  name?: string | null;
+  email: string;
+  claimedUtc: string;
+  claimStatus: string;
+};
+
+export type DuplicateHonoree = {
+  id: number;
+  name: string;
+  firstName: string;
+  middleName?: string | null;
+  lastName: string;
+  suffix?: string | null;
+  nickname?: string | null;
+  rank: string;
+  serviceBranchName?: string | null;
+  serviceYears: string;
+  conflictsServed: string;
+  awards: string;
+  description: string;
+  kia: boolean;
+  photoFileName: string;
+  photoUrl?: string | null;
+  flagGridId?: number | null;
+  flagGridName?: string | null;
+  phoneNumber: string;
+  emailAddress: string;
+  sponsorName: string;
+  claimants: DuplicateClaimant[];
+};
+
+export type DuplicatePair = {
+  leftId: number;
+  rightId: number;
+  reasonCodes: string[];
+  explanation: string;
+};
+
+export type DuplicateGroup = {
+  groupKey: string;
+  likelihood: string;
+  explanation: string;
+  reasonCodes: string[];
+  pairs: DuplicatePair[];
+  honorees: DuplicateHonoree[];
+};
+
+export type DuplicateMergeResult = {
+  survivorId: number;
+  survivorName: string;
+  deactivatedIds: number[];
+  claimants: DuplicateClaimant[];
+};
+
+export type ReprintDuplicateReview = {
+  id: number;
+  honoreeId: number;
+  honoreeName: string;
+  duplicateChangeRequestId: number;
+  keptChangeRequestId: number;
+  flaggedUtc: string;
+};
+
 export type AdminClaimantSummary = {
   claimId: number;
   claimantName?: string | null;
@@ -789,6 +854,32 @@ export const adminApi = {
 
   printHistory: (instance: IPublicClientApplication, account: AccountInfo) =>
     request<CardPrintEvent[]>(instance, account, "/api/admin/print/history"),
+
+  duplicateGroups: (instance: IPublicClientApplication, account: AccountInfo) =>
+    request<DuplicateGroup[]>(instance, account, "/api/admin/duplicates/groups"),
+
+  mergeDuplicates: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    body: { survivorId: number; duplicateIds: number[]; fields: Record<string, number> }
+  ) =>
+    request<DuplicateMergeResult>(instance, account, "/api/admin/duplicates/merge", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+
+  reprintDuplicateReviews: (instance: IPublicClientApplication, account: AccountInfo) =>
+    request<ReprintDuplicateReview[]>(instance, account, "/api/admin/print/duplicate-reviews"),
+
+  approveReprintDuplicate: (instance: IPublicClientApplication, account: AccountInfo, id: number) =>
+    request<{ message: string }>(instance, account, `/api/admin/print/duplicate-reviews/${id}/approve`, {
+      method: "POST"
+    }),
+
+  dismissReprintDuplicate: (instance: IPublicClientApplication, account: AccountInfo, id: number) =>
+    request<{ message: string }>(instance, account, `/api/admin/print/duplicate-reviews/${id}/dismiss`, {
+      method: "POST"
+    }),
 
   flagPositions: (instance: IPublicClientApplication, account: AccountInfo) =>
     request<AdminFlagPosition[]>(instance, account, "/api/admin/review/flag-positions"),

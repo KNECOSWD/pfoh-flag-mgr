@@ -80,7 +80,7 @@ export function suggestionListFrame(anchor, viewport = {}) {
   const width = Number(viewport.width);
   const top = anchor.bottom + gap;
   const visibleBottom = Number.isFinite(height) && height > 0 ? offsetTop + height : anchor.bottom + cap + margin;
-  const maxHeight = Math.min(cap, visibleBottom - anchor.bottom - margin);
+  const maxHeight = Math.max(0, Math.min(cap, visibleBottom - anchor.bottom - margin));
   const left = anchor.left;
   let listWidth = Math.max(0, anchor.width);
   if (Number.isFinite(width) && width > 0) {

@@ -16,7 +16,8 @@ namespace PFOH.Api.Controllers;
 [EnableRateLimiting("AuthenticatedGet")]
 public class AdminPrintController(
     PfohDbContext db,
-    HonoreeFileStorage fileStorage) : ControllerBase
+    HonoreeFileStorage fileStorage,
+    ReprintQueueMaintenance reprintQueue) : ControllerBase
 {
     [HttpPost("plan")]
     public async Task<ActionResult<PrintBatchPlanDto>> PlanBatch(
@@ -173,6 +174,96 @@ public class AdminPrintController(
         return Ok(new { batchId, count = changes.Count });
     }
 
+    [HttpGet("duplicate-reviews")]
+    public async Task<ActionResult<IReadOnlyList<ReprintDuplicateReviewDto>>> DuplicateReviews(CancellationToken ct)
+    {
+        await ReprintDuplicateReviewSchema.EnsureAsync(db, ct);
+        await reprintQueue.FlagDuplicateActiveReprintItemsAsync(ct);
+
+        var open = await db.ReprintDuplicateReviews
+            .AsNoTracking()
+            .Where(review => review.Status == ReprintDuplicateReviewStatus.Flagged && review.ResolvedUtc == null)
+            .OrderBy(review => review.FlaggedUtc)
+            .ThenBy(review => review.Id)
+            .ToListAsync(ct);
+
+        var honoreeIds = open.Select(review => review.HonoreeId).Distinct().ToList();
+        var namedHonorees = honoreeIds.Count == 0
+            ? new List<Honoree>()
+            : await db.Honorees
+                .AsNoTracking()
+                .Where(honoree => honoreeIds.Contains(honoree.Id))
+                .ToListAsync(ct);
+        var names = namedHonorees.ToDictionary(honoree => honoree.Id, AdminDuplicatesController.DisplayName);
+
+        return Ok(open.Select(review => new ReprintDuplicateReviewDto(
+            review.Id,
+            review.HonoreeId,
+            names.TryGetValue(review.HonoreeId, out var name) ? name : $"Honoree {review.HonoreeId}",
+            review.DuplicateChangeRequestId,
+            review.KeptChangeRequestId,
+            review.FlaggedUtc)).ToList());
+    }
+
+    [HttpPost("duplicate-reviews/{id:int}/approve")]
+    public async Task<IActionResult> ApproveDuplicateReview(int id, CancellationToken ct)
+    {
+        var review = await OpenReviewAsync(id, ct);
+        if (review is null)
+        {
+            return NotFound(new { message = "That flagged duplicate is no longer waiting for review." });
+        }
+
+        var adminName = AdminName();
+        await reprintQueue.RemoveOneDuplicateReprintItemAsync(
+            review.DuplicateChangeRequestId,
+            review.KeptChangeRequestId,
+            adminName,
+            ct);
+        review.ResolvedUtc = DateTime.UtcNow;
+        review.ResolvedBy = adminName;
+        await db.SaveChangesAsync(ct);
+        return Ok(new { message = "The duplicate reprint was removed. The other card stays in the queue." });
+    }
+
+    [HttpPost("duplicate-reviews/{id:int}/dismiss")]
+    public async Task<IActionResult> DismissDuplicateReview(int id, CancellationToken ct)
+    {
+        var review = await OpenReviewAsync(id, ct);
+        if (review is null)
+        {
+            return NotFound(new { message = "That flagged duplicate is no longer waiting for review." });
+        }
+
+        review.Status = ReprintDuplicateReviewStatus.Dismissed;
+        review.ResolvedUtc = DateTime.UtcNow;
+        review.ResolvedBy = AdminName();
+        await db.SaveChangesAsync(ct);
+        return Ok(new { message = "Dismissed. Both cards stay in the queue." });
+    }
+
+    private async Task<ReprintDuplicateReview?> OpenReviewAsync(int id, CancellationToken ct)
+    {
+        var review = await db.ReprintDuplicateReviews.FirstOrDefaultAsync(item => item.Id == id, ct);
+        if (review is null || review.Status != ReprintDuplicateReviewStatus.Flagged || review.ResolvedUtc is not null)
+        {
+            return null;
+        }
+
+        return review;
+    }
+
+    private string AdminName()
+    {
+        var adminName = User.GetEmail();
+        if (string.IsNullOrWhiteSpace(adminName))
+        {
+            adminName = User.GetDisplayName() ?? "PFOH.Admin";
+        }
+
+        return adminName;
+    }
+
     private IQueryable<Models.HonoreeChangeRequest> QueuedCards() =>
         db.HonoreeChangeRequests
             .AsNoTracking()
@@ -181,3 +272,11 @@ public class AdminPrintController(
                 r.RequiresCardReprint &&
                 r.HonoreeId != null);
 }
+
+public sealed record ReprintDuplicateReviewDto(
+    int Id,
+    int HonoreeId,
+    string HonoreeName,
+    int DuplicateChangeRequestId,
+    int KeptChangeRequestId,
+    DateTime FlaggedUtc);

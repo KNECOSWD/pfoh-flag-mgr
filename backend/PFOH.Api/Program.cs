@@ -364,6 +364,30 @@ try
 
     try
     {
+        await HonoreeClaimSchema.EnsureAsync(startupDb, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(
+            ex,
+            "STARTUP CLEANUP FAILED while ensuring dbo.HonoreeClaims. {Failure}",
+            ex.ToString());
+    }
+
+    try
+    {
+        await ReprintDuplicateReviewSchema.EnsureAsync(startupDb, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(
+            ex,
+            "STARTUP CLEANUP FAILED while ensuring dbo.ReprintDuplicateReviews. {Failure}",
+            ex.ToString());
+    }
+
+    try
+    {
         await CardPrintEventSchema.EnsureAsync(startupDb, CancellationToken.None);
     }
     catch (Exception ex)

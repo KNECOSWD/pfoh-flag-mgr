@@ -377,22 +377,19 @@ public class AdminReviewController(
 
         var honoreeIds = honorees.Select(h => h.Id).ToList();
 
+        await HonoreeClaimStore.SyncAsync(db, ct);
         var activeClaims = honoreeIds.Count == 0
-            ? new List<FlagClaim>()
-            : await db.FlagClaims
+            ? new List<HonoreeClaim>()
+            : await db.HonoreeClaims
                 .AsNoTracking()
                 .Where(c =>
-                    c.HonoreeId.HasValue &&
-                    honoreeIds.Contains(c.HonoreeId.Value) &&
-                    c.ClaimStatus != "Unclaimed" &&
-                    c.ClaimStatus != "Cancelled" &&
-                    c.ClaimStatus != "AdminDirectEditCompleted")
-                .OrderBy(c => c.ExternalUserName ?? c.ExternalUserEmail)
+                    honoreeIds.Contains(c.HonoreeId) &&
+                    !HonoreeClaimStore.HiddenStatuses.Contains(c.ClaimStatus))
+                .OrderBy(c => c.DisplayName ?? c.Email)
                 .ToListAsync(ct);
 
         var claimsByHonoreeId = activeClaims
-            .Where(c => c.HonoreeId.HasValue)
-            .GroupBy(c => c.HonoreeId!.Value)
+            .GroupBy(c => c.HonoreeId)
             .ToDictionary(g => g.Key, g => g.ToList());
 
         var rows = new StringBuilder();
@@ -426,12 +423,12 @@ public class AdminReviewController(
         foreach (var honoree in honorees)
         {
             claimsByHonoreeId.TryGetValue(honoree.Id, out var claims);
-            claims ??= new List<FlagClaim>();
+            claims ??= new List<HonoreeClaim>();
 
             var claimantSummary = string.Join(
                 "; ",
                 claims.Select(c =>
-                    $"{Clean(c.ExternalUserName) ?? Clean(c.ExternalUserEmail)} <{Clean(c.ExternalUserEmail)}> ({Clean(c.ClaimStatus)})"));
+                    $"{Clean(c.DisplayName) ?? Clean(c.Email)} <{Clean(c.Email)}> ({Clean(c.ClaimStatus)})"));
 
             var values = new[]
             {
@@ -649,16 +646,7 @@ public class AdminReviewController(
                     ct);
         }
 
-        if (honoree is not null)
-        {
-            honoree.FlagGridId = null;
-            honoree.ModifiedBy = adminName;
-            honoree.ModifiedDate = DateTime.UtcNow;
-        }
-
-        flagGrid.HonoreeId = null;
-        flagGrid.ModifiedBy = adminName;
-        flagGrid.ModifiedDate = DateTime.UtcNow;
+        FlagSpotRelease.ClearAssignment(honoree, flagGrid, adminName, DateTime.UtcNow);
 
         await db.SaveChangesAsync(ct);
 
@@ -943,6 +931,7 @@ public class AdminReviewController(
             }
 
             await db.SaveChangesAsync(ct);
+            await HonoreeClaimStore.SyncAsync(db, ct);
 
             if (request.RequiresCardReprint)
             {

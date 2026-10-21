@@ -3,6 +3,7 @@ export const KIOSK_EXIT_HOLD_MS = 3000;
 
 export const KIOSK_GUARDED_ROUTES = [
   "/admin/review",
+  "/admin/duplicates",
   "/admin/printing",
   "/admin/flag-map",
   "/find",

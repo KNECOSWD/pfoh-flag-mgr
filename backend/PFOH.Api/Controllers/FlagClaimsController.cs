@@ -211,46 +211,45 @@ public class FlagClaimsController(
     [Authorize(Policy = "AdminOnly")]
     public async Task<ActionResult<IReadOnlyList<object>>> GetHonoreeClaimants(int honoreeId, CancellationToken ct)
     {
-        var claims = await db.FlagClaims
+        await HonoreeClaimStore.SyncAsync(db, ct);
+        var rows = await db.HonoreeClaims
             .AsNoTracking()
-            .Where(c =>
-                c.HonoreeId == honoreeId &&
-                c.ClaimStatus != "Unclaimed" &&
-                c.ClaimStatus != "Cancelled" &&
-                c.ClaimStatus != "AdminDirectEditCompleted")
-            .OrderByDescending(c => c.CreatedUtc)
-            .Select(c => new
-            {
-                claimId = c.Id,
-                claimantName = c.ExternalUserName,
-                claimantEmail = c.ExternalUserEmail,
-                ownerObjectId = c.ExternalUserObjectId,
-                claimStatus = c.ClaimStatus,
-                createdUtc = c.CreatedUtc,
-                submittedUtc = c.SubmittedUtc,
-                latestRequestStatus = c.HonoreeChangeRequests
-                    .OrderByDescending(r => r.CreatedUtc)
-                    .Select(r => r.RequestStatus)
-                    .FirstOrDefault()
-            })
+            .Where(claim => claim.HonoreeId == honoreeId && !HonoreeClaimStore.HiddenStatuses.Contains(claim.ClaimStatus))
+            .OrderByDescending(claim => claim.ClaimedUtc)
             .ToListAsync(ct);
 
-        var contacts = await profiles.GetAccountContactsAsync(claims.Select(claim => claim.ownerObjectId), ct);
+        var sourceIds = rows
+            .Where(claim => claim.SourceFlagClaimId.HasValue)
+            .Select(claim => claim.SourceFlagClaimId!.Value)
+            .ToList();
+        var sources = sourceIds.Count == 0
+            ? new Dictionary<int, FlagClaim>()
+            : await db.FlagClaims
+                .AsNoTracking()
+                .Include(claim => claim.HonoreeChangeRequests)
+                .Where(claim => sourceIds.Contains(claim.Id))
+                .ToDictionaryAsync(claim => claim.Id, ct);
 
-        return Ok(claims.Select(claim =>
+        var contacts = await profiles.GetAccountContactsAsync(rows.Select(claim => claim.UserId), ct);
+
+        return Ok(rows.Select(claim =>
         {
-            contacts.TryGetValue(claim.ownerObjectId, out var contact);
+            contacts.TryGetValue(claim.UserId, out var contact);
+            sources.TryGetValue(claim.SourceFlagClaimId ?? 0, out var source);
             return new
             {
-                claim.claimId,
-                claim.claimantName,
-                claim.claimantEmail,
+                claimId = claim.SourceFlagClaimId ?? 0,
+                claimantName = claim.DisplayName,
+                claimantEmail = claim.Email,
                 claimantPhone = contact?.Phone,
                 claimantOrganization = contact?.Organization,
-                claim.claimStatus,
-                claim.createdUtc,
-                claim.submittedUtc,
-                claim.latestRequestStatus
+                claimStatus = claim.ClaimStatus,
+                createdUtc = claim.ClaimedUtc,
+                submittedUtc = source?.SubmittedUtc,
+                latestRequestStatus = source?.HonoreeChangeRequests
+                    .OrderByDescending(request => request.CreatedUtc)
+                    .Select(request => request.RequestStatus)
+                    .FirstOrDefault()
             };
         }));
     }
@@ -357,7 +356,7 @@ public class FlagClaimsController(
             }
         }
 
-        await db.SaveChangesAsync(ct);
+        await HonoreeClaimStore.SyncAsync(db, ct);
 
         return Ok(new { message = "Flag unclaimed." });
     }
@@ -424,6 +423,7 @@ public class FlagClaimsController(
 
         db.FlagClaims.Add(claim);
         await db.SaveChangesAsync(ct);
+        await HonoreeClaimStore.SyncAsync(db, ct);
         await transaction.CommitAsync(ct);
 
         return Ok(ToDto(
@@ -503,6 +503,7 @@ public class FlagClaimsController(
 
         db.FlagClaims.Add(claim);
         await db.SaveChangesAsync(ct);
+        await HonoreeClaimStore.SyncAsync(db, ct);
         await RegenerateHonoreePdfAsync(honoree.Id, ct);
         await transaction.CommitAsync(ct);
 
@@ -635,6 +636,7 @@ public class FlagClaimsController(
 
         db.FlagClaims.Add(claim);
         await db.SaveChangesAsync(ct);
+        await HonoreeClaimStore.SyncAsync(db, ct);
 
         var imageUrl = await db.HonoreeSearchResults
             .AsNoTracking()
@@ -807,6 +809,7 @@ public class FlagClaimsController(
         claim.AdminNotes = "Direct administrator edit queued for reprint.";
 
         await db.SaveChangesAsync(ct);
+        await HonoreeClaimStore.SyncAsync(db, ct);
         await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, latestDraft.Id, adminName, ct);
         await transaction.CommitAsync(ct);
 
