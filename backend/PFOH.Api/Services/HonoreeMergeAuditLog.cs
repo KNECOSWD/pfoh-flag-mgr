@@ -229,6 +229,12 @@ public static class HonoreeMergeAuditLog
             return blocked;
         }
 
+        var added = await AddedAfterMergeAsync(db, before, after, ct);
+        if (added is not null)
+        {
+            return added;
+        }
+
         var createdIds = JsonSerializer.Deserialize<List<int>>(audit.CreatedHonoreeClaimIds, Json) ?? new List<int>();
         if (createdIds.Count > 0)
         {
@@ -437,6 +443,70 @@ public static class HonoreeMergeAuditLog
             {
                 return $"This merge cannot be undone because change request {snap.Id} was edited after the merge.";
             }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// A row created after the merge is absent from the post-merge snapshot.
+    /// Restoring the old grid or claim on top of it would put two rows on one spot.
+    /// </summary>
+    private static async Task<string?> AddedAfterMergeAsync(
+        PfohDbContext db,
+        MergeBeforeState before,
+        MergeBeforeState after,
+        CancellationToken ct)
+    {
+        var mergedIds = before.Honorees.Select(honoree => honoree.Id)
+            .Concat(after.Honorees.Select(honoree => honoree.Id))
+            .Distinct()
+            .ToList();
+        var gridNames = new Dictionary<int, string>();
+        foreach (var grid in (before.Grids ?? new List<GridSnap>()).Concat(after.Grids ?? new List<GridSnap>()))
+        {
+            gridNames[grid.Id] = string.IsNullOrWhiteSpace(grid.Name) ? $"grid {grid.Id}" : grid.Name;
+        }
+
+        var gridIds = gridNames.Keys.ToList();
+        var knownFlagClaims = (after.FlagClaims ?? new List<FlagClaimSnap>()).Select(claim => claim.Id).ToList();
+        var knownHonoreeClaims = (after.HonoreeClaims ?? new List<HonoreeClaimSnap>()).Select(claim => claim.Id).ToList();
+        var knownChanges = (after.ChangeRequests ?? new List<ChangeSnap>()).Select(change => change.Id).ToList();
+
+        var flagClaim = await db.FlagClaims.AsNoTracking()
+            .Where(claim =>
+                !knownFlagClaims.Contains(claim.Id) &&
+                ((claim.FlagGridId != null && gridIds.Contains(claim.FlagGridId.Value)) ||
+                 (claim.HonoreeId != null && mergedIds.Contains(claim.HonoreeId.Value))))
+            .Select(claim => new { claim.Id, claim.FlagGridId })
+            .FirstOrDefaultAsync(ct);
+        if (flagClaim is not null)
+        {
+            var spot = flagClaim.FlagGridId is int gridId && gridNames.TryGetValue(gridId, out var name)
+                ? $" on flag grid {name}"
+                : "";
+            return $"This merge cannot be undone because flag claim {flagClaim.Id} was added{spot} after the merge.";
+        }
+
+        var honoreeClaimId = await db.HonoreeClaims.AsNoTracking()
+            .Where(claim => mergedIds.Contains(claim.HonoreeId) && !knownHonoreeClaims.Contains(claim.Id))
+            .Select(claim => claim.Id)
+            .FirstOrDefaultAsync(ct);
+        if (honoreeClaimId != 0)
+        {
+            return $"This merge cannot be undone because honoree claim {honoreeClaimId} was added after the merge.";
+        }
+
+        var changeRequestId = await db.HonoreeChangeRequests.AsNoTracking()
+            .Where(change =>
+                !knownChanges.Contains(change.Id) &&
+                ((change.HonoreeId != null && mergedIds.Contains(change.HonoreeId.Value)) ||
+                 (change.FlagGridId != null && gridIds.Contains(change.FlagGridId.Value))))
+            .Select(change => change.Id)
+            .FirstOrDefaultAsync(ct);
+        if (changeRequestId != 0)
+        {
+            return $"This merge cannot be undone because change request {changeRequestId} was added after the merge.";
         }
 
         return null;

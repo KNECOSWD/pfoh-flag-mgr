@@ -1013,6 +1013,153 @@ public class DuplicateMergeFieldApiTests(PfohApiFactory factory) : IClassFixture
     }
 
     [Fact]
+    public async Task Undo_is_blocked_when_a_freed_grid_was_claimed_after_the_merge()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        var client = factory.CreateClient();
+        var merged = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields = SourceFields(2, 1, 2)
+        }));
+        Assert.Equal(HttpStatusCode.OK, merged.StatusCode);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            Assert.Null((await db.FlagGrids.SingleAsync(grid => grid.Id == 11)).HonoreeId);
+            db.FlagClaims.Add(new FlagClaim
+            {
+                Id = 41,
+                FlagGridId = 11,
+                HonoreeId = null,
+                ExternalUserObjectId = "person-c",
+                ExternalUserEmail = "cara@example.com",
+                ExternalUserName = "Cara",
+                ClaimStatus = "Claimed",
+                CreatedUtc = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        int auditId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            auditId = (await db.HonoreeMergeAudits.SingleAsync()).Id;
+        }
+
+        var undone = await client.SendAsync(Admin(HttpMethod.Post, $"/api/admin/duplicates/merges/{auditId}/undo"));
+        var text = await undone.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.Conflict, undone.StatusCode);
+        Assert.Contains("flag claim 41", text);
+        Assert.Contains("AA-1", text);
+        Assert.Contains("added", text);
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var after = check.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Equal(11, (await after.FlagClaims.SingleAsync(claim => claim.Id == 41)).FlagGridId);
+        Assert.Null((await after.FlagClaims.SingleAsync(claim => claim.Id == 41)).HonoreeId);
+        Assert.Null((await after.FlagGrids.SingleAsync(grid => grid.Id == 11)).HonoreeId);
+        Assert.Null((await after.FlagClaims.SingleAsync(claim => claim.Id == 31)).FlagGridId);
+        Assert.Equal(2, (await after.FlagClaims.SingleAsync(claim => claim.Id == 31)).HonoreeId);
+        Assert.False((await after.Honorees.SingleAsync(honoree => honoree.Id == 1)).IsActive);
+        Assert.Null((await after.Honorees.SingleAsync(honoree => honoree.Id == 1)).FlagGridId);
+        Assert.Null((await after.HonoreeMergeAudits.SingleAsync()).UndoneUtc);
+    }
+
+    [Fact]
+    public async Task Undo_is_blocked_when_a_change_request_was_added_after_the_merge()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        var client = factory.CreateClient();
+        var merged = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields = SourceFields(2, 1, 2)
+        }));
+        Assert.Equal(HttpStatusCode.OK, merged.StatusCode);
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            db.HonoreeChangeRequests.Add(new HonoreeChangeRequest
+            {
+                Id = 91,
+                FlagClaimId = 31,
+                HonoreeId = 1,
+                FirstName = "John",
+                LastName = "Smith",
+                RequestStatus = "Submitted"
+            });
+            await db.SaveChangesAsync();
+        }
+
+        int auditId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            auditId = (await db.HonoreeMergeAudits.SingleAsync()).Id;
+        }
+
+        var undone = await client.SendAsync(Admin(HttpMethod.Post, $"/api/admin/duplicates/merges/{auditId}/undo"));
+        var text = await undone.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.Conflict, undone.StatusCode);
+        Assert.Contains("change request 91", text);
+        Assert.Contains("added after the merge", text);
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var after = check.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Equal(1, (await after.HonoreeChangeRequests.SingleAsync(item => item.Id == 91)).HonoreeId);
+        Assert.False((await after.Honorees.SingleAsync(honoree => honoree.Id == 1)).IsActive);
+        Assert.Null((await after.Honorees.SingleAsync(honoree => honoree.Id == 1)).FlagGridId);
+        Assert.True((await after.Honorees.SingleAsync(honoree => honoree.Id == 2)).IsActive);
+        Assert.Null((await after.HonoreeMergeAudits.SingleAsync()).UndoneUtc);
+    }
+
+    [Fact]
+    public async Task Undo_is_blocked_when_the_post_merge_state_was_not_recorded()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        var client = factory.CreateClient();
+        var merged = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields = SourceFields(2, 1, 2)
+        }));
+        Assert.Equal(HttpStatusCode.OK, merged.StatusCode);
+
+        int auditId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var audit = await db.HonoreeMergeAudits.SingleAsync();
+            audit.AfterState = "{}";
+            await db.SaveChangesAsync();
+            auditId = audit.Id;
+        }
+
+        var undone = await client.SendAsync(Admin(HttpMethod.Post, $"/api/admin/duplicates/merges/{auditId}/undo"));
+        var text = await undone.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.Conflict, undone.StatusCode);
+        Assert.Contains("post-merge state was not recorded", text);
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var after = check.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Equal("{}", (await after.HonoreeMergeAudits.SingleAsync()).AfterState);
+        Assert.Null((await after.HonoreeMergeAudits.SingleAsync()).UndoneUtc);
+        Assert.False((await after.Honorees.SingleAsync(honoree => honoree.Id == 1)).IsActive);
+        Assert.Null((await after.Honorees.SingleAsync(honoree => honoree.Id == 1)).FlagGridId);
+        Assert.Equal(12, (await after.Honorees.SingleAsync(honoree => honoree.Id == 2)).FlagGridId);
+    }
+
+    [Fact]
     public async Task Merge_history_and_undo_are_admin_only()
     {
         await ResetAsync();
