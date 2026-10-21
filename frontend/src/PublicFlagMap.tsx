@@ -20,6 +20,7 @@ import {
   cullRects,
   exitDocumentFullscreen,
   filterFlagMapSuggestions,
+  suggestionListFrame,
   FIT_PADDING,
   fitView,
   fieldFitBounds,
@@ -338,6 +339,9 @@ export default function PublicFlagMap({
   const inViewTimerRef = useRef(0);
   const jumpByArrowRef = useRef(false);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const searchBoxRef = useRef<HTMLDivElement | null>(null);
+  const suggestFrameRef = useRef<ReturnType<typeof suggestionListFrame> | null>(null);
+  const [suggestFrame, setSuggestFrame] = useState<ReturnType<typeof suggestionListFrame> | null>(null);
   const [toolIndex, setToolIndex] = useState(0);
   const [selected, setSelected] = useState<FlagBox | null>(null);
   const [highlightId, setHighlightId] = useState<number | null>(null);
@@ -349,12 +353,14 @@ export default function PublicFlagMap({
   const [pinMessage, setPinMessage] = useState("");
   const [pinBusy, setPinBusy] = useState(false);
   const suggestions = filterFlagMapSuggestions(index, query) as SearchHit[];
+  const suggestOpen = open && (suggestions.length > 0 || submitterSuggestions.length > 0);
   const searchRows: SearchRow[] = [
     ...suggestions.map((hit) => ({ kind: "honoree" as const, hit })),
     ...submitterSuggestions.map((item) => ({ kind: "submitter" as const, label: item.label, token: item.token }))
   ];
   const escapeStateRef = useRef({ cardOpen: false, listOpen: false });
   escapeStateRef.current = { cardOpen: Boolean(selected), listOpen: (open && searchRows.length > 0) || Boolean(jumpPending) };
+
   const activeRow = searchRows[active];
   const activeDescendant = !open || !activeRow
     ? undefined
@@ -943,6 +949,51 @@ export default function PublicFlagMap({
     // applyView is recreated each render and reads the latest refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [field]);
+
+  useLayoutEffect(() => {
+    if (!suggestOpen) {
+      suggestFrameRef.current = null;
+      setSuggestFrame(null);
+      return;
+    }
+    const place = () => {
+      const node = searchBoxRef.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      const view = window.visualViewport;
+      const next = suggestionListFrame(
+        { bottom: rect.bottom, left: rect.left, width: rect.width },
+        {
+          height: view?.height ?? window.innerHeight,
+          width: view?.width ?? window.innerWidth,
+          offsetTop: view?.offsetTop ?? 0,
+          offsetLeft: view?.offsetLeft ?? 0
+        }
+      );
+      const prev = suggestFrameRef.current;
+      if (prev
+        && prev.top === next.top
+        && prev.left === next.left
+        && prev.width === next.width
+        && prev.maxHeight === next.maxHeight) {
+        return;
+      }
+      suggestFrameRef.current = next;
+      setSuggestFrame(next);
+    };
+    place();
+    const view = window.visualViewport;
+    view?.addEventListener("resize", place);
+    view?.addEventListener("scroll", place);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      view?.removeEventListener("resize", place);
+      view?.removeEventListener("scroll", place);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [suggestOpen, query]);
 
   useEffect(() => () => window.clearTimeout(inViewTimerRef.current), []);
 
@@ -1550,7 +1601,7 @@ export default function PublicFlagMap({
                 <ToolIcon name="reset" />
               </button>
             )}
-            <div className="publicFlagSearch">
+            <div className="publicFlagSearch" ref={searchBoxRef}>
               <label htmlFor="public-flag-search" className="srOnly">Search honorees</label>
               <svg className="publicFlagSearchIcon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true" focusable="false">
                 <circle cx="7" cy="7" r="4.5" />
@@ -1579,8 +1630,21 @@ export default function PublicFlagMap({
                 onKeyDown={onSearchKeyDown}
               />
               {submitterNote ? <p className="message" role="status">{submitterNote}</p> : null}
-              {open && searchRows.length > 0 ? (
-                <ul id={listId} role="listbox" className="publicFlagSuggestions">
+              {open && searchRows.length > 0 ? createPortal(
+                <ul
+                  id={listId}
+                  role="listbox"
+                  className={suggestFrame ? "publicFlagSuggestions publicFlagSuggestLayer isPlaced" : "publicFlagSuggestions publicFlagSuggestLayer"}
+                  data-kiosk={kiosk ? "1" : "0"}
+                  style={suggestFrame ? {
+                    top: suggestFrame.top,
+                    left: suggestFrame.left,
+                    width: suggestFrame.width,
+                    maxHeight: suggestFrame.maxHeight,
+                    bottom: "auto",
+                    right: "auto"
+                  } : undefined}
+                >
                   {searchRows.map((row, optionIndex) => row.kind === "honoree" ? (
                     <li
                       id={`${listId}-${row.hit.honoreeId}`}
@@ -1611,7 +1675,8 @@ export default function PublicFlagMap({
                       <strong>{row.label}</strong>
                     </li>
                   ))}
-                </ul>
+                </ul>,
+                document.body
               ) : null}
             </div>
             <div className="publicFlagJump">

@@ -66,6 +66,33 @@ export function withApiBase(apiBase, path) {
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+// The toolbar list is position:fixed, so these coordinates are layout-viewport
+// pixels. anchor comes from getBoundingClientRect (visual viewport). offsetTop
+// and offsetLeft line that up with iOS Safari, where a fixed box is placed in
+// the layout viewport and the keyboard shrinks visualViewport.
+export function suggestionListFrame(anchor, viewport = {}) {
+  const gap = 4;
+  const margin = 8;
+  const cap = 320;
+  const offsetTop = Number(viewport.offsetTop) || 0;
+  const offsetLeft = Number(viewport.offsetLeft) || 0;
+  const height = Number(viewport.height);
+  const width = Number(viewport.width);
+  const top = anchor.bottom + offsetTop + gap;
+  const visibleBottom = Number.isFinite(height) && height > 0 ? offsetTop + height : top + cap;
+  const room = visibleBottom - top - margin;
+  const maxHeight = Math.min(cap, Math.max(0, room));
+  let left = anchor.left + offsetLeft;
+  let listWidth = Math.max(0, anchor.width);
+  if (Number.isFinite(width) && width > 0) {
+    const visibleLeft = offsetLeft + margin;
+    const visibleRight = offsetLeft + width - margin;
+    listWidth = Math.min(listWidth, Math.max(0, visibleRight - visibleLeft));
+    left = Math.min(Math.max(left, visibleLeft), Math.max(visibleLeft, visibleRight - listWidth));
+  }
+  return { top, left, width: listWidth, maxHeight };
+}
+
 export function filterFlagMapSuggestions(index, query, limit = 8) {
   const needle = String(query || "").trim().toLowerCase();
   if (!needle || !Array.isArray(index)) return [];

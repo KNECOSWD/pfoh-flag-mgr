@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.21
+
+- On the public Flag Map, Search honorees opens its results below the search box, inside the screen. A longer list scrolls inside itself. The first result is no longer cut off above the toolbar on iPad Safari in landscape. The toolbar spacing and the phone map fit are unchanged.
+
 ## 2.0.20
 
 - Remove from queue in the Print Center still succeeds when the database rejects the cancelled-claim update. The card leaves the queue, and the server records a warning with the change-request id, the claim id, and the database error. The warning does not include names or other personal details.
