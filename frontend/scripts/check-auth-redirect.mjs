@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { publicPageAdminState } from "../src/accountRoles.js";
+import {
+  CACHE_ONLY_ACCESS_TOKEN,
+  accountIsAdmin,
+  clearStickyAdmin,
+  lookupCachedAdminRole,
+  noteServerAdmin,
+  readStickyAdmin,
+  resolvePublicAdmin
+} from "../src/accountRoles.js";
 import { duplicateListState } from "../src/duplicateListState.js";
 import { isPublicApiPath } from "../src/publicApi.js";
 import { isPublicPage } from "../src/publicRoutes.js";
@@ -146,42 +154,112 @@ test("the session guard allows one redirect and then asks the person to sign in 
   assert.equal(bannerForTokenError(second[0].reason), PLEASE_SIGN_IN_AGAIN);
 });
 
-test("an admin account on /find sees the Admin menu and makes no token call", () => {
-  let tokenCalls = 0;
-  const acquireToken = () => {
-    tokenCalls += 1;
-    return "token";
-  };
+function jwt(payload) {
+  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `header.${body}.sig`;
+}
 
-  const admin = publicPageAdminState("/find", { idTokenClaims: { roles: ["PFOH.Admin"] } });
-  assert.equal(admin.showAdminMenu, true);
-  assert.equal(admin.showAdminActions, true);
-  assert.equal(admin.tokenCalls, 0);
-  assert.equal(tokenCalls, 0);
-  void acquireToken;
+test("admin menu on public pages follows the server flag and the cached API access token", async () => {
+  const storage = memoryStorage();
+  const admin = { homeAccountId: "admin-1", idTokenClaims: {} };
+  noteServerAdmin(storage, admin.homeAccountId, true);
+  const afterAdminPage = resolvePublicAdmin({
+    account: admin,
+    sticky: readStickyAdmin(storage, admin.homeAccountId),
+    cachedApiAdmin: false
+  });
+  assert.equal(readStickyAdmin(storage, admin.homeAccountId), true);
+  assert.equal(accountIsAdmin(admin), false);
+  assert.equal(afterAdminPage.showAdminMenu, true);
+  assert.equal(afterAdminPage.showAdminActions, true);
 
-  const namedAdmin = publicPageAdminState("/flag-map", { idTokenClaims: { roles: "Admin" } });
-  assert.equal(namedAdmin.showAdminMenu, true);
-  assert.equal(namedAdmin.tokenCalls, 0);
+  const fresh = { homeAccountId: "admin-2", idTokenClaims: {} };
+  let networkCalls = 0;
+  const silentCalls = [];
+  const cached = await lookupCachedAdminRole({
+    account: fresh,
+    scopes: ["api://pfoh/access_as_user"],
+    cacheLookupPolicy: CACHE_ONLY_ACCESS_TOKEN,
+    acquireTokenSilent: async (request) => {
+      silentCalls.push(request);
+      return { accessToken: jwt({ roles: ["PFOH.Admin"] }) };
+    }
+  });
+  assert.equal(networkCalls, 0);
+  assert.equal(silentCalls.length, 1);
+  assert.equal(silentCalls[0].cacheLookupPolicy, CACHE_ONLY_ACCESS_TOKEN);
+  assert.equal(cached.isAdmin, true);
+  assert.equal(cached.swallowed, false);
+  const fromCache = resolvePublicAdmin({ account: fresh, sticky: false, cachedApiAdmin: cached.isAdmin });
+  assert.equal(fromCache.showAdminMenu, true);
 
-  const supporter = publicPageAdminState("/find", { idTokenClaims: { roles: ["Supporter"] } });
-  assert.equal(supporter.showAdminMenu, false);
-  assert.equal(supporter.showAdminActions, false);
-  assert.equal(supporter.tokenCalls, 0);
+  let redirects = 0;
+  let banners = 0;
+  const missed = await lookupCachedAdminRole({
+    account: fresh,
+    cacheLookupPolicy: CACHE_ONLY_ACCESS_TOKEN,
+    acquireTokenSilent: async () => {
+      throw Object.assign(new Error("no_tokens_found"), { errorCode: "no_tokens_found" });
+    }
+  });
+  assert.equal(missed.called, true);
+  assert.equal(missed.swallowed, true);
+  assert.equal(missed.isAdmin, false);
+  assert.equal(redirects, 0);
+  assert.equal(banners, 0);
+  const hidden = resolvePublicAdmin({ account: fresh, sticky: false, cachedApiAdmin: false });
+  assert.equal(hidden.showAdminMenu, false);
+  assert.equal(hidden.showAdminActions, false);
 
-  const missing = publicPageAdminState("/find", { idTokenClaims: {} });
-  assert.equal(missing.showAdminMenu, false);
-  assert.equal(missing.isAdmin, false);
-  assert.equal(publicPageAdminState("/find", null).showAdminMenu, false);
+  const supporterToken = await lookupCachedAdminRole({
+    account: { homeAccountId: "person", idTokenClaims: { roles: ["Supporter"] } },
+    cacheLookupPolicy: CACHE_ONLY_ACCESS_TOKEN,
+    acquireTokenSilent: async () => ({ accessToken: jwt({ roles: ["Supporter"] }) })
+  });
+  assert.equal(supporterToken.isAdmin, false);
+  assert.equal(resolvePublicAdmin({
+    account: { homeAccountId: "person", idTokenClaims: { roles: ["Supporter"] } },
+    sticky: false,
+    cachedApiAdmin: false
+  }).showAdminMenu, false);
+
+  let anonymousCalls = 0;
+  const anonymous = await lookupCachedAdminRole({
+    account: null,
+    cacheLookupPolicy: CACHE_ONLY_ACCESS_TOKEN,
+    acquireTokenSilent: async () => {
+      anonymousCalls += 1;
+      return { accessToken: jwt({ roles: ["PFOH.Admin"] }) };
+    }
+  });
+  assert.equal(anonymous.called, false);
+  assert.equal(anonymousCalls, 0);
+  assert.equal(resolvePublicAdmin({ account: null, sticky: false, cachedApiAdmin: false }).showAdminMenu, false);
+
+  clearStickyAdmin(storage, admin.homeAccountId);
+  assert.equal(readStickyAdmin(storage, admin.homeAccountId), false);
+
+  noteServerAdmin(storage, "admin-a", true);
+  noteServerAdmin(storage, "admin-b", true);
+  clearStickyAdmin(storage, "admin-a");
+  assert.equal(readStickyAdmin(storage, "admin-a"), false);
+  assert.equal(readStickyAdmin(storage, "admin-b"), true);
+
+  const idTokenOnly = resolvePublicAdmin({
+    account: { homeAccountId: "id-only", idTokenClaims: { roles: ["Admin"] } },
+    sticky: false,
+    cachedApiAdmin: false
+  });
+  assert.equal(idTokenOnly.showAdminMenu, true);
 
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
-  const effectStart = app.indexOf("const state = publicPageAdminState(activeRoute, account);");
-  assert.ok(effectStart > 0, "public pages set admin from the account claims");
-  const effect = app.slice(effectStart, app.indexOf("useEffect", effectStart));
-  assert.match(effect, /setIsAdmin\(state\.isAdmin\)/);
-  assert.doesNotMatch(effect, /getToken|acquireToken|profileApi|loadData|fetch\(/);
+  assert.match(app, /cacheLookupPolicy: CacheLookupPolicy\.AccessToken/);
+  assert.match(app, /instance\.acquireTokenSilent\(request\)/);
+  assert.match(app, /noteServerAdmin\(window\.sessionStorage, account\.homeAccountId, true\)/);
+  assert.match(app, /clearStickyAdmin\(window\.sessionStorage, account\?\.homeAccountId\)/);
+  const lookupEffect = app.slice(app.indexOf("lookupCachedAdminRole({"), app.indexOf("}, [activeRoute, accountKey, adminFromApi, instance]);"));
+  assert.doesNotMatch(lookupEffect, /sharedTokenRequest|getToken\(|acquireTokenRedirect|setError\(/);
   assert.match(app, /const isAdmin = publicAdmin \? publicAdmin\.isAdmin : adminFromApi/);
-  assert.match(app, /chrome\.adminLinks \? \(/);
 });
 
 test("a failed duplicate load does not show a zero count or the empty result", () => {

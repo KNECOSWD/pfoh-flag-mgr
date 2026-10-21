@@ -1,5 +1,6 @@
 import { type FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import packageInfo from "../package.json";
+import { CacheLookupPolicy, type SilentRequest } from "@azure/msal-browser";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
@@ -83,7 +84,14 @@ import {
   submissionPhotoKind
 } from "./submissionDisplay.js";
 import { loginRequest, readMappedAccountClaim } from "./authConfig";
-import { publicPageAdminState } from "./accountRoles.js";
+import {
+  accountIsAdmin,
+  clearStickyAdmin,
+  lookupCachedAdminRole,
+  noteServerAdmin,
+  readStickyAdmin,
+  resolvePublicAdmin
+} from "./accountRoles.js";
 import { isPublicPage } from "./publicRoutes.js";
 import { publishSignInError, subscribeSignInError } from "./signInError";
 import { isQuietAuthRejection, PLEASE_SIGN_IN_AGAIN } from "./tokenRequest.js";
@@ -437,6 +445,7 @@ export default function App() {
   const [searchLoading, setSearchLoading] = useState(false);
 
   const [adminFromApi, setIsAdmin] = useState(false);
+  const [cachedApiAdmin, setCachedApiAdmin] = useState(false);
   const [reviewLoadError, setReviewLoadError] = useState("");
   const [printLoadError, setPrintLoadError] = useState("");
   const [flagMapLoadError, setFlagMapLoadError] = useState("");
@@ -585,7 +594,10 @@ export default function App() {
   ];
   const isPrintingRoute = activeRoute === "/admin/printing";
   const isAdminRoute = activeRoute.startsWith("/admin");
-  const publicAdmin = publicPageAdminState(activeRoute, account);
+  const stickyAdmin = adminFromApi || readStickyAdmin(window.sessionStorage, account?.homeAccountId ?? "");
+  const publicAdmin = isPublicPage(activeRoute)
+    ? resolvePublicAdmin({ account, sticky: stickyAdmin, cachedApiAdmin })
+    : null;
   const isAdmin = publicAdmin ? publicAdmin.isAdmin : adminFromApi;
   const chrome = kioskChrome(kioskLocked, isAdmin);
 
@@ -988,6 +1000,9 @@ export default function App() {
 
   async function signOut() {
     if (kioskLockedRef.current) return;
+    clearStickyAdmin(window.sessionStorage, account?.homeAccountId);
+    setIsAdmin(false);
+    setCachedApiAdmin(false);
     await instance.logoutRedirect();
   }
 
@@ -1212,7 +1227,9 @@ export default function App() {
 
     const decision = decideAdminLoad([pendingResult, queueResult, positionsResult]);
     if (!decision.isAdmin) {
+      noteServerAdmin(window.sessionStorage, account.homeAccountId, false);
       setIsAdmin(false);
+      setCachedApiAdmin(false);
       setPendingReviews([]);
       setPrintQueue([]);
       setPrintHistory([]);
@@ -1225,6 +1242,7 @@ export default function App() {
       return;
     }
 
+    noteServerAdmin(window.sessionStorage, account.homeAccountId, true);
     setIsAdmin(true);
     setReviewLoadError(decision.errors.review ?? "");
     setPrintLoadError(decision.errors.printing ?? "");
@@ -1295,11 +1313,35 @@ export default function App() {
     void loadAdminData();
   }
 
+  const stickyAccountRef = useRef<string | null>(null);
   useEffect(() => {
-    const state = publicPageAdminState(activeRoute, account);
-    if (!state) return;
-    setIsAdmin(state.isAdmin);
-  }, [activeRoute, account]);
+    const previous = stickyAccountRef.current;
+    if (previous === accountKey) return;
+    if (previous) clearStickyAdmin(window.sessionStorage, previous);
+    stickyAccountRef.current = accountKey;
+    setCachedApiAdmin(false);
+    setIsAdmin(accountKey ? readStickyAdmin(window.sessionStorage, accountKey) : false);
+  }, [accountKey]);
+
+  useEffect(() => {
+    const current = profileAccountRef.current;
+    if (!isPublicPage(activeRoute) || !current) return;
+    if (adminFromApi || accountIsAdmin(current) || readStickyAdmin(window.sessionStorage, current.homeAccountId)) return;
+
+    let cancelled = false;
+    lookupCachedAdminRole({
+      account: current,
+      scopes: loginRequest.scopes,
+      cacheLookupPolicy: CacheLookupPolicy.AccessToken,
+      acquireTokenSilent: (request: SilentRequest) => instance.acquireTokenSilent(request)
+    }).then((result) => {
+      if (!cancelled && result.isAdmin) setCachedApiAdmin(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeRoute, accountKey, adminFromApi, instance]);
 
   useEffect(() => {
     if (!kioskChrome(kioskLocked, true).loadSignedInData) return;
