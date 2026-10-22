@@ -12,9 +12,11 @@ permissions:
   contents: read
   pull-requests: read
 
+# Cancel superseded runs only on pull requests. Pushes to main share one ref,
+# so cancelling there would drop CI for an earlier merge.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -27,7 +29,8 @@ jobs:
       # Docs-only changes skip the suite inside this job instead of using
       # workflow paths-ignore. paths-ignore would skip the whole workflow, and
       # a required check named "test" would stay pending. predicate-quantifier
-      # every makes the negated globs exclude docs/** and markdown; v3.0.4.
+      # every makes the negated globs exclude docs/** and README files; v3.0.4.
+      # CHANGELOG.md stays code because the build's version check reads it.
       - name: Detect code changes
         uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad
         id: changes
@@ -37,11 +40,11 @@ jobs:
             code:
               - '**'
               - '!docs/**'
-              - '!**/*.md'
+              - '!**/README.md'
 
       - name: Note docs-only changes
         if: steps.changes.outputs.code == 'false'
-        run: echo "Change is limited to docs/** and markdown. Skipping the suite. This job still succeeds so the test check is reported."
+        run: echo "Change is limited to docs/** and README files. Skipping the suite. This job still succeeds so the test check is reported."
 
       - name: Setup Node
         if: steps.changes.outputs.code != 'false'
