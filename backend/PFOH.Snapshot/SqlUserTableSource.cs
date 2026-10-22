@@ -5,36 +5,71 @@ using Microsoft.Data.SqlClient;
 namespace PFOH.Snapshot;
 
 /// <summary>
-/// Reads catalog metadata and allow-listed columns. Unlisted tables are counted and not selected.
+/// Reads the snapshot views and the row-count view. It does not select base-table free text.
 /// </summary>
 public sealed partial class SqlUserTableSource(string connectionString) : IUserTableSource
 {
     public async Task<IReadOnlyList<SnapshotColumn>> GetColumnsAsync(CancellationToken ct)
     {
-        const string sql = """
-            SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME, c.DATA_TYPE, c.CHARACTER_MAXIMUM_LENGTH, c.ORDINAL_POSITION
+        const string columnSql = """
+            SELECT c.TABLE_NAME, c.COLUMN_NAME, c.DATA_TYPE, c.CHARACTER_MAXIMUM_LENGTH, c.ORDINAL_POSITION
             FROM INFORMATION_SCHEMA.COLUMNS AS c
-            INNER JOIN INFORMATION_SCHEMA.TABLES AS t
-                ON t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME
-            WHERE t.TABLE_TYPE = 'BASE TABLE'
-            ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION
+            WHERE c.TABLE_SCHEMA = 'snapshot' AND c.TABLE_NAME <> 'UserTableRowCounts'
+            ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION
+            """;
+        const string tableSql = """
+            SELECT SchemaName, TableName
+            FROM snapshot.UserTableRowCounts
             """;
         var columns = new List<SnapshotColumn>();
+        var counted = new List<(string Schema, string Table)>();
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(ct);
-        await using var command = new SqlCommand(sql, connection) { CommandTimeout = 120 };
-        await using var reader = await command.ExecuteReaderAsync(ct);
-        while (await reader.ReadAsync(ct))
+        await using (var command = new SqlCommand(columnSql, connection) { CommandTimeout = 120 })
+        await using (var reader = await command.ExecuteReaderAsync(ct))
         {
+            while (await reader.ReadAsync(ct))
+            {
+                columns.Add(new SnapshotColumn
+                {
+                    SchemaName = "dbo",
+                    TableName = reader.GetString(0),
+                    ColumnName = reader.GetString(1),
+                    TypeName = reader.GetString(2),
+                    MaxLength = reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                    ColumnId = reader.GetInt32(4)
+                });
+            }
+        }
+
+        await using (var command = new SqlCommand(tableSql, connection) { CommandTimeout = 120 })
+        await using (var reader = await command.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                counted.Add((reader.GetString(0), reader.GetString(1)));
+            }
+        }
+
+        var seen = columns.Select(column => column.TableKey).ToHashSet(StringComparer.Ordinal);
+        foreach (var (schema, table) in counted)
+        {
+            var key = schema + "." + table;
+            if (seen.Contains(key))
+            {
+                continue;
+            }
+
             columns.Add(new SnapshotColumn
             {
-                SchemaName = reader.GetString(0),
-                TableName = reader.GetString(1),
-                ColumnName = reader.GetString(2),
-                TypeName = reader.GetString(3),
-                MaxLength = reader.IsDBNull(4) ? null : reader.GetInt32(4),
-                ColumnId = reader.GetInt32(5)
+                SchemaName = schema,
+                TableName = table,
+                ColumnName = "_",
+                TypeName = "",
+                MaxLength = null,
+                ColumnId = 0
             });
+            seen.Add(key);
         }
 
         return columns;
@@ -42,12 +77,18 @@ public sealed partial class SqlUserTableSource(string connectionString) : IUserT
 
     public async Task<long> GetCountAsync(string schema, string table, CancellationToken ct)
     {
-        var sql = "SELECT COUNT_BIG(*) FROM " + Quote(schema) + "." + Quote(table);
+        const string sql = """
+            SELECT [RowCount]
+            FROM snapshot.UserTableRowCounts
+            WHERE SchemaName = @schema AND TableName = @table
+            """;
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(ct);
         await using var command = new SqlCommand(sql, connection) { CommandTimeout = 120 };
+        command.Parameters.AddWithValue("@schema", schema);
+        command.Parameters.AddWithValue("@table", table);
         var value = await command.ExecuteScalarAsync(ct);
-        return Convert.ToInt64(value, CultureInfo.InvariantCulture);
+        return value is null || value is DBNull ? 0 : Convert.ToInt64(value, CultureInfo.InvariantCulture);
     }
 
     public async Task<IReadOnlyList<IReadOnlyDictionary<string, object?>>> GetRowsAsync(
@@ -61,7 +102,12 @@ public sealed partial class SqlUserTableSource(string connectionString) : IUserT
             return Array.Empty<IReadOnlyDictionary<string, object?>>();
         }
 
-        var sql = "SELECT " + string.Join(", ", columns.Select(Quote)) + " FROM " + Quote(schema) + "." + Quote(table);
+        if (!string.Equals(schema, "dbo", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("The snapshot views are defined for dbo tables.");
+        }
+
+        var sql = "SELECT " + string.Join(", ", columns.Select(Quote)) + " FROM [snapshot]." + Quote(table);
         var rows = new List<IReadOnlyDictionary<string, object?>>();
         await using var connection = new SqlConnection(connectionString);
         await connection.OpenAsync(ct);

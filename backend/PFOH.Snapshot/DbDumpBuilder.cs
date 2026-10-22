@@ -49,8 +49,10 @@ public static class DbDumpBuilder
                     columnDocuments.Add(ToDocument(meta));
                 }
 
-                var read = SnapshotFieldSpec.ReadColumns(key)
-                    .Where(name => types.ContainsKey(name) && !SnapshotProjection.IsBinaryType(types[name].TypeName))
+                var read = SnapshotFieldSpec.OutputColumns(key)
+                    .Where(name =>
+                        SnapshotFieldSpec.HonoreeDerivedFlags.Contains(name, StringComparer.Ordinal)
+                        || (types.ContainsKey(name) && !SnapshotProjection.IsBinaryType(types[name].TypeName)))
                     .ToArray();
                 var rawRows = read.Length == 0
                     ? Array.Empty<IReadOnlyDictionary<string, object?>>()
@@ -82,25 +84,25 @@ public static class DbDumpBuilder
         {
             if (name == "HasPhoto")
             {
-                projected[name] = HonoreePresence.HasPhoto(Lookup(raw, "PhotoFileName"));
+                projected[name] = AsBool(Lookup(raw, name)) ?? HonoreePresence.HasPhoto(Lookup(raw, "PhotoFileName"));
                 continue;
             }
 
             if (name == "HasDescription")
             {
-                projected[name] = HonoreePresence.HasDescription(Lookup(raw, "Description"));
+                projected[name] = AsBool(Lookup(raw, name)) ?? HonoreePresence.HasDescription(Lookup(raw, "Description"));
                 continue;
             }
 
             if (name == "HasAwards")
             {
-                projected[name] = HonoreePresence.HasAwards(Lookup(raw, "Awards"));
+                projected[name] = AsBool(Lookup(raw, name)) ?? HonoreePresence.HasAwards(Lookup(raw, "Awards"));
                 continue;
             }
 
             if (name == "HasConflictsServed")
             {
-                projected[name] = HonoreePresence.HasConflictsServed(Lookup(raw, "ConflictsServed"));
+                projected[name] = AsBool(Lookup(raw, name)) ?? HonoreePresence.HasConflictsServed(Lookup(raw, "ConflictsServed"));
                 continue;
             }
 
@@ -120,6 +122,11 @@ public static class DbDumpBuilder
         }
 
         return projected;
+    }
+
+    private static bool? AsBool(object? value)
+    {
+        return value is bool bit ? bit : null;
     }
 
     private static object? Lookup(IReadOnlyDictionary<string, object?> raw, string name)

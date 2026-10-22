@@ -1,0 +1,23 @@
+{
+  "_note": "PFOH 3.1.0 snapshot field allow-list (data minimization). SnapshotFieldSpec must match this file. Output shape unchanged: db-dump.json {pulledAt, columns, tables{'dbo.X':{count, rows}}} and directory-users.json {pulledAt, users, signInActivity}. 'count' is the full table row count for EVERY user table; 'rows' are emitted ONLY for the tables below with ONLY the listed columns. Derived boolean presence flags replace free-text/photo content.",
+  "db": {
+    "dbo.FlagClaims": ["Id", "FlagGridId", "HonoreeId", "ExternalUserObjectId", "ExternalUserEmail", "ExternalUserName", "ClaimStatus", "CreatedUtc", "SubmittedUtc", "ApprovedUtc", "RejectedUtc", "ApprovedBy", "RejectedBy"],
+    "dbo.HonoreeClaims": ["Id", "HonoreeId", "Email", "ClaimStatus"],
+    "dbo.HonoreeChangeRequests": ["Id", "FlagClaimId", "FlagGridId", "HonoreeId", "RequestStatus", "CreatedUtc", "SubmittedUtc", "ReviewedUtc", "ReviewedBy"],
+    "dbo.Honorees": ["Id", "FlagGridId", "Rank", "FirstName", "MiddleName", "LastName", "Suffix", "IsActive", "CreatedBy", "CreatedDate", "DeletedDate", "ServiceBranchId",
+      {"derived": "HasPhoto", "rule": "PhotoFileName trimmed non-empty AND lower(PhotoFileName) does not start with 'silhouette'"},
+      {"derived": "HasDescription", "rule": "Description trimmed non-empty AND lower(trimmed) not in ('no information provided','n/a','none','unknown')"},
+      {"derived": "HasAwards", "rule": "same rule on Awards"},
+      {"derived": "HasConflictsServed", "rule": "same rule on ConflictsServed"}],
+    "dbo.FlagGrids": ["Id", "HonoreeId", "FlagGridName", "Reserved", "CreatedBy", "CreatedDate", "DeletedDate"],
+    "dbo.ServiceBranches": ["Id", "ServiceBranchName", "DeletedDate"],
+    "dbo.UserProfiles": ["Id", "OwnerObjectId", "Email", "CreatedUtc", "Phone", "Organization"],
+    "dbo.CardPrintEvents": ["Id", "CardPrintBatchId", "PrintedUtc", "CardCount"]
+  },
+  "directory": {
+    "users_select": ["id", "displayName", "mail", "otherMails", "identities", "userPrincipalName", "createdDateTime", "accountEnabled", "extension_a29a0dc74c9b4cef9f783444e62907d3_Phone", "extension_a29a0dc74c9b4cef9f783444e62907d3_Organization"],
+    "identities_keep": ["signInType", "issuerAssignedId"],
+    "signInActivity_keep": ["lastSignInDateTime", "lastSuccessfulSignInDateTime"]
+  },
+  "excluded_examples": "bios/Description text, Awards text, ConflictsServed text, photo file names/content, addresses, Comment, PrintedBy, any other free text, all columns/tables not listed"
+}

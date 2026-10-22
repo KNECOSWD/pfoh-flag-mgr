@@ -53,6 +53,8 @@ resource reports 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     supportsHttpsTrafficOnly: true
     minimumTlsVersion: 'TLS1_2'
     allowSharedKeyAccess: false
+    defaultToOAuthAuthentication: true
+    allowCrossTenantReplication: false
     accessTier: 'Hot'
   }
 }
@@ -115,6 +117,8 @@ resource hostStorage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     supportsHttpsTrafficOnly: true
     minimumTlsVersion: 'TLS1_2'
     allowSharedKeyAccess: false
+    defaultToOAuthAuthentication: true
+    allowCrossTenantReplication: false
   }
 }
 
@@ -229,11 +233,31 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           value: 'Server=tcp:${sqlServerName}.database.windows.net,1433;Database=${sqlDatabaseName};Authentication=Active Directory Managed Identity;User ID=${jobIdentity.properties.clientId};Encrypt=True;'
         }
         {
+          name: 'FUNCTIONS_EXTENSION_VERSION'
+          value: '~4'
+        }
+        {
           name: 'FUNCTIONS_WORKER_RUNTIME'
           value: 'dotnet-isolated'
         }
       ]
     }
+  }
+}
+
+resource functionScmPublishing 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2023-12-01' = {
+  parent: functionApp
+  name: 'scm'
+  properties: {
+    allow: false
+  }
+}
+
+resource functionFtpPublishing 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2023-12-01' = {
+  parent: functionApp
+  name: 'ftp'
+  properties: {
+    allow: false
   }
 }
 

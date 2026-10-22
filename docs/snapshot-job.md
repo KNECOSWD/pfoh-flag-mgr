@@ -75,43 +75,101 @@ Set the resource group and names you already use. Do not paste keys, certificate
    - `User.Read.All`, so the job can read the user fields in `SnapshotFieldSpec.DirectoryUserSelect`.
    - `AuditLog.Read.All`, only because Graph omits `signInActivity` without it. The job's second select is `id,signInActivity`. It keeps `lastSignInDateTime` and `lastSuccessfulSignInDateTime`. It does not read audit log events.
 
-6. In the app database, as an Azure SQL admin, create a contained user for the job identity. The identity name is `id-pfoh-snapshot`. There is no SQL password, no write role, and no `db_owner`.
+6. In the app database, as an Azure SQL admin, create a contained user for the job identity and read-only views. The identity name is `id-pfoh-snapshot`. There is no SQL password, no write role, and no `db_owner`. Do not add the user to a data-reader role. `GRANT SELECT` is only on the `snapshot` views. Those views project the columns in `SnapshotFieldSpec` (`backend/PFOH.Snapshot/snapshot-field-spec.json`). Honoree bios, awards, conflicts, and photo names stay on `dbo.Honorees`. The view turns them into the four presence flags. The count view is owned by `dbo`, so the job can count every user table without a grant on the base tables. Run this again when a new user table appears.
 
    ```sql
    CREATE USER [id-pfoh-snapshot] FROM EXTERNAL PROVIDER;
-   ALTER ROLE db_datareader ADD MEMBER [id-pfoh-snapshot];
+   GO
+   CREATE SCHEMA snapshot AUTHORIZATION dbo;
+   GO
+   CREATE OR ALTER VIEW snapshot.FlagClaims AS
+   SELECT Id, FlagGridId, HonoreeId, ExternalUserObjectId, ExternalUserEmail, ExternalUserName,
+          ClaimStatus, CreatedUtc, SubmittedUtc, ApprovedUtc, RejectedUtc, ApprovedBy, RejectedBy
+   FROM dbo.FlagClaims;
+   GO
+   CREATE OR ALTER VIEW snapshot.HonoreeClaims AS
+   SELECT Id, HonoreeId, Email, ClaimStatus FROM dbo.HonoreeClaims;
+   GO
+   CREATE OR ALTER VIEW snapshot.HonoreeChangeRequests AS
+   SELECT Id, FlagClaimId, FlagGridId, HonoreeId, RequestStatus, CreatedUtc, SubmittedUtc, ReviewedUtc, ReviewedBy
+   FROM dbo.HonoreeChangeRequests;
+   GO
+   CREATE OR ALTER VIEW snapshot.Honorees AS
+   SELECT Id, FlagGridId, Rank, FirstName, MiddleName, LastName, Suffix, IsActive, CreatedBy, CreatedDate, DeletedDate, ServiceBranchId,
+     CAST(CASE WHEN PhotoFileName IS NOT NULL AND TRIM(PhotoFileName) <> N'' AND LOWER(TRIM(PhotoFileName)) NOT LIKE N'silhouette%' THEN 1 ELSE 0 END AS bit) AS HasPhoto,
+     CAST(CASE WHEN Description IS NOT NULL AND TRIM(Description) <> N'' AND LOWER(TRIM(Description)) NOT IN (N'no information provided', N'n/a', N'none', N'unknown') THEN 1 ELSE 0 END AS bit) AS HasDescription,
+     CAST(CASE WHEN Awards IS NOT NULL AND TRIM(Awards) <> N'' AND LOWER(TRIM(Awards)) NOT IN (N'no information provided', N'n/a', N'none', N'unknown') THEN 1 ELSE 0 END AS bit) AS HasAwards,
+     CAST(CASE WHEN ConflictsServed IS NOT NULL AND TRIM(ConflictsServed) <> N'' AND LOWER(TRIM(ConflictsServed)) NOT IN (N'no information provided', N'n/a', N'none', N'unknown') THEN 1 ELSE 0 END AS bit) AS HasConflictsServed
+   FROM dbo.Honorees;
+   GO
+   CREATE OR ALTER VIEW snapshot.FlagGrids AS
+   SELECT Id, HonoreeId, FlagGridName, Reserved, CreatedBy, CreatedDate, DeletedDate FROM dbo.FlagGrids;
+   GO
+   CREATE OR ALTER VIEW snapshot.ServiceBranches AS
+   SELECT Id, ServiceBranchName, DeletedDate FROM dbo.ServiceBranches;
+   GO
+   CREATE OR ALTER VIEW snapshot.UserProfiles AS
+   SELECT Id, OwnerObjectId, Email, CreatedUtc, Phone, Organization FROM dbo.UserProfiles;
+   GO
+   CREATE OR ALTER VIEW snapshot.CardPrintEvents AS
+   SELECT Id, CardPrintBatchId, PrintedUtc, CardCount FROM dbo.CardPrintEvents;
+   GO
+   DECLARE @select nvarchar(max) = N'';
+   SELECT @select = @select + CASE WHEN @select = N'' THEN N'' ELSE N' UNION ALL ' END
+     + N'SELECT N''' + REPLACE(s.name, '''', '''''') + N''' AS SchemaName, N'''
+     + REPLACE(t.name, '''', '''''') + N''' AS TableName, COUNT_BIG(*) AS [RowCount] FROM '
+     + QUOTENAME(s.name) + N'.' + QUOTENAME(t.name)
+   FROM sys.tables AS t
+   INNER JOIN sys.schemas AS s ON s.schema_id = t.schema_id
+   WHERE t.is_ms_shipped = 0 AND s.name <> N'snapshot';
+   EXEC(N'CREATE OR ALTER VIEW snapshot.UserTableRowCounts AS ' + @select);
+   GO
+   GRANT SELECT ON snapshot.FlagClaims TO [id-pfoh-snapshot];
+   GRANT SELECT ON snapshot.HonoreeClaims TO [id-pfoh-snapshot];
+   GRANT SELECT ON snapshot.HonoreeChangeRequests TO [id-pfoh-snapshot];
+   GRANT SELECT ON snapshot.Honorees TO [id-pfoh-snapshot];
+   GRANT SELECT ON snapshot.FlagGrids TO [id-pfoh-snapshot];
+   GRANT SELECT ON snapshot.ServiceBranches TO [id-pfoh-snapshot];
+   GRANT SELECT ON snapshot.UserProfiles TO [id-pfoh-snapshot];
+   GRANT SELECT ON snapshot.CardPrintEvents TO [id-pfoh-snapshot];
+   GRANT SELECT ON snapshot.UserTableRowCounts TO [id-pfoh-snapshot];
    ```
 
 7. Create the reader used by the off-Azure box. It is an app registration in the Azure tenant that holds the storage account, not the External ID tenant. Its credential is a certificate with a 1-year lifetime. Do not create a client secret. Do not create a shared access signature. Shared key access is off, so a stored-access-policy signature is not available.
 
-   On the box, create the key and a public certificate. Leave the private key on that box. Do not copy the private key into the repository, the workflow, a log, or a ticket.
+   On the box, create the key and a public certificate in a directory outside the git checkout and outside `/workspace`. Leave the private key on that box. Do not copy the private key into the repository, the workflow, a log, or a ticket.
 
    ```bash
+   READER_DIR="${HOME}/pfoh-snapshot-reader"
+   install -d -m 0700 "${READER_DIR}"
    openssl req -x509 -newkey rsa:2048 -sha256 -days 365 -nodes \
-     -keyout pfoh-snapshot-reader.key \
-     -out pfoh-snapshot-reader.crt \
+     -keyout "${READER_DIR}/pfoh-snapshot-reader.pem" \
+     -out "${READER_DIR}/pfoh-snapshot-reader.crt" \
      -subj "/CN=pfoh-snapshot-reader"
-   openssl x509 -in pfoh-snapshot-reader.crt -outform der -out pfoh-snapshot-reader.cer
+   chmod 600 "${READER_DIR}/pfoh-snapshot-reader.pem" "${READER_DIR}/pfoh-snapshot-reader.crt"
+   openssl x509 -in "${READER_DIR}/pfoh-snapshot-reader.crt" -outform der -out "${READER_DIR}/pfoh-snapshot-reader.cer"
    az ad app create --display-name pfoh-snapshot-reader --query appId -o tsv
    az ad sp create --id <reader-app-id>
-   az ad app credential reset --id <reader-app-id> --cert @pfoh-snapshot-reader.cer --append
+   az ad app credential reset --id <reader-app-id> --cert @"${READER_DIR}/pfoh-snapshot-reader.cer" --append
    ```
 
    `az ad app credential list --id <reader-app-id>` shows `endDateTime`. Put a reminder 30 days before that date.
 
-   Rotation: create a new 1-year certificate, upload the new public certificate, switch the box to the new private key, confirm a read, then delete the old credential. The old private key is removed from the box after the switch. It is never committed.
+   Rotation: create a new 1-year certificate in that same directory, upload the new public certificate, switch the box to the new private key, confirm a read, then delete the old credential. `chmod 600` the new key. The old private key is removed from the box after the switch. It is never committed.
 
-   Assign Storage Blob Data Reader on the report container only. `reportsContainerId` is the deployment output. Do not assign it on the storage account, the resource group, or the subscription.
+   The reader role is the Bicep assignment `reportsReader` on the report container. Do not assign it with the CLI. Deploy `infra/snapshot.bicep` again with `readerPrincipalId` set to the reader service principal object id. That is the only Storage Blob Data Reader assignment.
+
+   Verify the reader before anyone uses it. The app must have no API permissions. The service principal must have exactly one role assignment, and that scope must be the report container.
 
    ```bash
-   az role assignment create \
+   az ad app permission list --id <reader-app-id> --query "length(@)"
+   az role assignment list \
      --assignee-object-id <reader-service-principal-object-id> \
      --assignee-principal-type ServicePrincipal \
-     --role "Storage Blob Data Reader" \
-     --scope <reportsContainerId>
+     --query "[].{role:roleDefinitionName,scope:scope}" -o table
    ```
 
-   If the principal id was not known at the first deploy, deploy the Bicep again with `readerPrincipalId`.
+   The permission count is 0. The table has one row: Storage Blob Data Reader, and the scope ends with `/blobServices/default/containers/pfoh-reports`.
 
    The box signs in with the certificate and reads the container. That is the access path this job uses.
 
@@ -125,9 +183,9 @@ Set the resource group and names you already use. Do not paste keys, certificate
      --scope "$FUNC_ID"
    ```
 
-   Then run the **Deploy snapshot job** workflow by hand. It uses `azure/login` with the federated credential already used for the website. It does not store a client secret or a certificate, and it does not assign roles.
+   Create a protected GitHub environment named `pfoh-snapshot`. Require a reviewer, and limit deployment branches to `main`. The **Deploy snapshot job** workflow runs only when its ref is `refs/heads/main`, and it uses that environment. Run it by hand from `main`. It uses `azure/login` with the federated credential already used for the website. It does not store a client secret or a certificate, and it does not assign roles.
 
-9. Manual test, after the function is deployed. The host key stays in Azure. Do not write it into the repo or a log. The `az` result below is the key, so do not paste the command output into a ticket.
+9. Manual test, after the function is deployed. Run this only in Azure Cloud Shell. Do not run it on the box. The box must never see the host key. Do not write the key into the repo or a log. The `az` result below is the key, so do not paste the command output into a ticket.
 
    ```bash
    MASTER_KEY=$(az functionapp keys list --resource-group rg-pfoh-flags-prod --name func-pfoh-snapshot --query masterKey -o tsv)

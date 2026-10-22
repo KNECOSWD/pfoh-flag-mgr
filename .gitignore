@@ -8,5 +8,6 @@ frontend/.env
 backend/PFOH.Api/appsettings.Production.json
 local.settings.json
 *.pfx
+*.pem
 *.key
 .DS_Store
