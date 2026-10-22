@@ -5579,10 +5579,6 @@ img.ownedFlagImage {
     background-position: center 32% !important;
   }
 
-  html:not(.flagMapPage) .hero h1 {
-    font-size: clamp(1.5rem, 8.4vw, 2rem) !important;
-  }
-
   .ownedFlagCard {
     grid-template-columns: 3.85rem minmax(0, 1fr) !important;
   }
@@ -12255,8 +12251,8 @@ header.hero {
 
 header.hero h1 {
   max-width: 100%;
-  /* One scale from the phone floor through the wide layout, so 1023 and 1024 do not jump. */
-  font-size: clamp(1.65rem, 0.7rem + 2.4vw, 4rem);
+  /* One scale. The preferred size reaches 4rem at 1280px, and the cap holds it there. */
+  font-size: clamp(0.94rem, 0.94rem + 3.83vw, 4rem);
   white-space: normal;
   overflow: visible;
   text-overflow: unset;
@@ -12293,7 +12289,7 @@ header.hero .authBox strong {
   white-space: normal;
 }
 
-/* Tablet hero. The title block keeps one line; the name wraps in the other column.
+/* Tablet hero. The kicker, title, and subtitle wrap when they do not fit.
    Short landscape phones keep their own header. */
 @media (min-width: 761px) and (max-width: 1023px) and (min-height: 561px) {
   header.hero {
@@ -12326,8 +12322,6 @@ header.hero .authBox strong {
   header.hero h1,
   header.hero .heroLead {
     max-width: none;
-    white-space: nowrap;
-    text-wrap: nowrap;
   }
 
   header.hero .eyebrow {
@@ -12382,25 +12376,7 @@ header.hero .authBox strong {
     grid-column: 2;
     display: grid;
     align-content: center;
-    min-width: max-content;
     margin: 0;
-  }
-}
-
-/* Phone titles stay on one line. 320–375 may wrap instead of clipping. */
-@media (max-width: 760px) {
-  html:not(.flagMapPage) header.hero h1 {
-    white-space: nowrap;
-    text-wrap: nowrap;
-    overflow-wrap: normal;
-  }
-}
-
-@media (max-width: 375px) {
-  html:not(.flagMapPage) header.hero h1 {
-    white-space: normal;
-    text-wrap: wrap;
-    overflow-wrap: break-word;
   }
 }
 
