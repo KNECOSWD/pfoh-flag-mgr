@@ -17,6 +17,8 @@
   --footer-padding-block: 1.25rem;
   --footer-muted: rgba(255, 255, 255, 0.65);
   --footer-version-size: 0.75rem;
+  /* Header and footer share this inset. The middle term holds the content box at 73.75rem. */
+  --page-gutter: clamp(1rem, (100vw - 73.75rem) / 2, 24rem);
 }
 
 * {
@@ -5432,8 +5434,8 @@ img.ownedFlagImage {
 
   .hero {
     min-height: 0 !important;
-    /* Right padding keeps the brand clear of the 2.75rem menu button. */
-    padding: 0.85rem 4.5rem 0.85rem 1rem !important;
+    padding-block: 0.85rem !important;
+    padding-inline: var(--page-gutter) !important;
     row-gap: 0.32rem;
     align-content: center;
   }
@@ -7664,10 +7666,10 @@ img.ownedFlagImage {
 }
 
 /* 3.0.0 footer. One mobile-first block. Phones stack. From 761px the
-   columns share a 3-column grid: headings on the first row, and the last
-   Explore link, Built by, and Contact Us on one bottom line. */
+   columns share a 3-column grid: headings stay on the top row, and the
+   version lines up with the other columns' last lines. */
 footer.appFooter.footerNavy {
-  /* Space between the Built by row and the version. The version hangs in the footer padding. */
+  /* Space between the Built by row and the version. */
   --footer-version-gap: 0.25rem;
   line-height: 1.25;
   flex-shrink: 0;
@@ -7676,9 +7678,8 @@ footer.appFooter.footerNavy {
   margin-bottom: 0;
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
-  /* Phone header content box: 1rem on the left, 4.5rem on the right so the brand clears the menu button. */
   padding-block: 0;
-  padding-inline: 1rem 4.5rem;
+  padding-inline: var(--page-gutter);
   border: 0;
   overflow: clip;
   color: #fff;
@@ -7865,16 +7866,9 @@ footer.appFooter.footerNavy .appVersionStamp {
 }
 
 @media (min-width: 761px) {
-  footer.appFooter.footerNavy {
-    /* header.hero uses the clamp. .heroNav adds 0.7rem of inline padding, which is where the nav links start. */
-    padding-inline: calc(clamp(1rem, (100vw - 73.75rem) / 2, 24rem) + 0.7rem);
-  }
-
   footer.appFooter.footerNavy .appFooterInner {
     grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 0);
-    align-content: start;
-    align-items: start;
+    align-items: end;
     width: 100%;
     max-width: none;
     margin: 0;
@@ -7936,82 +7930,11 @@ footer.appFooter.footerNavy .appVersionStamp {
   }
 
   footer.appFooter.footerNavy .footerCredit {
-    display: contents;
-  }
-
-  footer.appFooter.footerNavy .footerCreditBrand {
     grid-column: 2;
     grid-row: 1;
     align-self: end;
     justify-self: center;
-    align-items: flex-end;
   }
-
-  footer.appFooter.footerNavy .appVersionStamp {
-    display: flex;
-    flex-direction: column;
-    gap: var(--footer-version-gap);
-    grid-column: 2;
-    grid-row: 2;
-    justify-self: center;
-    align-self: start;
-    min-height: 0;
-    overflow: visible;
-  }
-
-  /* The zero-height row keeps this gap in the footer padding, under the Built by line. */
-  footer.appFooter.footerNavy .appVersionStamp::before {
-    content: "";
-    flex: 0 0 0;
-    height: 0;
-  }
-}
-
-html.flagMapKiosk footer.appFooter.footerNavy {
-  position: fixed;
-  right: 0;
-  bottom: 0;
-  left: auto;
-  width: auto;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  overflow: visible;
-  z-index: 40;
-  pointer-events: none;
-}
-
-html.flagMapKiosk footer.appFooter.footerNavy .appFooterInner {
-  display: flex;
-  width: auto;
-  min-height: 0;
-  margin: 0;
-  padding: 0;
-  gap: 0;
-}
-
-html.flagMapKiosk footer.appFooter.footerNavy .appFooterInner::after {
-  content: none;
-}
-
-html.flagMapKiosk footer.appFooter.footerNavy .footerExplore,
-html.flagMapKiosk footer.appFooter.footerNavy .footerLoop,
-html.flagMapKiosk footer.appFooter.footerNavy .footerContact,
-html.flagMapKiosk footer.appFooter.footerNavy .footerCreditBrand {
-  display: none;
-}
-
-html.flagMapKiosk footer.appFooter.footerNavy .appVersionStamp {
-  display: block;
-  margin: 0;
-  padding: 8px 14px 10px;
-  color: rgba(243, 226, 167, 0.82);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
-}
-
-html.flagMapKiosk footer.appFooter.footerNavy .appVersionStamp::before {
-  content: none;
 }
 
 html.isMapFullscreen .appFooter {
@@ -8103,8 +8026,6 @@ html.isMapFullscreen .appFooter {
     line-height: 1;
   }
 }
-
-/* Style Contact Us as an intentional footer pill/button. */
 
 @media (max-width: 760px) {
 
@@ -11905,7 +11826,7 @@ header.hero {
   height: auto;
   min-height: 0;
   max-height: none;
-  padding-inline: clamp(1rem, (100vw - 73.75rem) / 2, 24rem);
+  padding-inline: var(--page-gutter);
 }
 
 header.hero h1 {
@@ -11922,7 +11843,7 @@ header.hero h1 {
 header.hero .authBox {
   /* Absolute auth is positioned against the padding edge, so the same
      fluid inset has to be repeated here. In-flow auth ignores right. */
-  right: clamp(1rem, (100vw - 73.75rem) / 2, 24rem);
+  right: var(--page-gutter);
 }
 
 header.hero .authActions,
