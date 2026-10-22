@@ -12452,6 +12452,16 @@ header.hero .authBox strong {
   }
 }
 
+/* Side-by-side columns share one bottom edge: the last Explore link,
+   Built by KNECO, and Contact Us. The phone stack stays as it is. */
+@media (min-width: 761px) {
+  footer.appFooter .footerExplore,
+  footer.appFooter .footerCredit,
+  footer.appFooter .footerContact {
+    align-self: end;
+  }
+}
+
 @media (min-width: 761px) {
   html.flagMapPage header.hero.publicMapHero .authBox {
     position: static;

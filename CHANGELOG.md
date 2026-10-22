@@ -5,6 +5,7 @@
 - Application Insights records less. Sampling stays on, at about 2 items a second, and that rate is an app setting. Exception reports are still kept, and so are failed requests and failed calls to SQL or another service. Fast successful SQL and HTTP calls are left out, health checks are not recorded, and SQL command text is not collected. Framework logs sent to Application Insights are warnings and errors. Entity Framework update and command logs are not sent.
 - The footer includes a link to Plano Flags of Honor on X.
 - Admin logs for a user search or a role change no longer include the search term or the person's id. A failed search records whether the term was empty, how long it was, and how many people came back. Application Insights drops that search text from the request and from Microsoft Graph calls, and replaces the person id in role and profile addresses with a placeholder. A failed search or role change returns a fixed message instead of the underlying error.
+- From a tablet width up, the last Explore link, Built by KNECO, and Contact Us share one bottom line. On a phone the footer stays stacked.
 
 ## 3.1.0
 
