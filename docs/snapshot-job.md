@@ -110,12 +110,14 @@ Set the resource group and names you already use. Do not paste keys, certificate
 
    Renewal is the vault policy above. After it renews, or when you rotate early, assign Key Vault Certificates Officer again, download the new public certificate, and upload it with `az ad app credential reset --id <graph-app-client-id> --cert @pfoh-snapshot-graph.cer --append`. The next snapshot run loads the latest secret version. After that run succeeds, remove the previous certificate credential from the app, delete the public file, and remove the Certificates Officer assignment.
 
-   A live token test against the External ID tenant is required before merge. That procedure is held separately and is not in this repository.
+   A live token test in the pfohflags tenant passed on 2026-10-22: certificate sign-in, users read, and signInActivity with lastSignInDateTime. Keep those last-sign-in fields. The procedure is held separately and is not in this repository.
 
 5. Grant application permissions and admin consent in tenant `77f89427-b4a7-43ed-92fc-3eb5bd63d0f1`. Do it in that tenant's portal or Graph, not from this repository.
 
    - `User.Read.All`, so the job can read the user fields in `SnapshotFieldSpec.DirectoryUserSelect`.
    - `AuditLog.Read.All`, only because Graph omits `signInActivity` without it. The job's second select is `id,signInActivity`. It keeps `lastSignInDateTime` and `lastSuccessfulSignInDateTime`. It does not read audit log events.
+
+   `appRoleAssignments` can read 0 for a few minutes after admin consent while the grant propagates. Wait and re-check. Confirm the count is 2 before deploying the code.
 
 6. In the app database, as an Azure SQL admin, create a contained user for the job identity and read-only views. The identity name is `id-pfoh-snapshot`. There is no SQL password, no write role, and no `db_owner`. Do not add the user to a data-reader role. `GRANT SELECT` is only on the `snapshot` views. Those views project the columns in `SnapshotFieldSpec` (`backend/PFOH.Snapshot/snapshot-field-spec.json`). Honoree bios, awards, conflicts, and photo names stay on `dbo.Honorees`. The view turns them into the four presence flags. The count view is owned by `dbo`, so the job can count every user table without a grant on the base tables. Run this again when a new user table appears.
 
