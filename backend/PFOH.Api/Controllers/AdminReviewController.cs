@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
 using PFOH.Api.Extensions;
@@ -833,6 +834,9 @@ public class AdminReviewController(
                 adminName = User.GetDisplayName() ?? "PFOH.Admin";
             }
 
+            var strategy = db.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync<ActionResult<AdminReviewItemDto>>(async () =>
+            {
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
             var change = await db.HonoreeChangeRequests
@@ -981,6 +985,11 @@ public class AdminReviewController(
             }
 
             return Ok(approved);
+            });
+        }
+        catch (RetryLimitExceededException)
+        {
+            throw;
         }
         catch (HonoreePhotoMoveException ex)
         {

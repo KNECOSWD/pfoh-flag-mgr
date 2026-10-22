@@ -1,0 +1,219 @@
+using System.Data.Common;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Reflection;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Data.SqlClient;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using PFOH.Api.Data;
+using PFOH.Api.Services;
+using Xunit;
+
+namespace PFOH.Api.Tests;
+
+[Collection("UserProfileSchema")]
+public class ProfileSqlRetryTests
+{
+    [Fact]
+    public async Task SqlServer_retries_a_transient_error_three_times_then_stops()
+    {
+        var options = new DbContextOptionsBuilder<PfohDbContext>()
+            .UseSqlServer("Server=127.0.0.1,1433;Database=unused;User ID=unused;Password=unused;Encrypt=False")
+            .Options;
+        await using var db = new PfohDbContext(options);
+        var strategy = new SqlServerRetryingExecutionStrategy(
+            db,
+            maxRetryCount: 3,
+            maxRetryDelay: TimeSpan.FromMilliseconds(10),
+            errorNumbersToAdd: null);
+        var attempts = 0;
+        var error = await Assert.ThrowsAsync<RetryLimitExceededException>(() =>
+            strategy.ExecuteAsync<int>(() =>
+            {
+                attempts++;
+                return Task.FromException<int>(SqlError(1205, "deadlock for oid-strategy-secret"));
+            }));
+
+        Assert.Equal(4, attempts);
+        Assert.IsType<SqlException>(error.InnerException);
+        var program = File.ReadAllText(RepoFile("backend", "PFOH.Api", "Program.cs"));
+        Assert.Contains("maxRetryCount: 3", program, StringComparison.Ordinal);
+        Assert.Contains("maxRetryDelay: TimeSpan.FromSeconds(5)", program, StringComparison.Ordinal);
+        Assert.Contains("EnableRetryOnFailure", program, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Profile_read_returns_503_when_sql_retries_are_exhausted()
+    {
+        const string secret = "oid-sql-retry-secret";
+        UserProfileSchema.ResetForTests();
+        await using var factory = new RetryExhaustedFactory(secret);
+        try
+        {
+            var client = factory.CreateClient();
+            var live = await client.GetAsync("/health");
+            Assert.Equal(HttpStatusCode.OK, live.StatusCode);
+            Assert.Equal("Healthy", (await live.Content.ReadAsStringAsync()).Trim());
+
+            var request = new HttpRequestMessage(HttpMethod.Get, "/api/profile");
+            request.Headers.Add(TestAuthHandler.OidHeader, "retry-user");
+            request.Headers.Add(TestAuthHandler.EmailHeader, "retry@example.com");
+            request.Headers.Add(TestAuthHandler.NameHeader, "Retry Person");
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            var profile = await client.SendAsync(request);
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, profile.StatusCode);
+            Assert.True(profile.Headers.TryGetValues("Retry-After", out var retryAfter));
+            Assert.Equal("5", Assert.Single(retryAfter));
+            var body = await profile.Content.ReadAsStringAsync();
+            Assert.Contains("The profile store is unavailable.", body, StringComparison.Ordinal);
+            Assert.DoesNotContain(secret, body, StringComparison.Ordinal);
+            Assert.DoesNotContain("SqlException", body, StringComparison.Ordinal);
+        }
+        finally
+        {
+            UserProfileSchema.ResetForTests();
+        }
+    }
+
+    private static string RepoFile(params string[] parts)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "VERSION")))
+        {
+            dir = dir.Parent;
+        }
+
+        Assert.NotNull(dir);
+        return Path.Combine(new[] { dir!.FullName }.Concat(parts).ToArray());
+    }
+
+    private static SqlException SqlError(int number, string message)
+    {
+        var assembly = typeof(SqlException).Assembly;
+        var errorType = assembly.GetType("Microsoft.Data.SqlClient.SqlError", throwOnError: true)!;
+        var error = Activator.CreateInstance(
+            errorType,
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null,
+            args: new object?[] { number, (byte)0, (byte)14, "server", message, "proc", 1, (uint)0, null },
+            culture: null);
+        var collectionType = assembly.GetType("Microsoft.Data.SqlClient.SqlErrorCollection", throwOnError: true)!;
+        var collection = Activator.CreateInstance(
+            collectionType,
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null,
+            args: Array.Empty<object>(),
+            culture: null);
+        collectionType.GetMethod("Add", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(collection, new[] { error });
+        var ctor = typeof(SqlException).GetConstructor(
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null,
+            types: new[] { typeof(string), collectionType, typeof(Exception), typeof(Guid) },
+            modifiers: null);
+        return (SqlException)ctor!.Invoke(new object?[] { message, collection, null, Guid.Empty });
+    }
+
+    private sealed class RetryExhaustedFactory : WebApplicationFactory<Program>
+    {
+        private readonly SqliteConnection connection = new("Data Source=sql-retry;Mode=Memory;Cache=Shared");
+        private readonly string secret;
+
+        public RetryExhaustedFactory(string secret)
+        {
+            this.secret = secret;
+            connection.Open();
+        }
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Development");
+            builder.ConfigureAppConfiguration((_, config) =>
+            {
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["RateLimit:AuthenticatedGetPermit"] = "100000"
+                });
+            });
+            builder.ConfigureTestServices(services =>
+            {
+                var descriptors = services
+                    .Where(descriptor =>
+                        descriptor.ServiceType == typeof(DbContextOptions<PfohDbContext>) ||
+                        descriptor.ServiceType == typeof(PfohDbContext))
+                    .ToList();
+                foreach (var descriptor in descriptors)
+                {
+                    services.Remove(descriptor);
+                }
+
+                services.AddSingleton(new ExhaustProfileReadInterceptor(secret));
+                services.AddDbContext<PfohDbContext>((sp, options) => options
+                    .UseSqlite(connection)
+                    .AddInterceptors(sp.GetRequiredService<ExhaustProfileReadInterceptor>()));
+                services.RemoveAll<HonoreeFileStorage>();
+                services.AddSingleton<HonoreeFileStorage, PfohApiFactory.PendingReviewTestFileStorage>();
+                services.AddAuthentication(options =>
+                {
+                    options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
+                    options.DefaultChallengeScheme = TestAuthHandler.SchemeName;
+                }).AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+                services.PostConfigure<AuthenticationOptions>(options =>
+                {
+                    options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName;
+                    options.DefaultChallengeScheme = TestAuthHandler.SchemeName;
+                });
+            });
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+            if (disposing)
+            {
+                connection.Dispose();
+            }
+        }
+    }
+
+    private sealed class ExhaustProfileReadInterceptor(string secret) : DbCommandInterceptor
+    {
+        public override InterceptionResult<DbDataReader> ReaderExecuting(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result)
+        {
+            ThrowIfProfileRead(command.CommandText);
+            return base.ReaderExecuting(command, eventData, result);
+        }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            ThrowIfProfileRead(command.CommandText);
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+
+        private void ThrowIfProfileRead(string commandText)
+        {
+            if (commandText.Contains("FROM \"UserProfiles\"", StringComparison.Ordinal)
+                || commandText.Contains("FROM UserProfiles", StringComparison.Ordinal))
+            {
+                throw new RetryLimitExceededException(
+                    $"retries exhausted for {secret}",
+                    SqlError(1205, $"deadlock for {secret}"));
+            }
+        }
+    }
+}

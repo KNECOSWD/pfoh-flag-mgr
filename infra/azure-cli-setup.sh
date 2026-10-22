@@ -175,12 +175,22 @@ if az_resource_exists sql server show --resource-group "$RG" --name "$SQL_SERVER
   exit 1
 fi
 
+# Azure CLI reads an argument that starts with @ from a file, so the password
+# is not a process argument and -o none keeps command output from printing it.
+# Managed identity is the long-term replacement for this SQL admin password.
+secret_dir="$(mktemp -d)"
+chmod 700 "$secret_dir"
+trap 'rm -rf "$secret_dir"' EXIT
+umask 077
+printf '%s' "$SQL_PASSWORD" > "$secret_dir/sql-admin-password"
+
 az sql server create \
   --resource-group "$RG" \
   --location "$LOCATION" \
   --name "$SQL_SERVER" \
   --admin-user "$SQL_ADMIN" \
-  --admin-password "$SQL_PASSWORD"
+  --admin-password "@$secret_dir/sql-admin-password" \
+  -o none
 
 az sql db create \
   --resource-group "$RG" \
@@ -203,12 +213,14 @@ else
 fi
 
 CONN="Server=tcp:${SQL_SERVER}.database.windows.net,1433;Initial Catalog=${SQL_DB};Persist Security Info=False;User ID=${SQL_ADMIN};Password=${SQL_PASSWORD};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
+printf '%s' "DefaultConnection=$CONN" > "$secret_dir/connection-string"
 
 az webapp config connection-string set \
   --resource-group "$RG" \
   --name "$APP" \
   --connection-string-type SQLAzure \
-  --settings DefaultConnection="$CONN"
+  --settings "@$secret_dir/connection-string" \
+  -o none
 
 echo "Created app: https://${APP}.azurewebsites.net"
 echo "Next: set AzureAd app settings and configure GitHub OIDC secrets."

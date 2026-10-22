@@ -141,6 +141,9 @@ public class SnapshotSecurityArtifactTests
         Assert.Contains("SQL_PASSWORD", script, StringComparison.Ordinal);
         Assert.Contains("PFOH_ALLOW_AZURE_SERVICES", script, StringComparison.Ordinal);
         Assert.Contains("P1v3", script, StringComparison.Ordinal);
+        Assert.Contains("--admin-password \"@$secret_dir/sql-admin-password\"", script, StringComparison.Ordinal);
+        Assert.Contains("--settings \"@$secret_dir/connection-string\"", script, StringComparison.Ordinal);
+        Assert.Contains("-o none", script, StringComparison.Ordinal);
         Assert.DoesNotContain("ChangeThisToAStrongPassword", script, StringComparison.Ordinal);
         Assert.Contains("az account show", script, StringComparison.Ordinal);
     }
@@ -240,8 +243,10 @@ public class SnapshotSecurityArtifactTests
             Assert.True(groupExists >= 0 && group > groupExists && planShow > group && planCreate > planShow);
             Assert.True(show > planCreate && sqlShow > show && sqlCreate > sqlShow && connection > sqlCreate);
             Assert.DoesNotContain("firewall-rule create", calls, StringComparison.Ordinal);
+            Assert.Contains("-o none", calls, StringComparison.Ordinal);
             Assert.DoesNotContain(SyntheticSqlPassword, calls, StringComparison.Ordinal);
             Assert.DoesNotContain(SyntheticSqlPassword, created.Error, StringComparison.Ordinal);
+            Assert.DoesNotContain(SyntheticSqlPassword, created.Output, StringComparison.Ordinal);
         }
         finally
         {
@@ -444,7 +449,7 @@ public class SnapshotSecurityArtifactTests
             """);
     }
 
-    private static (int ExitCode, string Error) RunSetup(
+    private static (int ExitCode, string Error, string Output) RunSetup(
         string source,
         string directory,
         string stub,
@@ -490,9 +495,9 @@ public class SnapshotSecurityArtifactTests
         Assert.NotNull(process);
         process.StandardInput.Close();
         var error = process.StandardError.ReadToEnd();
-        process.StandardOutput.ReadToEnd();
+        var output = process.StandardOutput.ReadToEnd();
         process.WaitForExit();
-        return (process.ExitCode, error);
+        return (process.ExitCode, error, output);
     }
 
     private static int CountOf(string text, string value)

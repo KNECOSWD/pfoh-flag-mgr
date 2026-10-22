@@ -369,6 +369,9 @@ public class FlagClaimsController(
         var email = User.GetEmail();
         var name = await profiles.ResolveDisplayNameAsync(User, ct);
 
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync<ActionResult<FlagClaimDto>>(async () =>
+        {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         var flagGrid = await db.FlagGrids
@@ -431,6 +434,7 @@ public class FlagClaimsController(
             null,
             otherClaimantCount,
             BuildOtherClaimantsNotice(otherClaimantCount)));
+        });
     }
 
     [HttpPost("honoree/{honoreeId:int}/claim")]
@@ -440,6 +444,9 @@ public class FlagClaimsController(
         var email = User.GetEmail();
         var name = await profiles.ResolveDisplayNameAsync(User, ct);
 
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync<ActionResult<FlagClaimDto>>(async () =>
+        {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         var honoree = await db.Honorees
@@ -518,6 +525,7 @@ public class FlagClaimsController(
             imageUrl,
             otherClaimantCount,
             BuildOtherClaimantsNotice(otherClaimantCount)));
+        });
     }
 
     [HttpPost("nominate")]
@@ -541,6 +549,9 @@ public class FlagClaimsController(
 
         await PendingSubmissionGridSchema.EnsureAsync(db, ct);
 
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync<ActionResult<FlagClaimDto>>(async () =>
+        {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         var submitter = await GetOrCreateSubmitterSponsorAsync(email, name, ct);
@@ -595,6 +606,7 @@ public class FlagClaimsController(
         await transaction.CommitAsync(ct);
 
         return Ok(ToDto(claim, null));
+        });
     }
 
     [Authorize(Policy = "AdminOnly")]
@@ -769,6 +781,9 @@ public class FlagClaimsController(
             adminName = User.GetDisplayName() ?? "PFOH.Admin";
         }
 
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync<ActionResult<FlagClaimDto>>(async () =>
+        {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         var claim = await db.FlagClaims
@@ -820,6 +835,7 @@ public class FlagClaimsController(
             .FirstOrDefaultAsync(ct);
 
         return Ok(ToDto(claim, imageUrl));
+        });
     }
 
     private async Task<Honoree> ApplyApprovedChanges(

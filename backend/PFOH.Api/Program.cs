@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Identity.Web;
 using PFOH.Api.Data;
@@ -94,7 +95,11 @@ builder.Services.AddDbContext<PfohDbContext>((sp, options) =>
 {
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
         ?? throw new InvalidOperationException("Missing DefaultConnection connection string.");
-    options.UseSqlServer(connectionString);
+    options.UseSqlServer(connectionString, sqlServerOptionsAction: sql =>
+        sql.EnableRetryOnFailure(
+            maxRetryCount: 3,
+            maxRetryDelay: TimeSpan.FromSeconds(5),
+            errorNumbersToAdd: null));
     options.AddInterceptors(sp.GetRequiredService<PublicFlagMapCacheInvalidator>());
 });
 
@@ -259,16 +264,27 @@ app.Use(async (context, next) =>
     {
         await next();
     }
-    catch (ProfileStoreUnavailableException ex)
+    catch (Exception ex) when (ex is ProfileStoreUnavailableException or RetryLimitExceededException)
     {
         if (context.Response.HasStarted)
         {
             throw;
         }
 
+        if (ex is RetryLimitExceededException)
+        {
+            app.Logger.LogError(
+                "SQL retries exhausted. ExceptionType={ExceptionType} SqlErrorNumber={SqlErrorNumber}",
+                ex.GetType().FullName,
+                UserProfileService.SqlErrorNumber(ex));
+        }
+
+        var retryAfter = ex is ProfileStoreUnavailableException unavailable
+            ? unavailable.RetryAfter
+            : TimeSpan.FromSeconds(5);
         context.Response.Clear();
         context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-        var seconds = (int)Math.Ceiling(ex.RetryAfter.TotalSeconds);
+        var seconds = (int)Math.Ceiling(retryAfter.TotalSeconds);
         if (seconds < 1)
         {
             seconds = 1;
@@ -366,6 +382,7 @@ app.UseRateLimiter();
 app.UseMiddleware<UserProfileProvisioningMiddleware>();
 // Liveness has no dependency checks. App Service must not recycle the only
 // instance when the database is down. Readiness is /health/ready.
+// Both use the built-in plain-text writer (Healthy / Degraded / Unhealthy).
 app.MapHealthChecks("/health", new HealthCheckOptions
 {
     Predicate = static _ => false
