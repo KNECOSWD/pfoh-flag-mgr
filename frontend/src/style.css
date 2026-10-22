@@ -11826,7 +11826,7 @@ footer.appFooter.footerNavy .footerContact a {
   border: 0 !important;
   box-shadow: none !important;
   color: #fff !important;
-  padding: 0 0.15rem !important;
+  padding: 0.35rem 0.15rem 0 !important;
   font-weight: 800 !important;
   text-decoration: none;
   display: inline-flex;
@@ -12452,22 +12452,59 @@ header.hero .authBox strong {
   }
 }
 
-/* Side-by-side columns share one bottom edge: the last Explore link,
-   Built by KNECO, and Contact Us. Extra footer height stays below that
-   edge, so the headings stay at the top. The phone stack is unchanged. */
+/* Side-by-side columns. Headings stay on the first row. The last Explore
+   link is pushed to the bottom of that column, and Built by and Contact Us
+   sit on that same line. Phones stay stacked. */
 @media (min-width: 761px) {
   footer.appFooter .appFooterInner {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
     align-content: start;
+    align-items: start;
+    width: 100%;
+    max-width: none;
   }
 
-  footer.appFooter .footerExplore,
+  footer.appFooter .footerExplore {
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  footer.appFooter .footerExplore > a:last-child {
+    margin-top: auto;
+    line-height: 1.25;
+  }
+
+  footer.appFooter .footerLoop {
+    align-self: start;
+  }
+
   footer.appFooter .footerCredit,
   footer.appFooter .footerContact {
     align-self: end;
   }
 
-  footer.appFooter.footerNavy .footerContact a {
+  footer.appFooter .footerContact {
+    display: flex;
     align-items: flex-end;
+    justify-content: flex-end;
+  }
+
+  footer.appFooter .footerCredit {
+    align-items: flex-end;
+    line-height: 1.25;
+  }
+
+  footer.appFooter .footerCredit span {
+    line-height: 1.25;
+  }
+
+  footer.appFooter.footerNavy .footerContact a {
+    min-height: var(--footer-social-size);
+    align-items: flex-end;
+    line-height: 1.25;
   }
 }
 
