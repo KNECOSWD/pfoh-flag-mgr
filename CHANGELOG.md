@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.3
+
+- The site starts again on a database that already has flag claims or merge history. The client request id column and its unique index are applied in separate steps, so duplicate groups, my claims, honoree claimants, and the approved reprint queue load. A database that already has the column, or has the column and not the index, still starts. Existing rows stay empty. Nothing is backfilled.
+
 ## 3.1.2
 
 - A transient SQL or sign-in identity error while preparing a profile no longer blocks profile load and sign-in for five minutes. The request is retried with exponential backoff and jitter. If the database is still failing, or the schema step is cancelled or hits a non-transient error, sign-in pauses for a few seconds and the next request tries once. Profile reads and saves use EF Core's SQL Server retry (3 attempts). Throttling errors wait 5, 6, and 6 seconds (17 seconds in total) because EF adds a 5 second floor after the 1 second delay cap. A non-throttling transient error waits 0, 1, and 1 seconds. Startup schema does not use that retry. Its connect timeout is 4 seconds. A database endpoint that accepts and never answers is expected to take about 38 seconds across the nine startup steps, including per-step overhead. Requests return 503 with Retry-After when those retries are exhausted. While the schema circuit is open, profile requests return 503 with Retry-After. `/health` is a liveness check with no database call. `/health` and `/health/ready` return a plain-text status. `/health/ready` is Unhealthy while the profile store is failing. Its database probe does not use the request retry and times out in about 3 seconds. A transient error after a successful commit does not write a second merge audit or nomination.

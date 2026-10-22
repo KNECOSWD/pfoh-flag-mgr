@@ -49,16 +49,20 @@ public static class HonoreeMergeAuditSchema
         """;
 
     /// <summary>
-    /// Nullable client id for one merge request, plus a unique index that
-    /// ignores nulls. Existing rows stay null. Nothing is backfilled.
+    /// Nullable client id for one merge request. Existing rows stay null.
+    /// Nothing is backfilled. The unique index is its own batch: SQL Server
+    /// compiles a batch before it runs, and an index on a column added in that
+    /// same batch fails with error 207 when the table already exists.
     /// </summary>
-    internal const string AddClientRequestIdSql = """
+    internal const string AddClientRequestIdColumnSql = """
         IF OBJECT_ID(N'[dbo].[HonoreeMergeAudits]', N'U') IS NOT NULL
            AND COL_LENGTH(N'dbo.HonoreeMergeAudits', N'ClientRequestId') IS NULL
         BEGIN
             ALTER TABLE [dbo].[HonoreeMergeAudits] ADD [ClientRequestId] uniqueidentifier NULL;
         END
+        """;
 
+    internal const string AddClientRequestIdIndexSql = """
         IF OBJECT_ID(N'[dbo].[HonoreeMergeAudits]', N'U') IS NOT NULL
            AND NOT EXISTS (
                 SELECT 1
@@ -102,7 +106,8 @@ public static class HonoreeMergeAuditSchema
 
             await db.Database.ExecuteSqlRawAsync(SchemaSql.ForExecuteSqlRaw(CreateSql), ct);
             await db.Database.ExecuteSqlRawAsync(SchemaSql.ForExecuteSqlRaw(AddColumnSql), ct);
-            await db.Database.ExecuteSqlRawAsync(SchemaSql.ForExecuteSqlRaw(AddClientRequestIdSql), ct);
+            await db.Database.ExecuteSqlRawAsync(SchemaSql.ForExecuteSqlRaw(AddClientRequestIdColumnSql), ct);
+            await db.Database.ExecuteSqlRawAsync(SchemaSql.ForExecuteSqlRaw(AddClientRequestIdIndexSql), ct);
             ready = true;
         }
         finally
