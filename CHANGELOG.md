@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.0.1
+
+- Page content keeps a gap above the footer on every page. The space is smaller on a phone and larger from a tablet up. The Flag Manager page no longer adds a second gap of its own.
+
 ## 3.0.0
 
 - The shared header sizes to its content. The Flag Map no longer locks that bar to a 92px band, and the title wraps instead of being clipped. The dog tag scales with the width. Side padding uses the same fluid inset as the page column, so Profile and Sign out sit clear of the edge. From 761px up, Flag Map uses the same navigation as the other pages.

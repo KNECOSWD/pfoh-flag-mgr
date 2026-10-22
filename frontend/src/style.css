@@ -1060,8 +1060,8 @@ td span {
     padding-inline: 1rem;
   }
 
-  main > .card,
-  main > .messageStack {
+  main > .pageBody > .card,
+  main > .pageBody > .messageStack {
     width: calc(100% - 2rem);
     margin-left: auto;
     margin-right: auto;
@@ -1230,8 +1230,8 @@ img {
     white-space: nowrap;
   }
 
-  main > .card,
-  main > .messageStack,
+  main > .pageBody > .card,
+  main > .pageBody > .messageStack,
   .card,
   .notice,
   .error,
@@ -1409,8 +1409,8 @@ img {
     font-size: 0.95rem;
   }
 
-  main > .card,
-  main > .messageStack,
+  main > .pageBody > .card,
+  main > .pageBody > .messageStack,
   .card,
   .notice,
   .error,
@@ -6702,9 +6702,9 @@ img.ownedFlagImage {
 
 /* Mobile card width normalization */
 @media (max-width: 760px) {
-  main > .card,
-  main > .messageStack,
-  main > .adminSectionStack {
+  main > .pageBody > .card,
+  main > .pageBody > .messageStack,
+  main > .pageBody > .adminSectionStack {
     width: min(100%, 34rem) !important;
     max-width: calc(100vw - 1.44rem) !important;
     margin-left: auto !important;
@@ -6712,8 +6712,8 @@ img.ownedFlagImage {
     box-sizing: border-box;
   }
 
-  main > .adminSectionStack > .card,
-  main > .adminSectionStack > .flagPositionManager {
+  main > .pageBody > .adminSectionStack > .card,
+  main > .pageBody > .adminSectionStack > .flagPositionManager {
     width: 100% !important;
     max-width: 100% !important;
     margin-left: 0 !important;
@@ -6729,9 +6729,9 @@ img.ownedFlagImage {
 }
 
 @media (max-width: 430px) {
-  main > .card,
-  main > .messageStack,
-  main > .adminSectionStack {
+  main > .pageBody > .card,
+  main > .pageBody > .messageStack,
+  main > .pageBody > .adminSectionStack {
     max-width: calc(100vw - 1.1rem) !important;
   }
 }
@@ -6879,9 +6879,9 @@ img.ownedFlagImage {
     justify-self: end !important;
   }
 
-  main > .card,
-  main > .messageStack,
-  main > .adminSectionStack {
+  main > .pageBody > .card,
+  main > .pageBody > .messageStack,
+  main > .pageBody > .adminSectionStack {
     width: 100% !important;
     max-width: 100% !important;
     margin-left: 0 !important;
@@ -6889,13 +6889,13 @@ img.ownedFlagImage {
     box-sizing: border-box !important;
   }
 
-  main > .adminSectionStack {
+  main > .pageBody > .adminSectionStack {
     display: grid !important;
     gap: 0.75rem !important;
   }
 
-  main > .adminSectionStack > .card,
-  main > .adminSectionStack > .flagPositionManager {
+  main > .pageBody > .adminSectionStack > .card,
+  main > .pageBody > .adminSectionStack > .flagPositionManager {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
@@ -7308,7 +7308,7 @@ img.ownedFlagImage {
 }
 
 @media (max-width: 760px) {
-  main > .guestNotice {
+  main > .pageBody > .guestNotice {
     width: min(100%, 34rem) !important;
     max-width: calc(100vw - 1.44rem) !important;
     margin-left: auto !important;
@@ -7317,7 +7317,7 @@ img.ownedFlagImage {
 }
 
 @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
-  main > .guestNotice {
+  main > .pageBody > .guestNotice {
     width: 100% !important;
     max-width: 100% !important;
   }
@@ -8460,13 +8460,12 @@ main:has(.flagPositionManager.adminStandalonePanel)::before {
   display: none !important;
 }
 
-main > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
+main > .pageBody > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
   width: min(1680px, calc(100vw - 2.5rem)) !important;
   max-width: min(1680px, calc(100vw - 2.5rem)) !important;
   margin-left: auto !important;
   margin-right: auto !important;
   margin-top: 1.75rem !important;
-  margin-bottom: 3.25rem !important;
   box-sizing: border-box !important;
 }
 
@@ -8507,12 +8506,8 @@ main > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
   gap: 0.48rem !important;
 }
 
-main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
-  margin-top: 3.5rem !important;
-}
-
 @media (min-width: 1500px) {
-  main > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
+  main > .pageBody > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
     width: min(1760px, calc(100vw - 3rem)) !important;
     max-width: min(1760px, calc(100vw - 3rem)) !important;
   }
@@ -8528,11 +8523,10 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
     padding-right: 0.55rem !important;
   }
 
-  main > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
+  main > .pageBody > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
     width: 100% !important;
     max-width: 100% !important;
     margin-top: 0.85rem !important;
-    margin-bottom: 1.75rem !important;
   }
 
   .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) .flagPositionManager.adminStandalonePanel {
@@ -8549,9 +8543,6 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
     gap: 0.32rem !important;
   }
 
-  main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
-    margin-top: 2rem !important;
-  }
 }
 
 @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
@@ -8560,11 +8551,10 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
     padding-right: 0.45rem !important;
   }
 
-  main > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
+  main > .pageBody > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
     width: 100% !important;
     max-width: 100% !important;
     margin-top: 0.65rem !important;
-    margin-bottom: 1.5rem !important;
   }
 
   .flagPositionManager .flagSeatMap {
@@ -11724,7 +11714,7 @@ button.destructive:hover:not(:disabled) {
   }
 }
 
-main > .anniversaryBanner + * {
+main > .pageBody > .anniversaryBanner + * {
   margin-top: 1.25rem;
 }
 
@@ -12446,5 +12436,23 @@ header.hero .authBox strong {
     flex: 1 0 100%;
     order: 3;
     min-width: 0;
+  }
+}
+
+/* Space between page content and the footer.
+   1.25rem is the compact page padding. 2.25rem is the footer top margin.
+   Phones use the smaller step. From the 761px tablet breakpoint, the larger step. */
+.pageBody {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding-bottom: 1.25rem;
+}
+
+@media (min-width: 761px) {
+  .pageBody {
+    padding-bottom: 2.25rem;
   }
 }

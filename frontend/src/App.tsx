@@ -2998,6 +2998,7 @@ export default function App() {
 
   return (
     <main>
+      <div className="pageBody">
       {versionReloadNotice()}
       <header className={mobileNavOpen ? "hero mobileMenuOpen" : isPublicFlagMapRoute ? "hero publicMapHero" : "hero"}>
         <div className="heroBrand">
@@ -5087,6 +5088,7 @@ export default function App() {
             />
           )}
 
+      </div>
       <footer className="appFooter footerNavy" aria-label="Plano Flags of Honor footer">
         <div className="appFooterInner">
           <div className="footerColumn footerExplore">
