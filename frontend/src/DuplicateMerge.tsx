@@ -488,12 +488,14 @@ export function DuplicateMerge({
   instance,
   account,
   onSignIn,
-  onOpenHistory
+  onOpenHistory,
+  onCountsChanged
 }: {
   instance: IPublicClientApplication;
   account: AccountInfo | null;
   onSignIn?: () => void;
   onOpenHistory?: () => void;
+  onCountsChanged?: () => void;
 }) {
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -533,10 +535,15 @@ export function DuplicateMerge({
       busy={busy}
       onReload={() => void load()}
       onSignIn={onSignIn}
-      onMerge={(body) => adminApi.mergeDuplicates(instance, account, body)}
+      onMerge={async (body) => {
+        const merged = await adminApi.mergeDuplicates(instance, account, body);
+        onCountsChanged?.();
+        return merged;
+      }}
       onPreviewCard={(body) => adminApi.previewMergeCard(instance, account, body)}
       onNotDuplicates={async (leftId, rightId) => {
         await adminApi.markNotDuplicates(instance, account, leftId, rightId);
+        onCountsChanged?.();
       }}
       onOpenHistory={onOpenHistory}
     />

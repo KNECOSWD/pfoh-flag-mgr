@@ -7,11 +7,13 @@ import { isQuietAuthRejection } from "./tokenRequest.js";
 export function MergeHistory({
   instance,
   account,
-  onBack
+  onBack,
+  onCountsChanged
 }: {
   instance: IPublicClientApplication;
   account: AccountInfo | null;
   onBack: () => void;
+  onCountsChanged?: () => void;
 }) {
   const [records, setRecords] = useState<MergeHistoryRecord[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -50,6 +52,7 @@ export function MergeHistory({
     setErrorId(null);
     try {
       await adminApi.undoMerge(instance, account, id);
+      onCountsChanged?.();
       await load();
     } catch (err) {
       if (isQuietAuthRejection(err)) return;
