@@ -7,6 +7,20 @@ public static class UserProfileLimits
     public const int EmailMaxLength = 255;
     public const int PhoneMaxLength = 16;
     public const int OrganizationMaxLength = 200;
+    public const int FieldSourceMaxLength = 16;
+}
+
+/// <summary>
+/// Where a profile field's current value came from.
+/// <see cref="Claim"/> is copied from the Entra token and refreshed when that claim changes.
+/// <see cref="Profile"/> was saved from the profile form and is left alone.
+/// A null source on a row that already existed is treated as <see cref="Profile"/>:
+/// those rows were saved before this flag existed, and the token must not overwrite them.
+/// </summary>
+public static class ProfileFieldSource
+{
+    public const string Claim = "claim";
+    public const string Profile = "profile";
 }
 
 /// <summary>
@@ -28,6 +42,15 @@ public class UserProfile
 
     /// <summary>Optional organization. There is no city or state column on this table.</summary>
     public string? Organization { get; set; }
+
+    /// <summary><see cref="ProfileFieldSource.Claim"/> or <see cref="ProfileFieldSource.Profile"/>. Null on rows saved before the flag existed.</summary>
+    public string? DisplayNameSource { get; set; }
+
+    /// <summary><see cref="ProfileFieldSource.Claim"/> or <see cref="ProfileFieldSource.Profile"/>. Null on rows saved before the flag existed.</summary>
+    public string? PhoneSource { get; set; }
+
+    /// <summary><see cref="ProfileFieldSource.Claim"/> or <see cref="ProfileFieldSource.Profile"/>. Null on rows saved before the flag existed.</summary>
+    public string? OrganizationSource { get; set; }
 
     public DateTime CreatedUtc { get; set; }
 

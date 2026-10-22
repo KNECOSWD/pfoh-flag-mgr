@@ -203,13 +203,15 @@ Rows are seats that have an honoree, sorted by section then grid number (`A-01`,
 
 ### Your profile
 
-Signed-in users open **Profile** from the header (and from the mobile menu). The form asks for **Name** (stored as the display name), **Email**, **Phone**, and optional **Organization**. Email comes from the Entra token and stays read-only. Name, email, and phone are required. Phone must be a 10-digit US number, such as `214-555-1234`. It is stored as `+12145551234` and shown as `(214) 555-1234` on the profile and on admin claimant lists. Entra does not validate that format. The profile is stored in `dbo.UserProfiles`, keyed by the token object id (`OwnerObjectId`). The saved name replaces a placeholder token name such as `unknown` in the header and is copied onto that user's flag claims.
+Signed-in users open **Profile** from the header (and from the mobile menu). The form asks for **Name** (stored as the display name), **Email**, **Phone**, and optional **Organization**. Email comes from the Entra token and stays read-only. Name, email, and phone are required. Phone must be a 10-digit US number, such as `214-555-1234`. It is stored as `+12145551234` and shown as `(214) 555-1234` on the profile and on admin claimant lists. Entra does not validate that format. The profile is stored in `dbo.UserProfiles`, keyed by the token object id (`OwnerObjectId`, the Entra `oid` claim). The first authenticated request for an id inserts that row. Later requests for the same id update it. The lookup is never the email address. Name, phone, and organization remember where the current value came from: `claim` when it was copied from the token, or `profile` when it was saved on the profile form. A null source on an older row is treated as `profile`, so a token does not overwrite a name, phone, or organization that was already saved. Email is not edited on the form and stays the token email. The saved name replaces a placeholder token name such as `unknown` in the header and is copied onto that user's flag claims.
 
 There are no city or state fields on the account profile. `dbo.Sponsors` still has City and State because those columns hold sponsor mailing addresses, and dropping them would delete existing data.
 
 Display name is trimmed, required, and limited to 100 characters. Organization is optional and limited to 200 characters. Users can read and update only their own profile. `GET /api/profile` and `PUT /api/profile` require a signed-in user. `PUT /api/profile/{ownerObjectId}` returns 403 when the id is not the caller.
 
 If the access token includes `phone` or `organization`, the API copies a missing value onto the profile. Those short names are the live claims-mapping output. If they are absent, the API uses `extension_{extensionsAppIdWithoutDashes}_Phone` and `extension_{extensionsAppIdWithoutDashes}_Organization`. `extensionsAppId` defaults to `a29a0dc7-4c9b-4cef-9f78-3444e62907d3` (`Entra:ExtensionsAppId`). A non-empty setting replaces that default. A phone claim is normalized the same way as a typed number. A missing claim is left blank. A claim that is not a valid US number is not saved, the profile still loads, and the user is asked to enter a 10-digit US mobile number. A saved phone or organization is not overwritten by a different claim. A sign-in failure, including AADSTS50146, is shown on the page. Search and the public pages still work.
+
+The unique index on `OwnerObjectId` is applied when the API process starts, by `UserProfileSchema.EnsureAsync`. The deploy workflow `.github/workflows/azure-app-service.yml` publishes the site and does not run EF migrations, so there is no migration step to stop before the swap. Before creating `IX_UserProfiles_OwnerObjectId`, the SQL counts duplicate non-null object ids. If any duplicate group exists, that batch rolls back, creates no index, and does not change any row. It throws `UserProfiles has duplicate OwnerObjectId values; unique index not created; resolve duplicates first`. Startup logs only the number of duplicate groups and the site keeps serving. Sign-in then uses the in-process per-id lock and the existing find-then-insert path. A nullable `OwnerObjectId` gets a filtered unique index (`WHERE OwnerObjectId IS NOT NULL`). Running migration `20261022120000_AddUserProfileOwnerObjectIdUniqueIndex` by hand uses the same SQL inside the migration transaction, so that migration stops and rolls back until the duplicates are resolved.
 
 The API creates `dbo.UserProfiles` on first use if the table is missing, and adds Phone and Organization when an older profile table is already present. It does not change the existing honoree or sponsor tables. If the database login cannot create tables, run this once against the app database:
 
@@ -252,6 +254,8 @@ Edit `infra/azure-cli-setup.sh`, then run it:
 cd infra
 ./azure-cli-setup.sh
 ```
+
+The script refuses unless `SUBSCRIPTION_ID` is set to a real subscription, and it prints that id. A resource group, plan, app, or SQL name is production when it does not contain `dev`, `test`, or `sandbox` (case-insensitive), which includes the live names `PLANO_FLAGS_OF_HONOR`, `asp-pfoh-flags-prod`, `pfoh-flag-manager-app`, and SQL server or database `pfoh`. Production names need both `PFOH_ALLOW_PROD_SETUP=yes` and `PFOH_CONFIRM_SUBSCRIPTION` set to that same subscription id. The confirm value must also match `az account show`. Either flag missing or mismatched refuses the run. If the web app or SQL server already exists, the script refuses before it creates anything, so it does not reset the SQL admin password or overwrite the connection string.
 
 It creates:
 
@@ -299,7 +303,7 @@ Replace the placeholders and run from Azure CLI. This avoids storing an Azure cl
 
 ```bash
 SUBSCRIPTION_ID="<subscription-id>"
-RG="rg-pfoh-flags-prod"
+RG="PLANO_FLAGS_OF_HONOR"
 APP_NAME="pfoh-flag-manager-app"
 GITHUB_ORG="<github-user-or-org>"
 GITHUB_REPO="<repo-name>"
@@ -382,6 +386,10 @@ Then test:
 - Add rate limiting and audit logs.
 - Add file upload support to Azure Blob Storage if users will attach honoree photos or documents.
 - Add data export/backups before the event.
+
+## Nightly snapshot
+
+The snapshot job is a separate Function App on the existing App Service plan. It writes two JSON files to a private blob container. Nothing in this repository creates those Azure resources. Setup, the certificate used by the read-only box, and the consent request are in `docs/snapshot-job.md`. The field allow-list lives in `SnapshotFieldSpec`.
 
 ## Version
 

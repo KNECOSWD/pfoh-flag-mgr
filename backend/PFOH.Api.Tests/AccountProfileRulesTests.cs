@@ -151,6 +151,36 @@ public class UserProfileSchemaTests
         Assert.DoesNotContain("State", UserProfileSchema.CreateSql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("AddUserProfilePhoneAndOrganization", typeof(PFOH.Api.Data.Migrations.AddUserProfilePhoneAndOrganization).Name, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Owner_object_id_index_migration_is_schema_only()
+    {
+        var indexSql = UserProfileSchema.EnsureOwnerObjectIdUniqueIndexSql;
+        Assert.Contains("CREATE UNIQUE INDEX [IX_UserProfiles_OwnerObjectId]", indexSql, StringComparison.Ordinal);
+        Assert.Contains("SELECT OwnerObjectId, COUNT(*)", indexSql, StringComparison.Ordinal);
+        Assert.Contains("FROM dbo.UserProfiles WITH (TABLOCKX, HOLDLOCK)", indexSql, StringComparison.Ordinal);
+        Assert.Contains("WHERE OwnerObjectId IS NOT NULL", indexSql, StringComparison.Ordinal);
+        Assert.Contains("GROUP BY OwnerObjectId", indexSql, StringComparison.Ordinal);
+        Assert.Contains("HAVING COUNT(*) > 1", indexSql, StringComparison.Ordinal);
+        Assert.Contains("BEGIN TRANSACTION", indexSql, StringComparison.Ordinal);
+        Assert.Contains("ROLLBACK TRANSACTION", indexSql, StringComparison.Ordinal);
+        Assert.Contains("WHERE [OwnerObjectId] IS NOT NULL", indexSql, StringComparison.Ordinal);
+        Assert.Contains("is_nullable = 1", indexSql, StringComparison.Ordinal);
+        var begin = indexSql.IndexOf("BEGIN TRANSACTION", StringComparison.Ordinal);
+        var hint = indexSql.IndexOf("WITH (TABLOCKX, HOLDLOCK)", StringComparison.Ordinal);
+        var check = indexSql.IndexOf("HAVING COUNT(*) > 1", StringComparison.Ordinal);
+        var blocked = indexSql.IndexOf("THROW 50000", StringComparison.Ordinal);
+        var create = indexSql.IndexOf("CREATE UNIQUE INDEX [IX_UserProfiles_OwnerObjectId]", StringComparison.Ordinal);
+        Assert.True(begin >= 0 && hint > begin && check > hint && blocked > check && create > blocked);
+        Assert.Contains(UserProfileSchema.DuplicateOwnerObjectIdIndexMessage, indexSql, StringComparison.Ordinal);
+        Assert.Contains("[DisplayNameSource] nvarchar(16) NULL", UserProfileSchema.AddClaimSourceColumnsSql, StringComparison.Ordinal);
+        Assert.DoesNotContain("UPDATE ", indexSql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("INSERT ", indexSql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DELETE ", indexSql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("UPDATE ", UserProfileSchema.AddClaimSourceColumnsSql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("INSERT ", UserProfileSchema.AddClaimSourceColumnsSql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AddUserProfileOwnerObjectIdUniqueIndex", typeof(PFOH.Api.Data.Migrations.AddUserProfileOwnerObjectIdUniqueIndex).Name, StringComparison.Ordinal);
+    }
 }
 
 public class HonoreeCopyTests

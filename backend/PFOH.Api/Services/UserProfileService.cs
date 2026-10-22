@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
@@ -13,12 +14,35 @@ public sealed record UserAccountContact(string? Phone, string? Organization);
 
 public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> logger, IConfiguration configuration)
 {
+    /// <summary>
+    /// Fixed stripes. A map keyed by object id would grow for every account that ever signed in.
+    /// </summary>
+    private const int ProvisionGateStripes = 32;
+    private static readonly SemaphoreSlim[] ProvisionGates = CreateProvisionGates();
+
+    private static SemaphoreSlim[] CreateProvisionGates()
+    {
+        var gates = new SemaphoreSlim[ProvisionGateStripes];
+        for (var i = 0; i < gates.Length; i++)
+        {
+            gates[i] = new SemaphoreSlim(1, 1);
+        }
+
+        return gates;
+    }
+
+    internal static int ProvisionGateCount => ProvisionGates.Length;
+
+    internal static SemaphoreSlim ProvisionGateFor(string ownerObjectId)
+    {
+        var hash = (uint)StringComparer.Ordinal.GetHashCode(ownerObjectId);
+        return ProvisionGates[hash % (uint)ProvisionGates.Length];
+    }
     public async Task<UserProfileDto> GetOwnAsync(ClaimsPrincipal user, CancellationToken ct)
     {
-        await EnsureStoreAsync(ct);
+        await EnsureProvisionedAsync(user, ct);
         var ownerObjectId = user.GetExternalObjectId();
-        var saved = await db.UserProfiles
-            .FirstOrDefaultAsync(profile => profile.OwnerObjectId == ownerObjectId, ct);
+        var saved = await OwnerProfiles(ownerObjectId).FirstOrDefaultAsync(ct);
 
         var rawClaimPhone = user.GetPhoneNumber(ExtensionsAppId);
         var phone = ResolvePhone(user, saved, ExtensionsAppId);
@@ -51,9 +75,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
 
         await EnsureStoreAsync(ct);
 
-        var existing = await db.UserProfiles
-            .AsNoTracking()
-            .FirstOrDefaultAsync(item => item.OwnerObjectId == callerId, ct);
+        var existing = await OwnerProfiles(callerId).AsNoTracking().FirstOrDefaultAsync(ct);
 
         var email = ResolveEmail(user, existing);
         if (string.IsNullOrWhiteSpace(email))
@@ -73,8 +95,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
 
         var now = DateTime.UtcNow;
-        var profile = await db.UserProfiles
-            .FirstOrDefaultAsync(item => item.OwnerObjectId == callerId, ct);
+        var profile = await OwnerProfiles(callerId).FirstOrDefaultAsync(ct);
 
         if (profile is null)
         {
@@ -85,6 +106,11 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
                 Email = email,
                 Phone = normalizedPhone,
                 Organization = normalizedOrganization,
+                DisplayNameSource = ProfileFieldSource.Profile,
+                PhoneSource = ProfileFieldSource.Profile,
+                OrganizationSource = string.IsNullOrWhiteSpace(normalizedOrganization)
+                    ? ProfileFieldSource.Claim
+                    : ProfileFieldSource.Profile,
                 CreatedUtc = now,
                 UpdatedUtc = now
             };
@@ -96,6 +122,11 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
             profile.Email = email;
             profile.Phone = normalizedPhone;
             profile.Organization = normalizedOrganization;
+            profile.DisplayNameSource = ProfileFieldSource.Profile;
+            profile.PhoneSource = ProfileFieldSource.Profile;
+            profile.OrganizationSource = string.IsNullOrWhiteSpace(normalizedOrganization)
+                ? ProfileFieldSource.Claim
+                : ProfileFieldSource.Profile;
             profile.UpdatedUtc = now;
         }
 
@@ -107,9 +138,9 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
         catch (DbUpdateException ex)
         {
-            logger.LogWarning(ex, "Retrying profile save for {OwnerObjectId} after a write conflict.", callerId);
+            LogWriteFailure(ex, "Retrying profile save after a write conflict.");
             db.ChangeTracker.Clear();
-            profile = await db.UserProfiles.FirstOrDefaultAsync(item => item.OwnerObjectId == callerId, ct);
+            profile = await OwnerProfiles(callerId).FirstOrDefaultAsync(ct);
             if (profile is null)
             {
                 throw;
@@ -119,6 +150,11 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
             profile.Email = email;
             profile.Phone = normalizedPhone;
             profile.Organization = normalizedOrganization;
+            profile.DisplayNameSource = ProfileFieldSource.Profile;
+            profile.PhoneSource = ProfileFieldSource.Profile;
+            profile.OrganizationSource = string.IsNullOrWhiteSpace(normalizedOrganization)
+                ? ProfileFieldSource.Claim
+                : ProfileFieldSource.Profile;
             profile.UpdatedUtc = now;
             await ApplyDisplayNameToClaimsAsync(callerId, trimmed, ct);
             await db.SaveChangesAsync(ct);
@@ -147,7 +183,14 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         var profiles = await db.UserProfiles
             .AsNoTracking()
             .Where(profile => ids.Contains(profile.OwnerObjectId))
-            .Select(profile => new { profile.OwnerObjectId, profile.Phone, profile.Organization })
+            .Select(profile => new
+            {
+                profile.Id,
+                profile.OwnerObjectId,
+                profile.CreatedUtc,
+                profile.Phone,
+                profile.Organization
+            })
             .ToListAsync(ct);
 
         return profiles
@@ -156,7 +199,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
                 group => group.Key,
                 group =>
                 {
-                    var profile = group.First();
+                    var profile = group.OrderBy(item => item.CreatedUtc).ThenBy(item => item.Id).First();
                     return new UserAccountContact(BlankToNull(profile.Phone), BlankToNull(profile.Organization));
                 },
                 StringComparer.OrdinalIgnoreCase);
@@ -172,9 +215,8 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         {
             await EnsureStoreAsync(ct);
             var ownerObjectId = user.GetExternalObjectId();
-            var saved = await db.UserProfiles
+            var saved = await OwnerProfiles(ownerObjectId)
                 .AsNoTracking()
-                .Where(profile => profile.OwnerObjectId == ownerObjectId)
                 .Select(profile => profile.DisplayName)
                 .FirstOrDefaultAsync(ct);
 
@@ -281,7 +323,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Phone or organization from the sign-in token could not be saved for {OwnerObjectId}.", saved.OwnerObjectId);
+            LogWriteFailure(ex, "Phone or organization from the sign-in token could not be saved.");
         }
     }
 
@@ -350,6 +392,318 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
     }
 
+    /// <summary>
+    /// Inserts the caller's profile from the token, or refreshes claim-sourced fields
+    /// on the row keyed by the Entra object id. Email is not an owner key.
+    /// A unique violation from a concurrent insert is re-read and then refreshed.
+    /// </summary>
+    public async Task EnsureProvisionedAsync(ClaimsPrincipal user, CancellationToken ct)
+    {
+        await EnsureStoreAsync(ct);
+        var ownerObjectId = user.GetExternalObjectId();
+        var gate = ProvisionGateFor(ownerObjectId);
+        await gate.WaitAsync(ct);
+        try
+        {
+            var incoming = ReadClaimFields(user);
+            var existing = await OwnerProfiles(ownerObjectId).FirstOrDefaultAsync(ct);
+
+            if (existing is null)
+            {
+                var created = NewClaimProfile(ownerObjectId, incoming);
+                db.UserProfiles.Add(created);
+                try
+                {
+                    await db.SaveChangesAsync(ct);
+                    return;
+                }
+                catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+                {
+                    LogWriteFailure(ex, "Profile insert raced. Reading the existing row.");
+                    db.ChangeTracker.Clear();
+                    existing = await OwnerProfiles(ownerObjectId).FirstOrDefaultAsync(ct);
+                    if (existing is null)
+                    {
+                        throw;
+                    }
+                }
+            }
+
+            if (!ApplyClaimRefresh(existing, incoming))
+            {
+                return;
+            }
+
+            existing.UpdatedUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Oldest row first, then lowest id, so a duplicated object id always updates the same row.
+    /// </summary>
+    private IQueryable<UserProfile> OwnerProfiles(string ownerObjectId)
+    {
+        return db.UserProfiles
+            .Where(profile => profile.OwnerObjectId == ownerObjectId)
+            .OrderBy(profile => profile.CreatedUtc)
+            .ThenBy(profile => profile.Id);
+    }
+
+    /// <summary>
+    /// Index creation can fail with a SQL error whose message contains an object id.
+    /// The log keeps the error number and leaves the exception, and its message, out.
+    /// </summary>
+    internal static void LogStartupIndexFailure(ILogger logger, Exception ex)
+    {
+        logger.LogError(
+            "STARTUP CLEANUP FAILED while ensuring dbo.UserProfiles. The site will keep running. SqlErrorNumber={SqlErrorNumber}",
+            SqlErrorNumber(ex));
+    }
+
+    /// <summary>
+    /// Logs the exception type and the SQL Server error number only.
+    /// The duplicate-key message contains the object id, so the exception object and its message stay out of the log.
+    /// </summary>
+    private void LogWriteFailure(Exception ex, string message) =>
+        LogFailure(LogLevel.Warning, ex, message);
+
+    private void LogFailure(LogLevel level, Exception ex, string message)
+    {
+        logger.Log(
+            level,
+            "{Failure} ExceptionType={ExceptionType} SqlErrorNumber={SqlErrorNumber}",
+            message,
+            ex.GetType().FullName,
+            SqlErrorNumber(ex));
+    }
+
+    internal static int? SqlErrorNumber(Exception exception)
+    {
+        var pending = new Stack<Exception>();
+        pending.Push(exception);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if (current is SqlException sql)
+            {
+                return sql.Number;
+            }
+
+            if (current is AggregateException aggregate)
+            {
+                foreach (var inner in aggregate.InnerExceptions)
+                {
+                    pending.Push(inner);
+                }
+            }
+            else if (current.InnerException is not null)
+            {
+                pending.Push(current.InnerException);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// SQL Server unique-index violations are 2601 and 2627.
+    /// Tests throw <c>Microsoft.Data.Sqlite.SqliteException</c>; that constraint code is 19
+    /// (extended unique-constraint code 2067). The API does not reference SQLite, so the
+    /// code is read from the exception. Message text is not used.
+    /// </summary>
+    internal static bool IsUniqueViolation(DbUpdateException ex)
+    {
+        var pending = new Stack<Exception>();
+        pending.Push(ex);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if (current is SqlException sql && sql.Number is 2601 or 2627)
+            {
+                return true;
+            }
+
+            if (IsSqliteConstraint(current))
+            {
+                return true;
+            }
+
+            if (current is AggregateException aggregate)
+            {
+                foreach (var inner in aggregate.InnerExceptions)
+                {
+                    pending.Push(inner);
+                }
+            }
+            else if (current.InnerException is not null)
+            {
+                pending.Push(current.InnerException);
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsSqliteConstraint(Exception exception)
+    {
+        const int sqliteConstraint = 19;
+        const int sqliteConstraintUnique = 2067;
+        if (!string.Equals(exception.GetType().FullName, "Microsoft.Data.Sqlite.SqliteException", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var errorCode = ReadSqliteCode(exception, "SqliteErrorCode");
+        var extended = ReadSqliteCode(exception, "SqliteExtendedErrorCode");
+        return errorCode == sqliteConstraint
+            || extended == sqliteConstraint
+            || extended == sqliteConstraintUnique
+            || (errorCode & 0xFF) == sqliteConstraint;
+    }
+
+    private static int ReadSqliteCode(Exception exception, string propertyName)
+    {
+        var value = exception.GetType().GetProperty(propertyName)?.GetValue(exception);
+        return value is int code ? code : 0;
+    }
+
+    private static bool HasProfileDisplayName(UserProfile? saved)
+    {
+        if (saved is null || string.IsNullOrWhiteSpace(saved.DisplayName))
+        {
+            return false;
+        }
+
+        return !string.Equals(saved.DisplayNameSource, ProfileFieldSource.Claim, StringComparison.Ordinal);
+    }
+
+    private ClaimFields ReadClaimFields(ClaimsPrincipal user)
+    {
+        var name = user.GetDisplayName();
+        string? displayName = null;
+        if (!IsPlaceholderDisplayName(name))
+        {
+            displayName = name!.Trim();
+            if (displayName.Length > UserProfileLimits.DisplayNameMaxLength)
+            {
+                displayName = displayName[..UserProfileLimits.DisplayNameMaxLength];
+            }
+        }
+
+        var email = user.GetEmail().Trim();
+        if (email.Length > UserProfileLimits.EmailMaxLength)
+        {
+            email = email[..UserProfileLimits.EmailMaxLength];
+        }
+
+        string? phone = UsPhone.TryNormalize(user.GetPhoneNumber(ExtensionsAppId), out var normalizedPhone)
+            ? normalizedPhone
+            : null;
+
+        var organizationClaim = user.GetOrganization(ExtensionsAppId);
+        string? organization = null;
+        if (!string.IsNullOrWhiteSpace(organizationClaim))
+        {
+            var trimmed = organizationClaim.Trim();
+            organization = trimmed.Length <= UserProfileLimits.OrganizationMaxLength
+                ? trimmed
+                : trimmed[..UserProfileLimits.OrganizationMaxLength];
+        }
+
+        return new ClaimFields(displayName, email, phone, organization);
+    }
+
+    private static UserProfile NewClaimProfile(string ownerObjectId, ClaimFields incoming)
+    {
+        var now = DateTime.UtcNow;
+        return new UserProfile
+        {
+            OwnerObjectId = ownerObjectId,
+            DisplayName = incoming.DisplayName ?? string.Empty,
+            Email = incoming.Email,
+            Phone = incoming.Phone ?? string.Empty,
+            Organization = incoming.Organization,
+            DisplayNameSource = ProfileFieldSource.Claim,
+            PhoneSource = ProfileFieldSource.Claim,
+            OrganizationSource = ProfileFieldSource.Claim,
+            CreatedUtc = now,
+            UpdatedUtc = now
+        };
+    }
+
+    /// <summary>
+    /// Copies usable claim values onto claim-sourced fields. An empty claim does not
+    /// clear a value already stored. Profile-sourced fields, and null sources on
+    /// older rows, are not overwritten. A blank organization is still filled once,
+    /// matching the previous sign-in behavior.
+    /// </summary>
+    private static bool ApplyClaimRefresh(UserProfile profile, ClaimFields incoming)
+    {
+        var dirty = false;
+        if (!string.IsNullOrWhiteSpace(incoming.Email)
+            && !string.Equals(profile.Email, incoming.Email, StringComparison.Ordinal))
+        {
+            profile.Email = incoming.Email;
+            dirty = true;
+        }
+
+        if (IsClaimSource(profile.DisplayNameSource) && incoming.DisplayName is not null
+            && !string.Equals(profile.DisplayName, incoming.DisplayName, StringComparison.Ordinal))
+        {
+            profile.DisplayName = incoming.DisplayName;
+            profile.DisplayNameSource = ProfileFieldSource.Claim;
+            dirty = true;
+        }
+
+        if (IsClaimSource(profile.PhoneSource) && incoming.Phone is not null
+            && !string.Equals(profile.Phone, incoming.Phone, StringComparison.Ordinal))
+        {
+            profile.Phone = incoming.Phone;
+            profile.PhoneSource = ProfileFieldSource.Claim;
+            dirty = true;
+        }
+        else if (!IsClaimSource(profile.PhoneSource)
+            && !UsPhone.TryNormalize(profile.Phone, out _)
+            && incoming.Phone is not null)
+        {
+            profile.Phone = incoming.Phone;
+            dirty = true;
+        }
+
+        if (IsClaimSource(profile.OrganizationSource)
+            && incoming.Organization is not null
+            && !string.Equals(profile.Organization, incoming.Organization, StringComparison.Ordinal))
+        {
+            profile.Organization = incoming.Organization;
+            profile.OrganizationSource = ProfileFieldSource.Claim;
+            dirty = true;
+        }
+        else if (string.IsNullOrWhiteSpace(profile.Organization) && incoming.Organization is not null)
+        {
+            profile.Organization = incoming.Organization;
+            if (IsClaimSource(profile.OrganizationSource) || string.IsNullOrEmpty(profile.OrganizationSource))
+            {
+                profile.OrganizationSource = ProfileFieldSource.Claim;
+            }
+
+            dirty = true;
+        }
+
+        return dirty;
+    }
+
+    private static bool IsClaimSource(string? source)
+    {
+        return string.Equals(source, ProfileFieldSource.Claim, StringComparison.Ordinal);
+    }
+
+    private readonly record struct ClaimFields(string? DisplayName, string Email, string? Phone, string? Organization);
+
     private string ExtensionsAppId
     {
         get
@@ -361,17 +715,58 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
     }
 
+    /// <summary>
+    /// A non-duplicate schema failure leaves the exclusive-lock batch unready.
+    /// Remember it for the process and try again no more than every five minutes.
+    /// A duplicate object id is handled inside <see cref="UserProfileSchema.EnsureAsync"/> and does not land here.
+    /// </summary>
+    private static readonly TimeSpan StoreFailureBackoff = TimeSpan.FromMinutes(5);
+
+    private static readonly StoreAttemptState ProcessStoreAttempt = new();
+
+    internal static readonly AsyncLocal<StoreAttemptState?> StoreAttemptForTests = new();
+
+    private static StoreAttemptState StoreAttempt => StoreAttemptForTests.Value ?? ProcessStoreAttempt;
+
+    private static DateTime StoreUtcNow() => StoreAttempt.UtcNow?.Invoke() ?? DateTime.UtcNow;
+
+    internal static void ResetStoreFailureForTests() => StoreAttemptForTests.Value = null;
+
     private async Task EnsureStoreAsync(CancellationToken ct)
     {
+        var attempt = StoreAttempt;
+        if (attempt.IsBlocked(StoreUtcNow()))
+        {
+            throw new InvalidOperationException("The profile store is unavailable.");
+        }
+
         try
         {
-            await UserProfileSchema.EnsureAsync(db, ct);
+            if (await UserProfileSchema.EnsureAsync(db, logger, ct))
+            {
+                attempt.Clear();
+            }
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Unable to prepare the user profile table.");
+            attempt.RememberFailure(StoreUtcNow(), StoreFailureBackoff);
+            LogFailure(LogLevel.Error, ex, "Unable to prepare the user profile table.");
             throw new InvalidOperationException("The profile store is unavailable.", ex);
         }
+    }
+
+    internal sealed class StoreAttemptState
+    {
+        private long retryAfterTicks;
+        internal Func<DateTime>? UtcNow { get; set; }
+        internal long RetryAfterTicks => Interlocked.Read(ref retryAfterTicks);
+
+        internal bool IsBlocked(DateTime utcNow) => RetryAfterTicks > utcNow.Ticks;
+
+        internal void RememberFailure(DateTime utcNow, TimeSpan backoff) =>
+            Interlocked.Exchange(ref retryAfterTicks, utcNow.Add(backoff).Ticks);
+
+        internal void Clear() => Interlocked.Exchange(ref retryAfterTicks, 0);
     }
 
     private static bool OwnsProfile(string callerId, string? requestedOwnerObjectId)
@@ -409,8 +804,9 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         bool phoneNeedsCorrection = false)
     {
         var tokenName = user.GetDisplayName();
-        var displayName = saved is not null && !string.IsNullOrWhiteSpace(saved.DisplayName)
-            ? saved.DisplayName.Trim()
+        var hasSavedDisplayName = HasProfileDisplayName(saved);
+        var displayName = hasSavedDisplayName
+            ? saved!.DisplayName.Trim()
             : IsPlaceholderDisplayName(tokenName) ? string.Empty : tokenName!.Trim();
 
         var email = ResolveEmail(user, saved);
@@ -419,7 +815,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
             user.GetExternalObjectId(),
             displayName,
             email,
-            saved is not null && !string.IsNullOrWhiteSpace(saved.DisplayName),
+            hasSavedDisplayName,
             phone,
             organization,
             phoneNeedsCorrection);
