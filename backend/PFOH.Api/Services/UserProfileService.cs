@@ -105,9 +105,9 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex)
+        catch (DbUpdateException)
         {
-            logger.LogWarning(ex, "Retrying profile save for {OwnerObjectId} after a write conflict.", callerId);
+            logger.LogWarning("Profile save hit a write conflict and will be retried.");
             db.ChangeTracker.Clear();
             profile = await db.UserProfiles.FirstOrDefaultAsync(item => item.OwnerObjectId == callerId, ct);
             if (profile is null)
@@ -279,9 +279,9 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            logger.LogWarning(ex, "Phone or organization from the sign-in token could not be saved for {OwnerObjectId}.", saved.OwnerObjectId);
+            logger.LogWarning("Phone or organization from the sign-in token could not be saved.");
         }
     }
 

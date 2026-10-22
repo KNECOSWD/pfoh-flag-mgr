@@ -35,6 +35,9 @@ jobs:
       - name: Check the content to footer gap
         run: node --test frontend/scripts/check-content-footer-gap.mjs
 
+      - name: Check the footer X link
+        run: node --test frontend/scripts/check-footer-x.mjs
+
       - name: Check duplicate review
         run: node --test frontend/scripts/check-duplicate-review.mjs
 

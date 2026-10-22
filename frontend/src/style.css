@@ -11,6 +11,9 @@
     rgba(6, 20, 48, 0.80) 70%,
     rgba(45, 8, 16, 0.74) 100%
   );
+  /* 2.75rem is 44px at the default 16px root, the social touch target. */
+  --footer-social-size: 2.75rem;
+  --footer-social-icon-size: 1.05rem;
 }
 
 * {
@@ -7744,6 +7747,7 @@ img.ownedFlagImage {
 
 .footerSocials {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.65rem;
 }
 
@@ -7751,10 +7755,19 @@ img.ownedFlagImage {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
+  min-width: var(--footer-social-size);
+  min-height: var(--footer-social-size);
   border: 1px solid rgba(23, 59, 115, 0.18);
   border-radius: 999px;
   font-size: 1.05rem;
   font-weight: 900;
+}
+
+.footerSocials a svg {
+  width: var(--footer-social-icon-size);
+  height: var(--footer-social-icon-size);
+  display: block;
 }
 
 .footerBrand {
@@ -8361,8 +8374,8 @@ main {
 }
 
 .footerSocials a {
-  width: 2.2rem !important;
-  height: 2.2rem !important;
+  width: var(--footer-social-size) !important;
+  height: var(--footer-social-size) !important;
 }
 
 .footerBrand img {
@@ -8671,8 +8684,8 @@ main > .pageBody > .adminSectionStack:has(.flagPositionManager.adminStandalonePa
   }
 
   .footerSocials a {
-    width: 2.35rem !important;
-    height: 2.35rem !important;
+    width: var(--footer-social-size) !important;
+    height: var(--footer-social-size) !important;
   }
 
   .footerBrand {
