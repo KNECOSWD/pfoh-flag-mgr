@@ -7667,6 +7667,8 @@ img.ownedFlagImage {
    columns share a 3-column grid: headings on the first row, and the last
    Explore link, Built by, and Contact Us on one bottom line. */
 footer.appFooter.footerNavy {
+  /* Space between the Built by row and the version. The version hangs in the footer padding. */
+  --footer-version-gap: 0.25rem;
   line-height: 1.25;
   flex-shrink: 0;
   width: 100vw;
@@ -7674,7 +7676,9 @@ footer.appFooter.footerNavy {
   margin-bottom: 0;
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
-  padding: 0;
+  /* Phone header content box: 1rem on the left, 4.5rem on the right so the brand clears the menu button. */
+  padding-block: 0;
+  padding-inline: 1rem 4.5rem;
   border: 0;
   overflow: clip;
   color: #fff;
@@ -7690,8 +7694,8 @@ footer.appFooter.footerNavy .appFooterInner {
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
   justify-items: stretch;
-  width: min(100% - 2rem, 34rem);
-  margin: 0 auto;
+  width: 100%;
+  margin: 0;
   gap: 1rem;
   padding-block: var(--footer-padding-block);
 }
@@ -7824,7 +7828,7 @@ footer.appFooter.footerNavy .footerCredit {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0;
+  gap: var(--footer-version-gap);
   color: rgba(255, 255, 255, 0.8);
 }
 
@@ -7856,17 +7860,19 @@ footer.appFooter.footerNavy .appVersionStamp {
   padding: 0;
   color: var(--footer-muted);
   font-size: var(--footer-version-size);
+  letter-spacing: normal;
   text-align: center;
 }
 
 @media (min-width: 761px) {
   footer.appFooter.footerNavy {
-    padding-inline: clamp(1rem, (100vw - 73.75rem) / 2, 24rem);
+    /* header.hero uses the clamp. .heroNav adds 0.7rem of inline padding, which is where the nav links start. */
+    padding-inline: calc(clamp(1rem, (100vw - 73.75rem) / 2, 24rem) + 0.7rem);
   }
 
   footer.appFooter.footerNavy .appFooterInner {
     grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-rows: auto minmax(0, 0);
     align-content: start;
     align-items: start;
     width: 100%;
@@ -7890,25 +7896,16 @@ footer.appFooter.footerNavy .appVersionStamp {
 
   footer.appFooter.footerNavy .footerExplore {
     grid-column: 1;
-    grid-row: 1 / -1;
-    align-self: stretch;
-    display: grid;
-    grid-template-rows: subgrid;
-    gap: 0;
-    align-items: start;
-    justify-items: start;
-  }
-
-  footer.appFooter.footerNavy .footerExploreMain {
-    grid-row: 1 / span 2;
+    grid-row: 1;
+    align-self: start;
+    display: flex;
+    flex-direction: column;
     align-items: flex-start;
     gap: 0.48rem;
   }
 
-  footer.appFooter.footerNavy .footerExplore > a {
-    grid-row: 3;
-    align-self: end;
-    margin-top: auto;
+  footer.appFooter.footerNavy .footerExploreMain {
+    display: contents;
   }
 
   footer.appFooter.footerNavy .footerLoop {
@@ -7925,7 +7922,7 @@ footer.appFooter.footerNavy .appVersionStamp {
 
   footer.appFooter.footerNavy .footerContact {
     grid-column: 3;
-    grid-row: 3;
+    grid-row: 1;
     align-self: end;
     justify-self: end;
     display: flex;
@@ -7939,22 +7936,34 @@ footer.appFooter.footerNavy .appVersionStamp {
   }
 
   footer.appFooter.footerNavy .footerCredit {
-    grid-column: 2;
-    grid-row: 3 / span 2;
-    display: grid;
-    grid-template-rows: subgrid;
-    align-items: end;
-    justify-items: center;
-    justify-self: center;
-    gap: 0;
+    display: contents;
   }
 
   footer.appFooter.footerNavy .footerCreditBrand {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: end;
+    justify-self: center;
     align-items: flex-end;
   }
 
   footer.appFooter.footerNavy .appVersionStamp {
+    display: flex;
+    flex-direction: column;
+    gap: var(--footer-version-gap);
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: center;
     align-self: start;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  /* The zero-height row keeps this gap in the footer padding, under the Built by line. */
+  footer.appFooter.footerNavy .appVersionStamp::before {
+    content: "";
+    flex: 0 0 0;
+    height: 0;
   }
 }
 
@@ -7994,10 +8003,15 @@ html.flagMapKiosk footer.appFooter.footerNavy .footerCreditBrand {
 }
 
 html.flagMapKiosk footer.appFooter.footerNavy .appVersionStamp {
+  display: block;
   margin: 0;
   padding: 8px 14px 10px;
   color: rgba(243, 226, 167, 0.82);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+html.flagMapKiosk footer.appFooter.footerNavy .appVersionStamp::before {
+  content: none;
 }
 
 html.isMapFullscreen .appFooter {
