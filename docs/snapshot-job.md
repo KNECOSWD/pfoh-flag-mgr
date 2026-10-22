@@ -17,7 +17,7 @@ A WebJob on the website would run as that site. A user-assigned identity attache
 
 The function is a separate app on the existing Basic B1 plan (`asp-pfoh-flags-prod` in `infra/azure-cli-setup.sh`). The website is unchanged and does not receive this identity. The plan is already paid and already has Always On, so the nightly run adds no plan charge. A Consumption plan would also stay inside the free grant (1 million executions and 400,000 GB-s a month, from the Azure Functions pricing page) but it is a second plan and a cold start. Sharing the existing plan is the lower incremental cost and still isolates the identity.
 
-Storage is the incremental cost. Two Standard LRS accounts (Hot) are defined: one for the function host, one for the report container. Azure Blob Storage Hot LRS list price is about $0.018 per GB-month in East US, and write transactions are about $0.05 per 10,000. The JSON is small and the job writes two blobs a night. Expect well under $0.20 a month for both accounts. Confirm both figures on the Azure pricing calculator before the first deploy. No second App Service plan is included in that estimate.
+Storage is the incremental cost. Two Standard LRS accounts (Hot) are defined: one for the function host, one for the report container. Azure Blob Storage Hot LRS list price is about $0.018 per GB-month in East US, and write transactions are about $0.05 per 10,000. The JSON is small and the job writes two blobs a night. Expect well under $0.20 a month for both accounts. Key Vault Standard has no base monthly fee. Secret operations are about $0.03 per 10,000 transactions on the Key Vault pricing page, so one certificate read a night is well under $0.01. A self-signed certificate has no certificate-authority charge. Confirm the figures on the Azure pricing calculator before the first deploy. No second App Service plan is included in that estimate.
 
 ## Schedule
 
@@ -29,9 +29,9 @@ There is no HTTP trigger. A manual run uses the platform admin endpoint and the 
 
 Set the resource group and names you already use. Do not paste keys, certificates, or connection strings into the repository, the workflow, or a log.
 
-1. Create the Graph app registration in the External ID tenant `pfohflags.onmicrosoft.com` (`77f89427-b4a7-43ed-92fc-3eb5bd63d0f1`). Name it `pfoh-snapshot-graph`. Leave it without a client secret and without a certificate. Its only credential is the federated identity created in step 4.
+1. Create the Graph app registration in the External ID tenant `pfohflags.onmicrosoft.com` (`77f89427-b4a7-43ed-92fc-3eb5bd63d0f1`). Name it `pfoh-snapshot-graph`. The app is single-tenant. Do not create a client secret. Do not add a federated credential. Its credential is the Key Vault certificate from step 4.
 
-2. Note the app's client id. You need it as `graphClientId`. You cannot finish step 4 until step 3 has produced the job identity's principal id, so deploy the identity first with `graphClientId` still empty, then repeat the deploy after step 4.
+2. Note the app's client id. You need it as `graphClientId` on the step 3 deploy.
 
 3. Deploy `infra/snapshot.bicep` from the resource group. This is the step that creates resources, and it is not run by CI.
 
@@ -49,26 +49,68 @@ Set the resource group and names you already use. Do not paste keys, certificate
    - A lifecycle rule that deletes blobs under `pfoh-reports/` `snapshotRetentionDays` after they are written. The default is 30 days. Change the parameter and deploy again to change it. The function does not delete blobs itself.
    - A separate host storage account, also with shared key access off. The function runtime needs blob, queue, and table data roles on that account. Those roles are on the host account resource, not on the resource group or the subscription, and not on the report account.
    - Storage Blob Data Contributor for `id-pfoh-snapshot` on the `pfoh-reports` container only.
+   - Key Vault, Standard SKU, RBAC authorization, soft delete, and purge protection. `publicNetworkAccess` is `Enabled`. That is the standard default for a function that is not in a virtual network, so a private endpoint is not used. The only data-plane role in this file is Key Vault Secrets User for `id-pfoh-snapshot` on the vault. The function reads the certificate private key through the secret endpoint. This file does not grant an admin a standing certificate role.
    - Function app `func-pfoh-snapshot` on the existing plan, user-assigned identity only, HTTPS only, TLS 1.2.
 
-   Read `jobIdentityPrincipalId` and `reportsContainerId` from the deployment outputs.
+   Read `jobIdentityPrincipalId`, `reportsContainerId`, `keyVaultName`, and `keyVaultUri` from the deployment outputs.
 
-4. Add the federated credential on `pfoh-snapshot-graph`. The subject is the job identity's principal id from step 3, not its client id. The audience is `api://AzureADTokenExchange`. The issuer is the Microsoft Entra tenant that holds the identity (the Azure subscription tenant), not the External ID tenant.
+4. Create the Graph certificate in that Key Vault. The private key stays in the vault. Do not download it, and do not copy it to the box, the repository, or a log.
+
+   Assign Key Vault Certificates Officer to the admin for this step only. `<vault-id>` is the vault resource id. Remove the assignment at the end of the step. It is not a standing grant.
+
+   ```bash
+   az role assignment create \
+     --assignee-object-id <admin-object-id> \
+     --assignee-principal-type User \
+     --role "Key Vault Certificates Officer" \
+     --scope <vault-id>
+   az keyvault certificate contact add \
+     --vault-name <keyVaultName> \
+     --email <admin-email> \
+     --name <admin-name>
+   ```
+
+   Write this policy to a file outside the repository, then create the certificate. Validity is 12 months. At 80 percent of that lifetime the vault renews the certificate and emails the contacts.
 
    ```json
    {
-     "name": "pfoh-snapshot-job",
-     "issuer": "https://login.microsoftonline.com/<azure-tenant-id>/v2.0",
-     "subject": "<jobIdentityPrincipalId>",
-     "audiences": ["api://AzureADTokenExchange"]
+     "issuerParameters": { "name": "Self" },
+     "keyProperties": { "exportable": true, "keySize": 2048, "keyType": "RSA", "reuseKey": false },
+     "secretProperties": { "contentType": "application/x-pkcs12" },
+     "x509CertificateProperties": { "subject": "CN=pfoh-snapshot-graph", "validityInMonths": 12 },
+     "lifetimeActions": [
+       { "trigger": { "lifetimePercentage": 80 }, "action": { "actionType": "AutoRenew" } },
+       { "trigger": { "lifetimePercentage": 80 }, "action": { "actionType": "EmailContacts" } }
+     ]
    }
    ```
 
    ```bash
-   az ad app federated-credential create --id <graph-app-client-id> --parameters federated.json
+   az keyvault certificate create \
+     --vault-name <keyVaultName> \
+     --name pfoh-snapshot-graph \
+     --policy @graph-cert-policy.json
+   az keyvault certificate download \
+     --vault-name <keyVaultName> \
+     --name pfoh-snapshot-graph \
+     --encoding DER \
+     --file pfoh-snapshot-graph.cer
+   az ad app credential reset \
+     --id <graph-app-client-id> \
+     --cert @pfoh-snapshot-graph.cer \
+     --append
+   rm -f pfoh-snapshot-graph.cer graph-cert-policy.json
+   az role assignment delete \
+     --assignee-object-id <admin-object-id> \
+     --role "Key Vault Certificates Officer" \
+     --scope <vault-id>
    ```
 
-   Deploy the Bicep again with `graphClientId` set to that app's client id so the function can request tokens.
+   The download is the public certificate. The private key never leaves Key Vault. Delete the public file after the upload. Do not commit it.
+
+   Renewal is the vault policy above. After it renews, or when you rotate early, assign Key Vault Certificates Officer again, download the new public certificate, and upload it with `az ad app credential reset --id <graph-app-client-id> --cert @pfoh-snapshot-graph.cer --append`. The next snapshot run loads the latest secret version. After that run succeeds, remove the previous certificate credential from the app, delete the public file, and remove the Certificates Officer assignment.
+
+   A live token test against the External ID tenant is required before merge. That procedure is held separately and is not in this repository.
 
 5. Grant application permissions and admin consent in tenant `77f89427-b4a7-43ed-92fc-3eb5bd63d0f1`. Do it in that tenant's portal or Graph, not from this repository.
 

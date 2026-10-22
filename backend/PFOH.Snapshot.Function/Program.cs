@@ -14,6 +14,8 @@ var host = new HostBuilder()
             "Snapshot:SqlConnectionString",
             "Snapshot:GraphTenantId",
             "Snapshot:GraphClientId",
+            "Snapshot:GraphCertificateName",
+            "Snapshot:KeyVaultUri",
             "Snapshot:ManagedIdentityClientId",
             "Snapshot:StorageAccountName"
         };
@@ -38,9 +40,15 @@ var host = new HostBuilder()
         var http = new HttpClient();
         var graphTenantId = configuration["Snapshot:GraphTenantId"]!;
         var graphClientId = configuration["Snapshot:GraphClientId"]!;
+        var graphCredentials = GraphCertificateCredentialSource.Create(
+            new Uri(configuration["Snapshot:KeyVaultUri"]!),
+            credential,
+            configuration["Snapshot:GraphCertificateName"]!,
+            graphTenantId,
+            graphClientId);
         var sqlConnectionString = configuration["Snapshot:SqlConnectionString"]!;
         services.AddSingleton<IUserTableSource>(_ => new SqlUserTableSource(sqlConnectionString));
-        services.AddSingleton<IDirectorySource>(_ => new GraphDirectorySource(credential, graphTenantId, graphClientId, http));
+        services.AddSingleton<IDirectorySource>(_ => new GraphDirectorySource(graphCredentials, http));
         services.AddSingleton<ISnapshotSink>(_ => new BlobSnapshotSink(container));
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<SnapshotJob>();

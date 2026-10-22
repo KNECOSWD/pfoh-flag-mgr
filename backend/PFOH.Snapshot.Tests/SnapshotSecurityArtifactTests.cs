@@ -24,6 +24,14 @@ public class SnapshotSecurityArtifactTests
         Assert.Contains("basicPublishingCredentialsPolicies", bicep, StringComparison.Ordinal);
         Assert.Equal(2, CountOf(bicep, "name: 'scm'") + CountOf(bicep, "name: 'ftp'"));
         Assert.Contains("allow: false", bicep, StringComparison.Ordinal);
+        Assert.Contains("enableRbacAuthorization: true", bicep, StringComparison.Ordinal);
+        Assert.Contains("enableSoftDelete: true", bicep, StringComparison.Ordinal);
+        Assert.Contains("enablePurgeProtection: true", bicep, StringComparison.Ordinal);
+        Assert.Contains("name: 'standard'", bicep, StringComparison.Ordinal);
+        Assert.Contains("publicNetworkAccess: 'Enabled'", bicep, StringComparison.Ordinal);
+        Assert.Contains("4633458b-17de-408a-b874-0445c86b69e6", bicep, StringComparison.Ordinal);
+        Assert.Contains("scope: vault", bicep, StringComparison.Ordinal);
+        Assert.DoesNotContain("a4417e6f-fecd-4de8-b567-7b0420556985", bicep, StringComparison.Ordinal);
         Assert.DoesNotContain("listKeys", bicep, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("password", bicep, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("sas", bicep, StringComparison.OrdinalIgnoreCase);
@@ -39,7 +47,10 @@ public class SnapshotSecurityArtifactTests
         Assert.DoesNotContain("HttpTrigger", source, StringComparison.Ordinal);
         var program = File.ReadAllText(RepoFile("backend", "PFOH.Snapshot.Function", "Program.cs"));
         Assert.DoesNotContain("HttpTrigger", program, StringComparison.Ordinal);
-        Assert.Contains("api://AzureADTokenExchange", File.ReadAllText(RepoFile("backend", "PFOH.Snapshot", "GraphDirectorySource.cs")), StringComparison.Ordinal);
+        var graph = File.ReadAllText(RepoFile("backend", "PFOH.Snapshot", "GraphDirectorySource.cs"));
+        Assert.Contains("https://graph.microsoft.com/.default", graph, StringComparison.Ordinal);
+        Assert.DoesNotContain("AzureADTokenExchange", graph, StringComparison.Ordinal);
+        Assert.Contains("ClientCertificateCredential", File.ReadAllText(RepoFile("backend", "PFOH.Snapshot", "GraphCertificateCredential.cs")), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -66,7 +77,13 @@ public class SnapshotSecurityArtifactTests
         Assert.Contains("chmod 600", runbook, StringComparison.Ordinal);
         Assert.Contains("Cloud Shell", runbook, StringComparison.Ordinal);
         Assert.Contains("pfoh-snapshot", runbook, StringComparison.Ordinal);
-        Assert.Contains("api://AzureADTokenExchange", runbook, StringComparison.Ordinal);
+        Assert.DoesNotContain("AzureADTokenExchange", runbook, StringComparison.Ordinal);
+        Assert.Contains("az keyvault certificate create", runbook, StringComparison.Ordinal);
+        Assert.Contains("validityInMonths", runbook, StringComparison.Ordinal);
+        Assert.Contains("lifetimePercentage", runbook, StringComparison.Ordinal);
+        Assert.Contains("EmailContacts", runbook, StringComparison.Ordinal);
+        Assert.Contains("az ad app credential reset", runbook, StringComparison.Ordinal);
+        Assert.Contains("publicNetworkAccess", runbook, StringComparison.Ordinal);
         Assert.Contains("AuditLog.Read.All", runbook, StringComparison.Ordinal);
         Assert.Contains("User.Read.All", runbook, StringComparison.Ordinal);
         Assert.Contains("77f89427-b4a7-43ed-92fc-3eb5bd63d0f1", runbook, StringComparison.Ordinal);

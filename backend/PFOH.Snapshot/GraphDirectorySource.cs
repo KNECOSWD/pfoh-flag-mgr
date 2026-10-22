@@ -1,7 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using Azure.Core;
-using Azure.Identity;
 
 namespace PFOH.Snapshot;
 
@@ -9,28 +8,31 @@ namespace PFOH.Snapshot;
 /// Reads directory users with the allow-listed $select. signInActivity is a second request.
 /// Tokens are not logged.
 /// </summary>
-public sealed class GraphDirectorySource(TokenCredential credential, string graphTenantId, string graphClientId, HttpClient http) : IDirectorySource
+public sealed class GraphDirectorySource(IGraphCredentialSource credentials, HttpClient http) : IDirectorySource
 {
     public async Task<IReadOnlyList<DirectoryUserRecord>> ReadAsync(CancellationToken ct)
     {
-        var graph = new ClientAssertionCredential(
-            graphTenantId,
-            graphClientId,
-            async cancellation =>
-            {
-                var exchanged = await credential.GetTokenAsync(
-                    new TokenRequestContext(["api://AzureADTokenExchange"]),
-                    cancellation);
-                return exchanged.Token;
-            });
-        var token = await graph.GetTokenAsync(new TokenRequestContext(["https://graph.microsoft.com/.default"]), ct);
+        var credential = await credentials.GetAsync(ct);
+        try
+        {
+            var token = await credential.GetTokenAsync(new TokenRequestContext(["https://graph.microsoft.com/.default"]), ct);
+            return await ReadUsersAsync(token.Token, ct);
+        }
+        finally
+        {
+            credentials.ReleaseAfterRun();
+        }
+    }
+
+    private async Task<IReadOnlyList<DirectoryUserRecord>> ReadUsersAsync(string accessToken, CancellationToken ct)
+    {
         var users = await GetPagesAsync(
             "https://graph.microsoft.com/v1.0/users?$select=" + Uri.EscapeDataString(SnapshotFieldSpec.DirectoryUserSelect),
-            token.Token,
+            accessToken,
             ct);
         var activity = await GetPagesAsync(
             "https://graph.microsoft.com/v1.0/users?$select=" + Uri.EscapeDataString(SnapshotFieldSpec.SignInActivitySelect),
-            token.Token,
+            accessToken,
             ct);
         var activityById = new Dictionary<string, DirectorySignInRecord?>(StringComparer.Ordinal);
         foreach (var element in activity)

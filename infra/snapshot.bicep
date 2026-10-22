@@ -31,6 +31,7 @@ var blobReaderRole = '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
 var blobOwnerRole = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
 var queueContributorRole = '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
 var tableContributorRole = '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
+var keyVaultSecretsUserRole = '4633458b-17de-408a-b874-0445c86b69e6'
 
 resource plan 'Microsoft.Web/serverfarms@2023-12-01' existing = {
   name: appServicePlanName
@@ -162,6 +163,33 @@ resource reportsContributor 'Microsoft.Authorization/roleAssignments@2022-04-01'
   }
 }
 
+resource vault 'Microsoft.KeyVault/vaults@2023-02-01' = {
+  name: 'kv-pfoh-${take(uniqueString(resourceGroup().id), 12)}'
+  location: location
+  properties: {
+    tenantId: subscription().tenantId
+    sku: {
+      family: 'A'
+      name: 'standard'
+    }
+    enableRbacAuthorization: true
+    enableSoftDelete: true
+    softDeleteRetentionInDays: 90
+    enablePurgeProtection: true
+    publicNetworkAccess: 'Enabled'
+  }
+}
+
+resource vaultSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(vault.id, jobIdentity.id, keyVaultSecretsUserRole)
+  scope: vault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', keyVaultSecretsUserRole)
+    principalId: jobIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 resource reportsReader 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(readerPrincipalId)) {
   name: guid(reportsContainer.id, readerPrincipalId, blobReaderRole)
   scope: reportsContainer
@@ -229,6 +257,14 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           value: graphClientId
         }
         {
+          name: 'Snapshot__GraphCertificateName'
+          value: 'pfoh-snapshot-graph'
+        }
+        {
+          name: 'Snapshot__KeyVaultUri'
+          value: vault.properties.vaultUri
+        }
+        {
           name: 'Snapshot__SqlConnectionString'
           value: 'Server=tcp:${sqlServerName}.database.windows.net,1433;Database=${sqlDatabaseName};Authentication=Active Directory Managed Identity;User ID=${jobIdentity.properties.clientId};Encrypt=True;'
         }
@@ -266,3 +302,5 @@ output reportsAccountName string = reports.name
 output reportsContainerId string = reportsContainer.id
 output jobIdentityClientId string = jobIdentity.properties.clientId
 output jobIdentityPrincipalId string = jobIdentity.properties.principalId
+output keyVaultName string = vault.name
+output keyVaultUri string = vault.properties.vaultUri
