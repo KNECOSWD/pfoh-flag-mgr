@@ -1,0 +1,52 @@
+PFOH 3.1.1 telemetry ingestion tests
+Date: 2026-10-22
+
+$ dotnet test backend/PFOH.Api.Tests/PFOH.Api.Tests.csproj --configuration Release
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  97f825aa74f42f0ebf24dc9f8d9593980c2e0488
+  PFOH.Api -> /workspace/backend/PFOH.Api/bin/Release/net8.0/PFOH.Api.dll
+  97f825aa74f42f0ebf24dc9f8d9593980c2e0488
+  PFOH.Api.Tests -> /workspace/backend/PFOH.Api.Tests/bin/Release/net8.0/PFOH.Api.Tests.dll
+Test run for /workspace/backend/PFOH.Api.Tests/bin/Release/net8.0/PFOH.Api.Tests.dll (.NETCoreApp,Version=v8.0)
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:   246, Skipped:     0, Total:   246, Duration: 5 s - PFOH.Api.Tests.dll (net8.0)
+
+$ node --test frontend/scripts/check-version.mjs
+TAP version 13
+# Subtest: package.json matches the VERSION file
+ok 1 - package.json matches the VERSION file
+  ---
+  duration_ms: 0.987873
+  type: 'test'
+  ...
+# Subtest: the API assembly version is read from VERSION
+ok 2 - the API assembly version is read from VERSION
+  ---
+  duration_ms: 0.189561
+  type: 'test'
+  ...
+# Subtest: the footer stamps the shared version
+ok 3 - the footer stamps the shared version
+  ---
+  duration_ms: 1.024066
+  type: 'test'
+  ...
+# Subtest: the changelog records 1.0.0 through 3.1.1
+ok 4 - the changelog records 1.0.0 through 3.1.1
+  ---
+  duration_ms: 1.214971
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 52.167232
+
+Frontend CI script bundle and tsc --noEmit: passed (121 node tests, typecheck exit 0) in the same session before this file was written.

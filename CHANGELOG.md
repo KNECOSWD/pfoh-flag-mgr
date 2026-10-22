@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.1.1
+
+- Application Insights records less. Sampling stays on, at about 2 items a second, and that rate is an app setting. Exception reports are still kept, and so are failed requests and failed calls to SQL or another service. Fast successful SQL and HTTP calls are left out, health checks are not recorded, and SQL command text is not collected. Framework and database logs sent to Application Insights are warnings and errors.
+
+## 3.1.0
+
+- A signed-in request creates a `dbo.UserProfiles` row from the token when one does not exist yet, keyed by the Entra object id (`OwnerObjectId`, the `oid` claim). A second request for the same id updates that row instead of inserting another. Name, phone, and organization that were saved on the profile form are kept. Those three fields record whether the current value came from the token (`claim`) or the profile form (`profile`). Email stays the token email. The unique index on `OwnerObjectId` is added by the schema-only migration `AddUserProfileOwnerObjectIdUniqueIndex`.
+- Print history times use US Central time (`America/Chicago`). Daylight time is labeled CDT and standard time is labeled CST.
+- At a tablet width, Built by KNECO stays on one line. The footer columns wrap instead.
+- The header is sized by its content at the width where the tablet rules used to stop, so the bar does not jump there.
+- A nightly job writes a minimized database count and a directory snapshot to a private blob container. The code, Bicep, and runbook are in the repo. This change does not create Azure resources.
+
 ## 3.0.1
 
 - Page content keeps a gap above the footer on every page. The space is smaller on a phone and larger from a tablet up. The Flag Manager page no longer adds a second gap of its own.
