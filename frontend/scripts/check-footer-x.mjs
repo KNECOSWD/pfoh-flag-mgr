@@ -23,10 +23,9 @@ test("the shared footer links to Plano Flags of Honor on X", () => {
   assert.match(css, /--footer-social-size:\s*2\.75rem/);
   assert.match(css, /--footer-social-icon-size:\s*1\.05rem/);
   const widths = [...css.matchAll(/\.footerSocials a \{[^}]*?(?<![\w-])width:\s*([^;]+);/gs)];
-  assert.ok(widths.length >= 2, "phone and wider social sizes both set a width");
-  for (const width of widths) {
-    assert.equal(width[1].trim(), "var(--footer-social-size) !important");
-  }
+  assert.equal(widths.length, 1, "the social size is set once");
+  assert.equal(widths[0][1].trim(), "var(--footer-social-size)");
+  assert.doesNotMatch(widths[0][0], /!important/);
   const icon = css.match(/\.footerSocials a svg \{[^}]*\}/s);
   assert.ok(icon, "the X mark is sized with the icon token");
   assert.match(icon[0], /var\(--footer-social-icon-size\)/);

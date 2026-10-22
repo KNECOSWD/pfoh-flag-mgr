@@ -5092,19 +5092,21 @@ export default function App() {
       <footer className="appFooter footerNavy" aria-label="Plano Flags of Honor footer">
         <div className="appFooterInner">
           <div className="footerColumn footerExplore">
-            <h2>Explore</h2>
-            <a href="https://planoflagsofhonor.com/about-pfoh/" target="_blank" rel="noreferrer">
-              About Plano Flags of Honor
-            </a>
-            <a
-              href="/honor-a-hero"
-              onClick={(event) => {
-                event.preventDefault();
-                beginNomination();
-              }}
-            >
-              {publicCopy.submitHonoree}
-            </a>
+            <div className="footerExploreMain">
+              <h2>Explore</h2>
+              <a href="https://planoflagsofhonor.com/about-pfoh/" target="_blank" rel="noreferrer">
+                About Plano Flags of Honor
+              </a>
+              <a
+                href="/honor-a-hero"
+                onClick={(event) => {
+                  event.preventDefault();
+                  beginNomination();
+                }}
+              >
+                {publicCopy.submitHonoree}
+              </a>
+            </div>
             <a href="https://planoflagsofhonor.com/become-a-sponsor/" target="_blank" rel="noreferrer">
               Become a Sponsor
             </a>
@@ -5137,13 +5139,15 @@ export default function App() {
           </div>
 
           <div className="footerCredit">
-            <span>Built by</span>
-            <a href="https://www.kneco.com" target="_blank" rel="noreferrer" aria-label="KNECO, Inc. website">
-              <img src={knecoLogoWhite} width={216} height={46} alt="KNECO, Inc." />
-            </a>
+            <div className="footerCreditBrand">
+              <span>Built by</span>
+              <a href="https://www.kneco.com" target="_blank" rel="noreferrer" aria-label="KNECO, Inc. website">
+                <img src={knecoLogoWhite} width={216} height={46} alt="KNECO, Inc." />
+              </a>
+            </div>
+            <p className="appVersionStamp">Version {packageInfo.version}</p>
           </div>
         </div>
-        <p className="appVersionStamp">Version {packageInfo.version}</p>
       </footer>
     </main>
   );

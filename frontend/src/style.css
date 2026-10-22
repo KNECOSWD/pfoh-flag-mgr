@@ -14,6 +14,9 @@
   /* 2.75rem is 44px at the default 16px root, the social touch target. */
   --footer-social-size: 2.75rem;
   --footer-social-icon-size: 1.05rem;
+  --footer-padding-block: 1.25rem;
+  --footer-muted: rgba(255, 255, 255, 0.65);
+  --footer-version-size: 0.75rem;
 }
 
 * {
@@ -2656,9 +2659,6 @@ img {
   }
 }
 
-@media (max-width: 420px) {
-}
-
 
 /* Mobile fix: true circular info icon and shorter header */
 @media (max-width: 760px) {
@@ -2803,9 +2803,6 @@ img {
     padding-block: 0.5rem 0.45rem;
     background-position: center 44%;
   }
-}
-
-@media (max-width: 420px) {
 }
 
 
@@ -3570,9 +3567,6 @@ img.ownedFlagImage {
   background: #641515;
 }
 
-@media (max-width: 760px) {
-}
-
 
 /* Flag position honoree picker */
 .flagAssignmentPicker {
@@ -3651,9 +3645,6 @@ img.ownedFlagImage {
 .flagOpenOnlyToggle input {
   width: 1rem;
   height: 1rem;
-}
-
-@media (max-width: 900px) {
 }
 
 @media (max-width: 560px) {
@@ -4302,9 +4293,6 @@ img.ownedFlagImage {
   color: #53627a;
 }
 
-@media (max-width: 980px) {
-}
-
 @media (max-width: 620px) {
   .compactAdminStats {
     flex-wrap: nowrap;
@@ -4712,9 +4700,6 @@ img.ownedFlagImage {
 .adminPrintingCard > .sectionHeader {
   padding-bottom: 0.45rem;
   border-bottom: 1px solid #e4ebf5;
-}
-
-@media (max-width: 760px) {
 }
 
 
@@ -7678,226 +7663,348 @@ img.ownedFlagImage {
   min-width: 13rem;
 }
 
-/* Plano Flags of Honor app footer */
-.siteCredit {
-  display: none !important;
-}
-
-.appFooter {
+/* 3.0.0 footer. One mobile-first block. Phones stack. From 761px the
+   columns share a 3-column grid: headings on the first row, and the last
+   Explore link, Built by, and Contact Us on one bottom line. */
+footer.appFooter.footerNavy {
+  line-height: 1.25;
+  flex-shrink: 0;
   width: 100vw;
-  margin: 2.25rem calc(50% - 50vw) 0;
+  margin-top: auto;
+  margin-bottom: 0;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
   padding: 0;
-  border-top: 1px solid rgba(23, 59, 115, 0.10);
+  border: 0;
+  overflow: clip;
+  color: #fff;
   background:
-    linear-gradient(90deg, rgba(238, 243, 249, 0.96), rgba(231, 237, 244, 0.96)),
-    #e9eef4;
-  color: #0f326c;
-  overflow: hidden;
+    linear-gradient(90deg, rgba(3, 12, 30, 0.94) 0%, rgba(6, 20, 48, 0.91) 42%, rgba(6, 20, 48, 0.88) 100%),
+    #102f5f;
 }
 
-.appFooterInner {
+footer.appFooter.footerNavy .appFooterInner {
   position: relative;
-  width: min(1180px, calc(100% - 2rem));
+  z-index: 1;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  justify-items: stretch;
+  width: min(100% - 2rem, 34rem);
   margin: 0 auto;
-  padding: 4.5rem 0 2rem;
+  gap: 1rem;
+  padding-block: var(--footer-padding-block);
 }
 
-.appFooterInner::after {
+footer.appFooter.footerNavy .appFooterInner::after {
   content: "";
   position: absolute;
+  z-index: 0;
+  right: -14rem;
+  bottom: -11.5rem;
+  width: 40rem;
+  height: 14rem;
   pointer-events: none;
+  opacity: 0.12;
+  filter: invert(1);
   background:
     linear-gradient(30deg, transparent 0 18%, rgba(23, 59, 115, 0.14) 18% 19%, transparent 19% 38%, rgba(23, 59, 115, 0.14) 38% 39%, transparent 39% 58%, rgba(23, 59, 115, 0.14) 58% 59%, transparent 59%),
     linear-gradient(150deg, transparent 0 18%, rgba(23, 59, 115, 0.14) 18% 19%, transparent 19% 38%, rgba(23, 59, 115, 0.14) 38% 39%, transparent 39% 58%, rgba(23, 59, 115, 0.14) 58% 59%, transparent 59%);
   background-size: 9rem 5.2rem;
 }
 
-.footerColumn {
+footer.appFooter.footerNavy .footerColumn,
+footer.appFooter.footerNavy .footerContact,
+footer.appFooter.footerNavy .footerCredit {
   position: relative;
   z-index: 1;
+  min-width: 0;
+}
+
+footer.appFooter.footerNavy .footerColumn {
   display: grid;
   align-content: start;
+  justify-items: center;
+  gap: 0.6rem;
+  text-align: center;
 }
 
-.footerColumn h2 {
-  margin: 0 0 1rem;
-  color: #0f4fc1;
-  line-height: 1.1;
+footer.appFooter.footerNavy .footerColumn h2 {
+  margin: 0;
+  color: #ffe08a;
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  letter-spacing: 0.02em;
 }
 
-.footerColumn a,
-.footerContact a {
-  color: #092b65;
+footer.appFooter.footerNavy .footerExploreMain {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+footer.appFooter.footerNavy .footerColumn a,
+footer.appFooter.footerNavy .footerContact a {
+  color: #fff;
+  font-size: 0.92rem;
   font-weight: 650;
-  line-height: 1.25;
   text-decoration: none;
 }
 
-.footerColumn a:hover,
-.footerColumn a:focus-visible,
-.footerContact a:hover,
-.footerContact a:focus-visible {
-  color: #0f4fc1;
+footer.appFooter.footerNavy .footerColumn a:hover,
+footer.appFooter.footerNavy .footerContact a:hover {
+  color: #ffe08a;
   text-decoration: underline;
   text-underline-offset: 0.2rem;
 }
 
-.footerSocials {
+footer.appFooter.footerNavy .footerColumn a:focus-visible,
+footer.appFooter.footerNavy .footerContact a:focus-visible,
+footer.appFooter.footerNavy .footerCredit a:focus-visible {
+  outline: 3px solid #ffe08a;
+  outline-offset: 3px;
+}
+
+footer.appFooter.footerNavy .footerSocials {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.65rem;
+  justify-content: center;
+  gap: 0.55rem;
 }
 
-.footerSocials a {
+footer.appFooter.footerNavy .footerSocials a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
+  width: var(--footer-social-size);
+  height: var(--footer-social-size);
   min-width: var(--footer-social-size);
   min-height: var(--footer-social-size);
-  border: 1px solid rgba(23, 59, 115, 0.18);
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 999px;
-  font-size: 1.05rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(7, 26, 59, 0.07);
+  font-size: 0.92rem;
   font-weight: 900;
+  text-decoration: none;
 }
 
-.footerSocials a svg {
+footer.appFooter.footerNavy .footerSocials a:hover,
+footer.appFooter.footerNavy .footerSocials a:focus-visible {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+footer.appFooter.footerNavy .footerSocials a svg {
+  display: block;
   width: var(--footer-social-icon-size);
   height: var(--footer-social-icon-size);
-  display: block;
 }
 
-.footerBrand {
-  position: relative;
-  z-index: 1;
+footer.appFooter.footerNavy .footerContact {
+  text-align: center;
 }
 
-.footerBrand img {
-  max-width: 100%;
-  height: auto;
-  display: block;
-}
-
-.footerContact {
-  position: relative;
-  z-index: 1;
-}
-
-.footerCredit {
-  position: relative;
-  z-index: 1;
+footer.appFooter.footerNavy .footerContact a {
   display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  font-size: 0.92rem;
-}
-
-.footerCredit a {
-  display: inline-flex;
-}
-
-.footerCredit img {
-  height: auto;
-  display: block;
-}
-
-.appVersionStamp {
-  margin: 0.15rem 0 0.85rem;
-  padding: 0 1.25rem;
-  color: #8b97a8;
-  font-size: 0.75rem;
-  line-height: 1.2;
-}
-
-@media (max-width: 760px) {
-
-  .appFooterInner {
-    padding: 2.25rem 0 1.8rem;
-  }
-
-  .footerLoop {
-    justify-self: start;
-  }
-
-  .footerBrand,
-  .footerContact,
-  .footerCredit {
-    grid-column: auto;
-    grid-row: auto;
-    justify-self: start;
-  }
-
-  .footerColumn a,
-  .footerContact a {
-    font-size: 1rem;
-  }
-}
-
-@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
-  .appFooterInner {
-    width: calc(100% - 1.4rem);
-    padding: 2.25rem 0 1.4rem;
-  }
-}
-
-@media (min-width: 1100px) {
-}
-
-/* Move KNECO credit into a cleaner footer bottom rail. */
-.footerCredit {
-  color: #6f7e96;
-}
-
-@media (max-width: 760px) {
-
-  .footerCredit {
-    justify-self: stretch;
-  }
-}
-
-@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
-
-  .footerCredit {
-    justify-content: center;
-  }
-}
-
-.footerCredit {
-  width: auto !important;
   justify-content: center;
-  margin-top: 0 !important;
-  padding-top: 0 !important;
-  border-top: 0 !important;
+  min-block-size: var(--footer-social-size);
+  font-weight: 800;
 }
 
-.footerCredit img {
-  max-width: 100%;
+footer.appFooter.footerNavy .footerCredit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  color: rgba(255, 255, 255, 0.8);
 }
 
-@media (max-width: 760px) {
+footer.appFooter.footerNavy .footerCreditBrand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+}
 
-  .footerBrand,
-  .footerCredit,
-  .footerContact {
-    grid-column: auto !important;
-    grid-row: auto !important;
-    justify-self: start;
+footer.appFooter.footerNavy .footerCredit span {
+  font-size: 0.78rem;
+}
+
+footer.appFooter.footerNavy .footerCredit a {
+  display: inline-flex;
+  background: none;
+}
+
+footer.appFooter.footerNavy .footerCredit img {
+  display: block;
+  width: 6.75rem;
+  max-width: 6.75rem;
+  height: auto;
+}
+
+footer.appFooter.footerNavy .appVersionStamp {
+  margin: 0;
+  padding: 0;
+  color: var(--footer-muted);
+  font-size: var(--footer-version-size);
+  text-align: center;
+}
+
+@media (min-width: 761px) {
+  footer.appFooter.footerNavy {
+    padding-inline: clamp(1rem, (100vw - 73.75rem) / 2, 24rem);
   }
-}
 
-@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+  footer.appFooter.footerNavy .appFooterInner {
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    align-content: start;
+    align-items: start;
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    column-gap: 2rem;
+    row-gap: 0;
+    padding-block: var(--footer-padding-block);
+  }
 
-  .footerCredit {
+  footer.appFooter.footerNavy .footerColumn {
+    justify-items: start;
+    gap: 0.48rem;
+    text-align: start;
+  }
+
+  footer.appFooter.footerNavy .footerColumn h2 {
+    font-size: 0.9rem;
+    letter-spacing: 0.02em;
+  }
+
+  footer.appFooter.footerNavy .footerExplore {
+    grid-column: 1;
+    grid-row: 1 / -1;
+    align-self: stretch;
+    display: grid;
+    grid-template-rows: subgrid;
+    gap: 0;
+    align-items: start;
+    justify-items: start;
+  }
+
+  footer.appFooter.footerNavy .footerExploreMain {
+    grid-row: 1 / span 2;
+    align-items: flex-start;
+    gap: 0.48rem;
+  }
+
+  footer.appFooter.footerNavy .footerExplore > a {
+    grid-row: 3;
+    align-self: end;
+    margin-top: auto;
+  }
+
+  footer.appFooter.footerNavy .footerLoop {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    align-self: start;
+  }
+
+  footer.appFooter.footerNavy .footerSocials {
+    justify-content: flex-start;
+    gap: 0.65rem;
+  }
+
+  footer.appFooter.footerNavy .footerContact {
+    grid-column: 3;
+    grid-row: 3;
+    align-self: end;
+    justify-self: end;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    text-align: start;
+  }
+
+  footer.appFooter.footerNavy .footerContact a {
+    align-items: flex-end;
+  }
+
+  footer.appFooter.footerNavy .footerCredit {
+    grid-column: 2;
+    grid-row: 3 / span 2;
+    display: grid;
+    grid-template-rows: subgrid;
+    align-items: end;
+    justify-items: center;
     justify-self: center;
-    width: auto !important;
-    padding-top: 0 !important;
-    border-top: 0 !important;
+    gap: 0;
+  }
+
+  footer.appFooter.footerNavy .footerCreditBrand {
+    align-items: flex-end;
+  }
+
+  footer.appFooter.footerNavy .appVersionStamp {
+    align-self: start;
   }
 }
 
+html.flagMapKiosk footer.appFooter.footerNavy {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  width: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+  z-index: 40;
+  pointer-events: none;
+}
+
+html.flagMapKiosk footer.appFooter.footerNavy .appFooterInner {
+  display: flex;
+  width: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+}
+
+html.flagMapKiosk footer.appFooter.footerNavy .appFooterInner::after {
+  content: none;
+}
+
+html.flagMapKiosk footer.appFooter.footerNavy .footerExplore,
+html.flagMapKiosk footer.appFooter.footerNavy .footerLoop,
+html.flagMapKiosk footer.appFooter.footerNavy .footerContact,
+html.flagMapKiosk footer.appFooter.footerNavy .footerCreditBrand {
+  display: none;
+}
+
+html.flagMapKiosk footer.appFooter.footerNavy .appVersionStamp {
+  margin: 0;
+  padding: 8px 14px 10px;
+  color: rgba(243, 226, 167, 0.82);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+html.isMapFullscreen .appFooter {
+  display: none;
+}
+
+/* End footer */
 
 /* Full-width administrator alert banner */
 .adminAlertBanner {
@@ -7983,33 +8090,7 @@ img.ownedFlagImage {
   }
 }
 
-@media (min-width: 1100px) {
-}
-
 /* Style Contact Us as an intentional footer pill/button. */
-.footerContact a {
-  min-height: 2.35rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.45rem 0.9rem;
-  border: 1px solid rgba(23, 59, 115, 0.18);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.38);
-  color: #092b65;
-  box-shadow: 0 8px 18px rgba(7, 26, 59, 0.06);
-  font-size: 0.98rem;
-  font-weight: 850;
-  text-decoration: none;
-}
-
-.footerContact a:hover,
-.footerContact a:focus-visible {
-  border-color: #173b73;
-  background: #173b73;
-  color: #ffffff;
-  text-decoration: none;
-}
 
 @media (max-width: 760px) {
 
@@ -8159,21 +8240,6 @@ img.ownedFlagImage {
   margin-top: clamp(1.35rem, 4vh, 2.65rem) !important;
 }
 
-.footerSocials a {
-  border-color: rgba(23, 59, 115, 0.28) !important;
-  background: rgba(255, 255, 255, 0.46) !important;
-  color: #0f4fc1 !important;
-  box-shadow: 0 8px 18px rgba(7, 26, 59, 0.07);
-}
-
-.footerSocials a:hover,
-.footerSocials a:focus-visible {
-  border-color: #0f4fc1 !important;
-  background: #ffffff !important;
-  color: #092b65 !important;
-  transform: translateY(-1px);
-}
-
 @media (max-width: 760px) {
   .inlineHowItWorks {
     margin-top: 1rem !important;
@@ -8186,109 +8252,15 @@ img.ownedFlagImage {
   }
 }
 
-.appFooterInner {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-}
-
-.footerExplore {
-  grid-column: 1 / 2;
-  grid-row: 1 / span 2;
-}
-
-.footerLoop {
-  grid-column: 3 / 4 !important;
-  grid-row: 1 !important;
-  justify-self: end !important;
-  align-self: start;
-  text-align: left;
-}
-
-.footerBrand {
-  grid-column: 1 / 2 !important;
-  grid-row: 2 !important;
-  align-self: center;
-}
-
-.footerCredit {
-  grid-column: 2 / 3 !important;
-  grid-row: 2 !important;
-  justify-self: center;
-  align-self: start;
-}
-
-.footerContact {
-  grid-column: 3 / 4 !important;
-  grid-row: 2 !important;
-  justify-self: end;
-  align-self: start;
-}
-
-.appFooterInner::after {
-  right: -14rem !important;
-  width: 40rem !important;
-  height: 14rem !important;
-}
-
 @media (max-width: 760px) {
   main {
     min-height: 100svh;
-  }
-
-  .appFooterInner {
-    grid-template-rows: auto !important;
-  }
-
-  .footerExplore,
-  .footerLoop,
-  .footerBrand,
-  .footerCredit,
-  .footerContact {
-    grid-column: auto !important;
-    grid-row: auto !important;
-    justify-self: start !important;
-  }
-
-  .footerLoop {
-    text-align: left;
   }
 }
 
 @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
   main {
     min-height: 100svh;
-  }
-
-  .appFooterInner {
-    grid-template-columns: minmax(14rem, 1fr) minmax(9rem, auto) minmax(12rem, 0.75fr) !important;
-    grid-template-rows: auto auto !important;
-  }
-
-  .footerLoop {
-    grid-column: 3 / 4 !important;
-    grid-row: 1 !important;
-    justify-self: end !important;
-  }
-
-  .footerBrand {
-    grid-column: 1 / 2 !important;
-    grid-row: 2 !important;
-  }
-
-  .footerCredit {
-    grid-column: 2 / 3 !important;
-    grid-row: 2 !important;
-  }
-
-  .footerContact {
-    grid-column: 3 / 4 !important;
-    grid-row: 2 !important;
-  }
-
-  .footerColumn a,
-  .footerContact a {
-    font-size: 0.9rem !important;
   }
 }
 
@@ -8321,17 +8293,6 @@ main {
   background: #eef3f9;
 }
 
-.appFooter {
-  flex-shrink: 0;
-  margin-top: auto !important;
-  margin-bottom: 0 !important;
-  padding-bottom: 0 !important;
-}
-
-.appFooterInner {
-  margin-bottom: 0 !important;
-}
-
 /* The app footer owns the final page edge, so do not let later mobile safe-area/body padding create a visible strip. */
 @media (max-width: 760px) {
   body {
@@ -8350,50 +8311,6 @@ main {
   }
 }
 
-
-/* Compact footer, wider Flag Map workspace, and simplified admin panels */
-.appFooterInner {
-  min-height: 12.5rem !important;
-  gap: 0.95rem 2rem !important;
-  padding-top: 1.85rem !important;
-  padding-bottom: 0.95rem !important;
-}
-
-.footerColumn {
-  gap: 0.48rem !important;
-}
-
-.footerColumn h2 {
-  margin-bottom: 0.35rem !important;
-  font-size: 0.9rem !important;
-}
-
-.footerColumn a,
-.footerContact a {
-  font-size: 0.92rem !important;
-}
-
-.footerSocials a {
-  width: var(--footer-social-size) !important;
-  height: var(--footer-social-size) !important;
-}
-
-.footerBrand img {
-  width: min(17rem, 100%) !important;
-}
-
-.footerCredit img {
-  width: 6.1rem !important;
-}
-
-.footerCredit span {
-  font-size: 0.78rem !important;
-}
-
-.appFooterInner::after {
-  bottom: -11.5rem !important;
-  opacity: 0.20 !important;
-}
 
 /* Hide zero-value review summary noise and tighten empty review pages. */
 .adminReviewCard .adminCardSummary:empty {
@@ -8431,9 +8348,6 @@ main {
 }
 
 @media (max-width: 760px) {
-  .appFooterInner {
-    min-height: 0 !important;
-  }
 
   .adminPrintingCard .printCenterHeader {
     grid-template-columns: 1fr;
@@ -8442,19 +8356,6 @@ main {
   .adminPrintingCard .printActions {
     width: 100%;
     justify-content: stretch;
-  }
-}
-
-@media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
-  .appFooterInner {
-    min-height: 9.5rem !important;
-    gap: 0.65rem 1rem !important;
-    padding-top: 1rem !important;
-    padding-bottom: 0.75rem !important;
-  }
-
-  .footerBrand img {
-    width: 14.5rem !important;
   }
 }
 
@@ -8619,133 +8520,6 @@ main > .pageBody > .adminSectionStack:has(.flagPositionManager.adminStandalonePa
     border-radius: 0.55rem !important;
     background: rgba(255, 255, 255, 0.12) !important;
     box-shadow: inset 3px 0 0 #ffd56a !important;
-  }
-}
-
-
-/* Mobile footer polish */
-@media (max-width: 760px) {
-  .appFooter {
-    margin-top: auto !important;
-    background:
-      linear-gradient(180deg, #eaf1f8 0%, #e5edf6 100%),
-      #e5edf6 !important;
-  }
-
-  .appFooterInner {
-    width: min(100% - 2rem, 34rem) !important;
-    display: grid !important;
-    grid-template-columns: 1fr !important;
-    gap: 1.15rem !important;
-    padding-top: 1.35rem !important;
-    padding-bottom: 1.15rem !important;
-  }
-
-  .appFooterInner::after {
-    right: -10rem !important;
-    bottom: -8rem !important;
-    width: 28rem !important;
-    height: 12rem !important;
-    opacity: 0.16 !important;
-  }
-
-  .footerExplore,
-  .footerLoop,
-  .footerBrand,
-  .footerContact,
-  .footerCredit {
-    grid-column: auto !important;
-    grid-row: auto !important;
-    justify-self: stretch !important;
-  }
-
-  .footerColumn {
-    gap: 0.6rem !important;
-  }
-
-  .footerColumn h2 {
-    margin-bottom: 0.35rem !important;
-    font-size: 0.88rem !important;
-    letter-spacing: 0.03em !important;
-  }
-
-  .footerColumn a {
-    font-size: 0.98rem !important;
-    line-height: 1.2 !important;
-  }
-
-  .footerLoop {
-    padding-top: 0.85rem;
-    border-top: 1px solid rgba(15, 50, 108, 0.10);
-  }
-
-  .footerSocials {
-    gap: 0.55rem !important;
-  }
-
-  .footerSocials a {
-    width: var(--footer-social-size) !important;
-    height: var(--footer-social-size) !important;
-  }
-
-  .footerBrand {
-    padding-top: 0.85rem;
-    border-top: 1px solid rgba(15, 50, 108, 0.10);
-  }
-
-  .footerBrand img {
-    width: min(100%, 18.5rem) !important;
-  }
-
-  .footerContact {
-    margin-top: -0.6rem;
-    padding-top: 0;
-  }
-
-  .footerContact a {
-    width: fit-content !important;
-    min-height: 2.15rem !important;
-    padding: 0.42rem 0.85rem !important;
-    font-size: 0.94rem !important;
-  }
-
-  .footerCredit {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    gap: 0.5rem !important;
-    width: 100% !important;
-    margin-top: -0.6rem !important;
-    padding-top: 0 !important;
-    border-top: 0 !important;
-  }
-
-  .footerCredit span {
-    font-size: 0.82rem !important;
-  }
-
-  .footerCredit img {
-    width: 6.6rem !important;
-    max-width: 45vw !important;
-  }
-}
-
-@media (max-width: 430px) {
-  .appFooterInner {
-    width: calc(100% - 1.4rem) !important;
-    gap: 1rem !important;
-  }
-
-  .footerColumn a {
-    font-size: 0.92rem !important;
-  }
-
-  .footerBrand img {
-    width: min(100%, 17rem) !important;
-  }
-
-  .footerCredit img {
-    width: 6.1rem !important;
   }
 }
 
@@ -9328,31 +9102,8 @@ html.flagMapKiosk main {
   padding: 0 !important;
 }
 
-html.flagMapKiosk main > header,
-html.flagMapKiosk .appFooterInner {
+html.flagMapKiosk main > header {
   display: none !important;
-}
-
-html.flagMapKiosk .appFooter {
-  position: fixed !important;
-  right: 0;
-  bottom: 0;
-  left: auto;
-  width: auto !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-  overflow: visible !important;
-  z-index: 40;
-  pointer-events: none;
-}
-
-html.flagMapKiosk .appVersionStamp {
-  margin: 0 !important;
-  padding: 8px 14px 10px !important;
-  color: rgba(243, 226, 167, 0.82) !important;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 html.flagMapKiosk button:hover:not(:disabled) {
@@ -10684,8 +10435,7 @@ html.flagMapPage .publicFlagViewport {
   max-height: none;
 }
 
-html.isMapFullscreen .hero,
-html.isMapFullscreen .appFooter {
+html.isMapFullscreen .hero {
   display: none !important;
 }
 
@@ -11740,29 +11490,6 @@ main > .pageBody > .anniversaryBanner + * {
 
 /* Upright phones only: center short stacked chrome. Body copy, fields, tables, and map controls stay as they are. */
 @media (max-width: 760px) and (orientation: portrait) {
-  .footerExplore,
-  .footerLoop,
-  .footerContact,
-  .footerCredit {
-    text-align: center;
-    justify-items: center;
-  }
-
-  .footerSocials {
-    justify-content: center;
-  }
-
-  .footerCredit {
-    justify-content: center !important;
-  }
-
-  .footerContact a {
-    justify-content: center;
-  }
-
-  .appVersionStamp {
-    text-align: center;
-  }
 
   .searchHeader h2,
   .card:not(.adminCard) > .sectionHeader,
@@ -11788,92 +11515,6 @@ main > .pageBody > .anniversaryBanner + * {
   .guestNotice .authChoiceButtons {
     justify-content: center;
   }
-}
-
-footer.appFooter.footerNavy {
-  background:
-    linear-gradient(90deg, rgba(3, 12, 30, 0.94) 0%, rgba(6, 20, 48, 0.91) 42%, rgba(6, 20, 48, 0.88) 100%),
-    #102f5f !important;
-  color: #fff !important;
-  border-top: 0 !important;
-}
-
-footer.appFooter.footerNavy .appFooterInner::after {
-  opacity: 0.12 !important;
-  filter: invert(1);
-}
-
-footer.appFooter.footerNavy .footerColumn h2 {
-  color: #ffe08a !important;
-}
-
-footer.appFooter.footerNavy .footerColumn a {
-  color: #fff !important;
-}
-
-footer.appFooter.footerNavy .footerColumn a:hover {
-  color: #ffe08a !important;
-}
-
-footer.appFooter.footerNavy .footerSocials a {
-  background: rgba(255, 255, 255, 0.1) !important;
-  color: #fff !important;
-  border-color: rgba(255, 255, 255, 0.35) !important;
-}
-
-footer.appFooter.footerNavy .footerContact a {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  color: #fff !important;
-  padding: 0.35rem 0.15rem 0 !important;
-  font-weight: 800 !important;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  border-radius: 6px;
-}
-
-footer.appFooter.footerNavy .footerContact a:hover {
-  color: #ffe08a !important;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  background: transparent !important;
-}
-
-footer.appFooter.footerNavy .footerContact a:focus-visible,
-footer.appFooter.footerNavy .footerColumn a:focus-visible,
-footer.appFooter.footerNavy .footerCredit a:focus-visible {
-  outline: 3px solid #ffe08a !important;
-  outline-offset: 3px;
-}
-
-@media (max-width: 760px) {
-  footer.appFooter.footerNavy .footerContact a {
-    min-height: 2.75rem !important;
-    padding: 0.5rem 0.15rem !important;
-  }
-}
-
-footer.appFooter.footerNavy .footerCredit a {
-  display: inline-flex;
-  background: none;
-  padding: 0;
-}
-
-footer.appFooter.footerNavy .footerCredit span {
-  color: rgba(255, 255, 255, 0.8) !important;
-}
-
-footer.appFooter.footerNavy .footerCredit img {
-  width: 6.75rem !important;
-  max-width: 6.75rem !important;
-  height: auto !important;
-  background: none !important;
-}
-
-footer.appFooter.footerNavy .appVersionStamp {
-  color: rgba(255, 255, 255, 0.65) !important;
 }
 
 .rqIconButton {
@@ -12382,129 +12023,6 @@ header.hero .authBox strong {
     display: grid;
     align-content: center;
     margin: 0;
-  }
-}
-
-/* 3.0.0 footer. The decoration is clipped. Columns wrap below 1024.
-   From 1024, Contact sits under the socials and Built by is centered. */
-@media (min-width: 761px) {
-  footer.appFooter {
-    overflow: clip;
-    padding-inline: clamp(1rem, (100vw - 73.75rem) / 2, 24rem);
-  }
-
-  footer.appFooter .appVersionStamp {
-    padding-inline: 0;
-  }
-}
-
-@media (min-width: 761px) and (max-width: 1023px) {
-  footer.appFooter .appFooterInner {
-    width: 100%;
-    max-width: none;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    justify-content: flex-start;
-    padding-inline: 0;
-  }
-
-  footer.appFooter .footerExplore,
-  footer.appFooter .footerLoop,
-  footer.appFooter .footerContact {
-    min-width: 0;
-    flex: 1 1 10rem;
-    max-width: 100%;
-  }
-
-  footer.appFooter .footerCredit {
-    display: inline-flex;
-    flex: 0 1 auto;
-    flex-wrap: nowrap;
-    align-items: center;
-    gap: 0.55rem;
-    min-width: max-content;
-    max-width: max-content;
-    white-space: nowrap;
-  }
-
-  footer.appFooter .footerCredit span {
-    white-space: nowrap;
-  }
-}
-
-@media (min-width: 1024px) {
-  footer.appFooter .appFooterInner {
-    width: 100%;
-    max-width: none;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
-    align-items: start;
-    padding-inline: 0;
-  }
-
-  footer.appFooter .footerExplore,
-  footer.appFooter .footerLoop,
-  footer.appFooter .footerContact,
-  footer.appFooter .footerCredit {
-    min-width: 0;
-    max-width: 100%;
-  }
-}
-
-/* Side-by-side columns. Headings stay on the first row. The last Explore
-   link is pushed to the bottom of that column, and Built by and Contact Us
-   sit on that same line. Phones stay stacked. */
-@media (min-width: 761px) {
-  footer.appFooter .appFooterInner {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
-    align-content: start;
-    align-items: start;
-    width: 100%;
-    max-width: none;
-  }
-
-  footer.appFooter .footerExplore {
-    align-self: stretch;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  footer.appFooter .footerExplore > a:last-child {
-    margin-top: auto;
-    line-height: 1.25;
-  }
-
-  footer.appFooter .footerLoop {
-    align-self: start;
-  }
-
-  footer.appFooter .footerCredit,
-  footer.appFooter .footerContact {
-    align-self: end;
-  }
-
-  footer.appFooter .footerContact {
-    display: flex;
-    align-items: flex-end;
-    justify-content: flex-end;
-  }
-
-  footer.appFooter .footerCredit {
-    align-items: flex-end;
-    line-height: 1.25;
-  }
-
-  footer.appFooter .footerCredit span {
-    line-height: 1.25;
-  }
-
-  footer.appFooter.footerNavy .footerContact a {
-    min-height: var(--footer-social-size);
-    align-items: flex-end;
-    line-height: 1.25;
   }
 }
 
