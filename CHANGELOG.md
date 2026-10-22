@@ -2,7 +2,7 @@
 
 ## 3.1.0
 
-- A signed-in request creates a `dbo.UserProfiles` row from the token when one does not exist yet, keyed by the Entra object id (`OwnerObjectId`, the `oid` claim). A second request for the same id updates that row instead of inserting another. Name, phone, and organization that were saved on the profile form are kept. Those three fields record whether the current value came from the token (`claim`) or the profile form (`profile`). Email stays the token email. The unique index on `OwnerObjectId` is added by the schema-only migration `AddUserProfileOwnerObjectIdUniqueIndex`.
+- A signed-in request creates a `dbo.UserProfiles` row from the token when one does not exist yet, keyed by the Entra object id (`OwnerObjectId`, the `oid` claim). A second request for the same id updates that row instead of inserting another. Name, phone, and organization that were saved on the profile form are kept. Those three fields record whether the current value came from the token (`claim`) or the profile form (`profile`). Email stays the token email. The unique index on `OwnerObjectId` is added by the schema-only migration `AddUserProfileOwnerObjectIdUniqueIndex` only when no non-null object id is repeated. Duplicate ids leave the rows and the index unchanged, and the site still starts.
 - Print history times use US Central time (`America/Chicago`). Daylight time is labeled CDT and standard time is labeled CST.
 - At a tablet width, Built by KNECO stays on one line. The footer columns wrap instead.
 - The header is sized by its content at the width where the tablet rules used to stop, so the bar does not jump there.

@@ -652,7 +652,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
     {
         try
         {
-            await UserProfileSchema.EnsureAsync(db, ct);
+            await UserProfileSchema.EnsureAsync(db, logger, ct);
         }
         catch (Exception ex)
         {

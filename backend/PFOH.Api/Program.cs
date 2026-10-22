@@ -439,6 +439,18 @@ try
 
     try
     {
+        await UserProfileSchema.EnsureAsync(startupDb, app.Logger, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(
+            ex,
+            "STARTUP CLEANUP FAILED while ensuring dbo.UserProfiles. The site will keep running. {Failure}",
+            ex.ToString());
+    }
+
+    try
+    {
         var startupMaintenance = scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>();
         await startupMaintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
     }
