@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using System.Security.Claims;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
@@ -14,7 +14,30 @@ public sealed record UserAccountContact(string? Phone, string? Organization);
 
 public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> logger, IConfiguration configuration)
 {
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> ProvisionGates = new(StringComparer.Ordinal);
+    /// <summary>
+    /// Fixed stripes. A map keyed by object id would grow for every account that ever signed in.
+    /// </summary>
+    private const int ProvisionGateStripes = 32;
+    private static readonly SemaphoreSlim[] ProvisionGates = CreateProvisionGates();
+
+    private static SemaphoreSlim[] CreateProvisionGates()
+    {
+        var gates = new SemaphoreSlim[ProvisionGateStripes];
+        for (var i = 0; i < gates.Length; i++)
+        {
+            gates[i] = new SemaphoreSlim(1, 1);
+        }
+
+        return gates;
+    }
+
+    internal static int ProvisionGateCount => ProvisionGates.Length;
+
+    internal static SemaphoreSlim ProvisionGateFor(string ownerObjectId)
+    {
+        var hash = (uint)StringComparer.Ordinal.GetHashCode(ownerObjectId);
+        return ProvisionGates[hash % (uint)ProvisionGates.Length];
+    }
     public async Task<UserProfileDto> GetOwnAsync(ClaimsPrincipal user, CancellationToken ct)
     {
         await EnsureProvisionedAsync(user, ct);
@@ -119,7 +142,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
         catch (DbUpdateException ex)
         {
-            logger.LogWarning(ex, "Retrying profile save for {OwnerObjectId} after a write conflict.", callerId);
+            logger.LogWarning(ex, "Retrying profile save after a write conflict.");
             db.ChangeTracker.Clear();
             profile = await db.UserProfiles.FirstOrDefaultAsync(item => item.OwnerObjectId == callerId, ct);
             if (profile is null)
@@ -298,7 +321,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Phone or organization from the sign-in token could not be saved for {OwnerObjectId}.", saved.OwnerObjectId);
+            logger.LogWarning(ex, "Phone or organization from the sign-in token could not be saved.");
         }
     }
 
@@ -376,7 +399,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
     {
         await EnsureStoreAsync(ct);
         var ownerObjectId = user.GetExternalObjectId();
-        var gate = ProvisionGates.GetOrAdd(ownerObjectId, static _ => new SemaphoreSlim(1, 1));
+        var gate = ProvisionGateFor(ownerObjectId);
         await gate.WaitAsync(ct);
         try
         {
@@ -395,7 +418,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
                 }
                 catch (DbUpdateException ex) when (IsUniqueViolation(ex))
                 {
-                    logger.LogInformation("Profile insert raced for {OwnerObjectId}. Reading the existing row.", ownerObjectId);
+                    logger.LogInformation("Profile insert raced. Reading the existing row.");
                     db.ChangeTracker.Clear();
                     existing = await db.UserProfiles
                         .FirstOrDefaultAsync(profile => profile.OwnerObjectId == ownerObjectId, ct);
@@ -420,13 +443,66 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
     }
 
+    /// <summary>
+    /// SQL Server unique-index violations are 2601 and 2627.
+    /// Tests throw <c>Microsoft.Data.Sqlite.SqliteException</c>; that constraint code is 19
+    /// (extended unique-constraint code 2067). The API does not reference SQLite, so the
+    /// code is read from the exception. Message text is not used.
+    /// </summary>
     internal static bool IsUniqueViolation(DbUpdateException ex)
     {
-        var message = ex.InnerException?.Message ?? ex.Message;
-        return message.Contains("unique", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("duplicate", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("2601", StringComparison.Ordinal)
-            || message.Contains("2627", StringComparison.Ordinal);
+        var pending = new Stack<Exception>();
+        pending.Push(ex);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if (current is SqlException sql && sql.Number is 2601 or 2627)
+            {
+                return true;
+            }
+
+            if (IsSqliteConstraint(current))
+            {
+                return true;
+            }
+
+            if (current is AggregateException aggregate)
+            {
+                foreach (var inner in aggregate.InnerExceptions)
+                {
+                    pending.Push(inner);
+                }
+            }
+            else if (current.InnerException is not null)
+            {
+                pending.Push(current.InnerException);
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsSqliteConstraint(Exception exception)
+    {
+        const int sqliteConstraint = 19;
+        const int sqliteConstraintUnique = 2067;
+        if (!string.Equals(exception.GetType().FullName, "Microsoft.Data.Sqlite.SqliteException", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var errorCode = ReadSqliteCode(exception, "SqliteErrorCode");
+        var extended = ReadSqliteCode(exception, "SqliteExtendedErrorCode");
+        return errorCode == sqliteConstraint
+            || extended == sqliteConstraint
+            || extended == sqliteConstraintUnique
+            || (errorCode & 0xFF) == sqliteConstraint;
+    }
+
+    private static int ReadSqliteCode(Exception exception, string propertyName)
+    {
+        var value = exception.GetType().GetProperty(propertyName)?.GetValue(exception);
+        return value is int code ? code : 0;
     }
 
     private static bool HasProfileDisplayName(UserProfile? saved)

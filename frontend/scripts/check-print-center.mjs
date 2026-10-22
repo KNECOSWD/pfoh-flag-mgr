@@ -14,6 +14,7 @@ import {
   cardPreviewLoadingMessage,
   honoreeCardHeading,
   formatPrintEventTime,
+  formatPrintFileDate,
   mergedPrintName,
   PRINT_EVENT_COMMENT_MAX,
   printCenterHeading,
@@ -41,17 +42,28 @@ test("print history times use US Central and name CST or CDT", () => {
   assert.equal(formatPrintEventTime("2026-11-01T07:30:00Z"), "Nov 1, 2026, 1:30 AM CST");
 });
 
-test("the merged PDF name uses the Central time helper and the merged card count", () => {
-  assert.equal(mergedPrintName(140, new Date("2026-10-20T18:00:00Z")), `PFOH Reprint Cards - ${formatPrintEventTime("2026-10-20T18:00:00Z")} - 140 cards`);
-  assert.equal(mergedPrintName(1, new Date("2026-10-20T18:00:00Z")), "PFOH Reprint Cards - Oct 20, 2026, 1:00 PM CDT - 1 card");
+test("the merged PDF name is a date-only Central day and a Windows-safe file name", () => {
+  assert.equal(formatPrintFileDate("2026-10-22T18:00:00Z"), "2026-10-22");
+  assert.equal(mergedPrintName(140, new Date("2026-10-20T18:00:00Z")), "PFOH Reprint Cards - 2026-10-20 - 140 cards");
+  assert.equal(mergedPrintName(1, new Date("2026-10-20T18:00:00Z")), "PFOH Reprint Cards - 2026-10-20 - 1 card");
+  assert.equal(`${mergedPrintName(3, new Date("2026-10-22T18:00:00Z"))}.pdf`, "PFOH Reprint Cards - 2026-10-22 - 3 cards.pdf");
   // 05:30 UTC on Jan 15 is 11:30 PM on Jan 14 in Chicago. The UTC date is the 15th.
   const nearMidnight = "2026-01-15T05:30:00Z";
   assert.equal(nearMidnight.slice(0, 10), "2026-01-15");
   assert.equal(formatPrintEventTime(nearMidnight), "Jan 14, 2026, 11:30 PM CST");
-  assert.equal(mergedPrintName(28, new Date(nearMidnight)), "PFOH Reprint Cards - Jan 14, 2026, 11:30 PM CST - 28 cards");
-  // Spring-forward: 07:59 UTC is still CST on Mar 8, and 08:00 UTC is CDT the same Chicago morning.
-  assert.equal(mergedPrintName(2, new Date("2026-03-08T07:59:00Z")), "PFOH Reprint Cards - Mar 8, 2026, 1:59 AM CST - 2 cards");
-  assert.equal(mergedPrintName(2, new Date("2026-03-08T08:00:00Z")), "PFOH Reprint Cards - Mar 8, 2026, 3:00 AM CDT - 2 cards");
+  assert.equal(formatPrintFileDate(nearMidnight), "2026-01-14");
+  assert.equal(mergedPrintName(28, new Date(nearMidnight)), "PFOH Reprint Cards - 2026-01-14 - 28 cards");
+  // The next year crosses the same Chicago date boundary.
+  const nextYear = "2027-01-15T05:30:00Z";
+  assert.equal(nextYear.slice(0, 10), "2027-01-15");
+  assert.equal(formatPrintFileDate(nextYear), "2027-01-14");
+  assert.equal(mergedPrintName(3, new Date(nextYear)), "PFOH Reprint Cards - 2027-01-14 - 3 cards");
+  // Spring-forward stays on the same Chicago calendar day. The file name has no time.
+  assert.equal(mergedPrintName(2, new Date("2026-03-08T07:59:00Z")), "PFOH Reprint Cards - 2026-03-08 - 2 cards");
+  assert.equal(mergedPrintName(2, new Date("2026-03-08T08:00:00Z")), "PFOH Reprint Cards - 2026-03-08 - 2 cards");
+  const downloadName = `${mergedPrintName(3, new Date("2026-10-22T18:00:00Z"))}.pdf`;
+  assert.doesNotMatch(downloadName, /[\\/:*?"<>|]/);
+  assert.doesNotMatch(mergedPrintName(3, new Date(nextYear)), /[\\/:*?"<>|]/);
 });
 
 test("Print Center row and merged download open the Honoree Card viewer", () => {

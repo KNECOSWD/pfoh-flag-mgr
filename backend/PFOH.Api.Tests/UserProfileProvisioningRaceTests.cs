@@ -1,4 +1,7 @@
+using System.Reflection;
 using System.Security.Claims;
+using Microsoft.Data.SqlClient;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
@@ -47,11 +50,66 @@ public class UserProfileProvisioningRaceTests
     }
 
     [Fact]
-    public void Unique_violation_messages_are_recognized_without_reading_row_text()
+    public void Unique_violations_are_recognized_by_provider_error_code()
     {
-        var exception = new DbUpdateException("save failed", new InvalidOperationException("UNIQUE constraint failed: UserProfiles.OwnerObjectId"));
-        Assert.True(UserProfileService.IsUniqueViolation(exception));
+        var sqlite = new DbUpdateException(
+            "save failed",
+            new SqliteException("UNIQUE constraint failed: UserProfiles.OwnerObjectId", 19));
+        Assert.True(UserProfileService.IsUniqueViolation(sqlite));
+        Assert.True(UserProfileService.IsUniqueViolation(new DbUpdateException(
+            "save failed",
+            new SqliteException("UNIQUE constraint failed: UserProfiles.OwnerObjectId", 2067))));
+        Assert.True(UserProfileService.IsUniqueViolation(new DbUpdateException("save failed", SqlError(2601))));
+        Assert.True(UserProfileService.IsUniqueViolation(new DbUpdateException("save failed", SqlError(2627))));
+
+        Assert.False(UserProfileService.IsUniqueViolation(new DbUpdateException(
+            "save failed",
+            new InvalidOperationException("UNIQUE constraint failed: UserProfiles.OwnerObjectId duplicate 2601 2627"))));
+        Assert.False(UserProfileService.IsUniqueViolation(new DbUpdateException("save failed", SqlError(547))));
+        Assert.False(UserProfileService.IsUniqueViolation(new DbUpdateException(
+            "save failed",
+            new SqliteException("disk I/O error", 10))));
         Assert.False(UserProfileService.IsUniqueViolation(new DbUpdateException("timeout", new TimeoutException("connection"))));
+    }
+
+    [Fact]
+    public void Provision_gates_stay_inside_a_fixed_stripe_set()
+    {
+        Assert.Equal(32, UserProfileService.ProvisionGateCount);
+        Assert.Same(UserProfileService.ProvisionGateFor("oid-a"), UserProfileService.ProvisionGateFor("oid-a"));
+        var seen = new HashSet<SemaphoreSlim>();
+        for (var i = 0; i < 500; i++)
+        {
+            seen.Add(UserProfileService.ProvisionGateFor($"oid-{i}"));
+        }
+
+        Assert.InRange(seen.Count, 1, UserProfileService.ProvisionGateCount);
+    }
+
+    private static SqlException SqlError(int number)
+    {
+        var assembly = typeof(SqlException).Assembly;
+        var errorType = assembly.GetType("Microsoft.Data.SqlClient.SqlError", throwOnError: true)!;
+        var error = Activator.CreateInstance(
+            errorType,
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null,
+            args: new object?[] { number, (byte)0, (byte)14, "server", "provider error", "proc", 1, (uint)0, null },
+            culture: null);
+        var collectionType = assembly.GetType("Microsoft.Data.SqlClient.SqlErrorCollection", throwOnError: true)!;
+        var collection = Activator.CreateInstance(
+            collectionType,
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null,
+            args: Array.Empty<object>(),
+            culture: null);
+        collectionType.GetMethod("Add", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(collection, new[] { error });
+        var ctor = typeof(SqlException).GetConstructor(
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null,
+            types: new[] { typeof(string), collectionType, typeof(Exception), typeof(Guid) },
+            modifiers: null);
+        return (SqlException)ctor!.Invoke(new object?[] { "provider error", collection, null, Guid.Empty });
     }
 
     private sealed class InsertAheadInterceptor(DbContextOptions<PfohDbContext> options, string ownerObjectId) : SaveChangesInterceptor
@@ -81,7 +139,7 @@ public class UserProfileProvisioningRaceTests
                 other.SaveChanges();
                 throw new DbUpdateException(
                     "save failed",
-                    new InvalidOperationException("UNIQUE constraint failed: UserProfiles.OwnerObjectId"));
+                    new SqliteException("UNIQUE constraint failed: UserProfiles.OwnerObjectId", 19));
             }
 
             return base.SavingChangesAsync(eventData, result, cancellationToken);
