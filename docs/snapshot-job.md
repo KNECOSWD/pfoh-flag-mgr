@@ -77,7 +77,7 @@ Set the resource group and names you already use. Do not paste keys, certificate
      --name <admin-name>
    ```
 
-   Write this policy to a file outside the repository, then create the certificate. Validity is 12 months. At 80 percent of that lifetime the vault renews the certificate and emails the contacts.
+   Write this policy to a file outside the repository, then create the certificate. Validity is 12 months. The vault does not renew it. Thirty days before expiry it emails the contacts. Rotation is deliberate: the function reads the latest certificate version, so a new version is used on the next run as soon as it exists.
 
    ```json
    {
@@ -86,8 +86,7 @@ Set the resource group and names you already use. Do not paste keys, certificate
      "secretProperties": { "contentType": "application/x-pkcs12" },
      "x509CertificateProperties": { "subject": "CN=pfoh-snapshot-graph", "validityInMonths": 12 },
      "lifetimeActions": [
-       { "trigger": { "lifetimePercentage": 80 }, "action": { "actionType": "AutoRenew" } },
-       { "trigger": { "lifetimePercentage": 80 }, "action": { "actionType": "EmailContacts" } }
+       { "trigger": { "daysBeforeExpiry": 30 }, "action": { "actionType": "EmailContacts" } }
      ]
    }
    ```
@@ -115,7 +114,7 @@ Set the resource group and names you already use. Do not paste keys, certificate
 
    The download is the public certificate. The private key never leaves Key Vault. Delete the public file after the upload. Do not commit it.
 
-   Renewal is the vault policy above. After it renews, or when you rotate early, assign Key Vault Certificates Officer again, download the new public certificate, and upload it with `az ad app credential reset --id <graph-app-client-id> --cert @pfoh-snapshot-graph.cer --append`. The next snapshot run loads the latest secret version. After that run succeeds, remove the previous certificate credential from the app, delete the public file, and remove the Certificates Officer assignment.
+   Rotation is a new certificate version, not an automatic renewal. Assign Key Vault Certificates Officer again, create the new version, download that public certificate, and upload it with `az ad app credential reset --id <graph-app-client-id> --cert @pfoh-snapshot-graph.cer --append`. Verify a snapshot run. The function reads the latest version, which is why this order matters. After that run succeeds, remove the previous certificate credential from the app, delete the public file, and remove the Certificates Officer assignment.
 
    A live token test in the pfohflags tenant passed on 2026-10-22: certificate sign-in, users read, and signInActivity with lastSignInDateTime. Keep those last-sign-in fields. The procedure is held separately and is not in this repository.
 
@@ -236,7 +235,13 @@ Set the resource group and names you already use. Do not paste keys, certificate
      --scope "$FUNC_ID"
    ```
 
-   Create a protected GitHub environment named `pfoh-snapshot`. Require a reviewer, and limit deployment branches to `main`. The **Deploy snapshot job** workflow runs only when its ref is `refs/heads/main`, and it uses that environment. Run it by hand from `main`. It uses `azure/login` with the federated credential already used for the website. It does not store a client secret or a certificate, and it does not assign roles.
+   Two admin steps need Matthew's consent. Do not create them from this repository or from CI.
+
+   Create a protected GitHub environment named `pfoh-snapshot`. Require Matthew as a reviewer, and limit deployment branches to `main`.
+
+   On the existing GitHub OIDC app, create an environment-scoped federated credential. The subject is `repo:KNECOSWD/pfoh-flag-mgr:environment:pfoh-snapshot`. The issuer is `https://token.actions.githubusercontent.com`, with the same audience as the website deploy credential. This is not a client secret and not the Graph certificate.
+
+   The **Deploy snapshot job** workflow runs only when its ref is `refs/heads/main`, and it uses that environment. Run it by hand from `main` after both steps exist. It uses `azure/login` with that environment credential. It does not store a client secret or a certificate, and it does not assign roles.
 
 9. Manual test, after the function is deployed. Run this only in Azure Cloud Shell. Do not run it on the box. The box must never see the host key. Do not write the key into the repo or a log. The `az` result below is the key, so do not paste the command output into a ticket.
 
@@ -250,6 +255,14 @@ Set the resource group and names you already use. Do not paste keys, certificate
    ```
 
    The function log should contain table, row, and byte counts. It should not contain names, emails, bios, or row contents. The container should contain that UTC date's two JSON files.
+
+## Missed run
+
+A missed timer fire is not replayed later. The next scheduled fire writes the snapshot for that fire's UTC date, or skips. It does not write the date that was missed.
+
+To run the job once before the next timer fire, use the Cloud Shell command in step 9. That POST calls the existing timer function through the platform admin endpoint. It uses the UTC date of the call. Before `Snapshot__MonthlyFromUtcDate`, that writes today's two blobs. On or after the cutover it writes them only when today is the 1st. Any other day logs `snapshot skipped: monthly mode` and writes nothing. There is no endpoint that backfills another date, and this repository does not add one.
+
+The daily check that the blobs are present runs outside this repository.
 
 ## Logs
 

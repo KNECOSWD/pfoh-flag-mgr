@@ -255,6 +255,8 @@ cd infra
 ./azure-cli-setup.sh
 ```
 
+The script refuses the live production names (`PLANO_FLAGS_OF_HONOR`, `asp-pfoh-flags-prod`, `pfoh-flag-manager-app`, and SQL server or database `pfoh`) unless `PFOH_ALLOW_PROD_SETUP=yes` is set.
+
 It creates:
 
 - Resource group

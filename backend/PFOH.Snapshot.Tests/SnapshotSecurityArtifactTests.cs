@@ -92,8 +92,12 @@ public class SnapshotSecurityArtifactTests
         Assert.DoesNotContain("AzureADTokenExchange", runbook, StringComparison.Ordinal);
         Assert.Contains("az keyvault certificate create", runbook, StringComparison.Ordinal);
         Assert.Contains("validityInMonths", runbook, StringComparison.Ordinal);
-        Assert.Contains("lifetimePercentage", runbook, StringComparison.Ordinal);
+        Assert.Contains("daysBeforeExpiry", runbook, StringComparison.Ordinal);
         Assert.Contains("EmailContacts", runbook, StringComparison.Ordinal);
+        Assert.DoesNotContain("AutoRenew", runbook, StringComparison.Ordinal);
+        Assert.Contains("repo:KNECOSWD/pfoh-flag-mgr:environment:pfoh-snapshot", runbook, StringComparison.Ordinal);
+        Assert.Contains("Matthew", runbook, StringComparison.Ordinal);
+        Assert.Contains("outside this repository", runbook, StringComparison.Ordinal);
         Assert.Contains("az ad app credential reset", runbook, StringComparison.Ordinal);
         Assert.Contains("publicNetworkAccess", runbook, StringComparison.Ordinal);
         Assert.Contains("AuditLog.Read.All", runbook, StringComparison.Ordinal);
@@ -104,6 +108,19 @@ public class SnapshotSecurityArtifactTests
         Assert.DoesNotContain("sp=", runbook, StringComparison.Ordinal);
         Assert.DoesNotContain("sig=", runbook, StringComparison.Ordinal);
         Assert.Contains("/admin/functions/SnapshotNightly", runbook, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Setup_script_refuses_production_names_without_an_override()
+    {
+        var script = File.ReadAllText(RepoFile("infra", "azure-cli-setup.sh"));
+        var guard = script.IndexOf("PFOH_ALLOW_PROD_SETUP", StringComparison.Ordinal);
+        var create = script.IndexOf("az group create", StringComparison.Ordinal);
+        Assert.True(guard >= 0 && create > guard);
+        Assert.Contains("Refusing to run", script, StringComparison.Ordinal);
+        Assert.Contains("PLANO_FLAGS_OF_HONOR", script, StringComparison.Ordinal);
+        Assert.Contains("asp-pfoh-flags-prod", script, StringComparison.Ordinal);
+        Assert.Contains("pfoh-flag-manager-app", script, StringComparison.Ordinal);
     }
 
     private static int CountOf(string text, string value)

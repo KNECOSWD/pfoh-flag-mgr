@@ -142,7 +142,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
         catch (DbUpdateException ex)
         {
-            logger.LogWarning(ex, "Retrying profile save after a write conflict.");
+            LogWriteFailure(ex, "Retrying profile save after a write conflict.");
             db.ChangeTracker.Clear();
             profile = await db.UserProfiles.FirstOrDefaultAsync(item => item.OwnerObjectId == callerId, ct);
             if (profile is null)
@@ -321,7 +321,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Phone or organization from the sign-in token could not be saved.");
+            LogWriteFailure(ex, "Phone or organization from the sign-in token could not be saved.");
         }
     }
 
@@ -404,8 +404,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         try
         {
             var incoming = ReadClaimFields(user);
-            var existing = await db.UserProfiles
-                .FirstOrDefaultAsync(profile => profile.OwnerObjectId == ownerObjectId, ct);
+            var existing = await OwnerProfiles(ownerObjectId).FirstOrDefaultAsync(ct);
 
             if (existing is null)
             {
@@ -420,8 +419,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
                 {
                     logger.LogInformation("Profile insert raced. Reading the existing row.");
                     db.ChangeTracker.Clear();
-                    existing = await db.UserProfiles
-                        .FirstOrDefaultAsync(profile => profile.OwnerObjectId == ownerObjectId, ct);
+                    existing = await OwnerProfiles(ownerObjectId).FirstOrDefaultAsync(ct);
                     if (existing is null)
                     {
                         throw;
@@ -441,6 +439,69 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         {
             gate.Release();
         }
+    }
+
+    /// <summary>
+    /// Oldest row first, then lowest id, so a duplicated object id always updates the same row.
+    /// </summary>
+    private IQueryable<UserProfile> OwnerProfiles(string ownerObjectId)
+    {
+        return db.UserProfiles
+            .Where(profile => profile.OwnerObjectId == ownerObjectId)
+            .OrderBy(profile => profile.CreatedUtc)
+            .ThenBy(profile => profile.Id);
+    }
+
+    /// <summary>
+    /// Index creation can fail with a SQL error whose message contains an object id.
+    /// The log keeps the error number and leaves the exception, and its message, out.
+    /// </summary>
+    internal static void LogStartupIndexFailure(ILogger logger, Exception ex)
+    {
+        logger.LogError(
+            "STARTUP CLEANUP FAILED while ensuring dbo.UserProfiles. The site will keep running. SqlErrorNumber={SqlErrorNumber}",
+            SqlErrorNumber(ex));
+    }
+
+    /// <summary>
+    /// Logs the exception type and the SQL Server error number only.
+    /// The duplicate-key message contains the object id, so the exception object and its message stay out of the log.
+    /// </summary>
+    private void LogWriteFailure(Exception ex, string message)
+    {
+        logger.LogWarning(
+            "{Failure} ExceptionType={ExceptionType} SqlErrorNumber={SqlErrorNumber}",
+            message,
+            ex.GetType().FullName,
+            SqlErrorNumber(ex));
+    }
+
+    internal static int? SqlErrorNumber(Exception exception)
+    {
+        var pending = new Stack<Exception>();
+        pending.Push(exception);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if (current is SqlException sql)
+            {
+                return sql.Number;
+            }
+
+            if (current is AggregateException aggregate)
+            {
+                foreach (var inner in aggregate.InnerExceptions)
+                {
+                    pending.Push(inner);
+                }
+            }
+            else if (current.InnerException is not null)
+            {
+                pending.Push(current.InnerException);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

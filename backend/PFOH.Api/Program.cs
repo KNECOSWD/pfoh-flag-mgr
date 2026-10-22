@@ -443,10 +443,7 @@ try
     }
     catch (Exception ex)
     {
-        app.Logger.LogError(
-            ex,
-            "STARTUP CLEANUP FAILED while ensuring dbo.UserProfiles. The site will keep running. {Failure}",
-            ex.ToString());
+        UserProfileService.LogStartupIndexFailure(app.Logger, ex);
     }
 
     try

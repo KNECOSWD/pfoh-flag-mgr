@@ -129,7 +129,7 @@ public static class UserProfileSchema
             SELECT @duplicateGroups = COUNT(*)
             FROM (
                 SELECT OwnerObjectId, COUNT(*) AS DuplicateRowCount
-                FROM dbo.UserProfiles
+                FROM dbo.UserProfiles WITH (TABLOCKX, HOLDLOCK)
                 WHERE OwnerObjectId IS NOT NULL
                 GROUP BY OwnerObjectId
                 HAVING COUNT(*) > 1

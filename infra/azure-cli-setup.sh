@@ -12,6 +12,21 @@ SQL_DB="pfoh"
 SQL_ADMIN="pfohsqladmin"
 SQL_PASSWORD="ChangeThisToAStrongPassword_12345!"
 
+# The defaults above are the live production names. Refuse them unless the
+# operator sets the override. An empty value does not count.
+if [[ "${PFOH_ALLOW_PROD_SETUP:-}" != "yes" ]]; then
+  prod_hit=""
+  [[ "$RG" == "PLANO_FLAGS_OF_HONOR" ]] && prod_hit="resource group PLANO_FLAGS_OF_HONOR"
+  [[ "$PLAN" == "asp-pfoh-flags-prod" ]] && prod_hit="${prod_hit:+$prod_hit, }plan asp-pfoh-flags-prod"
+  [[ "$APP" == "pfoh-flag-manager-app" ]] && prod_hit="${prod_hit:+$prod_hit, }app pfoh-flag-manager-app"
+  [[ "$SQL_SERVER" == "pfoh" ]] && prod_hit="${prod_hit:+$prod_hit, }SQL server pfoh"
+  [[ "$SQL_DB" == "pfoh" ]] && prod_hit="${prod_hit:+$prod_hit, }SQL database pfoh"
+  if [[ -n "$prod_hit" ]]; then
+    echo "Refusing to run: infra/azure-cli-setup.sh is aimed at production ($prod_hit). Set PFOH_ALLOW_PROD_SETUP=yes to override." >&2
+    exit 1
+  fi
+fi
+
 az account set --subscription "$SUBSCRIPTION_ID"
 az group create --name "$RG" --location "$LOCATION"
 

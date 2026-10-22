@@ -89,6 +89,7 @@ public class UserProfileOwnerIndexGuardTests
     {
         var sql = UserProfileSchema.EnsureOwnerObjectIdUniqueIndexSql;
         Assert.Contains("BEGIN TRANSACTION", sql, StringComparison.Ordinal);
+        Assert.Contains("WITH (TABLOCKX, HOLDLOCK)", sql, StringComparison.Ordinal);
         Assert.Contains("ROLLBACK TRANSACTION", sql, StringComparison.Ordinal);
         Assert.Contains("COMMIT TRANSACTION", sql, StringComparison.Ordinal);
         Assert.Contains(UserProfileSchema.DuplicateOwnerObjectIdIndexMessage, sql, StringComparison.Ordinal);
