@@ -129,12 +129,12 @@ public class AdminIdentityTelemetryTests
         var filterDependency = (DependencyTelemetry)items[4];
         Assert.Equal("/v1.0/users", filterDependency.Data);
         Assert.Equal("/v1.0/users", filterDependency.Name);
-        Assert.Equal("/v1.0/users", filterDependency.Target);
+        Assert.Equal("graph.microsoft.com", filterDependency.Target);
 
         var userDependency = (DependencyTelemetry)items[5];
         Assert.Equal("/v1.0/users/" + AdminIdentityTelemetryInitializer.IdToken, userDependency.Data);
         Assert.Equal(userDependency.Data, userDependency.Name);
-        Assert.Equal(userDependency.Data, userDependency.Target);
+        Assert.Equal("graph.microsoft.com", userDependency.Target);
 
         var traceItem = Assert.IsType<TraceTelemetry>(items[7]);
         Assert.Equal(
@@ -187,6 +187,159 @@ public class AdminIdentityTelemetryTests
         Assert.All(serialized, item => Assert.DoesNotContain("duplicate key", item, StringComparison.Ordinal));
         Assert.All(serialized, item => Assert.DoesNotContain("Failed executing DbCommand", item, StringComparison.Ordinal));
         Assert.DoesNotContain(serialized, item => item.Contains("Microsoft.EntityFrameworkCore.Update", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Graph_assignment_id_is_removed_and_the_target_keeps_the_host()
+    {
+        var oid = Guid.Parse(UserObjectId);
+        var servicePrincipal = Guid.Parse("11111111-2222-3333-4444-555555555555");
+        var assignmentId = Base64Url(oid.ToByteArray());
+        Assert.Equal(oid, new Guid(Base64UrlDecode(assignmentId)));
+        Assert.True(assignmentId.Length >= 20);
+        var standardBase64 = Convert.ToBase64String(oid.ToByteArray());
+        var deleteUrl = "https://graph.microsoft.com/v1.0/servicePrincipals/" + servicePrincipal
+            + "/appRoleAssignedTo/" + assignmentId + "?$select=id";
+        var opaque = "SyntheticOpaqueTokenValue";
+        var otherUrl = "https://graph.microsoft.com/v1.0/users/" + UserObjectId
+            + "/appRoleAssignments/q7/" + opaque;
+
+        var items = new List<ITelemetry>();
+        var seen = new List<ITelemetry>();
+        var client = Client(new HttpContextAccessor(), items, seen);
+        var delete = new DependencyTelemetry(
+            "HTTP",
+            deleteUrl,
+            "DELETE /v1.0/servicePrincipals/" + servicePrincipal + "/appRoleAssignedTo/" + assignmentId,
+            deleteUrl);
+        delete.Context.Operation.Name = deleteUrl;
+        client.TrackDependency(delete);
+
+        var other = new DependencyTelemetry(
+            "HTTP",
+            "graph.microsoft.com",
+            "GET /v1.0/users/" + UserObjectId + "/appRoleAssignments/q7/" + opaque,
+            otherUrl);
+        client.TrackDependency(other);
+        client.Flush();
+
+        var deleteItem = (DependencyTelemetry)items[0];
+        Assert.Equal("/v1.0/servicePrincipals/" + AdminIdentityTelemetryInitializer.IdToken + "/appRoleAssignedTo/" + AdminIdentityTelemetryInitializer.IdToken, deleteItem.Data);
+        Assert.Equal(deleteItem.Data, deleteItem.Name);
+        Assert.Equal("graph.microsoft.com", deleteItem.Target);
+        Assert.DoesNotContain("?", deleteItem.Data, StringComparison.Ordinal);
+
+        var otherItem = (DependencyTelemetry)items[1];
+        Assert.Equal(
+            "/v1.0/users/" + AdminIdentityTelemetryInitializer.IdToken + "/appRoleAssignments/" + AdminIdentityTelemetryInitializer.IdToken + "/" + AdminIdentityTelemetryInitializer.IdToken,
+            otherItem.Data);
+        Assert.Equal("graph.microsoft.com", otherItem.Target);
+
+        foreach (var item in items.Concat(seen))
+        {
+            var serialized = Serialize(item);
+            Assert.DoesNotContain(assignmentId, serialized, StringComparison.Ordinal);
+            Assert.DoesNotContain(standardBase64, serialized, StringComparison.Ordinal);
+            Assert.DoesNotContain(UserObjectId, serialized, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(oid.ToString("N"), serialized, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(servicePrincipal.ToString(), serialized, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(opaque, serialized, StringComparison.Ordinal);
+            Assert.DoesNotContain("q7", serialized, StringComparison.Ordinal);
+            Assert.Contains("graph.microsoft.com", serialized, StringComparison.Ordinal);
+            if (item is DependencyTelemetry dependency)
+            {
+                Assert.DoesNotContain(assignmentId, dependency.Name, StringComparison.Ordinal);
+                Assert.DoesNotContain(assignmentId, dependency.Data, StringComparison.Ordinal);
+                Assert.DoesNotContain(assignmentId, dependency.Target, StringComparison.Ordinal);
+                Assert.DoesNotContain(UserObjectId, dependency.Name, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain(UserObjectId, dependency.Data, StringComparison.OrdinalIgnoreCase);
+                Assert.DoesNotContain(UserObjectId, dependency.Target, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    [Fact]
+    public void A_failed_redaction_does_not_emit_the_raw_item()
+    {
+        var oid = Guid.Parse(UserObjectId);
+        var assignmentId = Base64Url(oid.ToByteArray());
+        var rawUrl = "https://graph.microsoft.com/v1.0/servicePrincipals/11111111-2222-3333-4444-555555555555/appRoleAssignedTo/"
+            + assignmentId + "?q=" + SearchTerm;
+        var items = new List<ITelemetry>();
+        var seen = new List<ITelemetry>();
+        var client = Client(new ThrowingAccessor(), items, seen);
+
+        var request = new RequestTelemetry
+        {
+            Name = "DELETE /api/admin/users/" + UserObjectId + "/admin-role?q=" + SearchTerm,
+            Url = new Uri("https://app.example/api/admin/users/" + UserObjectId + "/admin-role?q=" + Uri.EscapeDataString(SearchTerm)),
+            ResponseCode = "200",
+            Success = true
+        };
+        request.Properties["RequestPath"] = "/api/admin/users/" + UserObjectId + "/admin-role";
+        request.Context.Operation.Name = request.Name;
+        client.TrackRequest(request);
+
+        var dependency = new DependencyTelemetry("HTTP", rawUrl, "DELETE " + rawUrl, rawUrl);
+        dependency.Properties["RequestPath"] = rawUrl;
+        dependency.Context.Operation.Name = rawUrl;
+        client.TrackDependency(dependency);
+
+        var exception = new ExceptionTelemetry(new InvalidOperationException(rawUrl));
+        exception.Properties["RequestPath"] = rawUrl;
+        client.TrackException(exception);
+
+        var trace = new TraceTelemetry(rawUrl);
+        trace.Properties["RequestPath"] = rawUrl;
+        client.TrackTrace(trace);
+        client.Flush();
+
+        Assert.Equal(4, items.Count);
+        var blankedRequest = (RequestTelemetry)items[0];
+        Assert.Null(blankedRequest.Url);
+        Assert.Equal(string.Empty, blankedRequest.Name);
+        Assert.Equal(string.Empty, blankedRequest.Properties["RequestPath"]);
+        var blankedDependency = (DependencyTelemetry)items[1];
+        Assert.Equal(string.Empty, blankedDependency.Name);
+        Assert.Equal(string.Empty, blankedDependency.Data);
+        Assert.Equal(string.Empty, blankedDependency.Target);
+        Assert.Equal(string.Empty, blankedDependency.Properties["RequestPath"]);
+        var blankedException = (ExceptionTelemetry)items[2];
+        Assert.Equal(string.Empty, blankedException.Message);
+        Assert.Equal(string.Empty, blankedException.Properties["RequestPath"]);
+        var blankedTrace = (TraceTelemetry)items[3];
+        Assert.Equal(string.Empty, blankedTrace.Message);
+        Assert.Equal(string.Empty, blankedTrace.Properties["RequestPath"]);
+        foreach (var item in items.Concat(seen))
+        {
+            var serialized = Serialize(item);
+            Assert.DoesNotContain(assignmentId, serialized, StringComparison.Ordinal);
+            Assert.DoesNotContain(SearchTerm, serialized, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("pii-search-9f3c2a", serialized, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(UserObjectId, serialized, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(rawUrl, serialized, StringComparison.Ordinal);
+        }
+    }
+
+    private static string Base64Url(byte[] bytes)
+    {
+        return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    }
+
+    private static byte[] Base64UrlDecode(string value)
+    {
+        var text = value.Replace('-', '+').Replace('_', '/');
+        var remainder = text.Length % 4;
+        if (remainder == 2)
+        {
+            text += "==";
+        }
+        else if (remainder == 3)
+        {
+            text += "=";
+        }
+
+        return Convert.FromBase64String(text);
     }
 
     private static RequestTelemetry Request(string name, string url)
@@ -281,6 +434,15 @@ public class AdminIdentityTelemetryTests
         }
 
         return writer.Text;
+    }
+
+    private sealed class ThrowingAccessor : IHttpContextAccessor
+    {
+        public HttpContext? HttpContext
+        {
+            get => throw new InvalidOperationException("synthetic redaction failure");
+            set { }
+        }
     }
 
     private sealed class StubChannel(List<ITelemetry> items) : ITelemetryChannel

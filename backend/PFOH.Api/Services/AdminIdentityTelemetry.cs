@@ -23,6 +23,14 @@ public sealed class AdminIdentityTelemetryInitializer : ITelemetryInitializer
         "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    private static readonly Regex AssignmentSegmentPattern = new(
+        @"(appRoleAssignedTo/|appRoleAssignments/)[^/?#]+",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex OpaqueSegmentPattern = new(
+        @"(?<=/)[A-Za-z0-9_-]{20,}(?=/|$)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly Regex GraphUrlPattern = new(
         @"https://graph\.microsoft\.com\S*",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -53,6 +61,19 @@ public sealed class AdminIdentityTelemetryInitializer : ITelemetryInitializer
     internal bool HasHttpContextAccessor => httpContextAccessor is not null;
 
     public void Initialize(ITelemetry telemetry)
+    {
+        try
+        {
+            Redact(telemetry);
+        }
+        catch
+        {
+            // A failed redact must not send the raw item, and must not escape.
+            Blank(telemetry);
+        }
+    }
+
+    private void Redact(ITelemetry telemetry)
     {
         var template = SensitiveRouteTemplate();
         switch (telemetry)
@@ -112,7 +133,7 @@ public sealed class AdminIdentityTelemetryInitializer : ITelemetryInitializer
         var path = ToRedactedPath(GraphSource(dependency));
         dependency.Data = path;
         dependency.Name = path;
-        dependency.Target = path;
+        dependency.Target = GraphHost;
     }
 
     private static void RedactException(ExceptionTelemetry telemetry)
@@ -271,6 +292,8 @@ public sealed class AdminIdentityTelemetryInitializer : ITelemetryInitializer
             path = query >= 0 ? text[..query] : text;
         }
 
+        path = AssignmentSegmentPattern.Replace(path, "$1" + IdToken);
+        path = OpaqueSegmentPattern.Replace(path, IdToken);
         path = GuidPattern.Replace(path, IdToken);
         if (path.Length == 0)
         {
@@ -285,6 +308,50 @@ public sealed class AdminIdentityTelemetryInitializer : ITelemetryInitializer
         foreach (var key in properties.Keys.ToArray())
         {
             properties[key] = RedactText(properties[key]);
+        }
+    }
+
+    private static void Blank(ITelemetry telemetry)
+    {
+        try
+        {
+            switch (telemetry)
+            {
+                case RequestTelemetry request:
+                    request.Url = null;
+                    request.Name = string.Empty;
+                    break;
+                case DependencyTelemetry dependency:
+                    dependency.Name = string.Empty;
+                    dependency.Data = string.Empty;
+                    dependency.Target = string.Empty;
+                    break;
+                case ExceptionTelemetry exception:
+                    exception.Message = string.Empty;
+                    exception.Exception = new InvalidOperationException(string.Empty);
+                    break;
+                case TraceTelemetry trace:
+                    trace.Message = string.Empty;
+                    break;
+            }
+
+            telemetry.Context.Operation.Name = string.Empty;
+            if (telemetry is ISupportProperties withProperties)
+            {
+                foreach (var key in withProperties.Properties.Keys.ToArray())
+                {
+                    withProperties.Properties[key] = string.Empty;
+                }
+            }
+
+            foreach (var key in telemetry.Context.GlobalProperties.Keys.ToArray())
+            {
+                telemetry.Context.GlobalProperties[key] = string.Empty;
+            }
+        }
+        catch
+        {
+            // Blanking is the last resort. Never rethrow the original item.
         }
     }
 }
