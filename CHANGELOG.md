@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.1.1
+
+- Application Insights records less. Sampling stays on, at about 2 items a second, and that rate is an app setting. Exception reports are still kept, and so are failed requests and failed calls to SQL or another service. Fast successful SQL and HTTP calls are left out, health checks are not recorded, and SQL command text is not collected. Framework logs sent to Application Insights are warnings and errors. Entity Framework update and command logs are not sent.
+- The footer includes a link to Plano Flags of Honor on X.
+- Admin logs for a user search or a role change no longer include the search term or the person's id. A failed search records whether the term was empty, how long it was, and how many people came back. Application Insights drops that search text from the request and from Microsoft Graph calls, and replaces the person id in role and profile addresses with a placeholder. A failed search or role change returns a fixed message instead of the underlying error.
+- From a tablet width up, the last Explore link, Built by KNECO, and Contact Us share one bottom line. On a phone the footer stays stacked.
+
 ## 3.1.0
 
 - A signed-in request creates a `dbo.UserProfiles` row from the token when one does not exist yet, keyed by the Entra object id (`OwnerObjectId`, the `oid` claim). A second request for the same id updates that row instead of inserting another. Name, phone, and organization that were saved on the profile form are kept. Those three fields record whether the current value came from the token (`claim`) or the profile form (`profile`). Email stays the token email. The unique index on `OwnerObjectId` is added by the schema-only migration `AddUserProfileOwnerObjectIdUniqueIndex` only when no non-null object id is repeated. Duplicate ids leave the rows and the index unchanged, and the site still starts.
