@@ -3,6 +3,7 @@ using Azure.Storage.Blobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using PFOH.Snapshot;
+using PFOH.Snapshot.Function;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWorkerDefaults()
@@ -12,9 +13,6 @@ var host = new HostBuilder()
         var required = new[]
         {
             "Snapshot:SqlConnectionString",
-            "Snapshot:GraphTenantId",
-            "Snapshot:GraphClientId",
-            "Snapshot:GraphCertificateName",
             "Snapshot:KeyVaultUri",
             "Snapshot:ManagedIdentityClientId",
             "Snapshot:StorageAccountName"
@@ -24,6 +22,8 @@ var host = new HostBuilder()
         {
             throw new InvalidOperationException("Missing snapshot settings: " + string.Join(", ", missing));
         }
+
+        services.AddHostedService<SnapshotGraphStartupCheck>();
 
         var identityClientId = configuration["Snapshot:ManagedIdentityClientId"]!;
         var credential = new ManagedIdentityCredential(identityClientId);
@@ -38,17 +38,23 @@ var host = new HostBuilder()
             new Uri($"https://{accountName}.blob.core.windows.net/{containerName}"),
             credential);
         var http = new HttpClient();
-        var graphTenantId = configuration["Snapshot:GraphTenantId"]!;
-        var graphClientId = configuration["Snapshot:GraphClientId"]!;
-        var graphCredentials = GraphCertificateCredentialSource.Create(
-            new Uri(configuration["Snapshot:KeyVaultUri"]!),
-            credential,
-            configuration["Snapshot:GraphCertificateName"]!,
-            graphTenantId,
-            graphClientId);
         var sqlConnectionString = configuration["Snapshot:SqlConnectionString"]!;
         services.AddSingleton<IUserTableSource>(_ => new SqlUserTableSource(sqlConnectionString));
-        services.AddSingleton<IDirectorySource>(_ => new GraphDirectorySource(graphCredentials, http));
+        var graphMissing = SnapshotGraphConfig.Missing(key => configuration[key]);
+        if (graphMissing.Count == 0)
+        {
+            var graphCredentials = GraphCertificateCredentialSource.Create(
+                new Uri(configuration["Snapshot:KeyVaultUri"]!),
+                credential,
+                configuration["Snapshot:GraphCertificateName"]!,
+                configuration["Snapshot:GraphTenantId"]!,
+                configuration["Snapshot:GraphClientId"]!);
+            services.AddSingleton<IDirectorySource>(_ => new GraphDirectorySource(graphCredentials, http));
+        }
+        else
+        {
+            services.AddSingleton<IDirectorySource>(_ => new IncompleteGraphDirectorySource());
+        }
         services.AddSingleton<ISnapshotSink>(_ => new BlobSnapshotSink(container));
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<SnapshotJob>();

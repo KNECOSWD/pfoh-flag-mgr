@@ -4,11 +4,11 @@ set -euo pipefail
 # Update these values before running.
 SUBSCRIPTION_ID="00000000-0000-0000-0000-000000000000"
 LOCATION="eastus"
-RG="rg-pfoh-flags-prod"
+RG="PLANO_FLAGS_OF_HONOR"
 PLAN="asp-pfoh-flags-prod"
 APP="pfoh-flag-manager-app"
-SQL_SERVER="sql-pfoh-flags-prod-$RANDOM"
-SQL_DB="sqldb-pfoh-flags-prod"
+SQL_SERVER="pfoh"
+SQL_DB="pfoh"
 SQL_ADMIN="pfohsqladmin"
 SQL_PASSWORD="ChangeThisToAStrongPassword_12345!"
 
@@ -18,8 +18,9 @@ az group create --name "$RG" --location "$LOCATION"
 az appservice plan create \
   --resource-group "$RG" \
   --name "$PLAN" \
+  --location canadacentral \
   --is-linux \
-  --sku B1
+  --sku P1v3
 
 az webapp create \
   --resource-group "$RG" \

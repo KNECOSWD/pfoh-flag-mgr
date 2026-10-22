@@ -299,7 +299,7 @@ Replace the placeholders and run from Azure CLI. This avoids storing an Azure cl
 
 ```bash
 SUBSCRIPTION_ID="<subscription-id>"
-RG="rg-pfoh-flags-prod"
+RG="PLANO_FLAGS_OF_HONOR"
 APP_NAME="pfoh-flag-manager-app"
 GITHUB_ORG="<github-user-or-org>"
 GITHUB_REPO="<repo-name>"

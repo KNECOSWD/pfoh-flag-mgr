@@ -1,7 +1,7 @@
 targetScope = 'resourceGroup'
 
-@description('Region for the snapshot function and its storage accounts.')
-param location string = resourceGroup().location
+@description('Region for the snapshot function, storage, and Key Vault. Required. The resource group PLANO_FLAGS_OF_HONOR is eastus and the App Service plan is canadacentral, so pass canadacentral. This parameter has no default.')
+param location string
 
 @description('Existing App Service plan. The function shares it and does not create a plan.')
 param appServicePlanName string

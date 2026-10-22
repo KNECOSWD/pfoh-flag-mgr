@@ -37,6 +37,8 @@ public class SnapshotSecurityArtifactTests
         Assert.DoesNotContain("sas", bicep, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("accountKey", bicep, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("scope: resourceGroup()", bicep, StringComparison.Ordinal);
+        Assert.Contains("param location string", bicep, StringComparison.Ordinal);
+        Assert.DoesNotContain("resourceGroup().location", bicep, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -77,6 +79,14 @@ public class SnapshotSecurityArtifactTests
         Assert.Contains("chmod 600", runbook, StringComparison.Ordinal);
         Assert.Contains("Cloud Shell", runbook, StringComparison.Ordinal);
         Assert.Contains("pfoh-snapshot", runbook, StringComparison.Ordinal);
+        Assert.Contains("PLANO_FLAGS_OF_HONOR", runbook, StringComparison.Ordinal);
+        Assert.Contains("location=canadacentral", runbook, StringComparison.Ordinal);
+        Assert.Contains("sqlServerName=pfoh", runbook, StringComparison.Ordinal);
+        Assert.Contains("sqlDatabaseName=pfoh", runbook, StringComparison.Ordinal);
+        Assert.Contains("P1v3", runbook, StringComparison.Ordinal);
+        Assert.DoesNotContain("rg-pfoh-flags-prod", runbook, StringComparison.Ordinal);
+        Assert.DoesNotContain("sqldb-pfoh-flags-prod", runbook, StringComparison.Ordinal);
+        Assert.DoesNotContain("B1", runbook, StringComparison.Ordinal);
         Assert.DoesNotContain("AzureADTokenExchange", runbook, StringComparison.Ordinal);
         Assert.Contains("az keyvault certificate create", runbook, StringComparison.Ordinal);
         Assert.Contains("validityInMonths", runbook, StringComparison.Ordinal);

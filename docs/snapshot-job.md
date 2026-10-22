@@ -15,7 +15,7 @@ The files are UTF-8 without a BOM:
 
 A WebJob on the website would run as that site. A user-assigned identity attached to the website is also available to the website, so it is not dedicated to this job.
 
-The function is a separate app on the existing Basic B1 plan (`asp-pfoh-flags-prod` in `infra/azure-cli-setup.sh`). The website is unchanged and does not receive this identity. The plan is already paid and already has Always On, so the nightly run adds no plan charge. A Consumption plan would also stay inside the free grant (1 million executions and 400,000 GB-s a month, from the Azure Functions pricing page) but it is a second plan and a cold start. Sharing the existing plan is the lower incremental cost and still isolates the identity.
+The function is a separate app on the existing P1v3 plan (`asp-pfoh-flags-prod`). That plan is in canadacentral. The resource group `PLANO_FLAGS_OF_HONOR` is in eastus, so the deploy passes `location=canadacentral` and does not use the resource group location. The website is unchanged and does not receive this identity. The plan is already paid and already has Always On, so the nightly run adds no plan charge. A Consumption plan would also stay inside the free grant (1 million executions and 400,000 GB-s a month, from the Azure Functions pricing page) but it is a second plan and a cold start. Sharing the existing plan is the lower incremental cost and still isolates the identity.
 
 Storage is the incremental cost. Two Standard LRS accounts (Hot) are defined: one for the function host, one for the report container. Azure Blob Storage Hot LRS list price is about $0.018 per GB-month in East US, and write transactions are about $0.05 per 10,000. The JSON is small and the job writes two blobs a night. Expect well under $0.20 a month for both accounts. Key Vault Standard has no base monthly fee. Secret operations are about $0.03 per 10,000 transactions on the Key Vault pricing page, so one certificate read a night is well under $0.01. A self-signed certificate has no certificate-authority charge. Confirm the figures on the Azure pricing calculator before the first deploy. No second App Service plan is included in that estimate.
 
@@ -37,9 +37,9 @@ Set the resource group and names you already use. Do not paste keys, certificate
 
    ```bash
    az deployment group create \
-     --resource-group rg-pfoh-flags-prod \
+     --resource-group PLANO_FLAGS_OF_HONOR \
      --template-file infra/snapshot.bicep \
-     --parameters appServicePlanName=asp-pfoh-flags-prod sqlServerName=<sql-server-name> sqlDatabaseName=sqldb-pfoh-flags-prod graphClientId=<graph-app-client-id> readerPrincipalId=<reader-principal-id-or-omit>
+     --parameters location=canadacentral appServicePlanName=asp-pfoh-flags-prod sqlServerName=pfoh sqlDatabaseName=pfoh graphClientId=<graph-app-client-id> readerPrincipalId=<reader-principal-id-or-omit>
    ```
 
    The file creates:
@@ -215,10 +215,12 @@ Set the resource group and names you already use. Do not paste keys, certificate
 
    The box signs in with the certificate and reads the container. That is the access path this job uses.
 
-8. Let the existing GitHub OIDC deploy app publish the function. Give it Website Contributor on the function app resource only.
+8. Publish the function only after the Graph app registration exists, the Key Vault certificate exists, and `Snapshot__GraphClientId`, `Snapshot__GraphTenantId`, and `Snapshot__GraphCertificateName` are non-empty. The host checks those three when it starts. If one is empty it logs that line and the timer skips the run, so the shared plan does not restart. Do not run the workflow before the settings are filled.
+
+   Let the existing GitHub OIDC deploy app publish the function. Give it Website Contributor on the function app resource only.
 
    ```bash
-   FUNC_ID=$(az functionapp show --resource-group rg-pfoh-flags-prod --name func-pfoh-snapshot --query id -o tsv)
+   FUNC_ID=$(az functionapp show --resource-group PLANO_FLAGS_OF_HONOR --name func-pfoh-snapshot --query id -o tsv)
    az role assignment create \
      --assignee <existing-github-oidc-app-id> \
      --role "Website Contributor" \
@@ -230,7 +232,7 @@ Set the resource group and names you already use. Do not paste keys, certificate
 9. Manual test, after the function is deployed. Run this only in Azure Cloud Shell. Do not run it on the box. The box must never see the host key. Do not write the key into the repo or a log. The `az` result below is the key, so do not paste the command output into a ticket.
 
    ```bash
-   MASTER_KEY=$(az functionapp keys list --resource-group rg-pfoh-flags-prod --name func-pfoh-snapshot --query masterKey -o tsv)
+   MASTER_KEY=$(az functionapp keys list --resource-group PLANO_FLAGS_OF_HONOR --name func-pfoh-snapshot --query masterKey -o tsv)
    curl -sS -X POST "https://func-pfoh-snapshot.azurewebsites.net/admin/functions/SnapshotNightly" \
      -H "Content-Type: application/json" \
      -H "x-functions-key: ${MASTER_KEY}" \
