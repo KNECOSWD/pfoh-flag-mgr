@@ -94,3 +94,9 @@ jobs:
 
       - name: Test API
         run: dotnet test backend/PFOH.Api.Tests/PFOH.Api.Tests.csproj --configuration Release
+
+      - name: Test snapshot job
+        run: dotnet test backend/PFOH.Snapshot.Tests/PFOH.Snapshot.Tests.csproj --configuration Release
+
+      - name: Build snapshot function
+        run: dotnet build backend/PFOH.Snapshot.Function/PFOH.Snapshot.Function.csproj --configuration Release

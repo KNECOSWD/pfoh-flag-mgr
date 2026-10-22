@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Data;
@@ -13,9 +14,10 @@ public sealed record UserAccountContact(string? Phone, string? Organization);
 
 public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> logger, IConfiguration configuration)
 {
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> ProvisionGates = new(StringComparer.Ordinal);
     public async Task<UserProfileDto> GetOwnAsync(ClaimsPrincipal user, CancellationToken ct)
     {
-        await EnsureStoreAsync(ct);
+        await EnsureProvisionedAsync(user, ct);
         var ownerObjectId = user.GetExternalObjectId();
         var saved = await db.UserProfiles
             .FirstOrDefaultAsync(profile => profile.OwnerObjectId == ownerObjectId, ct);
@@ -85,6 +87,11 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
                 Email = email,
                 Phone = normalizedPhone,
                 Organization = normalizedOrganization,
+                DisplayNameSource = ProfileFieldSource.Profile,
+                PhoneSource = ProfileFieldSource.Profile,
+                OrganizationSource = string.IsNullOrWhiteSpace(normalizedOrganization)
+                    ? ProfileFieldSource.Claim
+                    : ProfileFieldSource.Profile,
                 CreatedUtc = now,
                 UpdatedUtc = now
             };
@@ -96,6 +103,11 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
             profile.Email = email;
             profile.Phone = normalizedPhone;
             profile.Organization = normalizedOrganization;
+            profile.DisplayNameSource = ProfileFieldSource.Profile;
+            profile.PhoneSource = ProfileFieldSource.Profile;
+            profile.OrganizationSource = string.IsNullOrWhiteSpace(normalizedOrganization)
+                ? ProfileFieldSource.Claim
+                : ProfileFieldSource.Profile;
             profile.UpdatedUtc = now;
         }
 
@@ -119,6 +131,11 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
             profile.Email = email;
             profile.Phone = normalizedPhone;
             profile.Organization = normalizedOrganization;
+            profile.DisplayNameSource = ProfileFieldSource.Profile;
+            profile.PhoneSource = ProfileFieldSource.Profile;
+            profile.OrganizationSource = string.IsNullOrWhiteSpace(normalizedOrganization)
+                ? ProfileFieldSource.Claim
+                : ProfileFieldSource.Profile;
             profile.UpdatedUtc = now;
             await ApplyDisplayNameToClaimsAsync(callerId, trimmed, ct);
             await db.SaveChangesAsync(ct);
@@ -350,6 +367,200 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
     }
 
+    /// <summary>
+    /// Inserts the caller's profile from the token, or refreshes claim-sourced fields
+    /// on the row keyed by the Entra object id. Email is not an owner key.
+    /// A unique violation from a concurrent insert is re-read and then refreshed.
+    /// </summary>
+    public async Task EnsureProvisionedAsync(ClaimsPrincipal user, CancellationToken ct)
+    {
+        await EnsureStoreAsync(ct);
+        var ownerObjectId = user.GetExternalObjectId();
+        var gate = ProvisionGates.GetOrAdd(ownerObjectId, static _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        try
+        {
+            var incoming = ReadClaimFields(user);
+            var existing = await db.UserProfiles
+                .FirstOrDefaultAsync(profile => profile.OwnerObjectId == ownerObjectId, ct);
+
+            if (existing is null)
+            {
+                var created = NewClaimProfile(ownerObjectId, incoming);
+                db.UserProfiles.Add(created);
+                try
+                {
+                    await db.SaveChangesAsync(ct);
+                    return;
+                }
+                catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+                {
+                    logger.LogInformation("Profile insert raced for {OwnerObjectId}. Reading the existing row.", ownerObjectId);
+                    db.ChangeTracker.Clear();
+                    existing = await db.UserProfiles
+                        .FirstOrDefaultAsync(profile => profile.OwnerObjectId == ownerObjectId, ct);
+                    if (existing is null)
+                    {
+                        throw;
+                    }
+                }
+            }
+
+            if (!ApplyClaimRefresh(existing, incoming))
+            {
+                return;
+            }
+
+            existing.UpdatedUtc = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    internal static bool IsUniqueViolation(DbUpdateException ex)
+    {
+        var message = ex.InnerException?.Message ?? ex.Message;
+        return message.Contains("unique", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("duplicate", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("2601", StringComparison.Ordinal)
+            || message.Contains("2627", StringComparison.Ordinal);
+    }
+
+    private static bool HasProfileDisplayName(UserProfile? saved)
+    {
+        if (saved is null || string.IsNullOrWhiteSpace(saved.DisplayName))
+        {
+            return false;
+        }
+
+        return !string.Equals(saved.DisplayNameSource, ProfileFieldSource.Claim, StringComparison.Ordinal);
+    }
+
+    private ClaimFields ReadClaimFields(ClaimsPrincipal user)
+    {
+        var name = user.GetDisplayName();
+        string? displayName = null;
+        if (!IsPlaceholderDisplayName(name))
+        {
+            displayName = name!.Trim();
+            if (displayName.Length > UserProfileLimits.DisplayNameMaxLength)
+            {
+                displayName = displayName[..UserProfileLimits.DisplayNameMaxLength];
+            }
+        }
+
+        var email = user.GetEmail().Trim();
+        if (email.Length > UserProfileLimits.EmailMaxLength)
+        {
+            email = email[..UserProfileLimits.EmailMaxLength];
+        }
+
+        string? phone = UsPhone.TryNormalize(user.GetPhoneNumber(ExtensionsAppId), out var normalizedPhone)
+            ? normalizedPhone
+            : null;
+
+        var organizationClaim = user.GetOrganization(ExtensionsAppId);
+        string? organization = null;
+        if (!string.IsNullOrWhiteSpace(organizationClaim))
+        {
+            var trimmed = organizationClaim.Trim();
+            organization = trimmed.Length <= UserProfileLimits.OrganizationMaxLength
+                ? trimmed
+                : trimmed[..UserProfileLimits.OrganizationMaxLength];
+        }
+
+        return new ClaimFields(displayName, email, phone, organization);
+    }
+
+    private static UserProfile NewClaimProfile(string ownerObjectId, ClaimFields incoming)
+    {
+        var now = DateTime.UtcNow;
+        return new UserProfile
+        {
+            OwnerObjectId = ownerObjectId,
+            DisplayName = incoming.DisplayName ?? string.Empty,
+            Email = incoming.Email,
+            Phone = incoming.Phone ?? string.Empty,
+            Organization = incoming.Organization,
+            DisplayNameSource = ProfileFieldSource.Claim,
+            PhoneSource = ProfileFieldSource.Claim,
+            OrganizationSource = ProfileFieldSource.Claim,
+            CreatedUtc = now,
+            UpdatedUtc = now
+        };
+    }
+
+    /// <summary>
+    /// Copies usable claim values onto claim-sourced fields. An empty claim does not
+    /// clear a value already stored. Profile-sourced fields, and null sources on
+    /// older rows, are not overwritten. A blank organization is still filled once,
+    /// matching the previous sign-in behavior.
+    /// </summary>
+    private static bool ApplyClaimRefresh(UserProfile profile, ClaimFields incoming)
+    {
+        var dirty = false;
+        if (!string.IsNullOrWhiteSpace(incoming.Email)
+            && !string.Equals(profile.Email, incoming.Email, StringComparison.Ordinal))
+        {
+            profile.Email = incoming.Email;
+            dirty = true;
+        }
+
+        if (IsClaimSource(profile.DisplayNameSource) && incoming.DisplayName is not null
+            && !string.Equals(profile.DisplayName, incoming.DisplayName, StringComparison.Ordinal))
+        {
+            profile.DisplayName = incoming.DisplayName;
+            profile.DisplayNameSource = ProfileFieldSource.Claim;
+            dirty = true;
+        }
+
+        if (IsClaimSource(profile.PhoneSource) && incoming.Phone is not null
+            && !string.Equals(profile.Phone, incoming.Phone, StringComparison.Ordinal))
+        {
+            profile.Phone = incoming.Phone;
+            profile.PhoneSource = ProfileFieldSource.Claim;
+            dirty = true;
+        }
+        else if (!IsClaimSource(profile.PhoneSource)
+            && !UsPhone.TryNormalize(profile.Phone, out _)
+            && incoming.Phone is not null)
+        {
+            profile.Phone = incoming.Phone;
+            dirty = true;
+        }
+
+        if (IsClaimSource(profile.OrganizationSource)
+            && incoming.Organization is not null
+            && !string.Equals(profile.Organization, incoming.Organization, StringComparison.Ordinal))
+        {
+            profile.Organization = incoming.Organization;
+            profile.OrganizationSource = ProfileFieldSource.Claim;
+            dirty = true;
+        }
+        else if (string.IsNullOrWhiteSpace(profile.Organization) && incoming.Organization is not null)
+        {
+            profile.Organization = incoming.Organization;
+            if (IsClaimSource(profile.OrganizationSource) || string.IsNullOrEmpty(profile.OrganizationSource))
+            {
+                profile.OrganizationSource = ProfileFieldSource.Claim;
+            }
+
+            dirty = true;
+        }
+
+        return dirty;
+    }
+
+    private static bool IsClaimSource(string? source)
+    {
+        return string.Equals(source, ProfileFieldSource.Claim, StringComparison.Ordinal);
+    }
+
+    private readonly record struct ClaimFields(string? DisplayName, string Email, string? Phone, string? Organization);
+
     private string ExtensionsAppId
     {
         get
@@ -409,8 +620,9 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         bool phoneNeedsCorrection = false)
     {
         var tokenName = user.GetDisplayName();
-        var displayName = saved is not null && !string.IsNullOrWhiteSpace(saved.DisplayName)
-            ? saved.DisplayName.Trim()
+        var hasSavedDisplayName = HasProfileDisplayName(saved);
+        var displayName = hasSavedDisplayName
+            ? saved!.DisplayName.Trim()
             : IsPlaceholderDisplayName(tokenName) ? string.Empty : tokenName!.Trim();
 
         var email = ResolveEmail(user, saved);
@@ -419,7 +631,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
             user.GetExternalObjectId(),
             displayName,
             email,
-            saved is not null && !string.IsNullOrWhiteSpace(saved.DisplayName),
+            hasSavedDisplayName,
             phone,
             organization,
             phoneNeedsCorrection);

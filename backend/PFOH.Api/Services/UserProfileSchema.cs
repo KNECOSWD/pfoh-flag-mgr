@@ -29,6 +29,9 @@ public static class UserProfileSchema
                 [Email] nvarchar(255) NOT NULL CONSTRAINT [DF_UserProfiles_Email] DEFAULT (N''),
                 [Phone] nvarchar(16) NOT NULL CONSTRAINT [DF_UserProfiles_Phone] DEFAULT (N''),
                 [Organization] nvarchar(200) NULL,
+                [DisplayNameSource] nvarchar(16) NULL,
+                [PhoneSource] nvarchar(16) NULL,
+                [OrganizationSource] nvarchar(16) NULL,
                 [CreatedUtc] datetime2 NOT NULL,
                 [UpdatedUtc] datetime2 NOT NULL,
                 CONSTRAINT [UQ_UserProfiles_OwnerObjectId] UNIQUE ([OwnerObjectId])
@@ -49,6 +52,94 @@ public static class UserProfileSchema
         BEGIN
             ALTER TABLE [dbo].[UserProfiles]
                 ADD [Organization] nvarchar(200) NULL;
+        END
+        """;
+
+    /// <summary>
+    /// Nullable source flags. No default and no backfill: existing rows stay null,
+    /// which provisioning treats as profile-saved so a token cannot overwrite them.
+    /// </summary>
+    internal const string AddClaimSourceColumnsSql = """
+        IF OBJECT_ID(N'[dbo].[UserProfiles]', N'U') IS NOT NULL
+           AND COL_LENGTH(N'[dbo].[UserProfiles]', N'DisplayNameSource') IS NULL
+        BEGIN
+            ALTER TABLE [dbo].[UserProfiles] ADD [DisplayNameSource] nvarchar(16) NULL;
+        END
+
+        IF OBJECT_ID(N'[dbo].[UserProfiles]', N'U') IS NOT NULL
+           AND COL_LENGTH(N'[dbo].[UserProfiles]', N'PhoneSource') IS NULL
+        BEGIN
+            ALTER TABLE [dbo].[UserProfiles] ADD [PhoneSource] nvarchar(16) NULL;
+        END
+
+        IF OBJECT_ID(N'[dbo].[UserProfiles]', N'U') IS NOT NULL
+           AND COL_LENGTH(N'[dbo].[UserProfiles]', N'OrganizationSource') IS NULL
+        BEGIN
+            ALTER TABLE [dbo].[UserProfiles] ADD [OrganizationSource] nvarchar(16) NULL;
+        END
+        """;
+
+    /// <summary>
+    /// Schema only. Creates the unique index when the table has none on OwnerObjectId.
+    /// Does not update, delete, or insert rows.
+    /// </summary>
+    internal const string EnsureOwnerObjectIdUniqueIndexSql = """
+        IF OBJECT_ID(N'[dbo].[UserProfiles]', N'U') IS NOT NULL
+           AND NOT EXISTS (
+                SELECT 1
+                FROM sys.indexes AS i
+                INNER JOIN sys.index_columns AS ic
+                    ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+                INNER JOIN sys.columns AS c
+                    ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+                WHERE i.object_id = OBJECT_ID(N'[dbo].[UserProfiles]')
+                  AND i.is_unique = 1
+                  AND ic.key_ordinal = 1
+                  AND c.name = N'OwnerObjectId'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM sys.index_columns AS ic2
+                      WHERE ic2.object_id = i.object_id
+                        AND ic2.index_id = i.index_id
+                        AND ic2.key_ordinal > 1
+                  )
+           )
+        BEGIN
+            CREATE UNIQUE INDEX [IX_UserProfiles_OwnerObjectId]
+                ON [dbo].[UserProfiles] ([OwnerObjectId]);
+        END
+        """;
+
+    internal const string DropClaimSourceColumnsSql = """
+        IF OBJECT_ID(N'[dbo].[UserProfiles]', N'U') IS NOT NULL
+           AND COL_LENGTH(N'[dbo].[UserProfiles]', N'OrganizationSource') IS NOT NULL
+        BEGIN
+            ALTER TABLE [dbo].[UserProfiles] DROP COLUMN [OrganizationSource];
+        END
+
+        IF OBJECT_ID(N'[dbo].[UserProfiles]', N'U') IS NOT NULL
+           AND COL_LENGTH(N'[dbo].[UserProfiles]', N'PhoneSource') IS NOT NULL
+        BEGIN
+            ALTER TABLE [dbo].[UserProfiles] DROP COLUMN [PhoneSource];
+        END
+
+        IF OBJECT_ID(N'[dbo].[UserProfiles]', N'U') IS NOT NULL
+           AND COL_LENGTH(N'[dbo].[UserProfiles]', N'DisplayNameSource') IS NOT NULL
+        BEGIN
+            ALTER TABLE [dbo].[UserProfiles] DROP COLUMN [DisplayNameSource];
+        END
+        """;
+
+    internal const string DropOwnerObjectIdUniqueIndexSql = """
+        IF OBJECT_ID(N'[dbo].[UserProfiles]', N'U') IS NOT NULL
+           AND EXISTS (
+                SELECT 1
+                FROM sys.indexes
+                WHERE object_id = OBJECT_ID(N'[dbo].[UserProfiles]')
+                  AND name = N'IX_UserProfiles_OwnerObjectId'
+           )
+        BEGIN
+            DROP INDEX [IX_UserProfiles_OwnerObjectId] ON [dbo].[UserProfiles];
         END
         """;
 
@@ -90,6 +181,8 @@ public static class UserProfileSchema
 
             await db.Database.ExecuteSqlRawAsync(CreateSql, ct);
             await db.Database.ExecuteSqlRawAsync(AddPhoneAndOrganizationSql, ct);
+            await db.Database.ExecuteSqlRawAsync(AddClaimSourceColumnsSql, ct);
+            await db.Database.ExecuteSqlRawAsync(EnsureOwnerObjectIdUniqueIndexSql, ct);
             ready = true;
         }
         finally

@@ -12235,6 +12235,7 @@ footer.appFooter.footerNavy .appVersionStamp {
    content column: max(1rem, (viewport - 73.75rem) / 2). */
 header.hero {
   height: auto;
+  min-height: 0;
   max-height: none;
   padding-inline: clamp(1rem, (100vw - 73.75rem) / 2, 24rem);
 }
@@ -12279,9 +12280,10 @@ header.hero .authBox strong {
   white-space: normal;
 }
 
-/* Tablet hero. The kicker, title, and subtitle wrap when they do not fit.
+/* Content-sized header from the tablet width up, including the old 1024px edge.
+   The same grid, padding, and in-flow account box apply on both sides of that edge.
    Short landscape phones keep their own header. */
-@media (min-width: 761px) and (max-width: 1023px) and (min-height: 561px) {
+@media (min-width: 761px) and (min-height: 561px) {
   header.hero {
     min-height: 0;
     display: grid;
@@ -12396,11 +12398,25 @@ header.hero .authBox strong {
 
   footer.appFooter .footerExplore,
   footer.appFooter .footerLoop,
-  footer.appFooter .footerContact,
-  footer.appFooter .footerCredit {
+  footer.appFooter .footerContact {
     min-width: 0;
     flex: 1 1 10rem;
     max-width: 100%;
+  }
+
+  footer.appFooter .footerCredit {
+    display: inline-flex;
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: max-content;
+    max-width: max-content;
+    white-space: nowrap;
+  }
+
+  footer.appFooter .footerCredit span {
+    white-space: nowrap;
   }
 }
 

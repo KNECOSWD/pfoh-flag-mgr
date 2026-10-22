@@ -39,19 +39,21 @@ export function mergedPrintName(count, date = new Date()) {
 
 export const PRINT_EVENT_COMMENT_MAX = 500;
 
-const bogotaDateTime = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/Bogota",
+const centralDateTime = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Chicago",
   year: "numeric",
   month: "short",
   day: "numeric",
   hour: "numeric",
-  minute: "2-digit"
+  minute: "2-digit",
+  timeZoneName: "short"
 });
 
 /**
- * Print history time in Colombia Time, labeled COT.
+ * Print history time in US Central (America/Chicago).
+ * The platform label is CDT during daylight time and CST during standard time.
  * @param {string | number | Date} value
  */
 export function formatPrintEventTime(value) {
-  return `${bogotaDateTime.format(new Date(value))} COT`;
+  return centralDateTime.format(new Date(value));
 }

@@ -203,7 +203,7 @@ Rows are seats that have an honoree, sorted by section then grid number (`A-01`,
 
 ### Your profile
 
-Signed-in users open **Profile** from the header (and from the mobile menu). The form asks for **Name** (stored as the display name), **Email**, **Phone**, and optional **Organization**. Email comes from the Entra token and stays read-only. Name, email, and phone are required. Phone must be a 10-digit US number, such as `214-555-1234`. It is stored as `+12145551234` and shown as `(214) 555-1234` on the profile and on admin claimant lists. Entra does not validate that format. The profile is stored in `dbo.UserProfiles`, keyed by the token object id (`OwnerObjectId`). The saved name replaces a placeholder token name such as `unknown` in the header and is copied onto that user's flag claims.
+Signed-in users open **Profile** from the header (and from the mobile menu). The form asks for **Name** (stored as the display name), **Email**, **Phone**, and optional **Organization**. Email comes from the Entra token and stays read-only. Name, email, and phone are required. Phone must be a 10-digit US number, such as `214-555-1234`. It is stored as `+12145551234` and shown as `(214) 555-1234` on the profile and on admin claimant lists. Entra does not validate that format. The profile is stored in `dbo.UserProfiles`, keyed by the token object id (`OwnerObjectId`, the Entra `oid` claim). The first authenticated request for an id inserts that row. Later requests for the same id update it. The lookup is never the email address. Name, phone, and organization remember where the current value came from: `claim` when it was copied from the token, or `profile` when it was saved on the profile form. A null source on an older row is treated as `profile`, so a token does not overwrite a name, phone, or organization that was already saved. Email is not edited on the form and stays the token email. The saved name replaces a placeholder token name such as `unknown` in the header and is copied onto that user's flag claims.
 
 There are no city or state fields on the account profile. `dbo.Sponsors` still has City and State because those columns hold sponsor mailing addresses, and dropping them would delete existing data.
 
@@ -382,6 +382,10 @@ Then test:
 - Add rate limiting and audit logs.
 - Add file upload support to Azure Blob Storage if users will attach honoree photos or documents.
 - Add data export/backups before the event.
+
+## Nightly snapshot
+
+The snapshot job is a separate Function App on the existing App Service plan. It writes two JSON files to a private blob container. Nothing in this repository creates those Azure resources. Setup, the certificate used by the read-only box, and the consent request are in `docs/snapshot-job.md`. The field allow-list lives in `SnapshotFieldSpec`.
 
 ## Version
 

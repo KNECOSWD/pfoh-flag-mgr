@@ -338,7 +338,7 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
         var missingEmail = await client.SendAsync(ProfileRequest(
             HttpMethod.Put,
             "/api/profile",
-            "user-phone",
+            "user-phone-no-email",
             "",
             "Pat Phone",
             new { displayName = "Pat Phone", phone = "+19725550100" }));
@@ -451,6 +451,139 @@ public class ProfileApiTests(PfohApiFactory factory) : IClassFixture<PfohApiFact
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("nominate an honoree", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task First_sign_in_creates_one_row_and_a_second_sign_in_does_not()
+    {
+        await ResetAsync();
+        var client = factory.CreateClient();
+
+        var first = await client.SendAsync(ProfileRequest(
+            HttpMethod.Get,
+            "/api/profile",
+            "oid-once",
+            "once@example.com",
+            "Once Person",
+            phoneClaim: "214-555-0191",
+            organizationClaim: "Station 9"));
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+
+        var second = await client.SendAsync(ProfileRequest(
+            HttpMethod.Get,
+            "/api/profile",
+            "oid-once",
+            "once@example.com",
+            "Once Person",
+            phoneClaim: "214-555-0191",
+            organizationClaim: "Station 9"));
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var rows = await db.UserProfiles.Where(profile => profile.OwnerObjectId == "oid-once").ToListAsync();
+        var row = Assert.Single(rows);
+        Assert.Equal("once@example.com", row.Email);
+        Assert.Equal("+12145550191", row.Phone);
+        Assert.Equal("Station 9", row.Organization);
+        Assert.Equal(ProfileFieldSource.Claim, row.DisplayNameSource);
+    }
+
+    [Fact]
+    public async Task Two_concurrent_first_requests_create_one_row()
+    {
+        await ResetAsync();
+        var client = factory.CreateClient();
+        var left = client.SendAsync(ProfileRequest(
+            HttpMethod.Get,
+            "/api/profile",
+            "oid-concurrent",
+            "concurrent@example.com",
+            "Concurrent Person",
+            phoneClaim: "214-555-0144",
+            organizationClaim: "Gate"));
+        var right = client.SendAsync(ProfileRequest(
+            HttpMethod.Get,
+            "/api/profile",
+            "oid-concurrent",
+            "concurrent@example.com",
+            "Concurrent Person",
+            phoneClaim: "214-555-0144",
+            organizationClaim: "Gate"));
+
+        await Task.WhenAll(left, right);
+        Assert.Equal(HttpStatusCode.OK, left.Result.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, right.Result.StatusCode);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var count = await db.UserProfiles.CountAsync(profile => profile.OwnerObjectId == "oid-concurrent");
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task Profile_form_values_survive_a_later_token()
+    {
+        await ResetAsync();
+        var client = factory.CreateClient();
+
+        var save = await client.SendAsync(ProfileRequest(
+            HttpMethod.Put,
+            "/api/profile",
+            "oid-edited",
+            "edited@example.com",
+            "Token Name",
+            new { displayName = "Edited Name", phone = "+12145550123", organization = "Edited Org" }));
+        Assert.Equal(HttpStatusCode.OK, save.StatusCode);
+
+        var later = await client.SendAsync(ProfileRequest(
+            HttpMethod.Get,
+            "/api/profile",
+            "oid-edited",
+            "replacement@example.com",
+            "Replacement Name",
+            phoneClaim: "+12145550999",
+            organizationClaim: "Replacement Org"));
+        Assert.Equal(HttpStatusCode.OK, later.StatusCode);
+        var profile = await later.Content.ReadFromJsonAsync<UserProfileResponse>();
+        Assert.NotNull(profile);
+        Assert.Equal("Edited Name", profile.DisplayName);
+        Assert.Equal("+12145550123", profile.Phone);
+        Assert.Equal("Edited Org", profile.Organization);
+        Assert.Equal("replacement@example.com", profile.Email);
+        Assert.True(profile.HasSavedDisplayName);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var row = await db.UserProfiles.SingleAsync(item => item.OwnerObjectId == "oid-edited");
+        Assert.Equal(ProfileFieldSource.Profile, row.DisplayNameSource);
+        Assert.Equal(ProfileFieldSource.Profile, row.PhoneSource);
+        Assert.Equal(ProfileFieldSource.Profile, row.OrganizationSource);
+        Assert.Equal("Edited Name", row.DisplayName);
+        Assert.Equal("+12145550123", row.Phone);
+        Assert.Equal("Edited Org", row.Organization);
+    }
+
+    [Fact]
+    public async Task Same_email_and_different_object_ids_are_different_profiles()
+    {
+        await ResetAsync();
+        var client = factory.CreateClient();
+
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(ProfileRequest(
+            HttpMethod.Get, "/api/profile", "oid-alpha", "shared@example.com", "Alpha"))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(ProfileRequest(
+            HttpMethod.Get, "/api/profile", "oid-beta", "shared@example.com", "Beta"))).StatusCode);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var ids = await db.UserProfiles
+            .Where(profile => profile.Email == "shared@example.com")
+            .Select(profile => profile.OwnerObjectId)
+            .ToListAsync();
+        Assert.Equal(2, ids.Count);
+        Assert.Contains("oid-alpha", ids);
+        Assert.Contains("oid-beta", ids);
     }
 
     [Fact]

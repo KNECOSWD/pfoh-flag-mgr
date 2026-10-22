@@ -151,6 +151,19 @@ public class UserProfileSchemaTests
         Assert.DoesNotContain("State", UserProfileSchema.CreateSql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("AddUserProfilePhoneAndOrganization", typeof(PFOH.Api.Data.Migrations.AddUserProfilePhoneAndOrganization).Name, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Owner_object_id_index_migration_is_schema_only()
+    {
+        Assert.Contains("CREATE UNIQUE INDEX [IX_UserProfiles_OwnerObjectId]", UserProfileSchema.EnsureOwnerObjectIdUniqueIndexSql, StringComparison.Ordinal);
+        Assert.Contains("[DisplayNameSource] nvarchar(16) NULL", UserProfileSchema.AddClaimSourceColumnsSql, StringComparison.Ordinal);
+        Assert.DoesNotContain("UPDATE ", UserProfileSchema.EnsureOwnerObjectIdUniqueIndexSql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("INSERT ", UserProfileSchema.EnsureOwnerObjectIdUniqueIndexSql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DELETE ", UserProfileSchema.EnsureOwnerObjectIdUniqueIndexSql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("UPDATE ", UserProfileSchema.AddClaimSourceColumnsSql, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("INSERT ", UserProfileSchema.AddClaimSourceColumnsSql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AddUserProfileOwnerObjectIdUniqueIndex", typeof(PFOH.Api.Data.Migrations.AddUserProfileOwnerObjectIdUniqueIndex).Name, StringComparison.Ordinal);
+    }
 }
 
 public class HonoreeCopyTests

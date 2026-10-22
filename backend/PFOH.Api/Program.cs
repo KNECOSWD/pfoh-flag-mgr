@@ -111,6 +111,7 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
 builder.Services.AddApplicationInsightsTelemetry(options =>
 {
@@ -327,6 +328,7 @@ app.UseCors("frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
+app.UseMiddleware<UserProfileProvisioningMiddleware>();
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "PFOH.Api" })).AllowAnonymous();
 app.MapGet("/flag-map", async (HttpContext context, CancellationToken ct) =>
 {

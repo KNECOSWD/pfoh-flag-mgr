@@ -29,10 +29,16 @@ test("one selected card and twenty-eight selected cards title the shared viewer"
   assert.equal(cardPreviewLoadingMessage(honoreeCardHeading), "Loading the honoree card…");
 });
 
-test("print history times are labeled Colombia Time", () => {
+test("print history times use US Central and name CST or CDT", () => {
   assert.equal(PRINT_EVENT_COMMENT_MAX, 500);
-  assert.equal(formatPrintEventTime("2026-10-20T18:30:00Z"), "Oct 20, 2026, 1:30 PM COT");
-  assert.equal(formatPrintEventTime("2026-10-21T03:00:00Z"), "Oct 20, 2026, 10:00 PM COT");
+  assert.equal(formatPrintEventTime("2026-10-20T18:30:00Z"), "Oct 20, 2026, 1:30 PM CDT");
+  assert.equal(formatPrintEventTime("2026-01-15T18:30:00Z"), "Jan 15, 2026, 12:30 PM CST");
+  // 2026-03-08 02:00 America/Chicago is the spring-forward. 07:59 UTC is still CST. 08:00 UTC is CDT.
+  assert.equal(formatPrintEventTime("2026-03-08T07:59:00Z"), "Mar 8, 2026, 1:59 AM CST");
+  assert.equal(formatPrintEventTime("2026-03-08T08:00:00Z"), "Mar 8, 2026, 3:00 AM CDT");
+  // 2026-11-01 02:00 CDT is the fall-back. 05:30 UTC is still CDT. 07:30 UTC is CST.
+  assert.equal(formatPrintEventTime("2026-11-01T05:30:00Z"), "Nov 1, 2026, 12:30 AM CDT");
+  assert.equal(formatPrintEventTime("2026-11-01T07:30:00Z"), "Nov 1, 2026, 1:30 AM CST");
 });
 
 test("the merged PDF name uses today's Bogotá date and the merged card count", () => {

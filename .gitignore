@@ -6,4 +6,7 @@ node_modules/
 dist/
 frontend/.env
 backend/PFOH.Api/appsettings.Production.json
+local.settings.json
+*.pfx
+*.key
 .DS_Store
