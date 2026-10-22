@@ -3,9 +3,11 @@ using System.Threading.RateLimiting;
 using Microsoft.ApplicationInsights.DependencyCollector;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Identity.Web;
 using PFOH.Api.Data;
@@ -94,7 +96,11 @@ builder.Services.AddDbContext<PfohDbContext>((sp, options) =>
 {
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
         ?? throw new InvalidOperationException("Missing DefaultConnection connection string.");
-    options.UseSqlServer(connectionString);
+    options.UseSqlServer(connectionString, sqlServerOptionsAction: sql =>
+        sql.EnableRetryOnFailure(
+            maxRetryCount: ProfileSqlRetry.MaxRetryCount,
+            maxRetryDelay: ProfileSqlRetry.MaxRetryDelay,
+            errorNumbersToAdd: null));
     options.AddInterceptors(sp.GetRequiredService<PublicFlagMapCacheInvalidator>());
 });
 
@@ -136,6 +142,9 @@ builder.Services.AddSingleton<ITelemetryInitializer, AdminIdentityTelemetryIniti
 builder.Services.AddSingleton<IHttpContextFactory>(serviceProvider =>
     new SubmitterLookupHttpContextFactory(ActivatorUtilities.CreateInstance<DefaultHttpContextFactory>(serviceProvider)));
 builder.Services.AddSingleton<HonoreeFileStorage>();
+builder.Services.AddSingleton<ProfileStoreCircuit>();
+builder.Services.AddHealthChecks()
+    .AddCheck<ProfileStoreHealthCheck>("profile-store", tags: ["ready"]);
 builder.Services.AddScoped<UserProfileService>();
 builder.Services.AddScoped<FlagGridAssignment>();
 builder.Services.AddScoped<PendingReviewMaintenance>();
@@ -263,6 +272,44 @@ telemetryChain.Build();
 
 app.Use(async (context, next) =>
 {
+    try
+    {
+        await next();
+    }
+    catch (Exception ex) when (ex is ProfileStoreUnavailableException or RetryLimitExceededException)
+    {
+        if (context.Response.HasStarted)
+        {
+            throw;
+        }
+
+        if (ex is RetryLimitExceededException)
+        {
+            app.Logger.LogError(
+                "SQL retries exhausted. ExceptionType={ExceptionType} SqlErrorNumber={SqlErrorNumber}",
+                ex.GetType().FullName,
+                UserProfileService.SqlErrorNumber(ex));
+        }
+
+        var retryAfter = ex is ProfileStoreUnavailableException unavailable
+            ? unavailable.RetryAfter
+            : TimeSpan.FromSeconds(5);
+        context.Response.Clear();
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        var seconds = (int)Math.Ceiling(retryAfter.TotalSeconds);
+        if (seconds < 1)
+        {
+            seconds = 1;
+        }
+
+        context.Response.Headers.RetryAfter = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        context.Response.Headers.CacheControl = "no-store";
+        await context.Response.WriteAsJsonAsync(new { message = "The profile store is unavailable." });
+    }
+});
+
+app.Use(async (context, next) =>
+{
     if (SubmitterLookupPrivacy.IsLookupPath(context.Request.Path))
     {
         context.Response.OnStarting(() =>
@@ -345,7 +392,17 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.UseMiddleware<UserProfileProvisioningMiddleware>();
-app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "PFOH.Api" })).AllowAnonymous();
+// Liveness has no dependency checks. App Service must not recycle the only
+// instance when the database is down. Readiness is /health/ready.
+// Both use the built-in plain-text writer (Healthy / Degraded / Unhealthy).
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = static _ => false
+}).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = static check => check.Tags.Contains("ready")
+}).AllowAnonymous();
 app.MapGet("/flag-map", async (HttpContext context, CancellationToken ct) =>
 {
     context.Response.Headers.CacheControl = StaticAssetCaching.Html;
@@ -367,8 +424,22 @@ app.MapFallbackToFile("index.html");
 
 try
 {
+    // SQL Server startup does not use the request retry. A separate context
+    // has no execution-strategy retry. StartupDatabase.Create applies
+    // StartupDatabase.ConnectTimeout (4 seconds) and the command timeout.
+    // Nine steps plus per-step overhead are StartupDatabase.ExpectedWhenDatabaseHangs
+    // (about 38 seconds) when the endpoint accepts and never answers.
+    // Tests that replace the provider keep their own context.
     await using var scope = app.Services.CreateAsyncScope();
-    var startupDb = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+    var configured = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+    var sqlServer = configured.Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;
+    var startupConnection = app.Configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException("Missing DefaultConnection connection string.");
+    await using var startupOwned = sqlServer ? StartupDatabase.Create(startupConnection) : null;
+    var startupDb = startupOwned ?? configured;
+    var startupMaintenance = startupOwned is null
+        ? scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>()
+        : new PendingReviewMaintenance(startupDb, scope.ServiceProvider.GetRequiredService<HonoreeFileStorage>());
     try
     {
         await PendingSubmissionGridSchema.EnsureAsync(startupDb, CancellationToken.None);
@@ -464,7 +535,6 @@ try
 
     try
     {
-        var startupMaintenance = scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>();
         await startupMaintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
     }
     catch (Exception ex)

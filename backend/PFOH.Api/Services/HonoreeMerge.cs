@@ -49,12 +49,14 @@ public static class HonoreeMerge
         IReadOnlyDictionary<string, int> fields,
         MergeCustom? custom,
         string adminName,
+        Guid clientRequestId,
         CancellationToken ct)
     {
         var now = DateTime.UtcNow;
         custom ??= new MergeCustom();
         var byId = confirmed.ToDictionary(honoree => honoree.Id);
-        var audit = await HonoreeMergeAuditLog.CaptureAsync(db, survivor, confirmed, fields, custom, adminName, now, ct);
+        var audit = await HonoreeMergeAuditLog.CaptureAsync(
+            db, survivor, confirmed, fields, custom, adminName, now, clientRequestId, ct);
         ApplyValues(survivor, confirmed, fields, custom);
         var keptGridId = KeptGridId(byId, fields, custom);
         var gridIds = confirmed

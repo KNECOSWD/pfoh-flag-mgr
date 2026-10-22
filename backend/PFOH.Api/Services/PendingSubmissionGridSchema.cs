@@ -82,6 +82,30 @@ public static class PendingSubmissionGridSchema
         END
         """;
 
+    /// <summary>
+    /// Nullable client id for one nominate request, plus a unique index that
+    /// ignores nulls. Existing rows stay null. Nothing is backfilled.
+    /// </summary>
+    internal const string AddClientRequestIdSql = """
+        IF OBJECT_ID(N'dbo.FlagClaims', N'U') IS NOT NULL
+           AND COL_LENGTH(N'dbo.FlagClaims', N'ClientRequestId') IS NULL
+        BEGIN
+            ALTER TABLE [dbo].[FlagClaims] ADD [ClientRequestId] uniqueidentifier NULL;
+        END
+
+        IF OBJECT_ID(N'dbo.FlagClaims', N'U') IS NOT NULL
+           AND NOT EXISTS (
+                SELECT 1
+                FROM sys.indexes
+                WHERE object_id = OBJECT_ID(N'dbo.FlagClaims')
+                  AND name = N'UX_FlagClaims_ClientRequestId')
+        BEGIN
+            CREATE UNIQUE INDEX [UX_FlagClaims_ClientRequestId]
+                ON [dbo].[FlagClaims]([ClientRequestId])
+                WHERE [ClientRequestId] IS NOT NULL;
+        END
+        """;
+
     public static async Task EnsureAsync(PfohDbContext db, CancellationToken ct)
     {
         if (ready || !db.Database.IsRelational())
@@ -105,6 +129,7 @@ public static class PendingSubmissionGridSchema
 
             await db.Database.ExecuteSqlRawAsync(MakeFlagGridOptionalSql, ct);
             await db.Database.ExecuteSqlRawAsync(ActiveFlagGridIndexSql, ct);
+            await db.Database.ExecuteSqlRawAsync(AddClientRequestIdSql, ct);
             ready = true;
         }
         finally

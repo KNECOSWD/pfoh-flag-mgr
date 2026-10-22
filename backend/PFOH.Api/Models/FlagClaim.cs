@@ -4,6 +4,12 @@ public class FlagClaim
 {
     public int Id { get; set; }
 
+    /// <summary>
+    /// Client id for one nominate request. Created outside the retried transaction.
+    /// Null on claims that were not nominated through that path. Not backfilled.
+    /// </summary>
+    public Guid? ClientRequestId { get; set; }
+
     public int? FlagGridId { get; set; }
     public int? HonoreeId { get; set; }
 

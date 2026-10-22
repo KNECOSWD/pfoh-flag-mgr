@@ -118,6 +118,40 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
     }
 
     [Fact]
+    public async Task Nominate_database_failure_after_the_upload_deletes_the_blob()
+    {
+        await ResetAsync();
+        await SeedCatalogAsync();
+        factory.Files.Reset();
+        var photo = new byte[] { 1, 2, 3, 4 };
+        var client = factory.CreateClient();
+        NominatePhotoSaveFault.RejectPhotoFileNameUpdate = true;
+        try
+        {
+            var nominate = await client.SendAsync(Authed(
+                HttpMethod.Post,
+                "/api/flag-claims/nominate",
+                "submitter",
+                "submitter@example.com",
+                "Test Submitter",
+                body: Nomination(photo)));
+            Assert.NotEqual(HttpStatusCode.OK, nominate.StatusCode);
+        }
+        finally
+        {
+            NominatePhotoSaveFault.RejectPhotoFileNameUpdate = false;
+        }
+
+        Assert.Empty(factory.Files.Photos);
+        Assert.Contains(factory.Files.DeletedPendingPhotos, name => name.StartsWith("pending/", StringComparison.Ordinal));
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var change = await db.HonoreeChangeRequests.SingleAsync();
+        Assert.True(string.IsNullOrWhiteSpace(change.PhotoFileName));
+    }
+
+    [Fact]
     public async Task Approving_a_new_submission_assigns_the_first_available_spot_by_name()
     {
         await ResetAsync();
