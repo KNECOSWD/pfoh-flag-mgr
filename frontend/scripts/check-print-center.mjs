@@ -41,12 +41,17 @@ test("print history times use US Central and name CST or CDT", () => {
   assert.equal(formatPrintEventTime("2026-11-01T07:30:00Z"), "Nov 1, 2026, 1:30 AM CST");
 });
 
-test("the merged PDF name uses today's Bogotá date and the merged card count", () => {
-  assert.equal(mergedPrintName(140, new Date("2026-10-20T18:00:00Z")), "PFOH Reprint Cards - 2026-10-20 - 140 cards");
-  assert.equal(mergedPrintName(1, new Date("2026-10-20T18:00:00Z")), "PFOH Reprint Cards - 2026-10-20 - 1 card");
-  // 03:00 UTC on the 21st is still the 20th in Bogotá (UTC-5).
-  assert.equal(mergedPrintName(28, new Date("2026-10-21T03:00:00Z")), "PFOH Reprint Cards - 2026-10-20 - 28 cards");
-  assert.equal(mergedPrintName(28, new Date("2026-10-21T05:00:00Z")), "PFOH Reprint Cards - 2026-10-21 - 28 cards");
+test("the merged PDF name uses the Central time helper and the merged card count", () => {
+  assert.equal(mergedPrintName(140, new Date("2026-10-20T18:00:00Z")), `PFOH Reprint Cards - ${formatPrintEventTime("2026-10-20T18:00:00Z")} - 140 cards`);
+  assert.equal(mergedPrintName(1, new Date("2026-10-20T18:00:00Z")), "PFOH Reprint Cards - Oct 20, 2026, 1:00 PM CDT - 1 card");
+  // 05:30 UTC on Jan 15 is 11:30 PM on Jan 14 in Chicago. The UTC date is the 15th.
+  const nearMidnight = "2026-01-15T05:30:00Z";
+  assert.equal(nearMidnight.slice(0, 10), "2026-01-15");
+  assert.equal(formatPrintEventTime(nearMidnight), "Jan 14, 2026, 11:30 PM CST");
+  assert.equal(mergedPrintName(28, new Date(nearMidnight)), "PFOH Reprint Cards - Jan 14, 2026, 11:30 PM CST - 28 cards");
+  // Spring-forward: 07:59 UTC is still CST on Mar 8, and 08:00 UTC is CDT the same Chicago morning.
+  assert.equal(mergedPrintName(2, new Date("2026-03-08T07:59:00Z")), "PFOH Reprint Cards - Mar 8, 2026, 1:59 AM CST - 2 cards");
+  assert.equal(mergedPrintName(2, new Date("2026-03-08T08:00:00Z")), "PFOH Reprint Cards - Mar 8, 2026, 3:00 AM CDT - 2 cards");
 });
 
 test("Print Center row and merged download open the Honoree Card viewer", () => {

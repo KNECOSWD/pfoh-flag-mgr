@@ -19,24 +19,6 @@ export function cardPreviewLoadingMessage(heading) {
   return "Loading the honoree card…";
 }
 
-const bogotaDate = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/Bogota",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit"
-});
-
-/**
- * Title of the merged Print Center PDF, also its download name without ".pdf".
- * The date is today in Bogotá time (COT).
- * @param {number} count
- * @param {Date} [date]
- */
-export function mergedPrintName(count, date = new Date()) {
-  const cards = Math.max(0, Number(count) || 0);
-  return `PFOH Reprint Cards - ${bogotaDate.format(date)} - ${cards} card${cards === 1 ? "" : "s"}`;
-}
-
 export const PRINT_EVENT_COMMENT_MAX = 500;
 
 const centralDateTime = new Intl.DateTimeFormat("en-US", {
@@ -52,8 +34,20 @@ const centralDateTime = new Intl.DateTimeFormat("en-US", {
 /**
  * Print history time in US Central (America/Chicago).
  * The platform label is CDT during daylight time and CST during standard time.
+ * The merged PDF filename uses this same label for its date.
  * @param {string | number | Date} value
  */
 export function formatPrintEventTime(value) {
   return centralDateTime.format(new Date(value));
+}
+
+/**
+ * Title of the merged Print Center PDF, also its download name without ".pdf".
+ * The date is the Central-time label from {@link formatPrintEventTime}.
+ * @param {number} count
+ * @param {Date} [date]
+ */
+export function mergedPrintName(count, date = new Date()) {
+  const cards = Math.max(0, Number(count) || 0);
+  return `PFOH Reprint Cards - ${formatPrintEventTime(date)} - ${cards} card${cards === 1 ? "" : "s"}`;
 }
