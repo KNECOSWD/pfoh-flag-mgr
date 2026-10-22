@@ -269,6 +269,8 @@ It creates:
 - Azure SQL Database
 - App Service SQL connection string
 
+`/health` is liveness and does not touch the database. `/health/ready` checks the profile database and returns 503 while that circuit is open or the database cannot be reached. App Service's health check is not given a path in this repo: `infra/azure-cli-setup.sh` does not set one, and `infra/snapshot.bicep` has no `healthCheckPath`. Point a health check at `/health` so a database outage does not recycle the only instance.
+
 For production, replace the simple SQL username/password with managed identity + Azure SQL access or Key Vault references.
 
 ### 2. Configure App Service environment variables

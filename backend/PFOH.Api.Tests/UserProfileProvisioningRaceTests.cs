@@ -459,6 +459,233 @@ public class UserProfileProvisioningRaceTests
     }
 
     [Fact]
+    public async Task A_cancelled_probe_reopens_the_circuit_and_recovers_after_the_break()
+    {
+        const string secret = "oid-cancelled-probe-secret";
+        UserProfileSchema.ResetForTests();
+        var clock = new DateTime(2026, 10, 22, 16, 0, 0, DateTimeKind.Utc);
+        var state = new ProfileStoreCircuit { UtcNow = () => clock };
+        state.Open(clock - state.Break - TimeSpan.FromTicks(1));
+        UserProfileService.StoreAttemptForTests.Value = state;
+        ProfileStoreResilience.PipelineForTests.Value = ProfileStoreResilience.ImmediateRetries();
+        using var serverStop = new CancellationTokenSource();
+        UserProfileService.SchemaCancellationForTests.Value = serverStop.Token;
+        using var requestAborted = new CancellationTokenSource();
+        var attempts = 0;
+        CancellationToken probeToken = default;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        UserProfileSchema.EnsureFailureForTests.Value = async token =>
+        {
+            Interlocked.Increment(ref attempts);
+            probeToken = token;
+            entered.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, token);
+            }
+            catch (OperationCanceledException)
+            {
+                throw new OperationCanceledException($"probe cancelled for {secret}", token);
+            }
+        };
+        var logs = new ListLogger();
+        try
+        {
+            await using var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            var options = new DbContextOptionsBuilder<PfohDbContext>().UseSqlite(connection).Options;
+            await using var db = new PfohDbContext(options);
+            await db.Database.EnsureCreatedAsync();
+            UserProfileSchema.ResetForTests();
+            var service = new UserProfileService(db, logs, new ConfigurationBuilder().Build());
+            var user = ProfileUser("oid-cancel-user", "cancel@example.com", "Cancel Person");
+            var probe = service.EnsureProvisionedAsync(user, requestAborted.Token);
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(ProfileStoreCircuitState.HalfOpen, state.State);
+
+            requestAborted.Cancel();
+            await Task.Delay(50);
+            Assert.False(probeToken.IsCancellationRequested);
+            Assert.Equal(ProfileStoreCircuitState.HalfOpen, state.State);
+
+            serverStop.Cancel();
+            var cancelled = await Assert.ThrowsAsync<ProfileStoreUnavailableException>(async () => await probe);
+            Assert.IsAssignableFrom<OperationCanceledException>(cancelled.InnerException);
+            Assert.Equal(1, attempts);
+            Assert.Equal(ProfileStoreCircuitState.Open, state.State);
+            Assert.InRange(cancelled.RetryAfter.TotalSeconds, 1, 5);
+
+            var skipped = await Assert.ThrowsAsync<ProfileStoreUnavailableException>(
+                () => service.EnsureProvisionedAsync(user, CancellationToken.None));
+            Assert.Null(skipped.InnerException);
+            Assert.Equal(1, attempts);
+
+            var written = string.Join("\n", logs.Lines);
+            Assert.Contains("ExceptionType=System.OperationCanceledException", written, StringComparison.Ordinal);
+            Assert.DoesNotContain(secret, written, StringComparison.Ordinal);
+            Assert.Empty(logs.Exceptions);
+
+            clock = clock.Add(state.Break).AddTicks(1);
+            UserProfileSchema.EnsureFailureForTests.Value = null;
+            UserProfileService.SchemaCancellationForTests.Value = default;
+            await service.EnsureProvisionedAsync(user, CancellationToken.None);
+            Assert.Equal(ProfileStoreCircuitState.Closed, state.State);
+            Assert.Equal(0, state.RetryAfterTicks);
+        }
+        finally
+        {
+            serverStop.Cancel();
+            UserProfileSchema.EnsureFailureForTests.Value = null;
+            UserProfileService.ResetStoreFailureForTests();
+            ProfileStoreResilience.PipelineForTests.Value = null;
+            UserProfileSchema.ResetForTests();
+        }
+    }
+
+    [Fact]
+    public async Task A_non_transient_probe_reopens_the_circuit()
+    {
+        const string secret = "oid-nontransient-probe-secret";
+        UserProfileSchema.ResetForTests();
+        var clock = new DateTime(2026, 10, 22, 16, 30, 0, DateTimeKind.Utc);
+        var state = new ProfileStoreCircuit { UtcNow = () => clock };
+        state.Open(clock - state.Break - TimeSpan.FromTicks(1));
+        UserProfileService.StoreAttemptForTests.Value = state;
+        ProfileStoreResilience.PipelineForTests.Value = ProfileStoreResilience.ImmediateRetries();
+        var attempts = 0;
+        UserProfileSchema.EnsureFailureForTests.Value = _ =>
+        {
+            attempts++;
+            throw SqlError(208, $"Invalid object name for {secret}.");
+        };
+        var logs = new ListLogger();
+        try
+        {
+            await using var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            var options = new DbContextOptionsBuilder<PfohDbContext>().UseSqlite(connection).Options;
+            await using var db = new PfohDbContext(options);
+            var service = new UserProfileService(db, logs, new ConfigurationBuilder().Build());
+            var user = ProfileUser("oid-nontransient-probe", "probe@example.com", "Probe Person");
+
+            var failed = await Assert.ThrowsAsync<ProfileStoreUnavailableException>(
+                () => service.EnsureProvisionedAsync(user, CancellationToken.None));
+            Assert.Equal(1, attempts);
+            Assert.IsType<SqlException>(failed.InnerException);
+            Assert.Equal(ProfileStoreCircuitState.Open, state.State);
+            Assert.InRange(failed.RetryAfter.TotalSeconds, 1, 5);
+
+            var written = string.Join("\n", logs.Lines);
+            Assert.Contains("ExceptionType=Microsoft.Data.SqlClient.SqlException", written, StringComparison.Ordinal);
+            Assert.Contains("SqlErrorNumber=208", written, StringComparison.Ordinal);
+            Assert.DoesNotContain(secret, written, StringComparison.Ordinal);
+            Assert.Empty(logs.Exceptions);
+        }
+        finally
+        {
+            UserProfileSchema.EnsureFailureForTests.Value = null;
+            UserProfileService.ResetStoreFailureForTests();
+            ProfileStoreResilience.PipelineForTests.Value = null;
+            UserProfileSchema.ResetForTests();
+        }
+    }
+
+    [Fact]
+    public async Task A_non_transient_store_error_returns_unavailable_without_rerunning_the_schema_lock()
+    {
+        const string secret = "oid-nontransient-persistent-secret";
+        UserProfileSchema.ResetForTests();
+        var clock = new DateTime(2026, 10, 22, 17, 0, 0, DateTimeKind.Utc);
+        var state = new ProfileStoreCircuit { UtcNow = () => clock };
+        UserProfileService.StoreAttemptForTests.Value = state;
+        ProfileStoreResilience.PipelineForTests.Value = ProfileStoreResilience.ImmediateRetries();
+        var attempts = 0;
+        UserProfileSchema.EnsureFailureForTests.Value = _ =>
+        {
+            attempts++;
+            throw SqlError(208, $"Invalid object name for {secret}.");
+        };
+        var logs = new ListLogger();
+        try
+        {
+            await using var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            var options = new DbContextOptionsBuilder<PfohDbContext>().UseSqlite(connection).Options;
+            await using var db = new PfohDbContext(options);
+            var service = new UserProfileService(db, logs, new ConfigurationBuilder().Build());
+            var user = ProfileUser("oid-nontransient-user", "persist@example.com", "Persist Person");
+
+            var first = await Assert.ThrowsAsync<ProfileStoreUnavailableException>(
+                () => service.EnsureProvisionedAsync(user, CancellationToken.None));
+            Assert.Equal(1, attempts);
+            Assert.NotNull(first.InnerException);
+            Assert.Equal(ProfileStoreCircuitState.Open, state.State);
+            Assert.InRange(first.RetryAfter.TotalSeconds, 1, 5);
+
+            var skipped = await Assert.ThrowsAsync<ProfileStoreUnavailableException>(
+                () => service.EnsureProvisionedAsync(user, CancellationToken.None));
+            Assert.Null(skipped.InnerException);
+            Assert.Equal(1, attempts);
+            Assert.Equal(ProfileStoreCircuitState.Open, state.State);
+
+            var written = string.Join("\n", logs.Lines);
+            Assert.Contains("SqlErrorNumber=208", written, StringComparison.Ordinal);
+            Assert.DoesNotContain(secret, written, StringComparison.Ordinal);
+            Assert.DoesNotContain("Invalid object name", written, StringComparison.Ordinal);
+            Assert.Empty(logs.Exceptions);
+        }
+        finally
+        {
+            UserProfileSchema.EnsureFailureForTests.Value = null;
+            UserProfileService.ResetStoreFailureForTests();
+            ProfileStoreResilience.PipelineForTests.Value = null;
+            UserProfileSchema.ResetForTests();
+        }
+    }
+
+    [Fact]
+    public async Task A_probe_after_the_break_closes_the_circuit()
+    {
+        UserProfileSchema.ResetForTests();
+        var clock = new DateTime(2026, 10, 22, 17, 30, 0, DateTimeKind.Utc);
+        var state = new ProfileStoreCircuit { UtcNow = () => clock };
+        state.Open(clock - state.Break - TimeSpan.FromTicks(1));
+        UserProfileService.StoreAttemptForTests.Value = state;
+        var attempts = 0;
+        UserProfileSchema.EnsureFailureForTests.Value = _ =>
+        {
+            attempts++;
+            return Task.CompletedTask;
+        };
+        try
+        {
+            await using var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            var options = new DbContextOptionsBuilder<PfohDbContext>().UseSqlite(connection).Options;
+            await using var db = new PfohDbContext(options);
+            await db.Database.EnsureCreatedAsync();
+            UserProfileSchema.ResetForTests();
+            var service = new UserProfileService(db, NullLogger<UserProfileService>.Instance, new ConfigurationBuilder().Build());
+            var user = ProfileUser("oid-recover-user", "recover@example.com", "Recover Person");
+
+            await service.EnsureProvisionedAsync(user, CancellationToken.None);
+            Assert.Equal(1, attempts);
+            Assert.Equal(ProfileStoreCircuitState.Closed, state.State);
+            Assert.Equal(0, state.RetryAfterTicks);
+
+            await service.EnsureProvisionedAsync(user, CancellationToken.None);
+            Assert.Equal(1, attempts);
+            Assert.Equal(ProfileStoreCircuitState.Closed, state.State);
+        }
+        finally
+        {
+            UserProfileSchema.EnsureFailureForTests.Value = null;
+            UserProfileService.ResetStoreFailureForTests();
+            UserProfileSchema.ResetForTests();
+        }
+    }
+
+    [Fact]
     public async Task Duplicate_owner_rows_do_not_start_the_store_backoff()
     {
         const string oid = "oid-dup-backoff";

@@ -278,6 +278,7 @@ public static class UserProfileSchema
             Interlocked.Decrement(ref gateWaiters);
         }
 
+        var probing = false;
         try
         {
             if (ready)
@@ -288,9 +289,14 @@ public static class UserProfileSchema
 
             // Re-check after the lock. Another request may have opened the circuit
             // while this one waited to run the TABLOCKX index batch.
-            if (circuit is not null && !circuit.TryEnter(circuit.Now))
+            if (circuit is not null)
             {
-                throw new ProfileStoreUnavailableException(circuit.RetryAfter(circuit.Now));
+                if (!circuit.TryEnter(circuit.Now))
+                {
+                    throw new ProfileStoreUnavailableException(circuit.RetryAfter(circuit.Now));
+                }
+
+                probing = circuit.State == ProfileStoreCircuitState.HalfOpen;
             }
 
             async ValueTask ExecuteOnceAsync(CancellationToken token)
@@ -334,30 +340,40 @@ public static class UserProfileSchema
                 ready = true;
             }
 
-            if (circuit is null)
+            try
             {
-                await ExecuteOnceAsync(ct);
+                if (circuit is null)
+                {
+                    await ExecuteOnceAsync(ct);
+                }
+                else
+                {
+                    await ProfileStoreResilience.Pipeline.ExecuteAsync(
+                        async token => await ExecuteOnceAsync(token),
+                        ct);
+                    circuit.Close();
+                }
             }
-            else
+            catch (Exception ex) when (circuit is not null && ex is not ProfileStoreUnavailableException)
             {
-                await ProfileStoreResilience.Pipeline.ExecuteAsync(
-                    async token => await ExecuteOnceAsync(token),
-                    ct);
-                circuit.Close();
+                // Transient retries are already exhausted. A non-transient error,
+                // including cancellation, opens the same short break. Open before
+                // releasing the gate so a waiter does not run the batch.
+                circuit.Open(circuit.Now);
+                throw;
             }
 
             return true;
         }
-        catch (Exception ex) when (circuit is not null
-            && ex is not ProfileStoreUnavailableException
-            && ProfileStoreTransient.IsTransient(ex))
-        {
-            // Open before releasing the gate so a waiter re-checks and does not run the batch.
-            circuit.Open(circuit.Now);
-            throw;
-        }
         finally
         {
+            // A probe that did not close must not stay half-open. Half-open rejects
+            // every later call, which would 503 the instance until restart.
+            if (probing && circuit!.State == ProfileStoreCircuitState.HalfOpen)
+            {
+                circuit.Open(circuit.Now);
+            }
+
             Gate.Release();
         }
     }

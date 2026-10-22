@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Threading.RateLimiting;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
@@ -129,7 +130,7 @@ builder.Services.AddSingleton<IHttpContextFactory>(serviceProvider =>
 builder.Services.AddSingleton<HonoreeFileStorage>();
 builder.Services.AddSingleton<ProfileStoreCircuit>();
 builder.Services.AddHealthChecks()
-    .AddCheck<ProfileStoreHealthCheck>("profile-store");
+    .AddCheck<ProfileStoreHealthCheck>("profile-store", tags: ["ready"]);
 builder.Services.AddScoped<UserProfileService>();
 builder.Services.AddScoped<FlagGridAssignment>();
 builder.Services.AddScoped<PendingReviewMaintenance>();
@@ -363,7 +364,16 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.UseMiddleware<UserProfileProvisioningMiddleware>();
-app.MapHealthChecks("/health").AllowAnonymous();
+// Liveness has no dependency checks. App Service must not recycle the only
+// instance when the database is down. Readiness is /health/ready.
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = static _ => false
+}).AllowAnonymous();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = static check => check.Tags.Contains("ready")
+}).AllowAnonymous();
 app.MapGet("/flag-map", async (HttpContext context, CancellationToken ct) =>
 {
     context.Response.Headers.CacheControl = StaticAssetCaching.Html;

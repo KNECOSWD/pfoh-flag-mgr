@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
 using PFOH.Api.Extensions;
@@ -16,7 +17,8 @@ public class UserProfileService(
     PfohDbContext db,
     ILogger<UserProfileService> logger,
     IConfiguration configuration,
-    ProfileStoreCircuit? circuit = null)
+    ProfileStoreCircuit? circuit = null,
+    IHostApplicationLifetime? lifetime = null)
 {
     /// <summary>
     /// Fixed stripes. A map keyed by object id would grow for every account that ever signed in.
@@ -722,32 +724,50 @@ public class UserProfileService(
     /// <summary>
     /// A duplicate object id is handled inside <see cref="UserProfileSchema.EnsureAsync"/> and does not open the circuit.
     /// A transient SQL or identity error is retried with exponential backoff and jitter.
-    /// If those retries fail, the circuit stays open for a few seconds and the next call is the half-open probe.
+    /// Any failure, including a non-transient error or a cancelled probe, opens the circuit
+    /// for a few seconds. The next call after that break is the half-open probe.
     /// </summary>
     internal static readonly AsyncLocal<ProfileStoreCircuit?> StoreAttemptForTests = new();
+
+    /// <summary>
+    /// Extra cancellation linked into the server-owned schema token. Production leaves this unset.
+    /// The request's <c>RequestAborted</c> token is not linked.
+    /// </summary>
+    internal static readonly AsyncLocal<CancellationToken> SchemaCancellationForTests = new();
 
     private ProfileStoreCircuit ActiveCircuit =>
         StoreAttemptForTests.Value ?? circuit ?? ProfileStoreCircuit.Process;
 
-    internal static void ResetStoreFailureForTests() => StoreAttemptForTests.Value = null;
-
-    private async Task EnsureStoreAsync(CancellationToken ct)
+    internal static void ResetStoreFailureForTests()
     {
+        StoreAttemptForTests.Value = null;
+        SchemaCancellationForTests.Value = default;
+    }
+
+    private async Task EnsureStoreAsync(CancellationToken requestAborted)
+    {
+        // requestAborted is intentionally unused. A disconnected client must not cancel the probe.
+        _ = requestAborted;
         var attempt = ActiveCircuit;
         if (attempt.IsBlocked(attempt.Now))
         {
             throw new ProfileStoreUnavailableException(attempt.RetryAfter(attempt.Now));
         }
 
+        using var server = CancellationTokenSource.CreateLinkedTokenSource(
+            lifetime?.ApplicationStopping ?? CancellationToken.None,
+            SchemaCancellationForTests.Value);
+        server.CancelAfter(ProfileStoreResilience.SchemaTimeout);
+
         try
         {
-            await UserProfileSchema.EnsureAsync(db, logger, ct, attempt);
+            await UserProfileSchema.EnsureAsync(db, logger, server.Token, attempt);
         }
         catch (ProfileStoreUnavailableException)
         {
             throw;
         }
-        catch (Exception ex) when (ProfileStoreTransient.IsTransient(ex))
+        catch (Exception ex)
         {
             LogFailure(LogLevel.Error, ex, "Unable to prepare the user profile table.");
             throw new ProfileStoreUnavailableException(attempt.RetryAfter(attempt.Now), ex);

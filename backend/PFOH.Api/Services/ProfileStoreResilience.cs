@@ -79,6 +79,13 @@ internal static class ProfileStoreResilience
 {
     internal static readonly TimeSpan BreakDuration = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// Server-owned budget for one schema attempt, including retries.
+    /// Matches the 30-second total request timeout in Microsoft.Extensions.Http.Resilience.
+    /// The caller's <c>HttpContext.RequestAborted</c> is not linked.
+    /// </summary>
+    internal static readonly TimeSpan SchemaTimeout = TimeSpan.FromSeconds(30);
+
     internal static readonly RetryStrategyOptions RetryOptions = new()
     {
         ShouldHandle = new PredicateBuilder().Handle<Exception>(ProfileStoreTransient.IsTransient),
@@ -121,9 +128,10 @@ public enum ProfileStoreCircuitState
 
 /// <summary>
 /// Standard circuit breaker for the profile schema batch.
-/// Closed: calls run, and a transient error is retried.
+/// Closed: calls run. A transient error is retried. Any failure opens the circuit.
 /// Open: callers fail fast until the short break elapses.
 /// Half-open: the next caller after the break is the single probe.
+/// Any probe that does not succeed, including cancellation, opens a fresh break.
 /// </summary>
 public sealed class ProfileStoreCircuit
 {

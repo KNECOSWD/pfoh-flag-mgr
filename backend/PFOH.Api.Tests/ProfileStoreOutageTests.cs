@@ -19,10 +19,16 @@ public class ProfileStoreOutageTests : IDisposable
         var healthy = await client.GetAsync("/health");
         Assert.Equal(HttpStatusCode.OK, healthy.StatusCode);
         Assert.Equal("Healthy", (await healthy.Content.ReadAsStringAsync()).Trim());
+        var ready = await client.GetAsync("/health/ready");
+        Assert.Equal(HttpStatusCode.OK, ready.StatusCode);
+        Assert.Equal("Healthy", (await ready.Content.ReadAsStringAsync()).Trim());
 
         circuit.Open(DateTime.UtcNow);
 
-        var unhealthy = await client.GetAsync("/health");
+        var live = await client.GetAsync("/health");
+        Assert.Equal(HttpStatusCode.OK, live.StatusCode);
+        Assert.Equal("Healthy", (await live.Content.ReadAsStringAsync()).Trim());
+        var unhealthy = await client.GetAsync("/health/ready");
         Assert.Equal(HttpStatusCode.ServiceUnavailable, unhealthy.StatusCode);
         Assert.Equal("Unhealthy", (await unhealthy.Content.ReadAsStringAsync()).Trim());
 
@@ -41,7 +47,7 @@ public class ProfileStoreOutageTests : IDisposable
         Assert.DoesNotContain("SqlException", body, StringComparison.Ordinal);
 
         circuit.Close();
-        var restored = await client.GetAsync("/health");
+        var restored = await client.GetAsync("/health/ready");
         Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
         Assert.Equal("Healthy", (await restored.Content.ReadAsStringAsync()).Trim());
     }
