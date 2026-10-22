@@ -30,7 +30,7 @@ public class StartupSchemaSqlTests
         ["HonoreeNotDuplicatePairSchema"] = 1,
         ["PendingSubmissionGridSchema"] = 2,
         ["ReprintDuplicateReviewSchema"] = 1,
-        ["UserProfileSchema"] = 2
+        ["UserProfileSchema"] = 4
     };
 
     [Fact]

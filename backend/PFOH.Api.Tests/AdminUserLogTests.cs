@@ -73,8 +73,9 @@ public class AdminUserLogTests
                 OwnerObjectId = ProfileObjectId,
                 DisplayName = "Synthetic Profile User",
                 Email = ProfileEmail,
-                Phone = string.Empty,
-                Organization = null,
+                // Already filled, so sign-in provisioning does not write before the profile save.
+                Phone = "+12145550199",
+                Organization = "Synthetic Org",
                 CreatedUtc = DateTime.UtcNow,
                 UpdatedUtc = DateTime.UtcNow
             });
@@ -101,8 +102,7 @@ public class AdminUserLogTests
         Assert.DoesNotContain(ProfileObjectId, written, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(ProfileEmail, written, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("pii-profile-9f3c2a", written, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Profile save hit a write conflict and will be retried.", written, StringComparison.Ordinal);
-        Assert.Contains("Phone or organization from the sign-in token could not be saved.", written, StringComparison.Ordinal);
+        Assert.Contains("Retrying profile save after a write conflict.", written, StringComparison.Ordinal);
     }
 
     private static IConfiguration GraphConfiguration() => new ConfigurationBuilder()

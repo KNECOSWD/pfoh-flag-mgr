@@ -112,7 +112,12 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
+// AddApplicationInsightsTelemetry inserts a provider-wide Warning rule at the
+// front of the filter list. Logging:ApplicationInsights:LogLevel is more specific
+// and is what turns EF categories off. A later AddFilter for those categories
+// would outrank that config, so this file does not add one.
 builder.Services.AddApplicationInsightsTelemetry(options =>
 {
     // The built-in sampler is replaced after the app is built so the cap
@@ -339,6 +344,7 @@ app.UseCors("frontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
+app.UseMiddleware<UserProfileProvisioningMiddleware>();
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "PFOH.Api" })).AllowAnonymous();
 app.MapGet("/flag-map", async (HttpContext context, CancellationToken ct) =>
 {
@@ -445,6 +451,15 @@ try
             ex,
             "STARTUP CLEANUP FAILED while ensuring dbo.FlagRemovalQueueItems. {Failure}",
             ex.ToString());
+    }
+
+    try
+    {
+        await UserProfileSchema.EnsureAsync(startupDb, app.Logger, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        UserProfileService.LogStartupIndexFailure(app.Logger, ex);
     }
 
     try

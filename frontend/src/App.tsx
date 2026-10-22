@@ -4750,7 +4750,7 @@ export default function App() {
 
               <section className="printHistory" aria-label="Print history">
                 <h3>Print history</h3>
-                <p className="helperText">Times are Colombia Time (COT).</p>
+                <p className="helperText">Times are US Central (CST or CDT).</p>
                 {printHistoryError ? (
                   <p className="message error" role="alert">{printHistoryError}</p>
                 ) : visiblePrintHistory.length === 0 ? (
