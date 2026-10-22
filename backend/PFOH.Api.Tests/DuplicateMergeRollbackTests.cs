@@ -17,6 +17,10 @@ using Xunit;
 
 namespace PFOH.Api.Tests;
 
+// Startup runs UserProfileSchema.EnsureAsync against SQLite and sets the
+// process-wide ready flag. Keep this class with the other schema tests so
+// that flag cannot flip while a profile-store retry test is in progress.
+[Collection("UserProfileSchema")]
 public class DuplicateMergeRollbackTests : IClassFixture<DuplicateMergeRollbackFactory>
 {
     private readonly DuplicateMergeRollbackFactory factory;

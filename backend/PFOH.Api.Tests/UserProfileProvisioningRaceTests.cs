@@ -298,6 +298,9 @@ public class UserProfileProvisioningRaceTests
             var options = new DbContextOptionsBuilder<PfohDbContext>().UseSqlite(connection).Options;
             await using var db = new PfohDbContext(options);
             await db.Database.EnsureCreatedAsync();
+            // Clear again after setup. A relational host that finished during
+            // EnsureCreated would otherwise skip the failure hook.
+            UserProfileSchema.ResetForTests();
             var service = new UserProfileService(db, logs, new ConfigurationBuilder().Build());
             await service.EnsureProvisionedAsync(
                 ProfileUser("oid-backoff-user", "backoff@example.com", "Backoff Person"),
