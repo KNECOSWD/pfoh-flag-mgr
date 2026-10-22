@@ -1204,18 +1204,20 @@ export function sectionLabelSizes(zones, scale) {
 }
 
 // Phone overview letters fall under 8px and run together. Draw them at 13px
-// and skip columns so a two-letter name fits. The desktop overview is about
-// 9px with every letter, which stays as it is. Both halves of a column share
-// the stride so the top of each band stays aligned.
+// and skip columns so a two-letter name fits. From 1024px of viewport width
+// every letter stays, including a short desktop window. Both halves of a
+// column share the stride so the top of each band stays aligned.
 export const SECTION_LETTER_MIN_PX = 13;
 const SECTION_LETTER_THIN_BELOW_PX = 8;
+const SECTION_LETTER_FULL_FROM_PX = 1024;
 
-export function sectionLetterPlan(zones, scale) {
+export function sectionLetterPlan(zones, scale, viewportWidth) {
   const s = Number(scale) > 0 ? Number(scale) : 1;
   const list = (zones ?? []).filter((zone) => zone && zone.width > 0);
   const uniform = sectionLabelSizes(list, s);
   const natural = uniform?.letterPx ?? 0;
-  if (!list.length || natural >= SECTION_LETTER_THIN_BELOW_PX) {
+  const showAll = Number(viewportWidth) >= SECTION_LETTER_FULL_FROM_PX;
+  if (!list.length || showAll || natural >= SECTION_LETTER_THIN_BELOW_PX) {
     return { stride: 1, screenPx: natural, sparse: false };
   }
   const columnPx = Math.min(...list.map((zone) => zone.width)) * s;

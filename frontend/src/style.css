@@ -3,6 +3,14 @@
   color: #162033;
   background: #f2f5f9;
   line-height: 1.5;
+  /* One hero overlay. Wide layout and the 761–1023 band both use it. */
+  --hero-overlay: linear-gradient(
+    90deg,
+    rgba(3, 12, 30, 0.94) 0%,
+    rgba(6, 20, 48, 0.91) 42%,
+    rgba(6, 20, 48, 0.80) 70%,
+    rgba(45, 8, 16, 0.74) 100%
+  );
 }
 
 * {
@@ -102,14 +110,7 @@ main {
   position: absolute;
   inset: 0;
   z-index: -2;
-  background:
-    linear-gradient(
-      90deg,
-      rgba(3, 12, 30, 0.94) 0%,
-      rgba(6, 20, 48, 0.91) 42%,
-      rgba(6, 20, 48, 0.80) 70%,
-      rgba(45, 8, 16, 0.74) 100%
-    );
+  background: var(--hero-overlay);
 }
 
 .hero > * {
@@ -1145,32 +1146,18 @@ img {
     width: auto;
     height: auto;
     background-size: cover;
-    background-position: center center;
+    background-position: center 46%;
     transform: none;
-    opacity: 1;
+    opacity: 0.86;
   }
 
   .hero::after {
     inset: 0 !important;
     width: auto !important;
     height: auto !important;
-    right: auto !important;
-    bottom: auto !important;
     max-width: none !important;
     opacity: 1;
-    background:
-      linear-gradient(
-        90deg,
-        rgba(5, 15, 35, 0.62) 0%,
-        rgba(7, 22, 50, 0.34) 52%,
-        rgba(7, 22, 50, 0.10) 100%
-      ),
-      linear-gradient(
-        180deg,
-        rgba(2, 8, 20, 0.18) 0%,
-        rgba(2, 8, 20, 0.04) 44%,
-        rgba(2, 8, 20, 0.28) 100%
-      );
+    background: var(--hero-overlay);
   }
 
   .hero > * {
@@ -9072,7 +9059,7 @@ main:has(.flagPositionManager.adminStandalonePanel) .appFooter {
 }
 
 .hero h1 {
-  white-space: normal !important;
+  white-space: normal;
 }
 
 .heroLead {
@@ -12268,6 +12255,8 @@ header.hero {
 
 header.hero h1 {
   max-width: 100%;
+  /* One scale from the phone floor through the wide layout, so 1023 and 1024 do not jump. */
+  font-size: clamp(1.65rem, 0.7rem + 2.4vw, 4rem);
   white-space: normal;
   overflow: visible;
   text-overflow: unset;
@@ -12304,40 +12293,73 @@ header.hero .authBox strong {
   white-space: normal;
 }
 
-@media (min-width: 761px) and (max-width: 1023px) {
+/* Tablet hero. The title block keeps one line; the name wraps in the other column.
+   Short landscape phones keep their own header. */
+@media (min-width: 761px) and (max-width: 1023px) and (min-height: 561px) {
   header.hero {
     min-height: 0;
-    flex-direction: row;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
-    justify-content: flex-start;
-    gap: 0.65rem 1rem;
+    column-gap: 1rem;
+    row-gap: 0.65rem;
     padding-block: 0.85rem;
     overflow: visible;
   }
 
+  header.hero > .heroBrand {
+    grid-column: 1;
+    grid-row: 1;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+  }
+
+  header.hero .heroNav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0;
+    margin-top: 0;
+  }
+
+  header.hero .eyebrow,
+  header.hero h1,
+  header.hero .heroLead {
+    max-width: none;
+    white-space: nowrap;
+    text-wrap: nowrap;
+  }
+
+  header.hero .eyebrow {
+    font-size: 0.75rem;
+    letter-spacing: 0.16em;
+  }
+
   header.hero h1 {
-    font-size: clamp(1.65rem, 0.7rem + 2.4vw, 2.35rem);
     line-height: 1.08;
   }
 
-  header.hero .heroContent {
-    flex: 1 1 12rem;
-    min-width: 0;
-    max-width: none;
-  }
-
-  header.hero .heroContent > * {
-    max-width: none;
-    white-space: normal;
+  header.hero .heroLead {
+    font-size: 1.02rem;
   }
 
   header.hero .authBox {
+    grid-column: 2;
+    grid-row: 1;
     position: static;
+    top: auto;
+    right: auto;
     width: auto;
     max-width: 100%;
-    margin-left: auto;
-    flex: 0 1 auto;
+    margin: 0;
+    min-width: 0;
+    justify-self: end;
+    align-self: center;
+  }
+
+  header.hero .authBox strong {
+    white-space: normal;
+    text-align: right;
   }
 
   /* Non-map pages: the dog tag keeps its own column so the title and
@@ -12347,10 +12369,6 @@ header.hero .authBox strong {
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     gap: 0.85rem;
-    flex: 1 1 16rem;
-    width: auto;
-    max-width: none;
-    min-width: 0;
   }
 
   html:not(.flagMapPage) header.hero .heroDogTagLink {
@@ -12364,56 +12382,78 @@ header.hero .authBox strong {
     grid-column: 2;
     display: grid;
     align-content: center;
-    min-width: 0;
+    min-width: max-content;
     margin: 0;
-  }
-
-  html:not(.flagMapPage) header.hero .authBox {
-    position: static;
-    top: auto;
-    right: auto;
-    width: auto;
-    margin: 0;
-    flex: 0 1 auto;
-    min-width: 0;
   }
 }
 
-/* Footer columns wrap inside the same fluid inset as the header.
-   Phones keep the stacked footer from the 760px rules. */
+/* Phone titles stay on one line. 320–375 may wrap instead of clipping. */
+@media (max-width: 760px) {
+  html:not(.flagMapPage) header.hero h1 {
+    white-space: nowrap;
+    text-wrap: nowrap;
+    overflow-wrap: normal;
+  }
+}
+
+@media (max-width: 375px) {
+  html:not(.flagMapPage) header.hero h1 {
+    white-space: normal;
+    text-wrap: wrap;
+    overflow-wrap: break-word;
+  }
+}
+
+/* 3.0.0 footer. The decoration is clipped. Columns wrap below 1024.
+   From 1024, Contact sits under the socials and Built by is centered. */
 @media (min-width: 761px) {
   footer.appFooter {
-    overflow: visible;
+    overflow: clip;
     padding-inline: clamp(1rem, (100vw - 73.75rem) / 2, 24rem);
   }
 
+  footer.appFooter .appVersionStamp {
+    padding-inline: 0;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1023px) {
   footer.appFooter .appFooterInner {
-    width: 100% !important;
-    max-width: none !important;
-    min-height: 0 !important;
-    display: flex !important;
+    width: 100%;
+    max-width: none;
+    display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
     justify-content: flex-start;
-    gap: clamp(1rem, (100vw - 73.75rem) / 2, 24rem) !important;
-    padding-inline: 0 !important;
-    grid-template-columns: none !important;
+    padding-inline: 0;
   }
 
   footer.appFooter .footerExplore,
   footer.appFooter .footerLoop,
   footer.appFooter .footerContact,
   footer.appFooter .footerCredit {
-    grid-column: auto !important;
-    grid-row: auto !important;
-    justify-self: auto !important;
     min-width: 0;
     flex: 1 1 10rem;
     max-width: 100%;
   }
+}
 
-  footer.appFooter .appVersionStamp {
+@media (min-width: 1024px) {
+  footer.appFooter .appFooterInner {
+    width: 100%;
+    max-width: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
+    align-items: start;
     padding-inline: 0;
+  }
+
+  footer.appFooter .footerExplore,
+  footer.appFooter .footerLoop,
+  footer.appFooter .footerContact,
+  footer.appFooter .footerCredit {
+    min-width: 0;
+    max-width: 100%;
   }
 }
 

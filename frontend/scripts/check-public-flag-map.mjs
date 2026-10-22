@@ -672,6 +672,11 @@ test("narrow section letters thin out to a readable size", () => {
   const wide = sectionLetterPlan(field.zones, 40 / SPOT_SIZE.width);
   assert.equal(wide.sparse, false);
   assert.equal(wide.stride, 1);
+  const desktop = sectionLetterPlan(field.zones, 8 / SPOT_SIZE.width, 1024);
+  assert.equal(desktop.sparse, false);
+  assert.equal(desktop.stride, 1);
+  const phoneWidth = sectionLetterPlan(field.zones, 8 / SPOT_SIZE.width, 390);
+  assert.equal(phoneWidth.sparse, true);
   assert.match(page, /sectionLetterPlan\(field\?\.zones/);
   assert.match(page, /isSparse/);
   assert.match(page, /isThinned/);

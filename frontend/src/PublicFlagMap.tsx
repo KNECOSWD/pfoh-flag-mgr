@@ -334,6 +334,7 @@ export default function PublicFlagMap({
   const [visibleCellIds, setVisibleCellIds] = useState<number[]>([]);
   const [gates, setGates] = useState<Gates>(EMPTY_GATES);
   const [renderScale, setRenderScale] = useState(1);
+  const [pageWidth, setPageWidth] = useState(() => window.innerWidth);
   const [serviceLabelBox, setServiceLabelBox] = useState<ReturnType<typeof serviceFlagsLabelBox>>(null);
   const [levelText, setLevelText] = useState("Sections");
   const [inView, setInView] = useState<InViewList>({ kind: "sections", items: [] });
@@ -372,7 +373,7 @@ export default function PublicFlagMap({
   const shareUrl = selected ? flagDeepLink(window.location.href, selected.flagGridId) : "";
 
   const sectionLabels = useMemo(() => (field ? sectionLabelSizes(field.zones, renderScale) : null), [field, renderScale]);
-  const letterPlan = useMemo(() => sectionLetterPlan(field?.zones ?? [], renderScale), [field, renderScale]);
+  const letterPlan = useMemo(() => sectionLetterPlan(field?.zones ?? [], renderScale, pageWidth), [field, renderScale, pageWidth]);
   const visibleZones = useMemo(() => {
     if (!field) return [];
     const keys = new Set(visibleZoneKeys);
@@ -522,6 +523,7 @@ export default function PublicFlagMap({
       const cellIds = cullRects(layout.cells, seen).map((cell: { flagGridId: number }) => cell.flagGridId);
       setGates((current) => (sameGates(current, nextGates) ? current : nextGates));
       setRenderScale((current) => (Math.abs(current - view.scale) <= view.scale * 0.004 ? current : view.scale));
+      setPageWidth((current) => (current === window.innerWidth ? current : window.innerWidth));
       layerRef.current?.style.setProperty("--px", `${1 / view.scale}px`);
       setVisibleZoneKeys((current) => (current.join("|") === zoneKeys.join("|") ? current : zoneKeys));
       setVisibleCellIds((current) => (sameIds(current, cellIds) ? current : cellIds));

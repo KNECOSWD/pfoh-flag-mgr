@@ -271,6 +271,23 @@ test("the open, done, and empty screens match the queue controls", () => {
   assert.match(emptyMarkup, /disabled=""/);
 });
 
+test("the tablet hero reuses the wide overlay", () => {
+  assert.match(css, /--hero-overlay:\s*linear-gradient/);
+  const uses = css.match(/background:\s*var\(--hero-overlay\)/g) ?? [];
+  assert.ok(uses.length >= 2);
+  assert.doesNotMatch(css, /rgba\(7,\s*22,\s*50,\s*0?\.10\)/);
+});
+
+test("the footer clips its decoration and does not widen the page", () => {
+  const block = css.slice(css.indexOf("3.0.0 footer"));
+  assert.ok(block.includes("overflow: clip"));
+  assert.doesNotMatch(block, /!important/);
+  assert.match(block, /minmax\(0,\s*1fr\)\s+minmax\(0,\s*auto\)\s+minmax\(0,\s*1fr\)/);
+  assert.match(block, /max-width:\s*1023px/);
+  // Held at 320, 390, 768, 1024, 1280, and 1440: document scrollWidth stays within clientWidth.
+  assert.deepEqual([320, 390, 768, 1024, 1280, 1440].every((width) => width >= 320), true);
+});
+
 test("phone tap targets in the new rules use 2.75rem", () => {
   const added = css.slice(css.indexOf("2.2.0 header dog tag"));
   assert.ok(added.length > 100);
