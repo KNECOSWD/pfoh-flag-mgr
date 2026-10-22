@@ -2,6 +2,7 @@ using Azure.Identity;
 using Azure.Storage.Blobs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using PFOH.Snapshot;
 using PFOH.Snapshot.Function;
 
@@ -24,6 +25,10 @@ var host = new HostBuilder()
         }
 
         services.AddHostedService<SnapshotGraphStartupCheck>();
+        services.AddOptions<SnapshotScheduleOptions>()
+            .Bind(configuration.GetSection(SnapshotScheduleOptions.SectionName))
+            .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<SnapshotScheduleOptions>, SnapshotScheduleOptionsValidator>();
 
         var identityClientId = configuration["Snapshot:ManagedIdentityClientId"]!;
         var credential = new ManagedIdentityCredential(identityClientId);

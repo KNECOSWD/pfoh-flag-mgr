@@ -20,6 +20,8 @@ public class SnapshotSecurityArtifactTests
         Assert.Contains("allowCrossTenantReplication: false", bicep, StringComparison.Ordinal);
         Assert.Contains("FUNCTIONS_EXTENSION_VERSION", bicep, StringComparison.Ordinal);
         Assert.Contains("FUNCTIONS_WORKER_RUNTIME", bicep, StringComparison.Ordinal);
+        Assert.Contains("Snapshot__MonthlyFromUtcDate", bicep, StringComparison.Ordinal);
+        Assert.Contains("'2026-12-01'", bicep, StringComparison.Ordinal);
         Assert.Contains("value: 'dotnet-isolated'", bicep, StringComparison.Ordinal);
         Assert.Contains("basicPublishingCredentialsPolicies", bicep, StringComparison.Ordinal);
         Assert.Equal(2, CountOf(bicep, "name: 'scm'") + CountOf(bicep, "name: 'ftp'"));

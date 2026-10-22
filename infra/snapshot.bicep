@@ -12,6 +12,9 @@ param sqlServerName string
 @description('Existing Azure SQL database name. This file does not create the server or database.')
 param sqlDatabaseName string
 
+@description('First UTC date when the snapshot runs only on day 1. yyyy-MM-dd. Change the app setting later to move the cutover without a code deploy.')
+param monthlyFromUtcDate string = '2026-12-01'
+
 @description('Days to keep report blobs. Default is 30.')
 @minValue(1)
 @maxValue(3650)
@@ -259,6 +262,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'Snapshot__GraphCertificateName'
           value: 'pfoh-snapshot-graph'
+        }
+        {
+          name: 'Snapshot__MonthlyFromUtcDate'
+          value: monthlyFromUtcDate
         }
         {
           name: 'Snapshot__KeyVaultUri'

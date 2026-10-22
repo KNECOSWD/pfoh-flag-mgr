@@ -21,9 +21,16 @@ Storage is the incremental cost. Two Standard LRS accounts (Hot) are defined: on
 
 ## Schedule
 
-The timer is `0 45 1 * * *`. Azure Functions evaluates that NCRONTAB in UTC. Colombia (`America/Bogota`) is UTC-5 all year, so 01:45 UTC is 8:45 PM Colombia time. `WEBSITE_TIME_ZONE` is not set. The schedule does not depend on it.
+The timer stays `0 45 1 * * *`. Azure Functions evaluates that NCRONTAB in UTC, every day at 01:45 UTC. `WEBSITE_TIME_ZONE` is not set. The schedule does not depend on it. There is no redeploy on the cutover date.
 
-There is no HTTP trigger. A manual run uses the platform admin endpoint and the host key. Do not add a public URL for it.
+`Snapshot__MonthlyFromUtcDate` defaults to `2026-12-01`. The function reads it through options and checks it when the host starts. An empty or invalid value stops startup with a clear message. On each fire the run's UTC date is D.
+
+- If D is before `Snapshot__MonthlyFromUtcDate`, the job runs.
+- If D is on or after that date, the job runs only when D is the 1st. Any other day logs `snapshot skipped: monthly mode` and writes no blobs.
+
+The last nightly run is 2026-12-01 01:45 UTC, which is Nov 30, 8:45 PM Colombia time (COT, UTC-5). After that, the job runs on the 1st of each month at 01:45 UTC. That instant is the evening of the last day of the prior month in Colombia (8:45 PM COT) and in US Central (7:45 PM CST from November through March, 8:45 PM CDT in summer). Changing `Snapshot__MonthlyFromUtcDate` changes the cutover. No code deploy is required.
+
+There is no HTTP trigger. A manual run uses the platform admin endpoint and the host key. Do not add a public URL for it. A manual run on a skipped day still follows this rule.
 
 ## What the admin runs, in order
 
