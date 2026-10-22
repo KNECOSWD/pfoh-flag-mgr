@@ -24,6 +24,8 @@ import {
   AXIS_STRIP,
   AXIS_LABEL_PAD,
   sectionLabelSizes,
+  sectionLetterPlan,
+  SECTION_LETTER_MIN_PX,
   applyKioskIdleReset,
   attractView,
   createFlagMapLoader,
@@ -659,6 +661,25 @@ test("every section label shares one size, weight, and top placement at a zoom, 
   assert.match(page, /sectionLabelSizes\(field\.zones, renderScale\)/);
   assert.match(page, /zoneLabelSizes\(zone, renderScale, sectionLabels\)/);
   assert.match(page, /serviceFlagsLabelSize\(area, renderScale, sectionLabels\)/);
+});
+
+test("narrow section letters thin out to a readable size", () => {
+  const field = pavilionField(40);
+  const narrow = sectionLetterPlan(field.zones, 8 / SPOT_SIZE.width);
+  assert.equal(narrow.sparse, true);
+  assert.ok(narrow.stride >= 2);
+  assert.ok(narrow.screenPx >= SECTION_LETTER_MIN_PX);
+  const wide = sectionLetterPlan(field.zones, 40 / SPOT_SIZE.width);
+  assert.equal(wide.sparse, false);
+  assert.equal(wide.stride, 1);
+  const desktop = sectionLetterPlan(field.zones, 8 / SPOT_SIZE.width, 1024);
+  assert.equal(desktop.sparse, false);
+  assert.equal(desktop.stride, 1);
+  const phoneWidth = sectionLetterPlan(field.zones, 8 / SPOT_SIZE.width, 390);
+  assert.equal(phoneWidth.sparse, true);
+  assert.match(page, /sectionLetterPlan\(field\?\.zones/);
+  assert.match(page, /isSparse/);
+  assert.match(page, /isThinned/);
 });
 
 test("a view that settles from the names zoom to the closest keeps every mostly visible spot inside the gutters with padding", () => {

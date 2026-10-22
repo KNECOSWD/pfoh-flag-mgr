@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0
+
+- The shared header sizes to its content. The Flag Map no longer locks that bar to a 92px band, and the title wraps instead of being clipped. The dog tag scales with the width. Side padding uses the same fluid inset as the page column, so Profile and Sign out sit clear of the edge. From 761px up, Flag Map uses the same navigation as the other pages.
+- On an upright phone, section letters that would be too small to read thin out to a readable size. The spots, rows, and zoom stay the same. In a short landscape window the map keeps a usable area and the page scrolls.
+- Page titles use one fluid size from the phone through the wide layout, reaching 4rem by 1280px. From 761px to 1023px the signed-out header is no longer a tall poster. The kicker, title, and subtitle wrap when they do not fit, and a long name wraps instead.
+- The tablet hero uses the same overlay as the wide hero.
+- From 1024px up the footer keeps Contact under the socials and Built by centered. Below that the columns wrap. The footer decoration cannot widen the page.
+- On a phone the page title wraps when it does not fit, and at 390px it still fits on one line. From 1024px of viewport width every section letter stays on the map.
+- Header, map, and title rules that only existed to fight the cascade were removed. Touch targets in the header use 2.75rem.
+
 ## 2.2.1
 
 - The phone menu button sits inside the header, vertically centered, at 2.75rem. On a short landscape phone it stays in its own grid cell instead of dropping onto the banner.
