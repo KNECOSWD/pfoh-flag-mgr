@@ -233,7 +233,12 @@ public class UserProfileService(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Saved profile display name could not be read. Using the token name.");
+            // The SQL message can contain an account id, and the stack is not useful here.
+            // This runs on every claim and nominate while the circuit is open.
+            logger.LogWarning(
+                "Saved profile display name could not be read. Using the token name. ExceptionType={ExceptionType} SqlErrorNumbers={SqlErrorNumbers}",
+                ex.GetType().FullName,
+                SqlErrorNumbers(ex));
         }
 
         return user.GetDisplayName();
@@ -486,6 +491,47 @@ public class UserProfileService(
             message,
             ex.GetType().FullName,
             SqlErrorNumber(ex));
+    }
+
+    /// <summary>
+    /// Every SQL error number on the exception and its inners, with no message text.
+    /// </summary>
+    private static string SqlErrorNumbers(Exception exception)
+    {
+        var numbers = new List<int>();
+        var pending = new Stack<Exception>();
+        var seen = new HashSet<Exception>(ReferenceEqualityComparer.Instance);
+        pending.Push(exception);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if (!seen.Add(current))
+            {
+                continue;
+            }
+
+            if (current is SqlException sql)
+            {
+                foreach (SqlError error in sql.Errors)
+                {
+                    numbers.Add(error.Number);
+                }
+            }
+
+            if (current is AggregateException aggregate)
+            {
+                for (var i = aggregate.InnerExceptions.Count - 1; i >= 0; i--)
+                {
+                    pending.Push(aggregate.InnerExceptions[i]);
+                }
+            }
+            else if (current.InnerException is not null)
+            {
+                pending.Push(current.InnerException);
+            }
+        }
+
+        return numbers.Count == 0 ? string.Empty : string.Join(',', numbers);
     }
 
     internal static int? SqlErrorNumber(Exception exception)

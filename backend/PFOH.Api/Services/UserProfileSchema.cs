@@ -1,6 +1,7 @@
 using System.Data;
 using System.Data.Common;
 using System.Runtime.CompilerServices;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -29,6 +30,7 @@ public static class UserProfileSchema
     /// The database that already ran this batch. A second call for that same database
     /// skips the DDL. Another database in this process, including each SQLite :memory:
     /// connection, still runs it. Tests open many of those connections at once.
+    /// This is the server and database name, or a SQLite file path, never a connection string.
     /// </summary>
     private static string? ensuredDatabaseKey;
 
@@ -402,8 +404,10 @@ public static class UserProfileSchema
 
     /// <summary>
     /// SQLite :memory: uses one connection string for every connection, and each open
-    /// connection is its own database. A file or SQL Server database is identified
-    /// by its connection string, which stays stable across pooled connections.
+    /// connection is its own database. A SQL Server database is the server plus the
+    /// catalog. SqlClient drops the password from <see cref="DbConnection.ConnectionString"/>
+    /// after the connection has been opened when Persist Security Info is false, so the
+    /// raw string is not a stable id and is never stored. A SQLite file is its full path.
     /// </summary>
     private static string DatabaseKey(PfohDbContext db)
     {
@@ -414,7 +418,36 @@ public static class UserProfileSchema
             return MemoryDatabaseKeys.GetValue(connection, static _ => Guid.NewGuid().ToString("N"));
         }
 
-        return connectionString;
+        var provider = db.Database.ProviderName ?? string.Empty;
+        if (provider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+        {
+            return SqliteFileKey(connection);
+        }
+
+        return SqlServerKey(connectionString);
+    }
+
+    /// <summary>
+    /// Server and database name only. The builder accepts either form of the connection
+    /// string, with or without the password SqlClient removed.
+    /// </summary>
+    private static string SqlServerKey(string connectionString)
+    {
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        var server = builder.DataSource.Trim().ToUpperInvariant();
+        var catalog = builder.InitialCatalog.Trim().ToUpperInvariant();
+        return string.Concat("sql:", server, "\n", catalog);
+    }
+
+    private static string SqliteFileKey(DbConnection connection)
+    {
+        var source = connection.DataSource?.Trim() ?? string.Empty;
+        if (source.Length == 0)
+        {
+            return "sqlite";
+        }
+
+        return "sqlite:" + Path.GetFullPath(source);
     }
 
     internal static void ResetForTests() => ensuredDatabaseKey = null;
