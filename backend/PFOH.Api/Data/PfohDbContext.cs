@@ -154,6 +154,12 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
             entity.ToTable("FlagClaims", "dbo");
             entity.HasKey(e => e.Id);
 
+            entity.Property(e => e.ClientRequestId);
+            entity.HasIndex(e => e.ClientRequestId)
+                .HasDatabaseName("UX_FlagClaims_ClientRequestId")
+                .IsUnique()
+                .HasFilter("[ClientRequestId] IS NOT NULL");
+
             entity.Property(e => e.ExternalUserObjectId).HasMaxLength(128).IsRequired();
             entity.Property(e => e.ExternalUserEmail).HasMaxLength(255).IsRequired();
             entity.Property(e => e.ExternalUserName).HasMaxLength(255);
@@ -310,6 +316,12 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
         {
             entity.ToTable("HonoreeMergeAudits", "dbo");
             entity.HasKey(e => e.Id);
+            entity.Property(e => e.ClientRequestId);
+            entity.HasIndex(e => e.ClientRequestId)
+                .HasDatabaseName("UX_HonoreeMergeAudits_ClientRequestId")
+                .IsUnique()
+                .HasFilter("[ClientRequestId] IS NOT NULL");
+
             entity.Property(e => e.AbsorbedHonoreeIds).IsRequired();
             entity.Property(e => e.BeforeState).IsRequired();
             entity.Property(e => e.AfterSurvivorState).IsRequired();

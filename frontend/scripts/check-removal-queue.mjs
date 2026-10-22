@@ -89,7 +89,7 @@ test("the footer is navy, drops Rotary, and uses the white KNECO logo", () => {
   assert.match(app, /kneco-logo-white-216/);
   assert.match(app, /alt="KNECO, Inc\."/);
   assert.match(css, /footer\.appFooter\.footerNavy/);
-  assert.match(css, /footer\.appFooter\.footerNavy \.footerContact a[\s\S]*min-height:\s*2\.75rem/);
+  assert.match(css, /footer\.appFooter\.footerNavy \.footerContact a[\s\S]*min-block-size:\s*var\(--footer-social-size\)/);
   const navy = css.slice(css.indexOf("footer.appFooter.footerNavy {"), css.indexOf("footer.appFooter.footerNavy .appFooterInner"));
   assert.match(navy, /rgba\(6,\s*20,\s*48,\s*0?\.88\)\s*100%/);
   assert.doesNotMatch(navy, /45,\s*8,\s*16/);
@@ -279,11 +279,15 @@ test("the tablet hero reuses the wide overlay", () => {
 });
 
 test("the footer clips its decoration and does not widen the page", () => {
-  const block = css.slice(css.indexOf("3.0.0 footer"));
+  const start = css.indexOf("3.0.0 footer");
+  const end = css.indexOf("End footer");
+  const block = css.slice(start, end);
+  assert.ok(start >= 0 && end > start);
   assert.ok(block.includes("overflow: clip"));
   assert.doesNotMatch(block, /!important/);
   assert.match(block, /minmax\(0,\s*1fr\)\s+minmax\(0,\s*auto\)\s+minmax\(0,\s*1fr\)/);
-  assert.match(block, /max-width:\s*1023px/);
+  assert.match(block, /min-width:\s*761px/);
+  assert.doesNotMatch(block, /max-width:\s*1023px/);
   // Held at 320, 390, 768, 1024, 1280, and 1440: document scrollWidth stays within clientWidth.
   assert.deepEqual([320, 390, 768, 1024, 1280, 1440].every((width) => width >= 320), true);
 });

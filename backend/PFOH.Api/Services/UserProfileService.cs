@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
 using PFOH.Api.Extensions;
@@ -12,7 +13,12 @@ public sealed record UserProfileUpdateResult(bool Forbidden, string? Error, User
 
 public sealed record UserAccountContact(string? Phone, string? Organization);
 
-public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> logger, IConfiguration configuration)
+public class UserProfileService(
+    PfohDbContext db,
+    ILogger<UserProfileService> logger,
+    IConfiguration configuration,
+    ProfileStoreCircuit? circuit = null,
+    IHostApplicationLifetime? lifetime = null)
 {
     /// <summary>
     /// Fixed stripes. A map keyed by object id would grow for every account that ever signed in.
@@ -227,7 +233,12 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Saved profile display name could not be read. Using the token name.");
+            // The SQL message can contain an account id, and the stack is not useful here.
+            // This runs on every claim and nominate while the circuit is open.
+            logger.LogWarning(
+                "Saved profile display name could not be read. Using the token name. ExceptionType={ExceptionType} SqlErrorNumbers={SqlErrorNumbers}",
+                ex.GetType().FullName,
+                SqlErrorNumbers(ex));
         }
 
         return user.GetDisplayName();
@@ -482,6 +493,47 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
             SqlErrorNumber(ex));
     }
 
+    /// <summary>
+    /// Every SQL error number on the exception and its inners, with no message text.
+    /// </summary>
+    private static string SqlErrorNumbers(Exception exception)
+    {
+        var numbers = new List<int>();
+        var pending = new Stack<Exception>();
+        var seen = new HashSet<Exception>(ReferenceEqualityComparer.Instance);
+        pending.Push(exception);
+        while (pending.Count > 0)
+        {
+            var current = pending.Pop();
+            if (!seen.Add(current))
+            {
+                continue;
+            }
+
+            if (current is SqlException sql)
+            {
+                foreach (SqlError error in sql.Errors)
+                {
+                    numbers.Add(error.Number);
+                }
+            }
+
+            if (current is AggregateException aggregate)
+            {
+                for (var i = aggregate.InnerExceptions.Count - 1; i >= 0; i--)
+                {
+                    pending.Push(aggregate.InnerExceptions[i]);
+                }
+            }
+            else if (current.InnerException is not null)
+            {
+                pending.Push(current.InnerException);
+            }
+        }
+
+        return numbers.Count == 0 ? string.Empty : string.Join(',', numbers);
+    }
+
     internal static int? SqlErrorNumber(Exception exception)
     {
         var pending = new Stack<Exception>();
@@ -716,57 +768,56 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
     }
 
     /// <summary>
-    /// A non-duplicate schema failure leaves the exclusive-lock batch unready.
-    /// Remember it for the process and try again no more than every five minutes.
-    /// A duplicate object id is handled inside <see cref="UserProfileSchema.EnsureAsync"/> and does not land here.
+    /// A duplicate object id is handled inside <see cref="UserProfileSchema.EnsureAsync"/> and does not open the circuit.
+    /// A transient SQL or identity error is retried with exponential backoff and jitter.
+    /// Any failure, including a non-transient error or a cancelled probe, opens the circuit
+    /// for a few seconds. The next call after that break is the half-open probe.
     /// </summary>
-    private static readonly TimeSpan StoreFailureBackoff = TimeSpan.FromMinutes(5);
+    internal static readonly AsyncLocal<ProfileStoreCircuit?> StoreAttemptForTests = new();
 
-    private static readonly StoreAttemptState ProcessStoreAttempt = new();
+    /// <summary>
+    /// Extra cancellation linked into the server-owned schema token. Production leaves this unset.
+    /// The request's <c>RequestAborted</c> token is not linked.
+    /// </summary>
+    internal static readonly AsyncLocal<CancellationToken> SchemaCancellationForTests = new();
 
-    internal static readonly AsyncLocal<StoreAttemptState?> StoreAttemptForTests = new();
+    private ProfileStoreCircuit ActiveCircuit =>
+        StoreAttemptForTests.Value ?? circuit ?? ProfileStoreCircuit.Process;
 
-    private static StoreAttemptState StoreAttempt => StoreAttemptForTests.Value ?? ProcessStoreAttempt;
-
-    private static DateTime StoreUtcNow() => StoreAttempt.UtcNow?.Invoke() ?? DateTime.UtcNow;
-
-    internal static void ResetStoreFailureForTests() => StoreAttemptForTests.Value = null;
-
-    private async Task EnsureStoreAsync(CancellationToken ct)
+    internal static void ResetStoreFailureForTests()
     {
-        var attempt = StoreAttempt;
-        if (attempt.IsBlocked(StoreUtcNow()))
+        StoreAttemptForTests.Value = null;
+        SchemaCancellationForTests.Value = default;
+    }
+
+    private async Task EnsureStoreAsync(CancellationToken requestAborted)
+    {
+        // requestAborted is intentionally unused. A disconnected client must not cancel the probe.
+        _ = requestAborted;
+        var attempt = ActiveCircuit;
+        if (attempt.IsBlocked(attempt.Now))
         {
-            throw new InvalidOperationException("The profile store is unavailable.");
+            throw new ProfileStoreUnavailableException(attempt.RetryAfter(attempt.Now));
         }
+
+        using var server = CancellationTokenSource.CreateLinkedTokenSource(
+            lifetime?.ApplicationStopping ?? CancellationToken.None,
+            SchemaCancellationForTests.Value);
+        server.CancelAfter(ProfileStoreResilience.SchemaTimeout);
 
         try
         {
-            if (await UserProfileSchema.EnsureAsync(db, logger, ct))
-            {
-                attempt.Clear();
-            }
+            await UserProfileSchema.EnsureAsync(db, logger, server.Token, attempt);
+        }
+        catch (ProfileStoreUnavailableException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            attempt.RememberFailure(StoreUtcNow(), StoreFailureBackoff);
             LogFailure(LogLevel.Error, ex, "Unable to prepare the user profile table.");
-            throw new InvalidOperationException("The profile store is unavailable.", ex);
+            throw new ProfileStoreUnavailableException(attempt.RetryAfter(attempt.Now), ex);
         }
-    }
-
-    internal sealed class StoreAttemptState
-    {
-        private long retryAfterTicks;
-        internal Func<DateTime>? UtcNow { get; set; }
-        internal long RetryAfterTicks => Interlocked.Read(ref retryAfterTicks);
-
-        internal bool IsBlocked(DateTime utcNow) => RetryAfterTicks > utcNow.Ticks;
-
-        internal void RememberFailure(DateTime utcNow, TimeSpan backoff) =>
-            Interlocked.Exchange(ref retryAfterTicks, utcNow.Add(backoff).Ticks);
-
-        internal void Clear() => Interlocked.Exchange(ref retryAfterTicks, 0);
     }
 
     private static bool OwnsProfile(string callerId, string? requestedOwnerObjectId)

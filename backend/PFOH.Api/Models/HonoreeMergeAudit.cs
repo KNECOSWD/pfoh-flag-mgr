@@ -8,6 +8,12 @@ public class HonoreeMergeAudit
 {
     public int Id { get; set; }
 
+    /// <summary>
+    /// Client id for one merge request. Created outside the retried transaction.
+    /// Null on audits written before this column existed. Not backfilled.
+    /// </summary>
+    public Guid? ClientRequestId { get; set; }
+
     public int SurvivorId { get; set; }
 
     public string AbsorbedHonoreeIds { get; set; } = "[]";

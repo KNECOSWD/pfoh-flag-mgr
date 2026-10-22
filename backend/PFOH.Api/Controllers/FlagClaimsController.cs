@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
 using PFOH.Api.Extensions;
@@ -369,7 +370,12 @@ public class FlagClaimsController(
         var email = User.GetEmail();
         var name = await profiles.ResolveDisplayNameAsync(User, ct);
 
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteInTransactionAsync<ActionResult<FlagClaimDto>>(async _ =>
+        {
+        // A failed save leaves Added entities tracked. Clear before rebuilding
+        // them so a retry cannot insert the same claim twice.
+        db.ChangeTracker.Clear();
 
         var flagGrid = await db.FlagGrids
             .FirstOrDefaultAsync(f => f.Id == flagGridId && !f.Reserved && f.DeletedDate == null, ct);
@@ -424,13 +430,23 @@ public class FlagClaimsController(
         db.FlagClaims.Add(claim);
         await db.SaveChangesAsync(ct);
         await HonoreeClaimStore.SyncAsync(db, ct);
-        await transaction.CommitAsync(ct);
 
         return Ok(ToDto(
             claim,
             null,
             otherClaimantCount,
             BuildOtherClaimantsNotice(otherClaimantCount)));
+        },
+        async _ =>
+        {
+            db.ChangeTracker.Clear();
+            return await db.FlagClaims.AnyAsync(
+                c => c.FlagGridId == flagGridId
+                    && c.ExternalUserObjectId == userObjectId
+                    && OwnershipClaimStatuses.Contains(c.ClaimStatus),
+                ct);
+        },
+        ct);
     }
 
     [HttpPost("honoree/{honoreeId:int}/claim")]
@@ -440,7 +456,10 @@ public class FlagClaimsController(
         var email = User.GetEmail();
         var name = await profiles.ResolveDisplayNameAsync(User, ct);
 
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteInTransactionAsync<ActionResult<FlagClaimDto>>(async _ =>
+        {
+        db.ChangeTracker.Clear();
 
         var honoree = await db.Honorees
             .Include(h => h.FlagGrid)
@@ -505,7 +524,6 @@ public class FlagClaimsController(
         await db.SaveChangesAsync(ct);
         await HonoreeClaimStore.SyncAsync(db, ct);
         await RegenerateHonoreePdfAsync(honoree.Id, ct);
-        await transaction.CommitAsync(ct);
 
         var imageUrl = await db.HonoreeSearchResults
             .AsNoTracking()
@@ -518,6 +536,17 @@ public class FlagClaimsController(
             imageUrl,
             otherClaimantCount,
             BuildOtherClaimantsNotice(otherClaimantCount)));
+        },
+        async _ =>
+        {
+            db.ChangeTracker.Clear();
+            return await db.FlagClaims.AnyAsync(
+                c => c.HonoreeId == honoreeId
+                    && c.ExternalUserObjectId == userObjectId
+                    && OwnershipClaimStatuses.Contains(c.ClaimStatus),
+                ct);
+        },
+        ct);
     }
 
     [HttpPost("nominate")]
@@ -541,16 +570,21 @@ public class FlagClaimsController(
 
         await PendingSubmissionGridSchema.EnsureAsync(db, ct);
 
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var clientRequestId = Guid.NewGuid();
+        var strategy = db.Database.CreateExecutionStrategy();
+        var created = await strategy.ExecuteInTransactionAsync<(int ChangeId, ActionResult<FlagClaimDto>? Error)>(async _ =>
+        {
+        db.ChangeTracker.Clear();
 
         var submitter = await GetOrCreateSubmitterSponsorAsync(email, name, ct);
         if (submitter is null)
         {
-            return Conflict("No sponsor category exists for creating the submitter record.");
+            return (0, new ActionResult<FlagClaimDto>(Conflict("No sponsor category exists for creating the submitter record.")));
         }
 
         var claim = new FlagClaim
         {
+            ClientRequestId = clientRequestId,
             FlagGridId = null,
             HonoreeId = null,
             ExternalUserObjectId = userObjectId,
@@ -583,18 +617,56 @@ public class FlagClaimsController(
 
         db.FlagClaims.Add(claim);
         await db.SaveChangesAsync(ct);
+        await pendingReviews.SupersedeOlderPendingAsync(change, ct);
 
-        var pendingPhotoFileName = await fileStorage.UploadPendingImageAsync(request.Photo, change.Id, ct);
-        if (!string.IsNullOrWhiteSpace(pendingPhotoFileName))
+        return (change.Id, null);
+        },
+        async _ =>
         {
-            change.PhotoFileName = pendingPhotoFileName;
-            await db.SaveChangesAsync(ct);
+            db.ChangeTracker.Clear();
+            return await db.FlagClaims.AnyAsync(
+                row => row.ClientRequestId == clientRequestId && row.HonoreeChangeRequests.Any(),
+                ct);
+        },
+        ct);
+
+        if (created.Error is not null)
+        {
+            return created.Error;
         }
 
-        await pendingReviews.SupersedeOlderPendingAsync(change, ct);
-        await transaction.CommitAsync(ct);
+        // The blob name is pending/{changeRequestId}. The row is committed first so
+        // the id exists, then the file is uploaded once, outside the retry. Only the
+        // filename write is retried. A final failure deletes the blob.
+        var pendingPhotoFileName = await fileStorage.UploadPendingImageAsync(request.Photo, created.ChangeId, ct);
+        if (!string.IsNullOrWhiteSpace(pendingPhotoFileName))
+        {
+            try
+            {
+                await strategy.ExecuteAsync(async () =>
+                {
+                    db.ChangeTracker.Clear();
+                    await using var transaction = await db.Database.BeginTransactionAsync(ct);
+                    var stored = await db.HonoreeChangeRequests
+                        .FirstAsync(row => row.Id == created.ChangeId, ct);
+                    stored.PhotoFileName = pendingPhotoFileName;
+                    await db.SaveChangesAsync(ct);
+                    await transaction.CommitAsync(ct);
+                });
+            }
+            catch
+            {
+                await fileStorage.DeletePendingImageAsync(pendingPhotoFileName, CancellationToken.None);
+                throw;
+            }
+        }
 
-        return Ok(ToDto(claim, null));
+        var saved = await db.FlagClaims
+            .Include(claim => claim.FlagGrid)
+            .Include(claim => claim.Honoree)
+            .Include(claim => claim.HonoreeChangeRequests)
+            .FirstAsync(claim => claim.HonoreeChangeRequests.Any(row => row.Id == created.ChangeId), ct);
+        return Ok(ToDto(saved, null));
     }
 
     [Authorize(Policy = "AdminOnly")]
@@ -769,7 +841,10 @@ public class FlagClaimsController(
             adminName = User.GetDisplayName() ?? "PFOH.Admin";
         }
 
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteInTransactionAsync<ActionResult<FlagClaimDto>>(async _ =>
+        {
+        db.ChangeTracker.Clear();
 
         var claim = await db.FlagClaims
             .Include(c => c.FlagGrid)
@@ -811,7 +886,6 @@ public class FlagClaimsController(
         await db.SaveChangesAsync(ct);
         await HonoreeClaimStore.SyncAsync(db, ct);
         await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, latestDraft.Id, adminName, ct);
-        await transaction.CommitAsync(ct);
 
         var imageUrl = await db.HonoreeSearchResults
             .AsNoTracking()
@@ -820,6 +894,17 @@ public class FlagClaimsController(
             .FirstOrDefaultAsync(ct);
 
         return Ok(ToDto(claim, imageUrl));
+        },
+        async _ =>
+        {
+            db.ChangeTracker.Clear();
+            var status = await db.FlagClaims
+                .Where(row => row.Id == claimId)
+                .Select(row => row.ClaimStatus)
+                .FirstOrDefaultAsync(ct);
+            return status == "AdminDirectEditCompleted";
+        },
+        ct);
     }
 
     private async Task<Honoree> ApplyApprovedChanges(

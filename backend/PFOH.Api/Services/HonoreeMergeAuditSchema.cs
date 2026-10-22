@@ -48,6 +48,30 @@ public static class HonoreeMergeAuditSchema
         END
         """;
 
+    /// <summary>
+    /// Nullable client id for one merge request, plus a unique index that
+    /// ignores nulls. Existing rows stay null. Nothing is backfilled.
+    /// </summary>
+    internal const string AddClientRequestIdSql = """
+        IF OBJECT_ID(N'[dbo].[HonoreeMergeAudits]', N'U') IS NOT NULL
+           AND COL_LENGTH(N'dbo.HonoreeMergeAudits', N'ClientRequestId') IS NULL
+        BEGIN
+            ALTER TABLE [dbo].[HonoreeMergeAudits] ADD [ClientRequestId] uniqueidentifier NULL;
+        END
+
+        IF OBJECT_ID(N'[dbo].[HonoreeMergeAudits]', N'U') IS NOT NULL
+           AND NOT EXISTS (
+                SELECT 1
+                FROM sys.indexes
+                WHERE object_id = OBJECT_ID(N'[dbo].[HonoreeMergeAudits]')
+                  AND name = N'UX_HonoreeMergeAudits_ClientRequestId')
+        BEGIN
+            CREATE UNIQUE INDEX [UX_HonoreeMergeAudits_ClientRequestId]
+                ON [dbo].[HonoreeMergeAudits]([ClientRequestId])
+                WHERE [ClientRequestId] IS NOT NULL;
+        END
+        """;
+
     internal const string DropSql = """
         IF OBJECT_ID(N'[dbo].[HonoreeMergeAudits]', N'U') IS NOT NULL
         BEGIN
@@ -78,6 +102,7 @@ public static class HonoreeMergeAuditSchema
 
             await db.Database.ExecuteSqlRawAsync(SchemaSql.ForExecuteSqlRaw(CreateSql), ct);
             await db.Database.ExecuteSqlRawAsync(SchemaSql.ForExecuteSqlRaw(AddColumnSql), ct);
+            await db.Database.ExecuteSqlRawAsync(SchemaSql.ForExecuteSqlRaw(AddClientRequestIdSql), ct);
             ready = true;
         }
         finally

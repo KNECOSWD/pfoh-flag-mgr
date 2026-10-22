@@ -66,6 +66,9 @@ jobs:
         if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-content-footer-gap.mjs
 
+      - name: Check the footer X link
+        run: node --test frontend/scripts/check-footer-x.mjs
+
       - name: Check duplicate review
         if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-duplicate-review.mjs

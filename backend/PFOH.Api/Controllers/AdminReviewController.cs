@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
 using PFOH.Api.Extensions;
@@ -833,7 +834,10 @@ public class AdminReviewController(
                 adminName = User.GetDisplayName() ?? "PFOH.Admin";
             }
 
-            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var strategy = db.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteInTransactionAsync<ActionResult<AdminReviewItemDto>>(async _ =>
+            {
+            db.ChangeTracker.Clear();
 
             var change = await db.HonoreeChangeRequests
                 .Include(r => r.FlagClaim)
@@ -871,7 +875,6 @@ public class AdminReviewController(
                     }
                 }
 
-                await transaction.CommitAsync(ct);
                 return Ok(ToReviewDto(change));
             }
 
@@ -965,8 +968,6 @@ public class AdminReviewController(
                 }
             }
 
-            await transaction.CommitAsync(ct);
-
             var approved = ToReviewDto(change);
             if (isNewSubmission)
             {
@@ -981,6 +982,21 @@ public class AdminReviewController(
             }
 
             return Ok(approved);
+            },
+            async _ =>
+            {
+                db.ChangeTracker.Clear();
+                var status = await db.HonoreeChangeRequests
+                    .Where(row => row.Id == changeRequestId)
+                    .Select(row => row.RequestStatus)
+                    .FirstOrDefaultAsync(ct);
+                return status == "Approved";
+            },
+            ct);
+        }
+        catch (RetryLimitExceededException)
+        {
+            throw;
         }
         catch (HonoreePhotoMoveException ex)
         {

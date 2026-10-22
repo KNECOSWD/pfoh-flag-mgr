@@ -1,4 +1,7 @@
 using System.Data;
+using System.Data.Common;
+using System.Runtime.CompilerServices;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -20,7 +23,22 @@ namespace PFOH.Api.Services;
 public static class UserProfileSchema
 {
     private static readonly SemaphoreSlim Gate = new(1, 1);
-    private static bool ready;
+    private static int gateWaiters;
+    private static readonly ConditionalWeakTable<DbConnection, string> MemoryDatabaseKeys = new();
+
+    /// <summary>
+    /// The database that already ran this batch. A second call for that same database
+    /// skips the DDL. Another database in this process, including each SQLite :memory:
+    /// connection, still runs it. Tests open many of those connections at once.
+    /// This is the server and database name, or a SQLite file path, never a connection string.
+    /// </summary>
+    private static string? ensuredDatabaseKey;
+
+    /// <summary>
+    /// Callers blocked on <see cref="Gate"/>, not the caller that holds it.
+    /// Tests use this to prove a waiter re-checks the circuit before the TABLOCKX batch.
+    /// </summary>
+    internal static int GateWaitersForTests => Volatile.Read(ref gateWaiters);
 
     /// <summary>
     /// Test-only. When set on the calling async flow, the next schema batch throws this failure
@@ -233,10 +251,24 @@ public static class UserProfileSchema
     public static Task EnsureAsync(PfohDbContext db, CancellationToken ct) =>
         EnsureAsync(db, NullLogger.Instance, ct);
 
-    public static async Task<bool> EnsureAsync(PfohDbContext db, ILogger logger, CancellationToken ct)
+    public static Task<bool> EnsureAsync(PfohDbContext db, ILogger logger, CancellationToken ct) =>
+        EnsureAsync(db, logger, ct, circuit: null);
+
+    public static async Task<bool> EnsureAsync(
+        PfohDbContext db,
+        ILogger logger,
+        CancellationToken ct,
+        ProfileStoreCircuit? circuit)
     {
-        if (ready || !db.Database.IsRelational())
+        if (!db.Database.IsRelational())
         {
+            return false;
+        }
+
+        var databaseKey = DatabaseKey(db);
+        if (databaseKey == ensuredDatabaseKey)
+        {
+            circuit?.Close();
             return false;
         }
 
@@ -248,60 +280,177 @@ public static class UserProfileSchema
             return false;
         }
 
-        await Gate.WaitAsync(ct);
+        Interlocked.Increment(ref gateWaiters);
         try
         {
-            if (ready)
+            await Gate.WaitAsync(ct);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref gateWaiters);
+        }
+
+        var probing = false;
+        try
+        {
+            if (databaseKey == ensuredDatabaseKey)
             {
+                circuit?.Close();
                 return false;
             }
 
-            var failForTests = EnsureFailureForTests.Value;
-            if (failForTests is not null)
+            // Re-check after the lock. Another request may have opened the circuit
+            // while this one waited to run the TABLOCKX index batch.
+            if (circuit is not null)
             {
-                await failForTests(ct);
+                if (!circuit.TryEnter(circuit.Now))
+                {
+                    throw new ProfileStoreUnavailableException(circuit.RetryAfter(circuit.Now));
+                }
+
+                probing = circuit.State == ProfileStoreCircuitState.HalfOpen;
             }
 
-            if (sqlite)
+            async ValueTask ExecuteOnceAsync(CancellationToken token)
             {
-                await EnsureSqliteOwnerIndexAsync(db, logger, ct);
-                ready = true;
-                return true;
-            }
+                var failForTests = EnsureFailureForTests.Value;
+                if (failForTests is not null)
+                {
+                    await failForTests(token);
+                }
 
-            await db.Database.ExecuteSqlRawAsync(CreateSql, ct);
-            await db.Database.ExecuteSqlRawAsync(AddPhoneAndOrganizationSql, ct);
-            await db.Database.ExecuteSqlRawAsync(AddClaimSourceColumnsSql, ct);
-            try
-            {
-                await db.Database.ExecuteSqlRawAsync(EnsureOwnerObjectIdUniqueIndexSql, ct);
-            }
-            catch (Exception ex) when (IsDuplicateOwnerObjectIdBlock(ex))
-            {
+                if (sqlite)
+                {
+                    await EnsureSqliteOwnerIndexAsync(db, logger, token);
+                    ensuredDatabaseKey = databaseKey;
+                    return;
+                }
+
+                await db.Database.ExecuteSqlRawAsync(CreateSql, token);
+                await db.Database.ExecuteSqlRawAsync(AddPhoneAndOrganizationSql, token);
+                await db.Database.ExecuteSqlRawAsync(AddClaimSourceColumnsSql, token);
                 try
                 {
-                    var groups = await ScalarIntAsync(db, DuplicateGroupCountSql, ct);
-                    logger.LogError(
-                        "UserProfiles has {DuplicateGroupCount} duplicate OwnerObjectId groups; unique index not created. Resolve duplicates first.",
-                        groups);
+                    await db.Database.ExecuteSqlRawAsync(EnsureOwnerObjectIdUniqueIndexSql, token);
                 }
-                catch (Exception)
+                catch (Exception ex) when (IsDuplicateOwnerObjectIdBlock(ex))
                 {
-                    logger.LogError(
-                        "UserProfiles has duplicate OwnerObjectId values; unique index not created. Resolve duplicates first. The duplicate-group count could not be read.");
+                    try
+                    {
+                        var groups = await ScalarIntAsync(db, DuplicateGroupCountSql, token);
+                        logger.LogError(
+                            "UserProfiles has {DuplicateGroupCount} duplicate OwnerObjectId groups; unique index not created. Resolve duplicates first.",
+                            groups);
+                    }
+                    catch (Exception)
+                    {
+                        logger.LogError(
+                            "UserProfiles has duplicate OwnerObjectId values; unique index not created. Resolve duplicates first. The duplicate-group count could not be read.");
+                    }
                 }
+
+                ensuredDatabaseKey = databaseKey;
             }
 
-            ready = true;
+            try
+            {
+                // One retry layer, still bounded by the caller's token (the
+                // server-owned 30s budget on the request path). SQL Server retries
+                // the whole batch and that suppresses the per-command retry.
+                // SQLite does not retry, so the explicit loop is the only layer there.
+                var strategy = db.Database.CreateExecutionStrategy();
+                if (strategy.RetriesOnFailure)
+                {
+                    await strategy.ExecuteAsync(
+                        async token => await ExecuteOnceAsync(token),
+                        ct);
+                }
+                else if (circuit is not null)
+                {
+                    await ProfileStoreResilience.Pipeline.ExecuteAsync(
+                        async token => await ExecuteOnceAsync(token),
+                        ct);
+                }
+                else
+                {
+                    await ExecuteOnceAsync(ct);
+                }
+
+                circuit?.Close();
+            }
+            catch (Exception ex) when (circuit is not null && ex is not ProfileStoreUnavailableException)
+            {
+                // Transient retries are already exhausted. A non-transient error,
+                // including cancellation, opens the same short break. Open before
+                // releasing the gate so a waiter does not run the batch.
+                circuit.Open(circuit.Now);
+                throw;
+            }
+
             return true;
         }
         finally
         {
+            // A probe that did not close must not stay half-open. Half-open rejects
+            // every later call, which would 503 the instance until restart.
+            if (probing && circuit!.State == ProfileStoreCircuitState.HalfOpen)
+            {
+                circuit.Open(circuit.Now);
+            }
+
             Gate.Release();
         }
     }
 
-    internal static void ResetForTests() => ready = false;
+    /// <summary>
+    /// SQLite :memory: uses one connection string for every connection, and each open
+    /// connection is its own database. A SQL Server database is the server plus the
+    /// catalog. SqlClient drops the password from <see cref="DbConnection.ConnectionString"/>
+    /// after the connection has been opened when Persist Security Info is false, so the
+    /// raw string is not a stable id and is never stored. A SQLite file is its full path.
+    /// </summary>
+    private static string DatabaseKey(PfohDbContext db)
+    {
+        var connection = db.Database.GetDbConnection();
+        var connectionString = connection.ConnectionString ?? string.Empty;
+        if (connectionString.Contains(":memory:", StringComparison.OrdinalIgnoreCase))
+        {
+            return MemoryDatabaseKeys.GetValue(connection, static _ => Guid.NewGuid().ToString("N"));
+        }
+
+        var provider = db.Database.ProviderName ?? string.Empty;
+        if (provider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+        {
+            return SqliteFileKey(connection);
+        }
+
+        return SqlServerKey(connectionString);
+    }
+
+    /// <summary>
+    /// Server and database name only. The builder accepts either form of the connection
+    /// string, with or without the password SqlClient removed.
+    /// </summary>
+    private static string SqlServerKey(string connectionString)
+    {
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        var server = builder.DataSource.Trim().ToUpperInvariant();
+        var catalog = builder.InitialCatalog.Trim().ToUpperInvariant();
+        return string.Concat("sql:", server, "\n", catalog);
+    }
+
+    private static string SqliteFileKey(DbConnection connection)
+    {
+        var source = connection.DataSource?.Trim() ?? string.Empty;
+        if (source.Length == 0)
+        {
+            return "sqlite";
+        }
+
+        return "sqlite:" + Path.GetFullPath(source);
+    }
+
+    internal static void ResetForTests() => ensuredDatabaseKey = null;
 
     internal static bool IsDuplicateOwnerObjectIdBlock(Exception exception)
     {

@@ -751,6 +751,8 @@ public class PfohApiFactory : WebApplicationFactory<Program>
 
     public int? AuthenticatedGetPermit { get; set; }
 
+    public Dictionary<string, string?>? ExtraSettings { get; set; }
+
     // The shared suite raises the permit so unrelated tests are not limited.
     // A rate-limit test sets this to keep the app default of 60.
     public bool UseRealAuthenticatedGetLimit { get; set; }
@@ -760,15 +762,24 @@ public class PfohApiFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Development");
         builder.ConfigureAppConfiguration((_, config) =>
         {
-            if (UseRealAuthenticatedGetLimit)
+            var settings = new Dictionary<string, string?>();
+            if (!UseRealAuthenticatedGetLimit)
             {
-                return;
+                settings["RateLimit:AuthenticatedGetPermit"] = (AuthenticatedGetPermit ?? 100_000).ToString();
             }
 
-            config.AddInMemoryCollection(new Dictionary<string, string?>
+            if (ExtraSettings is not null)
             {
-                ["RateLimit:AuthenticatedGetPermit"] = (AuthenticatedGetPermit ?? 100_000).ToString()
-            });
+                foreach (var pair in ExtraSettings)
+                {
+                    settings[pair.Key] = pair.Value;
+                }
+            }
+
+            if (settings.Count > 0)
+            {
+                config.AddInMemoryCollection(settings);
+            }
         });
         builder.ConfigureTestServices(services =>
         {
@@ -784,13 +795,15 @@ public class PfohApiFactory : WebApplicationFactory<Program>
             }
 
             services.AddSingleton<ReprintClaimStatusFaultInterceptor>();
+            services.AddSingleton<NominatePhotoSaveFaultInterceptor>();
             services.AddSingleton<ILoggerProvider, ReprintRemoveWarningLog>();
             services.AddDbContext<PfohDbContext>((sp, options) => options
                 .UseInMemoryDatabase(databaseName)
                 .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
                 .AddInterceptors(
                     sp.GetRequiredService<PublicFlagMapCacheInvalidator>(),
-                    sp.GetRequiredService<ReprintClaimStatusFaultInterceptor>()));
+                    sp.GetRequiredService<ReprintClaimStatusFaultInterceptor>(),
+                    sp.GetRequiredService<NominatePhotoSaveFaultInterceptor>()));
 
             services.RemoveAll<HonoreeFileStorage>();
             services.AddSingleton<HonoreeFileStorage, PendingReviewTestFileStorage>();
@@ -1059,6 +1072,44 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
 public static class ReprintClaimStatusFault
 {
     public static bool RejectCancelled { get; set; }
+}
+
+public static class NominatePhotoSaveFault
+{
+    public static bool RejectPhotoFileNameUpdate { get; set; }
+}
+
+public sealed class NominatePhotoSaveFaultInterceptor : SaveChangesInterceptor
+{
+    public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
+    {
+        ThrowIfRejected(eventData.Context);
+        return base.SavingChanges(eventData, result);
+    }
+
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfRejected(eventData.Context);
+        return base.SavingChangesAsync(eventData, result, cancellationToken);
+    }
+
+    private static void ThrowIfRejected(DbContext? context)
+    {
+        if (!NominatePhotoSaveFault.RejectPhotoFileNameUpdate || context is null)
+        {
+            return;
+        }
+
+        var rejected = context.ChangeTracker.Entries<HonoreeChangeRequest>().Any(entry =>
+            entry.Property(change => change.PhotoFileName).IsModified);
+        if (rejected)
+        {
+            throw new InvalidOperationException("Synthetic nominate photo save failure.");
+        }
+    }
 }
 
 public sealed class ReprintClaimStatusFaultInterceptor : SaveChangesInterceptor

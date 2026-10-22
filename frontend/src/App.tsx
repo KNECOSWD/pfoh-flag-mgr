@@ -5092,19 +5092,21 @@ export default function App() {
       <footer className="appFooter footerNavy" aria-label="Plano Flags of Honor footer">
         <div className="appFooterInner">
           <div className="footerColumn footerExplore">
-            <h2>Explore</h2>
-            <a href="https://planoflagsofhonor.com/about-pfoh/" target="_blank" rel="noreferrer">
-              About Plano Flags of Honor
-            </a>
-            <a
-              href="/honor-a-hero"
-              onClick={(event) => {
-                event.preventDefault();
-                beginNomination();
-              }}
-            >
-              {publicCopy.submitHonoree}
-            </a>
+            <div className="footerExploreMain">
+              <h2>Explore</h2>
+              <a href="https://planoflagsofhonor.com/about-pfoh/" target="_blank" rel="noreferrer">
+                About Plano Flags of Honor
+              </a>
+              <a
+                href="/honor-a-hero"
+                onClick={(event) => {
+                  event.preventDefault();
+                  beginNomination();
+                }}
+              >
+                {publicCopy.submitHonoree}
+              </a>
+            </div>
             <a href="https://planoflagsofhonor.com/become-a-sponsor/" target="_blank" rel="noreferrer">
               Become a Sponsor
             </a>
@@ -5119,6 +5121,14 @@ export default function App() {
               <a href="https://www.instagram.com/planoflagsofhonor/" target="_blank" rel="noreferrer" aria-label="Plano Flags of Honor on Instagram">
                 ◎
               </a>
+              <a href="https://x.com/FlagsHonor" target="_blank" rel="noopener noreferrer" aria-label="Plano Flags of Honor on X">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path
+                    fill="currentColor"
+                    d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.727-8.835L1.254 2.25H8.08l4.253 5.622L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+                  />
+                </svg>
+              </a>
             </div>
           </div>
 
@@ -5129,13 +5139,15 @@ export default function App() {
           </div>
 
           <div className="footerCredit">
-            <span>Built by</span>
-            <a href="https://www.kneco.com" target="_blank" rel="noreferrer" aria-label="KNECO, Inc. website">
-              <img src={knecoLogoWhite} width={216} height={46} alt="KNECO, Inc." />
-            </a>
+            <div className="footerCreditBrand">
+              <span>Built by</span>
+              <a href="https://www.kneco.com" target="_blank" rel="noreferrer" aria-label="KNECO, Inc. website">
+                <img src={knecoLogoWhite} width={216} height={46} alt="KNECO, Inc." />
+              </a>
+            </div>
+            <p className="appVersionStamp">Version {packageInfo.version}</p>
           </div>
         </div>
-        <p className="appVersionStamp">Version {packageInfo.version}</p>
       </footer>
     </main>
   );
