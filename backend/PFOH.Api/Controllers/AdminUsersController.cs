@@ -16,8 +16,15 @@ namespace PFOH.Api.Controllers;
 [EnableRateLimiting("AuthenticatedGet")]
 public class AdminUsersController(IConfiguration configuration, ILogger<AdminUsersController> logger) : ControllerBase
 {
-    private static readonly HttpClient Http = new();
+    private static readonly HttpClient SharedHttp = new();
+    private readonly HttpClient graphHttp = SharedHttp;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+    internal AdminUsersController(IConfiguration configuration, ILogger<AdminUsersController> logger, HttpClient graphHttp)
+        : this(configuration, logger)
+    {
+        this.graphHttp = graphHttp;
+    }
 
     [HttpGet("search")]
     public async Task<ActionResult<IReadOnlyList<AdminUserRoleDto>>> SearchUsers(
@@ -56,13 +63,18 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
 
             return Ok(results);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            logger.LogError(ex, "Admin user search failed for query {Query}.", q);
+            var term = q?.Trim() ?? string.Empty;
+            logger.LogError(
+                "Admin user search failed. QueryEmpty={QueryEmpty} QueryLength={QueryLength} ResultCount={ResultCount}",
+                term.Length == 0,
+                term.Length,
+                0);
 
             return Problem(
                 title: "Admin user search failed.",
-                detail: ex.Message,
+                detail: "Admin user search failed.",
                 statusCode: StatusCodes.Status500InternalServerError);
         }
     }
@@ -94,13 +106,13 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
 
             return Ok(ToDto(user, true));
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            logger.LogError(ex, "Grant admin role failed for user {UserObjectId}.", userObjectId);
+            logger.LogError("Admin role grant {Outcome}.", "failed");
 
             return Problem(
                 title: "Grant admin role failed.",
-                detail: ex.Message,
+                detail: "Grant admin role failed.",
                 statusCode: StatusCodes.Status500InternalServerError);
         }
     }
@@ -133,13 +145,13 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
 
             return Ok(ToDto(user, false));
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            logger.LogError(ex, "Remove admin role failed for user {UserObjectId}.", userObjectId);
+            logger.LogError("Admin role removal {Outcome}.", "failed");
 
             return Problem(
                 title: "Remove admin role failed.",
-                detail: ex.Message,
+                detail: "Remove admin role failed.",
                 statusCode: StatusCodes.Status500InternalServerError);
         }
     }
@@ -261,7 +273,7 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
             ["scope"] = "https://graph.microsoft.com/.default"
         });
 
-        using var response = await Http.PostAsync(tokenUrl, content, ct);
+        using var response = await graphHttp.PostAsync(tokenUrl, content, ct);
         var json = await response.Content.ReadAsStringAsync(ct);
 
         if (!response.IsSuccessStatusCode)
@@ -286,7 +298,7 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
         CancellationToken ct)
     {
         using var request = await CreateGraphRequestAsync(method, path, body, ct);
-        using var response = await Http.SendAsync(request, ct);
+        using var response = await graphHttp.SendAsync(request, ct);
         var json = await response.Content.ReadAsStringAsync(ct);
 
         if (!response.IsSuccessStatusCode)
@@ -309,7 +321,7 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
         CancellationToken ct)
     {
         using var request = await CreateGraphRequestAsync(method, path, null, ct);
-        using var response = await Http.SendAsync(request, ct);
+        using var response = await graphHttp.SendAsync(request, ct);
         var json = await response.Content.ReadAsStringAsync(ct);
 
         if (!response.IsSuccessStatusCode)

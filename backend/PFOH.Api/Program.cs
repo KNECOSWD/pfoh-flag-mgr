@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Threading.RateLimiting;
+using Microsoft.ApplicationInsights.DependencyCollector;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -125,11 +126,19 @@ builder.Services.AddHttpClient();
 // would outrank that config, so this file does not add one.
 builder.Services.AddApplicationInsightsTelemetry(options =>
 {
-    // The built-in sampler is replaced after the app is built so adaptive
-    // sampling stays on and Exception telemetry is not sampled.
+    // The built-in sampler is replaced after the app is built so the cap
+    // comes from configuration. Exception and Event stay out of that cap.
     options.EnableAdaptiveSampling = false;
 });
+builder.Services.ConfigureTelemetryModule<DependencyTrackingTelemetryModule>((module, _) =>
+{
+    module.EnableSqlCommandTextInstrumentation = false;
+});
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<ITelemetryInitializer, FailureRetentionTelemetryInitializer>();
 builder.Services.AddSingleton<ITelemetryInitializer, SubmitterLookupTelemetryInitializer>();
+// Initializers run before the sampling processor built after the app starts.
+builder.Services.AddSingleton<ITelemetryInitializer, AdminIdentityTelemetryInitializer>();
 builder.Services.AddSingleton<IHttpContextFactory>(serviceProvider =>
     new SubmitterLookupHttpContextFactory(ActivatorUtilities.CreateInstance<DefaultHttpContextFactory>(serviceProvider)));
 builder.Services.AddSingleton<HonoreeFileStorage>();
@@ -255,7 +264,10 @@ var app = builder.Build();
 
 var telemetryConfiguration = app.Services.GetRequiredService<TelemetryConfiguration>();
 var telemetryChain = telemetryConfiguration.DefaultTelemetrySink.TelemetryProcessorChainBuilder;
-telemetryChain.UseAdaptiveSampling(excludedTypes: "Exception", includedTypes: null);
+TelemetryIngestion.ConfigureProcessorChain(
+    telemetryChain,
+    TelemetryIngestion.ReadMaxTelemetryItemsPerSecond(app.Configuration),
+    TelemetryIngestion.ReadSuccessfulDependencyDropBelow(app.Configuration));
 telemetryChain.Build();
 
 app.Use(async (context, next) =>

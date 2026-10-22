@@ -1,7 +1,5 @@
 using System.Net;
 using System.Net.Http.Headers;
-using Microsoft.ApplicationInsights.Extensibility;
-using Microsoft.ApplicationInsights.WindowsServer.TelemetryChannel;
 using Microsoft.Extensions.DependencyInjection;
 using PFOH.Api.Data;
 using PFOH.Api.Models;
@@ -174,27 +172,3 @@ public class RealAuthenticatedGetLimitTests : IDisposable
     }
 }
 
-public class SamplingConfigurationTests : IDisposable
-{
-    private readonly PfohApiFactory factory = new();
-
-    [Fact]
-    public void Adaptive_sampling_is_on_and_exceptions_are_excluded()
-    {
-        var program = File.ReadAllText(Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory,
-            "..", "..", "..", "..", "..",
-            "backend", "PFOH.Api", "Program.cs")));
-        Assert.Contains("UseAdaptiveSampling(excludedTypes: \"Exception\"", program, StringComparison.Ordinal);
-        Assert.Contains("options.EnableAdaptiveSampling = false", program, StringComparison.Ordinal);
-
-        using var scope = factory.Services.CreateScope();
-        var configuration = scope.ServiceProvider.GetRequiredService<TelemetryConfiguration>();
-        var sampler = configuration.DefaultTelemetrySink.TelemetryProcessors
-            .OfType<AdaptiveSamplingTelemetryProcessor>()
-            .Single();
-        Assert.Contains("Exception", sampler.ExcludedTypes, StringComparison.OrdinalIgnoreCase);
-    }
-
-    public void Dispose() => factory.Dispose();
-}

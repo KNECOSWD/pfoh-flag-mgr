@@ -1,4 +1,6 @@
 using System.Data;
+using System.Data.Common;
+using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -21,7 +23,14 @@ public static class UserProfileSchema
 {
     private static readonly SemaphoreSlim Gate = new(1, 1);
     private static int gateWaiters;
-    private static bool ready;
+    private static readonly ConditionalWeakTable<DbConnection, string> MemoryDatabaseKeys = new();
+
+    /// <summary>
+    /// The database that already ran this batch. A second call for that same database
+    /// skips the DDL. Another database in this process, including each SQLite :memory:
+    /// connection, still runs it. Tests open many of those connections at once.
+    /// </summary>
+    private static string? ensuredDatabaseKey;
 
     /// <summary>
     /// Callers blocked on <see cref="Gate"/>, not the caller that holds it.
@@ -249,14 +258,15 @@ public static class UserProfileSchema
         CancellationToken ct,
         ProfileStoreCircuit? circuit)
     {
-        if (ready)
+        if (!db.Database.IsRelational())
         {
-            circuit?.Close();
             return false;
         }
 
-        if (!db.Database.IsRelational())
+        var databaseKey = DatabaseKey(db);
+        if (databaseKey == ensuredDatabaseKey)
         {
+            circuit?.Close();
             return false;
         }
 
@@ -281,7 +291,7 @@ public static class UserProfileSchema
         var probing = false;
         try
         {
-            if (ready)
+            if (databaseKey == ensuredDatabaseKey)
             {
                 circuit?.Close();
                 return false;
@@ -310,7 +320,7 @@ public static class UserProfileSchema
                 if (sqlite)
                 {
                     await EnsureSqliteOwnerIndexAsync(db, logger, token);
-                    ready = true;
+                    ensuredDatabaseKey = databaseKey;
                     return;
                 }
 
@@ -337,7 +347,7 @@ public static class UserProfileSchema
                     }
                 }
 
-                ready = true;
+                ensuredDatabaseKey = databaseKey;
             }
 
             try
@@ -390,7 +400,24 @@ public static class UserProfileSchema
         }
     }
 
-    internal static void ResetForTests() => ready = false;
+    /// <summary>
+    /// SQLite :memory: uses one connection string for every connection, and each open
+    /// connection is its own database. A file or SQL Server database is identified
+    /// by its connection string, which stays stable across pooled connections.
+    /// </summary>
+    private static string DatabaseKey(PfohDbContext db)
+    {
+        var connection = db.Database.GetDbConnection();
+        var connectionString = connection.ConnectionString ?? string.Empty;
+        if (connectionString.Contains(":memory:", StringComparison.OrdinalIgnoreCase))
+        {
+            return MemoryDatabaseKeys.GetValue(connection, static _ => Guid.NewGuid().ToString("N"));
+        }
+
+        return connectionString;
+    }
+
+    internal static void ResetForTests() => ensuredDatabaseKey = null;
 
     internal static bool IsDuplicateOwnerObjectIdBlock(Exception exception)
     {
