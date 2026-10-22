@@ -123,8 +123,11 @@ builder.Services.ConfigureTelemetryModule<DependencyTrackingTelemetryModule>((mo
 {
     module.EnableSqlCommandTextInstrumentation = false;
 });
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<ITelemetryInitializer, FailureRetentionTelemetryInitializer>();
 builder.Services.AddSingleton<ITelemetryInitializer, SubmitterLookupTelemetryInitializer>();
+// Initializers run before the sampling processor built after the app starts.
+builder.Services.AddSingleton<ITelemetryInitializer, AdminIdentityTelemetryInitializer>();
 builder.Services.AddSingleton<IHttpContextFactory>(serviceProvider =>
     new SubmitterLookupHttpContextFactory(ActivatorUtilities.CreateInstance<DefaultHttpContextFactory>(serviceProvider)));
 builder.Services.AddSingleton<HonoreeFileStorage>();

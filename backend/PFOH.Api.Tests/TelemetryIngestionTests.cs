@@ -347,11 +347,21 @@ public class TelemetrySamplingHostTests : IDisposable
         Assert.Equal("Warning", settings["Logging:ApplicationInsights:LogLevel:Microsoft"]);
         Assert.Equal("Warning", settings["Logging:ApplicationInsights:LogLevel:Microsoft.AspNetCore"]);
         Assert.Equal("Warning", settings["Logging:ApplicationInsights:LogLevel:Microsoft.EntityFrameworkCore"]);
-        Assert.Equal("Warning", settings["Logging:ApplicationInsights:LogLevel:Microsoft.EntityFrameworkCore.Database.Command"]);
+        Assert.Equal("None", settings["Logging:ApplicationInsights:LogLevel:Microsoft.EntityFrameworkCore.Update"]);
+        Assert.Equal("None", settings["Logging:ApplicationInsights:LogLevel:Microsoft.EntityFrameworkCore.Database.Command"]);
         Assert.Equal("Warning", settings["Logging:ApplicationInsights:LogLevel:System"]);
         Assert.Equal("Information", settings["Logging:ApplicationInsights:LogLevel:PFOH"]);
         Assert.Equal("Information", settings["Logging:ApplicationInsights:LogLevel:Default"]);
         Assert.Equal("Warning", settings["Logging:LogLevel:Microsoft.EntityFrameworkCore"]);
+        Assert.Equal("None", settings["Logging:LogLevel:Microsoft.EntityFrameworkCore.Update"]);
+        Assert.Equal("None", settings["Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command"]);
+        Assert.Contains(
+            configuration.TelemetryInitializers,
+            initializer => initializer is AdminIdentityTelemetryInitializer);
+        var registered = scope.ServiceProvider.GetServices<ITelemetryInitializer>()
+            .OfType<AdminIdentityTelemetryInitializer>()
+            .Single();
+        Assert.True(registered.HasHttpContextAccessor);
     }
 
     [Fact]

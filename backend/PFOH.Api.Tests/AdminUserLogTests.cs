@@ -44,9 +44,12 @@ public class AdminUserLogTests
         var searchDetail = Assert.IsType<ProblemDetails>(search.Value).Detail;
         var grantDetail = Assert.IsType<ProblemDetails>(grant.Value).Detail;
         var removeDetail = Assert.IsType<ProblemDetails>(remove.Value).Detail;
-        Assert.Contains("pii-search-9f3c2a", searchDetail);
-        Assert.Contains(UserObjectId, grantDetail);
-        Assert.Contains(UserObjectId, removeDetail);
+        Assert.Equal("Admin user search failed.", searchDetail);
+        Assert.Equal("Grant admin role failed.", grantDetail);
+        Assert.Equal("Remove admin role failed.", removeDetail);
+        Assert.DoesNotContain(SearchTerm, searchDetail, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(UserObjectId, grantDetail, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(UserObjectId, removeDetail, StringComparison.OrdinalIgnoreCase);
 
         var written = string.Join('\n', logs);
         Assert.DoesNotContain(SearchTerm, written, StringComparison.OrdinalIgnoreCase);

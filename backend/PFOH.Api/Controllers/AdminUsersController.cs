@@ -63,7 +63,7 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
 
             return Ok(results);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             var term = q?.Trim() ?? string.Empty;
             logger.LogError(
@@ -74,7 +74,7 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
 
             return Problem(
                 title: "Admin user search failed.",
-                detail: ex.Message,
+                detail: "Admin user search failed.",
                 statusCode: StatusCodes.Status500InternalServerError);
         }
     }
@@ -106,13 +106,13 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
 
             return Ok(ToDto(user, true));
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             logger.LogError("Admin role grant {Outcome}.", "failed");
 
             return Problem(
                 title: "Grant admin role failed.",
-                detail: ex.Message,
+                detail: "Grant admin role failed.",
                 statusCode: StatusCodes.Status500InternalServerError);
         }
     }
@@ -145,13 +145,13 @@ public class AdminUsersController(IConfiguration configuration, ILogger<AdminUse
 
             return Ok(ToDto(user, false));
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             logger.LogError("Admin role removal {Outcome}.", "failed");
 
             return Problem(
                 title: "Remove admin role failed.",
-                detail: ex.Message,
+                detail: "Remove admin role failed.",
                 statusCode: StatusCodes.Status500InternalServerError);
         }
     }
