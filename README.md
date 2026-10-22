@@ -255,7 +255,7 @@ cd infra
 ./azure-cli-setup.sh
 ```
 
-The script refuses the live production names (`PLANO_FLAGS_OF_HONOR`, `asp-pfoh-flags-prod`, `pfoh-flag-manager-app`, and SQL server or database `pfoh`) unless `PFOH_ALLOW_PROD_SETUP=yes` is set.
+The script refuses unless `SUBSCRIPTION_ID` is set to a real subscription, and it prints that id. A resource group, plan, app, or SQL name is production when it does not contain `dev`, `test`, or `sandbox` (case-insensitive), which includes the live names `PLANO_FLAGS_OF_HONOR`, `asp-pfoh-flags-prod`, `pfoh-flag-manager-app`, and SQL server or database `pfoh`. Production names need both `PFOH_ALLOW_PROD_SETUP=yes` and `PFOH_CONFIRM_SUBSCRIPTION` set to that same subscription id. The confirm value must also match `az account show`. Either flag missing or mismatched refuses the run. If the web app or SQL server already exists, the script refuses before it creates anything, so it does not reset the SQL admin password or overwrite the connection string.
 
 It creates:
 

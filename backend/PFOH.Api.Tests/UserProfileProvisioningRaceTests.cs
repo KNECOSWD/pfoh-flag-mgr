@@ -1,19 +1,29 @@
 using System.Reflection;
 using System.Security.Claims;
+using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.Channel;
+using Microsoft.ApplicationInsights.DataContracts;
+using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using PFOH.Api.Controllers;
 using PFOH.Api.Data;
+using PFOH.Api.Dtos;
 using PFOH.Api.Models;
 using PFOH.Api.Services;
 using Xunit;
 
 namespace PFOH.Api.Tests;
 
+[Collection("UserProfileSchema")]
 public class UserProfileProvisioningRaceTests
 {
     [Fact]
@@ -198,6 +208,228 @@ public class UserProfileProvisioningRaceTests
     }
 
     [Fact]
+    public async Task Raced_first_sign_in_logs_the_sql_number_and_keeps_the_oid_out_of_app_insights()
+    {
+        const string oid = "oid-race-command-secret";
+        var config = new ConfigurationBuilder()
+            .AddJsonFile(Path.Combine(RepoRoot(), "backend", "PFOH.Api", "appsettings.json"))
+            .Build();
+        var channel = new CaptureChannel();
+        var services = new ServiceCollection();
+        services.AddLogging(logging =>
+        {
+            logging.AddConfiguration(config.GetSection("Logging"));
+            logging.AddApplicationInsights(
+                telemetry =>
+                {
+                    telemetry.ConnectionString = "InstrumentationKey=11111111-1111-1111-1111-111111111111";
+                    telemetry.TelemetryChannel = channel;
+                },
+                _ => { });
+            // Same rule AddApplicationInsightsTelemetry inserts at the front of the list.
+            logging.Services.Configure<LoggerFilterOptions>(options => options.Rules.Insert(
+                0,
+                new LoggerFilterRule(
+                    "Microsoft.Extensions.Logging.ApplicationInsights.ApplicationInsightsLoggerProvider",
+                    null,
+                    LogLevel.Warning,
+                    null)));
+        });
+        using var provider = services.BuildServiceProvider();
+        var factory = provider.GetRequiredService<ILoggerFactory>();
+
+        var updates = factory.CreateLogger("Microsoft.EntityFrameworkCore.Update");
+        var commands = factory.CreateLogger("Microsoft.EntityFrameworkCore.Database.Command");
+        Assert.False(updates.IsEnabled(LogLevel.Error));
+        Assert.False(commands.IsEnabled(LogLevel.Error));
+        Assert.True(factory.CreateLogger<UserProfileService>().IsEnabled(LogLevel.Warning));
+        updates.LogError(SqlError(2627, $"The duplicate key value is ({oid})."), "An exception occurred in the database while saving changes.");
+        commands.LogError(SqlError(2601, $"The duplicate key value is ({oid})."), "Failed executing DbCommand for " + oid + ".");
+
+        var database = $"profile-race-log-{Guid.NewGuid():N}";
+        var plain = new DbContextOptionsBuilder<PfohDbContext>().UseInMemoryDatabase(database).Options;
+        await using (var setup = new PfohDbContext(plain))
+        {
+            setup.Database.EnsureCreated();
+        }
+
+        var options = new DbContextOptionsBuilder<PfohDbContext>()
+            .UseInMemoryDatabase(database)
+            .UseLoggerFactory(factory)
+            .AddInterceptors(new RacedSqlInsertInterceptor(plain, oid))
+            .Options;
+        await using var db = new PfohDbContext(options);
+        var service = new UserProfileService(db, factory.CreateLogger<UserProfileService>(), new ConfigurationBuilder().Build());
+        await service.EnsureProvisionedAsync(ProfileUser(oid, "race@example.com", "Race Person"), CancellationToken.None);
+        provider.GetService<TelemetryClient>()?.Flush();
+
+        var written = string.Join("\n", channel.Items.Select(TelemetryText));
+        Assert.Contains("Profile insert raced. Reading the existing row.", written, StringComparison.Ordinal);
+        Assert.Contains("ExceptionType=Microsoft.EntityFrameworkCore.DbUpdateException", written, StringComparison.Ordinal);
+        Assert.Contains("SqlErrorNumber=2627", written, StringComparison.Ordinal);
+        Assert.DoesNotContain(oid, written, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_non_duplicate_store_failure_waits_five_minutes_before_the_next_attempt()
+    {
+        const string secret = "oid-store-backoff-secret";
+        UserProfileSchema.ResetForTests();
+        var state = new UserProfileService.StoreAttemptState();
+        var clock = new DateTime(2026, 10, 22, 15, 0, 0, DateTimeKind.Utc);
+        state.UtcNow = () => clock;
+        UserProfileService.StoreAttemptForTests.Value = state;
+        var attempts = 0;
+        UserProfileSchema.EnsureFailureForTests.Value = _ =>
+        {
+            attempts++;
+            throw SqlError(1205, $"Could not prepare the profile table for {secret}.");
+        };
+        var logs = new ListLogger();
+        try
+        {
+            await using var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            var options = new DbContextOptionsBuilder<PfohDbContext>().UseSqlite(connection).Options;
+            await using var db = new PfohDbContext(options);
+            var service = new UserProfileService(db, logs, new ConfigurationBuilder().Build());
+            var user = ProfileUser("oid-backoff-user", "backoff@example.com", "Backoff Person");
+
+            var first = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => service.EnsureProvisionedAsync(user, CancellationToken.None));
+            Assert.Equal(1, attempts);
+            Assert.NotNull(first.InnerException);
+
+            clock = clock.AddMinutes(5).AddTicks(-1);
+            var skipped = await Assert.ThrowsAsync<InvalidOperationException>(
+                () => service.EnsureProvisionedAsync(user, CancellationToken.None));
+            Assert.Null(skipped.InnerException);
+            Assert.Equal(1, attempts);
+            Assert.Single(logs.Lines, line => line.Contains("Unable to prepare the user profile table.", StringComparison.Ordinal));
+
+            clock = clock.AddTicks(1);
+            await Assert.ThrowsAsync<InvalidOperationException>(
+                () => service.EnsureProvisionedAsync(user, CancellationToken.None));
+            Assert.Equal(2, attempts);
+
+            var written = string.Join("\n", logs.Lines);
+            Assert.Equal(2, logs.Lines.Count(line => line.Contains("Unable to prepare the user profile table.", StringComparison.Ordinal)));
+            Assert.Contains("ExceptionType=Microsoft.Data.SqlClient.SqlException", written, StringComparison.Ordinal);
+            Assert.Contains("SqlErrorNumber=1205", written, StringComparison.Ordinal);
+            Assert.DoesNotContain(secret, written, StringComparison.Ordinal);
+            Assert.Empty(logs.Exceptions);
+        }
+        finally
+        {
+            UserProfileSchema.EnsureFailureForTests.Value = null;
+            UserProfileService.ResetStoreFailureForTests();
+            UserProfileSchema.ResetForTests();
+        }
+    }
+
+    [Fact]
+    public async Task Duplicate_owner_rows_do_not_start_the_store_backoff()
+    {
+        const string oid = "oid-dup-backoff";
+        UserProfileSchema.ResetForTests();
+        var state = new UserProfileService.StoreAttemptState();
+        UserProfileService.StoreAttemptForTests.Value = state;
+        try
+        {
+            await using var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            await using (var command = connection.CreateCommand())
+            {
+                command.CommandText = """
+                    CREATE TABLE UserProfiles (
+                        Id INTEGER NOT NULL CONSTRAINT PK_UserProfiles PRIMARY KEY,
+                        OwnerObjectId TEXT NULL,
+                        DisplayName TEXT NOT NULL,
+                        Email TEXT NOT NULL,
+                        Phone TEXT NOT NULL,
+                        Organization TEXT NULL,
+                        DisplayNameSource TEXT NULL,
+                        PhoneSource TEXT NULL,
+                        OrganizationSource TEXT NULL,
+                        CreatedUtc TEXT NOT NULL,
+                        UpdatedUtc TEXT NOT NULL
+                    );
+                    INSERT INTO UserProfiles (
+                        Id, OwnerObjectId, DisplayName, Email, Phone, Organization,
+                        DisplayNameSource, PhoneSource, OrganizationSource, CreatedUtc, UpdatedUtc)
+                    VALUES
+                        (1, 'oid-dup-backoff', 'Newer', 'dup@example.com', '', NULL, 'claim', 'claim', 'claim', '2024-01-01T00:00:00', '2024-01-01T00:00:00'),
+                        (2, 'oid-dup-backoff', 'Older', 'dup@example.com', '', NULL, 'claim', 'claim', 'claim', '2020-01-01T00:00:00', '2020-01-01T00:00:00');
+                    """;
+                await command.ExecuteNonQueryAsync();
+            }
+
+            var options = new DbContextOptionsBuilder<PfohDbContext>().UseSqlite(connection).Options;
+            await using var db = new PfohDbContext(options);
+            var service = new UserProfileService(db, NullLogger<UserProfileService>.Instance, new ConfigurationBuilder().Build());
+            var user = ProfileUser(oid, "dup@example.com", "Chosen Name");
+            await service.EnsureProvisionedAsync(user, CancellationToken.None);
+            await service.EnsureProvisionedAsync(user, CancellationToken.None);
+            Assert.Equal(0, state.RetryAfterTicks);
+        }
+        finally
+        {
+            UserProfileService.ResetStoreFailureForTests();
+            UserProfileSchema.ResetForTests();
+        }
+    }
+
+    [Fact]
+    public async Task Get_and_sign_in_choose_the_same_duplicated_row()
+    {
+        const string oid = "oid-same-row";
+        var older = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var newer = new DateTime(2024, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        var database = $"profile-same-row-{Guid.NewGuid():N}";
+        var options = new DbContextOptionsBuilder<PfohDbContext>().UseInMemoryDatabase(database).Options;
+        await using (var setup = new PfohDbContext(options))
+        {
+            setup.Database.EnsureCreated();
+            setup.UserProfiles.Add(ProfileAt(1, oid, newer, "Newer Row", "+12145550002", "Newer Org"));
+            setup.UserProfiles.Add(ProfileAt(2, oid, older, "Older Row", "+12145550001", null));
+            setup.SaveChanges();
+        }
+
+        await using var db = new PfohDbContext(options);
+        var service = new UserProfileService(db, NullLogger<UserProfileService>.Instance, new ConfigurationBuilder().Build());
+        var user = new ClaimsPrincipal(new ClaimsIdentity(
+        [
+            new Claim("oid", oid),
+            new Claim("preferred_username", "same@example.com"),
+            new Claim("name", "Chosen Name"),
+            new Claim("organization", "From Token")
+        ], "Test"));
+
+        await service.EnsureProvisionedAsync(user, CancellationToken.None);
+        var controller = new ProfileController(service)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = user }
+            }
+        };
+        var action = await controller.Get(CancellationToken.None);
+        var dto = action.Result is OkObjectResult ok
+            ? Assert.IsType<UserProfileDto>(ok.Value)
+            : action.Value;
+        Assert.NotNull(dto);
+        Assert.Equal("Older Row", dto!.DisplayName);
+        Assert.Equal("From Token", dto.Organization);
+        Assert.Equal("+12145550001", dto.Phone);
+
+        var rows = await db.UserProfiles.OrderBy(row => row.Id).ToListAsync();
+        Assert.Equal("From Token", rows.Single(row => row.Id == 2).Organization);
+        Assert.Equal("Newer Org", rows.Single(row => row.Id == 1).Organization);
+        Assert.Equal("Older Row", rows.Single(row => row.Id == 2).DisplayName);
+        Assert.Equal("Newer Row", rows.Single(row => row.Id == 1).DisplayName);
+    }
+
+    [Fact]
     public void Startup_index_failure_logs_the_sql_number_only()
     {
         const string oid = "oid-index-1505-secret";
@@ -271,6 +503,50 @@ public class UserProfileProvisioningRaceTests
         var service = new UserProfileService(db, NullLogger<UserProfileService>.Instance, new ConfigurationBuilder().Build());
         await service.EnsureProvisionedAsync(ProfileUser(oid, "same@example.com", "Chosen Name"), CancellationToken.None);
         return await db.UserProfiles.OrderBy(row => row.Id).ToListAsync();
+    }
+
+    private static UserProfile ProfileAt(int id, string oid, DateTime created, string name, string phone, string? organization)
+    {
+        return new UserProfile
+        {
+            Id = id,
+            OwnerObjectId = oid,
+            DisplayName = name,
+            Email = "same@example.com",
+            Phone = phone,
+            Organization = organization,
+            DisplayNameSource = ProfileFieldSource.Profile,
+            PhoneSource = ProfileFieldSource.Profile,
+            OrganizationSource = ProfileFieldSource.Profile,
+            CreatedUtc = created,
+            UpdatedUtc = created
+        };
+    }
+
+    private static string TelemetryText(ITelemetry item)
+    {
+        var text = item switch
+        {
+            TraceTelemetry trace => trace.Message,
+            ExceptionTelemetry exception => exception.Message + " " + exception.Exception,
+            _ => item.ToString() ?? string.Empty
+        };
+        if (item is ISupportProperties properties)
+        {
+            text += " " + string.Join(" ", properties.Properties.Values);
+        }
+
+        return text;
+    }
+
+    private sealed class CaptureChannel : ITelemetryChannel
+    {
+        public List<ITelemetry> Items { get; } = new();
+        public bool? DeveloperMode { get; set; } = true;
+        public string? EndpointAddress { get; set; }
+        public void Send(ITelemetry item) => Items.Add(item);
+        public void Flush() { }
+        public void Dispose() { }
     }
 
     private static UserProfile ProfileRow(string oid, string phone, string organization)
@@ -362,6 +638,40 @@ public class UserProfileProvisioningRaceTests
                 throw new DbUpdateException(
                     "save failed",
                     new SqliteException("UNIQUE constraint failed: UserProfiles.OwnerObjectId", 19));
+            }
+
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
+    private sealed class RacedSqlInsertInterceptor(DbContextOptions<PfohDbContext> options, string ownerObjectId) : SaveChangesInterceptor
+    {
+        private int hits;
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref hits) == 1)
+            {
+                using var other = new PfohDbContext(options);
+                var created = DateTime.UtcNow;
+                other.UserProfiles.Add(new UserProfile
+                {
+                    OwnerObjectId = ownerObjectId,
+                    DisplayName = "Existing",
+                    Email = "existing@example.com",
+                    Phone = string.Empty,
+                    DisplayNameSource = ProfileFieldSource.Claim,
+                    PhoneSource = ProfileFieldSource.Claim,
+                    OrganizationSource = ProfileFieldSource.Claim,
+                    CreatedUtc = created,
+                    UpdatedUtc = created
+                });
+                other.SaveChanges();
+                var message = $"Cannot insert duplicate key row. The duplicate key value is ({ownerObjectId}).";
+                throw new DbUpdateException(message, SqlError(2627, message));
             }
 
             return base.SavingChangesAsync(eventData, result, cancellationToken);

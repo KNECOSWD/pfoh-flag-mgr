@@ -42,8 +42,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
     {
         await EnsureProvisionedAsync(user, ct);
         var ownerObjectId = user.GetExternalObjectId();
-        var saved = await db.UserProfiles
-            .FirstOrDefaultAsync(profile => profile.OwnerObjectId == ownerObjectId, ct);
+        var saved = await OwnerProfiles(ownerObjectId).FirstOrDefaultAsync(ct);
 
         var rawClaimPhone = user.GetPhoneNumber(ExtensionsAppId);
         var phone = ResolvePhone(user, saved, ExtensionsAppId);
@@ -76,9 +75,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
 
         await EnsureStoreAsync(ct);
 
-        var existing = await db.UserProfiles
-            .AsNoTracking()
-            .FirstOrDefaultAsync(item => item.OwnerObjectId == callerId, ct);
+        var existing = await OwnerProfiles(callerId).AsNoTracking().FirstOrDefaultAsync(ct);
 
         var email = ResolveEmail(user, existing);
         if (string.IsNullOrWhiteSpace(email))
@@ -98,8 +95,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
 
         var now = DateTime.UtcNow;
-        var profile = await db.UserProfiles
-            .FirstOrDefaultAsync(item => item.OwnerObjectId == callerId, ct);
+        var profile = await OwnerProfiles(callerId).FirstOrDefaultAsync(ct);
 
         if (profile is null)
         {
@@ -144,7 +140,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         {
             LogWriteFailure(ex, "Retrying profile save after a write conflict.");
             db.ChangeTracker.Clear();
-            profile = await db.UserProfiles.FirstOrDefaultAsync(item => item.OwnerObjectId == callerId, ct);
+            profile = await OwnerProfiles(callerId).FirstOrDefaultAsync(ct);
             if (profile is null)
             {
                 throw;
@@ -187,7 +183,14 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         var profiles = await db.UserProfiles
             .AsNoTracking()
             .Where(profile => ids.Contains(profile.OwnerObjectId))
-            .Select(profile => new { profile.OwnerObjectId, profile.Phone, profile.Organization })
+            .Select(profile => new
+            {
+                profile.Id,
+                profile.OwnerObjectId,
+                profile.CreatedUtc,
+                profile.Phone,
+                profile.Organization
+            })
             .ToListAsync(ct);
 
         return profiles
@@ -196,7 +199,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
                 group => group.Key,
                 group =>
                 {
-                    var profile = group.First();
+                    var profile = group.OrderBy(item => item.CreatedUtc).ThenBy(item => item.Id).First();
                     return new UserAccountContact(BlankToNull(profile.Phone), BlankToNull(profile.Organization));
                 },
                 StringComparer.OrdinalIgnoreCase);
@@ -212,9 +215,8 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         {
             await EnsureStoreAsync(ct);
             var ownerObjectId = user.GetExternalObjectId();
-            var saved = await db.UserProfiles
+            var saved = await OwnerProfiles(ownerObjectId)
                 .AsNoTracking()
-                .Where(profile => profile.OwnerObjectId == ownerObjectId)
                 .Select(profile => profile.DisplayName)
                 .FirstOrDefaultAsync(ct);
 
@@ -417,7 +419,7 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
                 }
                 catch (DbUpdateException ex) when (IsUniqueViolation(ex))
                 {
-                    logger.LogInformation("Profile insert raced. Reading the existing row.");
+                    LogWriteFailure(ex, "Profile insert raced. Reading the existing row.");
                     db.ChangeTracker.Clear();
                     existing = await OwnerProfiles(ownerObjectId).FirstOrDefaultAsync(ct);
                     if (existing is null)
@@ -467,9 +469,13 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
     /// Logs the exception type and the SQL Server error number only.
     /// The duplicate-key message contains the object id, so the exception object and its message stay out of the log.
     /// </summary>
-    private void LogWriteFailure(Exception ex, string message)
+    private void LogWriteFailure(Exception ex, string message) =>
+        LogFailure(LogLevel.Warning, ex, message);
+
+    private void LogFailure(LogLevel level, Exception ex, string message)
     {
-        logger.LogWarning(
+        logger.Log(
+            level,
             "{Failure} ExceptionType={ExceptionType} SqlErrorNumber={SqlErrorNumber}",
             message,
             ex.GetType().FullName,
@@ -709,17 +715,58 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
         }
     }
 
+    /// <summary>
+    /// A non-duplicate schema failure leaves the exclusive-lock batch unready.
+    /// Remember it for the process and try again no more than every five minutes.
+    /// A duplicate object id is handled inside <see cref="UserProfileSchema.EnsureAsync"/> and does not land here.
+    /// </summary>
+    private static readonly TimeSpan StoreFailureBackoff = TimeSpan.FromMinutes(5);
+
+    private static readonly StoreAttemptState ProcessStoreAttempt = new();
+
+    internal static readonly AsyncLocal<StoreAttemptState?> StoreAttemptForTests = new();
+
+    private static StoreAttemptState StoreAttempt => StoreAttemptForTests.Value ?? ProcessStoreAttempt;
+
+    private static DateTime StoreUtcNow() => StoreAttempt.UtcNow?.Invoke() ?? DateTime.UtcNow;
+
+    internal static void ResetStoreFailureForTests() => StoreAttemptForTests.Value = null;
+
     private async Task EnsureStoreAsync(CancellationToken ct)
     {
+        var attempt = StoreAttempt;
+        if (attempt.IsBlocked(StoreUtcNow()))
+        {
+            throw new InvalidOperationException("The profile store is unavailable.");
+        }
+
         try
         {
-            await UserProfileSchema.EnsureAsync(db, logger, ct);
+            if (await UserProfileSchema.EnsureAsync(db, logger, ct))
+            {
+                attempt.Clear();
+            }
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Unable to prepare the user profile table.");
+            attempt.RememberFailure(StoreUtcNow(), StoreFailureBackoff);
+            LogFailure(LogLevel.Error, ex, "Unable to prepare the user profile table.");
             throw new InvalidOperationException("The profile store is unavailable.", ex);
         }
+    }
+
+    internal sealed class StoreAttemptState
+    {
+        private long retryAfterTicks;
+        internal Func<DateTime>? UtcNow { get; set; }
+        internal long RetryAfterTicks => Interlocked.Read(ref retryAfterTicks);
+
+        internal bool IsBlocked(DateTime utcNow) => RetryAfterTicks > utcNow.Ticks;
+
+        internal void RememberFailure(DateTime utcNow, TimeSpan backoff) =>
+            Interlocked.Exchange(ref retryAfterTicks, utcNow.Add(backoff).Ticks);
+
+        internal void Clear() => Interlocked.Exchange(ref retryAfterTicks, 0);
     }
 
     private static bool OwnsProfile(string callerId, string? requestedOwnerObjectId)

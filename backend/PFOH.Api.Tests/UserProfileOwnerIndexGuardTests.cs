@@ -17,6 +17,7 @@ using Xunit;
 
 namespace PFOH.Api.Tests;
 
+[Collection("UserProfileSchema")]
 public class UserProfileOwnerIndexGuardTests
 {
     private const string DuplicateOid = "oid-duplicate-secret";

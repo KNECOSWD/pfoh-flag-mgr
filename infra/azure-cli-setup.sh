@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Update these values before running.
+# Update these values before running. SUBSCRIPTION_ID must be set to a real
+# subscription. The zero id below is refused.
 SUBSCRIPTION_ID="00000000-0000-0000-0000-000000000000"
 LOCATION="eastus"
 RG="PLANO_FLAGS_OF_HONOR"
@@ -12,22 +13,66 @@ SQL_DB="pfoh"
 SQL_ADMIN="pfohsqladmin"
 SQL_PASSWORD="ChangeThisToAStrongPassword_12345!"
 
-# The defaults above are the live production names. Refuse them unless the
-# operator sets the override. An empty value does not count.
-if [[ "${PFOH_ALLOW_PROD_SETUP:-}" != "yes" ]]; then
-  prod_hit=""
-  [[ "$RG" == "PLANO_FLAGS_OF_HONOR" ]] && prod_hit="resource group PLANO_FLAGS_OF_HONOR"
-  [[ "$PLAN" == "asp-pfoh-flags-prod" ]] && prod_hit="${prod_hit:+$prod_hit, }plan asp-pfoh-flags-prod"
-  [[ "$APP" == "pfoh-flag-manager-app" ]] && prod_hit="${prod_hit:+$prod_hit, }app pfoh-flag-manager-app"
-  [[ "$SQL_SERVER" == "pfoh" ]] && prod_hit="${prod_hit:+$prod_hit, }SQL server pfoh"
-  [[ "$SQL_DB" == "pfoh" ]] && prod_hit="${prod_hit:+$prod_hit, }SQL database pfoh"
-  if [[ -n "$prod_hit" ]]; then
-    echo "Refusing to run: infra/azure-cli-setup.sh is aimed at production ($prod_hit). Set PFOH_ALLOW_PROD_SETUP=yes to override." >&2
+# A name is non-production only when it contains dev, test, or sandbox.
+# The match is case-insensitive. "latest" contains "test" and counts as non-prod.
+is_nonprod_name() {
+  local lower="${1,,}"
+  [[ "$lower" == *dev* || "$lower" == *test* || "$lower" == *sandbox* ]]
+}
+
+prod_hit=""
+for pair in \
+  "resource group:$RG" \
+  "plan:$PLAN" \
+  "app:$APP" \
+  "SQL server:$SQL_SERVER" \
+  "SQL database:$SQL_DB"
+do
+  label="${pair%%:*}"
+  value="${pair#*:}"
+  if ! is_nonprod_name "$value"; then
+    prod_hit="${prod_hit:+$prod_hit, }$label $value"
+  fi
+done
+
+if [[ -z "${SUBSCRIPTION_ID}" || "${SUBSCRIPTION_ID}" == "00000000-0000-0000-0000-000000000000" ]]; then
+  echo "Refusing to run: set SUBSCRIPTION_ID in infra/azure-cli-setup.sh to the subscription this script should use." >&2
+  exit 1
+fi
+
+# Production names need both flags. Either one missing or mismatched refuses.
+# PFOH_CONFIRM_SUBSCRIPTION must be the subscription id this script is about to use.
+if [[ -n "$prod_hit" ]]; then
+  if [[ "${PFOH_ALLOW_PROD_SETUP:-}" != "yes" || "${PFOH_CONFIRM_SUBSCRIPTION:-}" != "$SUBSCRIPTION_ID" ]]; then
+    echo "Refusing to run: infra/azure-cli-setup.sh is aimed at production ($prod_hit). Set PFOH_ALLOW_PROD_SETUP=yes and PFOH_CONFIRM_SUBSCRIPTION to the exact subscription id ($SUBSCRIPTION_ID). Names that do not contain dev, test, or sandbox are production." >&2
     exit 1
   fi
 fi
 
+echo "Using subscription $SUBSCRIPTION_ID"
 az account set --subscription "$SUBSCRIPTION_ID"
+active="$(az account show --query id -o tsv)"
+echo "Active subscription $active"
+if [[ "$active" != "$SUBSCRIPTION_ID" ]]; then
+  echo "Refusing to run: active subscription $active does not match SUBSCRIPTION_ID $SUBSCRIPTION_ID." >&2
+  exit 1
+fi
+if [[ -n "$prod_hit" && "${PFOH_CONFIRM_SUBSCRIPTION:-}" != "$active" ]]; then
+  echo "Refusing to run: PFOH_CONFIRM_SUBSCRIPTION does not match the active subscription $active." >&2
+  exit 1
+fi
+
+# Existing resources are refused even when both production flags are set.
+# A create would reset the SQL admin password and overwrite the connection string.
+if az webapp show --resource-group "$RG" --name "$APP" >/dev/null 2>&1; then
+  echo "Refusing to run: web app $APP already exists. This script does not reset an existing app or overwrite its connection string." >&2
+  exit 1
+fi
+if az sql server show --resource-group "$RG" --name "$SQL_SERVER" >/dev/null 2>&1; then
+  echo "Refusing to run: SQL server $SQL_SERVER already exists. This script does not reset the SQL admin password or overwrite the connection string." >&2
+  exit 1
+fi
+
 az group create --name "$RG" --location "$LOCATION"
 
 az appservice plan create \

@@ -22,6 +22,12 @@ public static class UserProfileSchema
     private static readonly SemaphoreSlim Gate = new(1, 1);
     private static bool ready;
 
+    /// <summary>
+    /// Test-only. When set on the calling async flow, the next schema batch throws this failure
+    /// instead of running. Other requests do not see it.
+    /// </summary>
+    internal static readonly AsyncLocal<Func<CancellationToken, Task>?> EnsureFailureForTests = new();
+
     internal const string CreateSql = """
         IF OBJECT_ID(N'[dbo].[UserProfiles]', N'U') IS NULL
         BEGIN
@@ -227,11 +233,11 @@ public static class UserProfileSchema
     public static Task EnsureAsync(PfohDbContext db, CancellationToken ct) =>
         EnsureAsync(db, NullLogger.Instance, ct);
 
-    public static async Task EnsureAsync(PfohDbContext db, ILogger logger, CancellationToken ct)
+    public static async Task<bool> EnsureAsync(PfohDbContext db, ILogger logger, CancellationToken ct)
     {
         if (ready || !db.Database.IsRelational())
         {
-            return;
+            return false;
         }
 
         var provider = db.Database.ProviderName ?? string.Empty;
@@ -239,7 +245,7 @@ public static class UserProfileSchema
         var sqlite = provider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase);
         if (!sqlServer && !sqlite)
         {
-            return;
+            return false;
         }
 
         await Gate.WaitAsync(ct);
@@ -247,14 +253,20 @@ public static class UserProfileSchema
         {
             if (ready)
             {
-                return;
+                return false;
+            }
+
+            var failForTests = EnsureFailureForTests.Value;
+            if (failForTests is not null)
+            {
+                await failForTests(ct);
             }
 
             if (sqlite)
             {
                 await EnsureSqliteOwnerIndexAsync(db, logger, ct);
                 ready = true;
-                return;
+                return true;
             }
 
             await db.Database.ExecuteSqlRawAsync(CreateSql, ct);
@@ -281,6 +293,7 @@ public static class UserProfileSchema
             }
 
             ready = true;
+            return true;
         }
         finally
         {

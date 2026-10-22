@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Xunit;
 
 namespace PFOH.Snapshot.Tests;
@@ -99,6 +100,10 @@ public class SnapshotSecurityArtifactTests
         Assert.Contains("Matthew", runbook, StringComparison.Ordinal);
         Assert.Contains("outside this repository", runbook, StringComparison.Ordinal);
         Assert.Contains("az ad app credential reset", runbook, StringComparison.Ordinal);
+        Assert.Contains("az ad app credential list", runbook, StringComparison.Ordinal);
+        Assert.Contains("Upload-first is not possible", runbook, StringComparison.Ordinal);
+        Assert.Contains("8:45 PM COT", runbook, StringComparison.Ordinal);
+        Assert.Contains("token-test procedure", runbook, StringComparison.Ordinal);
         Assert.Contains("publicNetworkAccess", runbook, StringComparison.Ordinal);
         Assert.Contains("AuditLog.Read.All", runbook, StringComparison.Ordinal);
         Assert.Contains("User.Read.All", runbook, StringComparison.Ordinal);
@@ -111,16 +116,177 @@ public class SnapshotSecurityArtifactTests
     }
 
     [Fact]
-    public void Setup_script_refuses_production_names_without_an_override()
+    public void Setup_script_refuses_production_names_without_both_flags()
     {
         var script = File.ReadAllText(RepoFile("infra", "azure-cli-setup.sh"));
-        var guard = script.IndexOf("PFOH_ALLOW_PROD_SETUP", StringComparison.Ordinal);
+        var allow = script.IndexOf("PFOH_ALLOW_PROD_SETUP", StringComparison.Ordinal);
+        var confirm = script.IndexOf("PFOH_CONFIRM_SUBSCRIPTION", StringComparison.Ordinal);
         var create = script.IndexOf("az group create", StringComparison.Ordinal);
-        Assert.True(guard >= 0 && create > guard);
+        var webappShow = script.IndexOf("az webapp show", StringComparison.Ordinal);
+        var sqlShow = script.IndexOf("az sql server show", StringComparison.Ordinal);
+        var webappCreate = script.IndexOf("az webapp create", StringComparison.Ordinal);
+        var sqlCreate = script.IndexOf("az sql server create", StringComparison.Ordinal);
+        var firewall = script.IndexOf("0.0.0.0", StringComparison.Ordinal);
+        var connection = script.IndexOf("az webapp config connection-string set", StringComparison.Ordinal);
+        Assert.True(allow >= 0 && confirm >= 0 && allow < create && confirm < create);
+        Assert.True(webappShow > confirm && sqlShow > confirm);
+        Assert.True(webappCreate > webappShow && sqlCreate > sqlShow);
+        Assert.True(firewall > sqlShow && connection > sqlShow);
         Assert.Contains("Refusing to run", script, StringComparison.Ordinal);
         Assert.Contains("PLANO_FLAGS_OF_HONOR", script, StringComparison.Ordinal);
         Assert.Contains("asp-pfoh-flags-prod", script, StringComparison.Ordinal);
         Assert.Contains("pfoh-flag-manager-app", script, StringComparison.Ordinal);
+        Assert.Contains("*dev*", script, StringComparison.Ordinal);
+        Assert.Contains("*test*", script, StringComparison.Ordinal);
+        Assert.Contains("*sandbox*", script, StringComparison.Ordinal);
+        Assert.Contains("az account show", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Setup_script_refuses_prod_unless_both_flags_match_and_resources_are_new()
+    {
+        var source = File.ReadAllText(RepoFile("infra", "azure-cli-setup.sh"));
+        var directory = Path.Combine(Path.GetTempPath(), "pfoh-setup-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var script = Path.Combine(directory, "azure-cli-setup.sh");
+            var stub = Path.Combine(directory, "az");
+            var log = Path.Combine(directory, "az.log");
+            File.WriteAllText(stub, """
+                #!/bin/bash
+                printf '%s\n' "$*" >> "$AZ_LOG"
+                if [[ "$1" == "account" && "$2" == "show" ]]; then
+                  printf '%s\n' "${AZ_ACTIVE_ID}"
+                  exit 0
+                fi
+                if [[ "$1" == "webapp" && "$2" == "show" && "${AZ_WEBAPP_EXISTS:-}" == "yes" ]]; then
+                  exit 0
+                fi
+                if [[ "$1" == "sql" && "$2" == "server" && "$3" == "show" && "${AZ_SQL_EXISTS:-}" == "yes" ]]; then
+                  exit 0
+                fi
+                if [[ "$1" == "webapp" && "$2" == "show" ]]; then exit 3; fi
+                if [[ "$1" == "sql" && "$2" == "server" && "$3" == "show" ]]; then exit 3; fi
+                exit 0
+                """);
+            using (var chmod = Process.Start("chmod", "+x " + stub))
+            {
+                Assert.NotNull(chmod);
+                chmod.WaitForExit();
+                Assert.Equal(0, chmod.ExitCode);
+            }
+
+            var placeholder = RunSetup(source, directory, stub, log, "00000000-0000-0000-0000-000000000000", new Dictionary<string, string>());
+            Assert.Equal(1, placeholder.ExitCode);
+            Assert.Contains("set SUBSCRIPTION_ID", placeholder.Error, StringComparison.Ordinal);
+            Assert.False(File.Exists(log));
+
+            var refused = RunSetup(source, directory, stub, log, "11111111-1111-1111-1111-111111111111", new Dictionary<string, string>());
+            Assert.Equal(1, refused.ExitCode);
+            Assert.Contains("PFOH_ALLOW_PROD_SETUP=yes", refused.Error, StringComparison.Ordinal);
+            Assert.Contains("PFOH_CONFIRM_SUBSCRIPTION", refused.Error, StringComparison.Ordinal);
+            Assert.False(File.Exists(log));
+
+            var allowOnly = RunSetup(source, directory, stub, log, "11111111-1111-1111-1111-111111111111", new Dictionary<string, string>
+            {
+                ["PFOH_ALLOW_PROD_SETUP"] = "yes"
+            });
+            Assert.Equal(1, allowOnly.ExitCode);
+            Assert.Contains("PFOH_CONFIRM_SUBSCRIPTION", allowOnly.Error, StringComparison.Ordinal);
+            Assert.False(File.Exists(log));
+
+            var wrongConfirm = RunSetup(source, directory, stub, log, "11111111-1111-1111-1111-111111111111", new Dictionary<string, string>
+            {
+                ["PFOH_ALLOW_PROD_SETUP"] = "yes",
+                ["PFOH_CONFIRM_SUBSCRIPTION"] = "22222222-2222-2222-2222-222222222222"
+            });
+            Assert.Equal(1, wrongConfirm.ExitCode);
+            Assert.False(File.Exists(log));
+
+            var wrongActive = RunSetup(source, directory, stub, log, "11111111-1111-1111-1111-111111111111", new Dictionary<string, string>
+            {
+                ["PFOH_ALLOW_PROD_SETUP"] = "yes",
+                ["PFOH_CONFIRM_SUBSCRIPTION"] = "11111111-1111-1111-1111-111111111111",
+                ["AZ_ACTIVE_ID"] = "33333333-3333-3333-3333-333333333333"
+            });
+            Assert.Equal(1, wrongActive.ExitCode);
+            Assert.Contains("does not match SUBSCRIPTION_ID", wrongActive.Error, StringComparison.Ordinal);
+            Assert.DoesNotContain("group create", File.Exists(log) ? File.ReadAllText(log) : string.Empty, StringComparison.Ordinal);
+
+            File.Delete(log);
+            var exists = RunSetup(source, directory, stub, log, "11111111-1111-1111-1111-111111111111", new Dictionary<string, string>
+            {
+                ["PFOH_ALLOW_PROD_SETUP"] = "yes",
+                ["PFOH_CONFIRM_SUBSCRIPTION"] = "11111111-1111-1111-1111-111111111111",
+                ["AZ_ACTIVE_ID"] = "11111111-1111-1111-1111-111111111111",
+                ["AZ_WEBAPP_EXISTS"] = "yes"
+            });
+            Assert.Equal(1, exists.ExitCode);
+            Assert.Contains("already exists", exists.Error, StringComparison.Ordinal);
+            Assert.DoesNotContain("group create", File.ReadAllText(log), StringComparison.Ordinal);
+            Assert.DoesNotContain("connection-string set", File.ReadAllText(log), StringComparison.Ordinal);
+
+            File.Delete(log);
+            var nonprod = source
+                .Replace("PLANO_FLAGS_OF_HONOR", "pfoh-dev", StringComparison.Ordinal)
+                .Replace("asp-pfoh-flags-prod", "asp-pfoh-dev", StringComparison.Ordinal)
+                .Replace("pfoh-flag-manager-app", "pfoh-flag-manager-dev", StringComparison.Ordinal)
+                .Replace("SQL_SERVER=\"pfoh\"", "SQL_SERVER=\"pfoh-test\"", StringComparison.Ordinal)
+                .Replace("SQL_DB=\"pfoh\"", "SQL_DB=\"pfoh-sandbox\"", StringComparison.Ordinal);
+            var created = RunSetup(nonprod, directory, stub, log, "11111111-1111-1111-1111-111111111111", new Dictionary<string, string>
+            {
+                ["AZ_ACTIVE_ID"] = "11111111-1111-1111-1111-111111111111"
+            });
+            Assert.Equal(0, created.ExitCode);
+            var calls = File.ReadAllText(log);
+            var show = calls.IndexOf("webapp show", StringComparison.Ordinal);
+            var sqlShow = calls.IndexOf("sql server show", StringComparison.Ordinal);
+            var group = calls.IndexOf("group create", StringComparison.Ordinal);
+            var firewall = calls.IndexOf("firewall-rule create", StringComparison.Ordinal);
+            var connection = calls.IndexOf("connection-string set", StringComparison.Ordinal);
+            Assert.True(show >= 0 && sqlShow > show && group > sqlShow && firewall > group && connection > firewall);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static (int ExitCode, string Error) RunSetup(
+        string source,
+        string directory,
+        string stub,
+        string log,
+        string subscriptionId,
+        IReadOnlyDictionary<string, string> environment)
+    {
+        var script = Path.Combine(directory, "azure-cli-setup.sh");
+        var rewritten = source.Replace(
+            "SUBSCRIPTION_ID=\"00000000-0000-0000-0000-000000000000\"",
+            "SUBSCRIPTION_ID=\"" + subscriptionId + "\"",
+            StringComparison.Ordinal);
+        File.WriteAllText(script, rewritten);
+        var start = new ProcessStartInfo("bash", script)
+        {
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        };
+        start.Environment["PATH"] = directory + Path.PathSeparator + "/usr/bin" + Path.PathSeparator + "/bin";
+        start.Environment["AZ_LOG"] = log;
+        start.Environment["AZ_ACTIVE_ID"] = subscriptionId;
+        foreach (var pair in environment)
+        {
+            start.Environment[pair.Key] = pair.Value;
+        }
+
+        using var process = Process.Start(start);
+        Assert.NotNull(process);
+        var error = process.StandardError.ReadToEnd();
+        process.StandardOutput.ReadToEnd();
+        process.WaitForExit();
+        return (process.ExitCode, error);
     }
 
     private static int CountOf(string text, string value)

@@ -113,6 +113,10 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient();
+// AddApplicationInsightsTelemetry inserts a provider-wide Warning rule at the
+// front of the filter list. Logging:ApplicationInsights:LogLevel is more specific
+// and is what turns EF categories off. A later AddFilter for those categories
+// would outrank that config, so this file does not add one.
 builder.Services.AddApplicationInsightsTelemetry(options =>
 {
     // The built-in sampler is replaced after the app is built so adaptive
