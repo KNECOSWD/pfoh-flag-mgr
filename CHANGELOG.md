@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.2
+
+- A transient SQL or sign-in identity error while preparing a profile no longer blocks profile load and sign-in for five minutes. The request is retried with exponential backoff and jitter. If the database is still failing, sign-in pauses for a few seconds and the next request tries once. While that pause is in effect, profile requests return 503 with Retry-After, and `/health` reports Unhealthy.
+- The Azure setup script treats only `ResourceNotFound` as a missing resource. Any other Azure CLI error stops the script, so it cannot recreate a resource or reset the SQL admin password. `SQL_PASSWORD` has no default. The Allow Azure services firewall rule is added only when `PFOH_ALLOW_AZURE_SERVICES=yes`. An existing App Service plan is kept when its SKU is already P1v3, and a different SKU stops the script. A name such as `devops` is production unless `dev`, `test`, or `sandbox` is a whole token.
+
 ## 3.1.0
 
 - A signed-in request creates a `dbo.UserProfiles` row from the token when one does not exist yet, keyed by the Entra object id (`OwnerObjectId`, the `oid` claim). A second request for the same id updates that row instead of inserting another. Name, phone, and organization that were saved on the profile form are kept. Those three fields record whether the current value came from the token (`claim`) or the profile form (`profile`). Email stays the token email. The unique index on `OwnerObjectId` is added by the schema-only migration `AddUserProfileOwnerObjectIdUniqueIndex` only when no non-null object id is repeated. Duplicate ids leave the rows and the index unchanged, and the site still starts.

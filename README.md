@@ -255,7 +255,11 @@ cd infra
 ./azure-cli-setup.sh
 ```
 
-The script refuses unless `SUBSCRIPTION_ID` is set to a real subscription, and it prints that id. A resource group, plan, app, or SQL name is production when it does not contain `dev`, `test`, or `sandbox` (case-insensitive), which includes the live names `PLANO_FLAGS_OF_HONOR`, `asp-pfoh-flags-prod`, `pfoh-flag-manager-app`, and SQL server or database `pfoh`. Production names need both `PFOH_ALLOW_PROD_SETUP=yes` and `PFOH_CONFIRM_SUBSCRIPTION` set to that same subscription id. The confirm value must also match `az account show`. Either flag missing or mismatched refuses the run. If the web app or SQL server already exists, the script refuses before it creates anything, so it does not reset the SQL admin password or overwrite the connection string.
+The script refuses unless `SUBSCRIPTION_ID` is set to a real subscription, and it prints that id. A resource group, plan, app, or SQL name is production unless `dev`, `test`, or `sandbox` appears as a whole token (case-insensitive, split on anything that is not a letter or digit). `pfoh-dev` is not production. `devops` and `latest` are. The live names `PLANO_FLAGS_OF_HONOR`, `asp-pfoh-flags-prod`, `pfoh-flag-manager-app`, and SQL server or database `pfoh` are production. Production names need both `PFOH_ALLOW_PROD_SETUP=yes` and `PFOH_CONFIRM_SUBSCRIPTION` set to that same subscription id. The confirm value must also match `az account show`. Either flag missing or mismatched refuses the run.
+
+Export `SQL_PASSWORD` before running, or run the script in a terminal so it can prompt. There is no default password, and the script does not print the value.
+
+If the web app or SQL server already exists, the script refuses before it creates anything, so it does not reset the SQL admin password or overwrite the connection string. An Azure CLI error other than `ResourceNotFound` also stops the script. An existing App Service plan is left as it is when its SKU is already `P1v3`. A different SKU stops the script. The script does not add the Allow Azure services SQL firewall rule (`0.0.0.0`) unless `PFOH_ALLOW_AZURE_SERVICES=yes`. A private endpoint is the production choice.
 
 It creates:
 

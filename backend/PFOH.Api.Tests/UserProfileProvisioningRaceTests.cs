@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Security.Claims;
+using Polly;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.Channel;
 using Microsoft.ApplicationInsights.DataContracts;
@@ -271,14 +272,67 @@ public class UserProfileProvisioningRaceTests
     }
 
     [Fact]
-    public async Task A_non_duplicate_store_failure_waits_five_minutes_before_the_next_attempt()
+    public async Task A_single_transient_store_error_recovers_on_the_next_attempt()
     {
         const string secret = "oid-store-backoff-secret";
         UserProfileSchema.ResetForTests();
-        var state = new UserProfileService.StoreAttemptState();
-        var clock = new DateTime(2026, 10, 22, 15, 0, 0, DateTimeKind.Utc);
-        state.UtcNow = () => clock;
+        var state = new ProfileStoreCircuit();
         UserProfileService.StoreAttemptForTests.Value = state;
+        var attempts = 0;
+        UserProfileSchema.EnsureFailureForTests.Value = _ =>
+        {
+            attempts++;
+            if (attempts == 1)
+            {
+                throw SqlError(1205, $"Could not prepare the profile table for {secret}.");
+            }
+
+            return Task.CompletedTask;
+        };
+        var logs = new ListLogger();
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            await using var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            var options = new DbContextOptionsBuilder<PfohDbContext>().UseSqlite(connection).Options;
+            await using var db = new PfohDbContext(options);
+            await db.Database.EnsureCreatedAsync();
+            var service = new UserProfileService(db, logs, new ConfigurationBuilder().Build());
+            await service.EnsureProvisionedAsync(
+                ProfileUser("oid-backoff-user", "backoff@example.com", "Backoff Person"),
+                CancellationToken.None);
+            started.Stop();
+
+            Assert.Equal(2, attempts);
+            Assert.True(started.Elapsed < TimeSpan.FromSeconds(30), $"recovered in {started.Elapsed}");
+            Assert.Equal(ProfileStoreCircuitState.Closed, state.State);
+            Assert.Equal(0, state.RetryAfterTicks);
+            Assert.DoesNotContain(secret, string.Join("\n", logs.Lines), StringComparison.Ordinal);
+            Assert.Empty(logs.Exceptions);
+            Assert.Equal(DelayBackoffType.Exponential, ProfileStoreResilience.RetryOptions.BackoffType);
+            Assert.True(ProfileStoreResilience.RetryOptions.UseJitter);
+            Assert.Equal(3, ProfileStoreResilience.RetryOptions.MaxRetryAttempts);
+            Assert.True(ProfileStoreResilience.BreakDuration <= TimeSpan.FromSeconds(5));
+            Assert.True(ProfileStoreResilience.RetryOptions.Delay <= TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            UserProfileSchema.EnsureFailureForTests.Value = null;
+            UserProfileService.ResetStoreFailureForTests();
+            UserProfileSchema.ResetForTests();
+        }
+    }
+
+    [Fact]
+    public async Task A_real_store_outage_opens_a_short_circuit_instead_of_a_five_minute_lock()
+    {
+        const string secret = "oid-store-outage-secret";
+        UserProfileSchema.ResetForTests();
+        var clock = new DateTime(2026, 10, 22, 15, 0, 0, DateTimeKind.Utc);
+        var state = new ProfileStoreCircuit { UtcNow = () => clock };
+        UserProfileService.StoreAttemptForTests.Value = state;
+        ProfileStoreResilience.PipelineForTests.Value = ProfileStoreResilience.ImmediateRetries();
         var attempts = 0;
         UserProfileSchema.EnsureFailureForTests.Value = _ =>
         {
@@ -293,27 +347,36 @@ public class UserProfileProvisioningRaceTests
             var options = new DbContextOptionsBuilder<PfohDbContext>().UseSqlite(connection).Options;
             await using var db = new PfohDbContext(options);
             var service = new UserProfileService(db, logs, new ConfigurationBuilder().Build());
-            var user = ProfileUser("oid-backoff-user", "backoff@example.com", "Backoff Person");
+            var user = ProfileUser("oid-outage-user", "outage@example.com", "Outage Person");
 
-            var first = await Assert.ThrowsAsync<InvalidOperationException>(
+            var first = await Assert.ThrowsAsync<ProfileStoreUnavailableException>(
                 () => service.EnsureProvisionedAsync(user, CancellationToken.None));
-            Assert.Equal(1, attempts);
+            Assert.Equal(ProfileStoreResilience.RetryOptions.MaxRetryAttempts + 1, attempts);
             Assert.NotNull(first.InnerException);
+            Assert.Equal(ProfileStoreCircuitState.Open, state.State);
+            Assert.InRange(first.RetryAfter.TotalSeconds, 1, 5);
+            Assert.Contains("Unable to prepare the user profile table.", string.Join("\n", logs.Lines), StringComparison.Ordinal);
 
-            clock = clock.AddMinutes(5).AddTicks(-1);
-            var skipped = await Assert.ThrowsAsync<InvalidOperationException>(
+            var skipped = await Assert.ThrowsAsync<ProfileStoreUnavailableException>(
                 () => service.EnsureProvisionedAsync(user, CancellationToken.None));
             Assert.Null(skipped.InnerException);
-            Assert.Equal(1, attempts);
-            Assert.Single(logs.Lines, line => line.Contains("Unable to prepare the user profile table.", StringComparison.Ordinal));
+            Assert.Equal(ProfileStoreResilience.RetryOptions.MaxRetryAttempts + 1, attempts);
+            Assert.InRange(skipped.RetryAfter.TotalSeconds, 1, 5);
+
+            clock = clock.Add(state.Break).AddTicks(-1);
+            var stillOpen = await Assert.ThrowsAsync<ProfileStoreUnavailableException>(
+                () => service.EnsureProvisionedAsync(user, CancellationToken.None));
+            Assert.Null(stillOpen.InnerException);
+            Assert.Equal(ProfileStoreResilience.RetryOptions.MaxRetryAttempts + 1, attempts);
 
             clock = clock.AddTicks(1);
-            await Assert.ThrowsAsync<InvalidOperationException>(
+            var probe = await Assert.ThrowsAsync<ProfileStoreUnavailableException>(
                 () => service.EnsureProvisionedAsync(user, CancellationToken.None));
-            Assert.Equal(2, attempts);
+            Assert.NotNull(probe.InnerException);
+            Assert.Equal((ProfileStoreResilience.RetryOptions.MaxRetryAttempts + 1) * 2, attempts);
+            Assert.Equal(ProfileStoreCircuitState.Open, state.State);
 
             var written = string.Join("\n", logs.Lines);
-            Assert.Equal(2, logs.Lines.Count(line => line.Contains("Unable to prepare the user profile table.", StringComparison.Ordinal)));
             Assert.Contains("ExceptionType=Microsoft.Data.SqlClient.SqlException", written, StringComparison.Ordinal);
             Assert.Contains("SqlErrorNumber=1205", written, StringComparison.Ordinal);
             Assert.DoesNotContain(secret, written, StringComparison.Ordinal);
@@ -323,6 +386,71 @@ public class UserProfileProvisioningRaceTests
         {
             UserProfileSchema.EnsureFailureForTests.Value = null;
             UserProfileService.ResetStoreFailureForTests();
+            ProfileStoreResilience.PipelineForTests.Value = null;
+            UserProfileSchema.ResetForTests();
+        }
+    }
+
+    [Fact]
+    public async Task A_waiter_rechecks_the_circuit_after_the_schema_lock()
+    {
+        UserProfileSchema.ResetForTests();
+        var state = new ProfileStoreCircuit();
+        UserProfileService.StoreAttemptForTests.Value = state;
+        ProfileStoreResilience.PipelineForTests.Value = ProfileStoreResilience.ImmediateRetries();
+        var attempts = 0;
+        var holdingLastAttempt = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseLastAttempt = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        UserProfileSchema.EnsureFailureForTests.Value = async _ =>
+        {
+            var n = Interlocked.Increment(ref attempts);
+            if (n == ProfileStoreResilience.RetryOptions.MaxRetryAttempts + 1)
+            {
+                holdingLastAttempt.TrySetResult();
+                await releaseLastAttempt.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+
+            throw SqlError(1205, "deadlock");
+        };
+        try
+        {
+            await using var connection = new SqliteConnection("Data Source=:memory:");
+            await connection.OpenAsync();
+            var options = new DbContextOptionsBuilder<PfohDbContext>().UseSqlite(connection).Options;
+            await using var db = new PfohDbContext(options);
+            var service = new UserProfileService(db, NullLogger<UserProfileService>.Instance, new ConfigurationBuilder().Build());
+            var user = ProfileUser("oid-lock-user", "lock@example.com", "Lock Person");
+            var first = Task.Run(() => service.EnsureProvisionedAsync(user, CancellationToken.None));
+            await holdingLastAttempt.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            var second = Task.Run(() => service.EnsureProvisionedAsync(user, CancellationToken.None));
+            var sawWaiter = false;
+            for (var i = 0; i < 100 && !sawWaiter; i++)
+            {
+                sawWaiter = UserProfileSchema.GateWaitersForTests >= 1;
+                if (!sawWaiter)
+                {
+                    await Task.Delay(10);
+                }
+            }
+
+            Assert.True(sawWaiter, "the second call should be waiting on the schema lock");
+            var attemptsWhileHeld = attempts;
+            releaseLastAttempt.TrySetResult();
+
+            var firstError = await Assert.ThrowsAsync<ProfileStoreUnavailableException>(async () => await first);
+            var secondError = await Assert.ThrowsAsync<ProfileStoreUnavailableException>(async () => await second);
+            Assert.NotNull(firstError.InnerException);
+            Assert.Null(secondError.InnerException);
+            Assert.Equal(attemptsWhileHeld, attempts);
+            Assert.Equal(ProfileStoreCircuitState.Open, state.State);
+        }
+        finally
+        {
+            releaseLastAttempt.TrySetResult();
+            UserProfileSchema.EnsureFailureForTests.Value = null;
+            UserProfileService.ResetStoreFailureForTests();
+            ProfileStoreResilience.PipelineForTests.Value = null;
             UserProfileSchema.ResetForTests();
         }
     }
@@ -332,7 +460,7 @@ public class UserProfileProvisioningRaceTests
     {
         const string oid = "oid-dup-backoff";
         UserProfileSchema.ResetForTests();
-        var state = new UserProfileService.StoreAttemptState();
+        var state = new ProfileStoreCircuit();
         UserProfileService.StoreAttemptForTests.Value = state;
         try
         {

@@ -12,7 +12,11 @@ public sealed record UserProfileUpdateResult(bool Forbidden, string? Error, User
 
 public sealed record UserAccountContact(string? Phone, string? Organization);
 
-public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> logger, IConfiguration configuration)
+public class UserProfileService(
+    PfohDbContext db,
+    ILogger<UserProfileService> logger,
+    IConfiguration configuration,
+    ProfileStoreCircuit? circuit = null)
 {
     /// <summary>
     /// Fixed stripes. A map keyed by object id would grow for every account that ever signed in.
@@ -716,57 +720,38 @@ public class UserProfileService(PfohDbContext db, ILogger<UserProfileService> lo
     }
 
     /// <summary>
-    /// A non-duplicate schema failure leaves the exclusive-lock batch unready.
-    /// Remember it for the process and try again no more than every five minutes.
-    /// A duplicate object id is handled inside <see cref="UserProfileSchema.EnsureAsync"/> and does not land here.
+    /// A duplicate object id is handled inside <see cref="UserProfileSchema.EnsureAsync"/> and does not open the circuit.
+    /// A transient SQL or identity error is retried with exponential backoff and jitter.
+    /// If those retries fail, the circuit stays open for a few seconds and the next call is the half-open probe.
     /// </summary>
-    private static readonly TimeSpan StoreFailureBackoff = TimeSpan.FromMinutes(5);
+    internal static readonly AsyncLocal<ProfileStoreCircuit?> StoreAttemptForTests = new();
 
-    private static readonly StoreAttemptState ProcessStoreAttempt = new();
-
-    internal static readonly AsyncLocal<StoreAttemptState?> StoreAttemptForTests = new();
-
-    private static StoreAttemptState StoreAttempt => StoreAttemptForTests.Value ?? ProcessStoreAttempt;
-
-    private static DateTime StoreUtcNow() => StoreAttempt.UtcNow?.Invoke() ?? DateTime.UtcNow;
+    private ProfileStoreCircuit ActiveCircuit =>
+        StoreAttemptForTests.Value ?? circuit ?? ProfileStoreCircuit.Process;
 
     internal static void ResetStoreFailureForTests() => StoreAttemptForTests.Value = null;
 
     private async Task EnsureStoreAsync(CancellationToken ct)
     {
-        var attempt = StoreAttempt;
-        if (attempt.IsBlocked(StoreUtcNow()))
+        var attempt = ActiveCircuit;
+        if (attempt.IsBlocked(attempt.Now))
         {
-            throw new InvalidOperationException("The profile store is unavailable.");
+            throw new ProfileStoreUnavailableException(attempt.RetryAfter(attempt.Now));
         }
 
         try
         {
-            if (await UserProfileSchema.EnsureAsync(db, logger, ct))
-            {
-                attempt.Clear();
-            }
+            await UserProfileSchema.EnsureAsync(db, logger, ct, attempt);
         }
-        catch (Exception ex)
+        catch (ProfileStoreUnavailableException)
         {
-            attempt.RememberFailure(StoreUtcNow(), StoreFailureBackoff);
-            LogFailure(LogLevel.Error, ex, "Unable to prepare the user profile table.");
-            throw new InvalidOperationException("The profile store is unavailable.", ex);
+            throw;
         }
-    }
-
-    internal sealed class StoreAttemptState
-    {
-        private long retryAfterTicks;
-        internal Func<DateTime>? UtcNow { get; set; }
-        internal long RetryAfterTicks => Interlocked.Read(ref retryAfterTicks);
-
-        internal bool IsBlocked(DateTime utcNow) => RetryAfterTicks > utcNow.Ticks;
-
-        internal void RememberFailure(DateTime utcNow, TimeSpan backoff) =>
-            Interlocked.Exchange(ref retryAfterTicks, utcNow.Add(backoff).Ticks);
-
-        internal void Clear() => Interlocked.Exchange(ref retryAfterTicks, 0);
+        catch (Exception ex) when (ProfileStoreTransient.IsTransient(ex))
+        {
+            LogFailure(LogLevel.Error, ex, "Unable to prepare the user profile table.");
+            throw new ProfileStoreUnavailableException(attempt.RetryAfter(attempt.Now), ex);
+        }
     }
 
     private static bool OwnsProfile(string callerId, string? requestedOwnerObjectId)

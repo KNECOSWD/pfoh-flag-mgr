@@ -127,6 +127,9 @@ builder.Services.AddSingleton<ITelemetryInitializer, SubmitterLookupTelemetryIni
 builder.Services.AddSingleton<IHttpContextFactory>(serviceProvider =>
     new SubmitterLookupHttpContextFactory(ActivatorUtilities.CreateInstance<DefaultHttpContextFactory>(serviceProvider)));
 builder.Services.AddSingleton<HonoreeFileStorage>();
+builder.Services.AddSingleton<ProfileStoreCircuit>();
+builder.Services.AddHealthChecks()
+    .AddCheck<ProfileStoreHealthCheck>("profile-store");
 builder.Services.AddScoped<UserProfileService>();
 builder.Services.AddScoped<FlagGridAssignment>();
 builder.Services.AddScoped<PendingReviewMaintenance>();
@@ -251,6 +254,33 @@ telemetryChain.Build();
 
 app.Use(async (context, next) =>
 {
+    try
+    {
+        await next();
+    }
+    catch (ProfileStoreUnavailableException ex)
+    {
+        if (context.Response.HasStarted)
+        {
+            throw;
+        }
+
+        context.Response.Clear();
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        var seconds = (int)Math.Ceiling(ex.RetryAfter.TotalSeconds);
+        if (seconds < 1)
+        {
+            seconds = 1;
+        }
+
+        context.Response.Headers.RetryAfter = seconds.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        context.Response.Headers.CacheControl = "no-store";
+        await context.Response.WriteAsJsonAsync(new { message = "The profile store is unavailable." });
+    }
+});
+
+app.Use(async (context, next) =>
+{
     if (SubmitterLookupPrivacy.IsLookupPath(context.Request.Path))
     {
         context.Response.OnStarting(() =>
@@ -333,7 +363,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 app.UseMiddleware<UserProfileProvisioningMiddleware>();
-app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "PFOH.Api" })).AllowAnonymous();
+app.MapHealthChecks("/health").AllowAnonymous();
 app.MapGet("/flag-map", async (HttpContext context, CancellationToken ct) =>
 {
     context.Response.Headers.CacheControl = StaticAssetCaching.Html;

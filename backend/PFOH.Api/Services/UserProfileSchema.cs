@@ -20,7 +20,14 @@ namespace PFOH.Api.Services;
 public static class UserProfileSchema
 {
     private static readonly SemaphoreSlim Gate = new(1, 1);
+    private static int gateWaiters;
     private static bool ready;
+
+    /// <summary>
+    /// Callers blocked on <see cref="Gate"/>, not the caller that holds it.
+    /// Tests use this to prove a waiter re-checks the circuit before the TABLOCKX batch.
+    /// </summary>
+    internal static int GateWaitersForTests => Volatile.Read(ref gateWaiters);
 
     /// <summary>
     /// Test-only. When set on the calling async flow, the next schema batch throws this failure
@@ -233,9 +240,22 @@ public static class UserProfileSchema
     public static Task EnsureAsync(PfohDbContext db, CancellationToken ct) =>
         EnsureAsync(db, NullLogger.Instance, ct);
 
-    public static async Task<bool> EnsureAsync(PfohDbContext db, ILogger logger, CancellationToken ct)
+    public static Task<bool> EnsureAsync(PfohDbContext db, ILogger logger, CancellationToken ct) =>
+        EnsureAsync(db, logger, ct, circuit: null);
+
+    public static async Task<bool> EnsureAsync(
+        PfohDbContext db,
+        ILogger logger,
+        CancellationToken ct,
+        ProfileStoreCircuit? circuit)
     {
-        if (ready || !db.Database.IsRelational())
+        if (ready)
+        {
+            circuit?.Close();
+            return false;
+        }
+
+        if (!db.Database.IsRelational())
         {
             return false;
         }
@@ -248,52 +268,93 @@ public static class UserProfileSchema
             return false;
         }
 
-        await Gate.WaitAsync(ct);
+        Interlocked.Increment(ref gateWaiters);
+        try
+        {
+            await Gate.WaitAsync(ct);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref gateWaiters);
+        }
+
         try
         {
             if (ready)
             {
+                circuit?.Close();
                 return false;
             }
 
-            var failForTests = EnsureFailureForTests.Value;
-            if (failForTests is not null)
+            // Re-check after the lock. Another request may have opened the circuit
+            // while this one waited to run the TABLOCKX index batch.
+            if (circuit is not null && !circuit.TryEnter(circuit.Now))
             {
-                await failForTests(ct);
+                throw new ProfileStoreUnavailableException(circuit.RetryAfter(circuit.Now));
             }
 
-            if (sqlite)
+            async ValueTask ExecuteOnceAsync(CancellationToken token)
             {
-                await EnsureSqliteOwnerIndexAsync(db, logger, ct);
-                ready = true;
-                return true;
-            }
+                var failForTests = EnsureFailureForTests.Value;
+                if (failForTests is not null)
+                {
+                    await failForTests(token);
+                }
 
-            await db.Database.ExecuteSqlRawAsync(CreateSql, ct);
-            await db.Database.ExecuteSqlRawAsync(AddPhoneAndOrganizationSql, ct);
-            await db.Database.ExecuteSqlRawAsync(AddClaimSourceColumnsSql, ct);
-            try
-            {
-                await db.Database.ExecuteSqlRawAsync(EnsureOwnerObjectIdUniqueIndexSql, ct);
-            }
-            catch (Exception ex) when (IsDuplicateOwnerObjectIdBlock(ex))
-            {
+                if (sqlite)
+                {
+                    await EnsureSqliteOwnerIndexAsync(db, logger, token);
+                    ready = true;
+                    return;
+                }
+
+                await db.Database.ExecuteSqlRawAsync(CreateSql, token);
+                await db.Database.ExecuteSqlRawAsync(AddPhoneAndOrganizationSql, token);
+                await db.Database.ExecuteSqlRawAsync(AddClaimSourceColumnsSql, token);
                 try
                 {
-                    var groups = await ScalarIntAsync(db, DuplicateGroupCountSql, ct);
-                    logger.LogError(
-                        "UserProfiles has {DuplicateGroupCount} duplicate OwnerObjectId groups; unique index not created. Resolve duplicates first.",
-                        groups);
+                    await db.Database.ExecuteSqlRawAsync(EnsureOwnerObjectIdUniqueIndexSql, token);
                 }
-                catch (Exception)
+                catch (Exception ex) when (IsDuplicateOwnerObjectIdBlock(ex))
                 {
-                    logger.LogError(
-                        "UserProfiles has duplicate OwnerObjectId values; unique index not created. Resolve duplicates first. The duplicate-group count could not be read.");
+                    try
+                    {
+                        var groups = await ScalarIntAsync(db, DuplicateGroupCountSql, token);
+                        logger.LogError(
+                            "UserProfiles has {DuplicateGroupCount} duplicate OwnerObjectId groups; unique index not created. Resolve duplicates first.",
+                            groups);
+                    }
+                    catch (Exception)
+                    {
+                        logger.LogError(
+                            "UserProfiles has duplicate OwnerObjectId values; unique index not created. Resolve duplicates first. The duplicate-group count could not be read.");
+                    }
                 }
+
+                ready = true;
             }
 
-            ready = true;
+            if (circuit is null)
+            {
+                await ExecuteOnceAsync(ct);
+            }
+            else
+            {
+                await ProfileStoreResilience.Pipeline.ExecuteAsync(
+                    async token => await ExecuteOnceAsync(token),
+                    ct);
+                circuit.Close();
+            }
+
             return true;
+        }
+        catch (Exception ex) when (circuit is not null
+            && ex is not ProfileStoreUnavailableException
+            && ProfileStoreTransient.IsTransient(ex))
+        {
+            // Open before releasing the gate so a waiter re-checks and does not run the batch.
+            circuit.Open(circuit.Now);
+            throw;
         }
         finally
         {

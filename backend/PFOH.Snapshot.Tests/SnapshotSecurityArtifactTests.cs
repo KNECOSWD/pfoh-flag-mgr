@@ -122,8 +122,8 @@ public class SnapshotSecurityArtifactTests
         var allow = script.IndexOf("PFOH_ALLOW_PROD_SETUP", StringComparison.Ordinal);
         var confirm = script.IndexOf("PFOH_CONFIRM_SUBSCRIPTION", StringComparison.Ordinal);
         var create = script.IndexOf("az group create", StringComparison.Ordinal);
-        var webappShow = script.IndexOf("az webapp show", StringComparison.Ordinal);
-        var sqlShow = script.IndexOf("az sql server show", StringComparison.Ordinal);
+        var webappShow = script.IndexOf("webapp show", StringComparison.Ordinal);
+        var sqlShow = script.IndexOf("sql server show", StringComparison.Ordinal);
         var webappCreate = script.IndexOf("az webapp create", StringComparison.Ordinal);
         var sqlCreate = script.IndexOf("az sql server create", StringComparison.Ordinal);
         var firewall = script.IndexOf("0.0.0.0", StringComparison.Ordinal);
@@ -136,9 +136,12 @@ public class SnapshotSecurityArtifactTests
         Assert.Contains("PLANO_FLAGS_OF_HONOR", script, StringComparison.Ordinal);
         Assert.Contains("asp-pfoh-flags-prod", script, StringComparison.Ordinal);
         Assert.Contains("pfoh-flag-manager-app", script, StringComparison.Ordinal);
-        Assert.Contains("*dev*", script, StringComparison.Ordinal);
-        Assert.Contains("*test*", script, StringComparison.Ordinal);
-        Assert.Contains("*sandbox*", script, StringComparison.Ordinal);
+        Assert.Contains("(^|[^[:alnum:]])(dev|test|sandbox)([^[:alnum:]]|$)", script, StringComparison.Ordinal);
+        Assert.Contains("ResourceNotFound", script, StringComparison.Ordinal);
+        Assert.Contains("SQL_PASSWORD", script, StringComparison.Ordinal);
+        Assert.Contains("PFOH_ALLOW_AZURE_SERVICES", script, StringComparison.Ordinal);
+        Assert.Contains("P1v3", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("ChangeThisToAStrongPassword", script, StringComparison.Ordinal);
         Assert.Contains("az account show", script, StringComparison.Ordinal);
     }
 
@@ -153,23 +156,7 @@ public class SnapshotSecurityArtifactTests
             var script = Path.Combine(directory, "azure-cli-setup.sh");
             var stub = Path.Combine(directory, "az");
             var log = Path.Combine(directory, "az.log");
-            File.WriteAllText(stub, """
-                #!/bin/bash
-                printf '%s\n' "$*" >> "$AZ_LOG"
-                if [[ "$1" == "account" && "$2" == "show" ]]; then
-                  printf '%s\n' "${AZ_ACTIVE_ID}"
-                  exit 0
-                fi
-                if [[ "$1" == "webapp" && "$2" == "show" && "${AZ_WEBAPP_EXISTS:-}" == "yes" ]]; then
-                  exit 0
-                fi
-                if [[ "$1" == "sql" && "$2" == "server" && "$3" == "show" && "${AZ_SQL_EXISTS:-}" == "yes" ]]; then
-                  exit 0
-                fi
-                if [[ "$1" == "webapp" && "$2" == "show" ]]; then exit 3; fi
-                if [[ "$1" == "sql" && "$2" == "server" && "$3" == "show" ]]; then exit 3; fi
-                exit 0
-                """);
+            WriteAzStub(stub);
             using (var chmod = Process.Start("chmod", "+x " + stub))
             {
                 Assert.NotNull(chmod);
@@ -220,6 +207,7 @@ public class SnapshotSecurityArtifactTests
                 ["PFOH_ALLOW_PROD_SETUP"] = "yes",
                 ["PFOH_CONFIRM_SUBSCRIPTION"] = "11111111-1111-1111-1111-111111111111",
                 ["AZ_ACTIVE_ID"] = "11111111-1111-1111-1111-111111111111",
+                ["AZ_GROUP_EXISTS"] = "yes",
                 ["AZ_WEBAPP_EXISTS"] = "yes"
             });
             Assert.Equal(1, exists.ExitCode);
@@ -236,21 +224,224 @@ public class SnapshotSecurityArtifactTests
                 .Replace("SQL_DB=\"pfoh\"", "SQL_DB=\"pfoh-sandbox\"", StringComparison.Ordinal);
             var created = RunSetup(nonprod, directory, stub, log, "11111111-1111-1111-1111-111111111111", new Dictionary<string, string>
             {
-                ["AZ_ACTIVE_ID"] = "11111111-1111-1111-1111-111111111111"
+                ["AZ_ACTIVE_ID"] = "11111111-1111-1111-1111-111111111111",
+                ["SQL_PASSWORD"] = SyntheticSqlPassword
             });
             Assert.Equal(0, created.ExitCode);
             var calls = File.ReadAllText(log);
+            var groupExists = calls.IndexOf("group exists", StringComparison.Ordinal);
+            var group = calls.IndexOf("group create", StringComparison.Ordinal);
+            var planShow = calls.IndexOf("appservice plan show", StringComparison.Ordinal);
+            var planCreate = calls.IndexOf("appservice plan create", StringComparison.Ordinal);
             var show = calls.IndexOf("webapp show", StringComparison.Ordinal);
             var sqlShow = calls.IndexOf("sql server show", StringComparison.Ordinal);
-            var group = calls.IndexOf("group create", StringComparison.Ordinal);
-            var firewall = calls.IndexOf("firewall-rule create", StringComparison.Ordinal);
+            var sqlCreate = calls.IndexOf("sql server create", StringComparison.Ordinal);
             var connection = calls.IndexOf("connection-string set", StringComparison.Ordinal);
-            Assert.True(show >= 0 && sqlShow > show && group > sqlShow && firewall > group && connection > firewall);
+            Assert.True(groupExists >= 0 && group > groupExists && planShow > group && planCreate > planShow);
+            Assert.True(show > planCreate && sqlShow > show && sqlCreate > sqlShow && connection > sqlCreate);
+            Assert.DoesNotContain("firewall-rule create", calls, StringComparison.Ordinal);
+            Assert.DoesNotContain(SyntheticSqlPassword, calls, StringComparison.Ordinal);
+            Assert.DoesNotContain(SyntheticSqlPassword, created.Error, StringComparison.Ordinal);
         }
         finally
         {
             Directory.Delete(directory, recursive: true);
         }
+    }
+
+    [Fact]
+    public void Setup_script_fails_closed_for_sql_plan_password_and_devops()
+    {
+        var source = File.ReadAllText(RepoFile("infra", "azure-cli-setup.sh"));
+        var directory = Path.Combine(Path.GetTempPath(), "pfoh-setup-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var stub = Path.Combine(directory, "az");
+            var log = Path.Combine(directory, "az.log");
+            WriteAzStub(stub);
+            using (var chmod = Process.Start("chmod", "+x " + stub))
+            {
+                Assert.NotNull(chmod);
+                chmod.WaitForExit();
+                Assert.Equal(0, chmod.ExitCode);
+            }
+
+            var sqlExists = RunSetup(source, directory, stub, log, "11111111-1111-1111-1111-111111111111", new Dictionary<string, string>
+            {
+                ["PFOH_ALLOW_PROD_SETUP"] = "yes",
+                ["PFOH_CONFIRM_SUBSCRIPTION"] = "11111111-1111-1111-1111-111111111111",
+                ["AZ_ACTIVE_ID"] = "11111111-1111-1111-1111-111111111111",
+                ["AZ_GROUP_EXISTS"] = "yes",
+                ["AZ_SQL_EXISTS"] = "yes"
+            });
+            Assert.Equal(1, sqlExists.ExitCode);
+            Assert.Contains("SQL server", sqlExists.Error, StringComparison.Ordinal);
+            Assert.Contains("does not reset the SQL admin password", sqlExists.Error, StringComparison.Ordinal);
+            var sqlLog = File.ReadAllText(log);
+            Assert.Contains("sql server show", sqlLog, StringComparison.Ordinal);
+            Assert.DoesNotContain("sql server create", sqlLog, StringComparison.Ordinal);
+            Assert.DoesNotContain("admin-password", sqlLog, StringComparison.Ordinal);
+
+            File.Delete(log);
+            var otherError = RunSetup(source, directory, stub, log, "11111111-1111-1111-1111-111111111111", new Dictionary<string, string>
+            {
+                ["PFOH_ALLOW_PROD_SETUP"] = "yes",
+                ["PFOH_CONFIRM_SUBSCRIPTION"] = "11111111-1111-1111-1111-111111111111",
+                ["AZ_ACTIVE_ID"] = "11111111-1111-1111-1111-111111111111",
+                ["AZ_GROUP_EXISTS"] = "yes",
+                ["AZ_WEBAPP_ERROR"] = "AuthorizationFailed"
+            });
+            Assert.Equal(1, otherError.ExitCode);
+            Assert.Contains("AuthorizationFailed", otherError.Error, StringComparison.Ordinal);
+            Assert.Contains("Only ResourceNotFound", otherError.Error, StringComparison.Ordinal);
+            Assert.DoesNotContain("group create", File.ReadAllText(log), StringComparison.Ordinal);
+            Assert.DoesNotContain("sql server create", File.ReadAllText(log), StringComparison.Ordinal);
+
+            File.Delete(log);
+            var wrongSku = RunSetup(source, directory, stub, log, "11111111-1111-1111-1111-111111111111", new Dictionary<string, string>
+            {
+                ["PFOH_ALLOW_PROD_SETUP"] = "yes",
+                ["PFOH_CONFIRM_SUBSCRIPTION"] = "11111111-1111-1111-1111-111111111111",
+                ["AZ_ACTIVE_ID"] = "11111111-1111-1111-1111-111111111111",
+                ["AZ_GROUP_EXISTS"] = "yes",
+                ["AZ_PLAN_EXISTS"] = "yes",
+                ["AZ_PLAN_SKU"] = "B1",
+                ["SQL_PASSWORD"] = SyntheticSqlPassword
+            });
+            Assert.Equal(1, wrongSku.ExitCode);
+            Assert.Contains("SKU B1", wrongSku.Error, StringComparison.Ordinal);
+            Assert.Contains("P1v3", wrongSku.Error, StringComparison.Ordinal);
+            var skuLog = File.ReadAllText(log);
+            Assert.Contains("appservice plan show", skuLog, StringComparison.Ordinal);
+            Assert.DoesNotContain("appservice plan create", skuLog, StringComparison.Ordinal);
+            Assert.DoesNotContain("webapp create", skuLog, StringComparison.Ordinal);
+            Assert.DoesNotContain("sql server create", skuLog, StringComparison.Ordinal);
+            Assert.DoesNotContain(SyntheticSqlPassword, skuLog, StringComparison.Ordinal);
+
+            File.Delete(log);
+            var missingPassword = source
+                .Replace("PLANO_FLAGS_OF_HONOR", "pfoh-dev", StringComparison.Ordinal)
+                .Replace("asp-pfoh-flags-prod", "asp-pfoh-dev", StringComparison.Ordinal)
+                .Replace("pfoh-flag-manager-app", "pfoh-flag-manager-dev", StringComparison.Ordinal)
+                .Replace("SQL_SERVER=\"pfoh\"", "SQL_SERVER=\"pfoh-test\"", StringComparison.Ordinal)
+                .Replace("SQL_DB=\"pfoh\"", "SQL_DB=\"pfoh-sandbox\"", StringComparison.Ordinal);
+            var noPassword = RunSetup(missingPassword, directory, stub, log, "11111111-1111-1111-1111-111111111111", new Dictionary<string, string>
+            {
+                ["AZ_ACTIVE_ID"] = "11111111-1111-1111-1111-111111111111"
+            });
+            Assert.Equal(1, noPassword.ExitCode);
+            Assert.Contains("SQL_PASSWORD", noPassword.Error, StringComparison.Ordinal);
+            Assert.False(File.Exists(log) && File.ReadAllText(log).Contains("group create", StringComparison.Ordinal));
+
+            File.Delete(log);
+            var firewall = RunSetup(missingPassword, directory, stub, log, "11111111-1111-1111-1111-111111111111", new Dictionary<string, string>
+            {
+                ["AZ_ACTIVE_ID"] = "11111111-1111-1111-1111-111111111111",
+                ["SQL_PASSWORD"] = SyntheticSqlPassword,
+                ["PFOH_ALLOW_AZURE_SERVICES"] = "yes"
+            });
+            Assert.Equal(0, firewall.ExitCode);
+            var firewallLog = File.ReadAllText(log);
+            Assert.Contains("firewall-rule create", firewallLog, StringComparison.Ordinal);
+            Assert.Contains("0.0.0.0", firewallLog, StringComparison.Ordinal);
+            Assert.DoesNotContain(SyntheticSqlPassword, firewallLog, StringComparison.Ordinal);
+
+            var devops = source
+                .Replace("PLANO_FLAGS_OF_HONOR", "pfoh-dev", StringComparison.Ordinal)
+                .Replace("asp-pfoh-flags-prod", "asp-devops", StringComparison.Ordinal)
+                .Replace("pfoh-flag-manager-app", "pfoh-flag-manager-dev", StringComparison.Ordinal)
+                .Replace("SQL_SERVER=\"pfoh\"", "SQL_SERVER=\"pfoh-test\"", StringComparison.Ordinal)
+                .Replace("SQL_DB=\"pfoh\"", "SQL_DB=\"pfoh-sandbox\"", StringComparison.Ordinal);
+            if (File.Exists(log))
+            {
+                File.Delete(log);
+            }
+
+            var devopsResult = RunSetup(devops, directory, stub, log, "11111111-1111-1111-1111-111111111111", new Dictionary<string, string>());
+            Assert.Equal(1, devopsResult.ExitCode);
+            Assert.Contains("asp-devops", devopsResult.Error, StringComparison.Ordinal);
+            Assert.Contains("PFOH_ALLOW_PROD_SETUP=yes", devopsResult.Error, StringComparison.Ordinal);
+            Assert.False(File.Exists(log));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private const string SyntheticSqlPassword = "synthetic-setup-password";
+
+    private static void WriteAzStub(string stub)
+    {
+        File.WriteAllText(stub, """
+            #!/bin/bash
+            out=()
+            skip=0
+            for arg in "$@"; do
+              if [[ "$skip" == "1" ]]; then
+                out+=("***")
+                skip=0
+                continue
+              fi
+              out+=("$arg")
+              case "$arg" in
+                --admin-password|--settings) skip=1 ;;
+              esac
+            done
+            printf '%s\n' "${out[*]}" >> "$AZ_LOG"
+            if [[ "$1" == "account" && "$2" == "show" ]]; then
+              printf '%s\n' "${AZ_ACTIVE_ID}"
+              exit 0
+            fi
+            if [[ "$1" == "group" && "$2" == "exists" ]]; then
+              if [[ -n "${AZ_GROUP_ERROR:-}" ]]; then
+                echo "ERROR: (${AZ_GROUP_ERROR}) synthetic failure" >&2
+                exit 1
+              fi
+              if [[ "${AZ_GROUP_EXISTS:-}" == "yes" ]]; then
+                printf 'true\n'
+              else
+                printf 'false\n'
+              fi
+              exit 0
+            fi
+            if [[ "$1" == "webapp" && "$2" == "show" ]]; then
+              if [[ "${AZ_WEBAPP_EXISTS:-}" == "yes" ]]; then
+                exit 0
+              fi
+              if [[ -n "${AZ_WEBAPP_ERROR:-}" ]]; then
+                echo "ERROR: (${AZ_WEBAPP_ERROR}) synthetic failure" >&2
+                exit 1
+              fi
+              echo "ERROR: (ResourceNotFound) The Resource was not found." >&2
+              exit 3
+            fi
+            if [[ "$1" == "sql" && "$2" == "server" && "$3" == "show" ]]; then
+              if [[ "${AZ_SQL_EXISTS:-}" == "yes" ]]; then
+                exit 0
+              fi
+              if [[ -n "${AZ_SQL_ERROR:-}" ]]; then
+                echo "ERROR: (${AZ_SQL_ERROR}) synthetic failure" >&2
+                exit 1
+              fi
+              echo "ERROR: (ResourceNotFound) The Resource was not found." >&2
+              exit 3
+            fi
+            if [[ "$1" == "appservice" && "$2" == "plan" && "$3" == "show" ]]; then
+              if [[ "${AZ_PLAN_EXISTS:-}" == "yes" ]]; then
+                printf '%s\n' "${AZ_PLAN_SKU:-P1v3}"
+                exit 0
+              fi
+              if [[ -n "${AZ_PLAN_ERROR:-}" ]]; then
+                echo "ERROR: (${AZ_PLAN_ERROR}) synthetic failure" >&2
+                exit 1
+              fi
+              echo "ERROR: (ResourceNotFound) The Resource was not found." >&2
+              exit 3
+            fi
+            exit 0
+            """);
     }
 
     private static (int ExitCode, string Error) RunSetup(
@@ -271,11 +462,25 @@ public class SnapshotSecurityArtifactTests
         {
             RedirectStandardError = true,
             RedirectStandardOutput = true,
+            RedirectStandardInput = true,
             UseShellExecute = false
         };
         start.Environment["PATH"] = directory + Path.PathSeparator + "/usr/bin" + Path.PathSeparator + "/bin";
         start.Environment["AZ_LOG"] = log;
         start.Environment["AZ_ACTIVE_ID"] = subscriptionId;
+        start.Environment.Remove("SQL_PASSWORD");
+        start.Environment.Remove("PFOH_ALLOW_PROD_SETUP");
+        start.Environment.Remove("PFOH_CONFIRM_SUBSCRIPTION");
+        start.Environment.Remove("PFOH_ALLOW_AZURE_SERVICES");
+        start.Environment.Remove("AZ_GROUP_EXISTS");
+        start.Environment.Remove("AZ_GROUP_ERROR");
+        start.Environment.Remove("AZ_WEBAPP_EXISTS");
+        start.Environment.Remove("AZ_WEBAPP_ERROR");
+        start.Environment.Remove("AZ_SQL_EXISTS");
+        start.Environment.Remove("AZ_SQL_ERROR");
+        start.Environment.Remove("AZ_PLAN_EXISTS");
+        start.Environment.Remove("AZ_PLAN_SKU");
+        start.Environment.Remove("AZ_PLAN_ERROR");
         foreach (var pair in environment)
         {
             start.Environment[pair.Key] = pair.Value;
@@ -283,6 +488,7 @@ public class SnapshotSecurityArtifactTests
 
         using var process = Process.Start(start);
         Assert.NotNull(process);
+        process.StandardInput.Close();
         var error = process.StandardError.ReadToEnd();
         process.StandardOutput.ReadToEnd();
         process.WaitForExit();
