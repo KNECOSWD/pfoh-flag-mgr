@@ -50,30 +50,40 @@ public class ProfileSqlRetryTests
         Assert.Contains("maxRetryDelay: ProfileSqlRetry.MaxRetryDelay", program, StringComparison.Ordinal);
         Assert.Contains("EnableRetryOnFailure", program, StringComparison.Ordinal);
         Assert.Equal(3, ProfileSqlRetry.MaxRetryCount);
-        Assert.Equal(TimeSpan.Zero, ProfileSqlRetry.MaxRetryDelay);
+        Assert.Equal(TimeSpan.FromSeconds(1), ProfileSqlRetry.MaxRetryDelay);
     }
 
     [Fact]
-    public async Task Throttled_retry_waits_stay_at_or_under_five_seconds_and_nineteen_total()
+    public async Task Retry_delays_match_ef_for_a_throttling_error_and_a_deadlock()
     {
         var options = new DbContextOptionsBuilder<PfohDbContext>()
             .UseSqlServer("Server=127.0.0.1,1433;Database=unused;User ID=unused;Password=unused;Encrypt=False;Connect Timeout=1")
             .Options;
         await using var db = new PfohDbContext(options);
-        var delays = new List<TimeSpan>();
-        var strategy = new RecordingSqlRetryStrategy(
-            db,
-            ProfileSqlRetry.MaxRetryCount,
-            ProfileSqlRetry.MaxRetryDelay,
-            delays);
-        await Assert.ThrowsAsync<RetryLimitExceededException>(() =>
-            strategy.ExecuteAsync<int>(() => Task.FromException<int>(SqlError(40613, "database unavailable"))));
+        var throttled = new[]
+        {
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromSeconds(6),
+            TimeSpan.FromSeconds(6)
+        };
+        var deadlock = new[]
+        {
+            TimeSpan.Zero,
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(1)
+        };
 
-        Assert.Equal(ProfileSqlRetry.MaxRetryCount, delays.Count);
-        Assert.All(delays, delay => Assert.Equal(ProfileSqlRetry.ThrottledWaitCap, delay));
-        var total = delays.Aggregate(TimeSpan.Zero, (sum, delay) => sum + delay);
-        Assert.Equal(TimeSpan.FromSeconds(15), total);
-        Assert.True(total <= ProfileSqlRetry.TotalWaitBudget);
+        for (var sample = 0; sample < 20; sample++)
+        {
+            var throttledDelays = await MeasureDelays(db, SqlError(40613, "database unavailable"));
+            var deadlockDelays = await MeasureDelays(db, SqlError(1205, "deadlock"));
+            Assert.Equal(throttled, throttledDelays);
+            Assert.Equal(deadlock, deadlockDelays);
+        }
+
+        var total = throttled.Aggregate(TimeSpan.Zero, (sum, delay) => sum + delay);
+        Assert.Equal(TimeSpan.FromSeconds(17), total);
+        Assert.True(total < ProfileSqlRetry.TotalWaitBudget);
     }
 
     [Fact]
@@ -204,6 +214,19 @@ public class ProfileSqlRetryTests
             types: new[] { typeof(string), collectionType, typeof(Exception), typeof(Guid) },
             modifiers: null);
         return (SqlException)ctor!.Invoke(new object?[] { message, collection, null, Guid.Empty });
+    }
+
+    private static async Task<List<TimeSpan>> MeasureDelays(PfohDbContext db, Exception failure)
+    {
+        var delays = new List<TimeSpan>();
+        var strategy = new RecordingSqlRetryStrategy(
+            db,
+            ProfileSqlRetry.MaxRetryCount,
+            ProfileSqlRetry.MaxRetryDelay,
+            delays);
+        await Assert.ThrowsAsync<RetryLimitExceededException>(() =>
+            strategy.ExecuteAsync<int>(() => Task.FromException<int>(failure)));
+        return delays;
     }
 
     private sealed class RecordingSqlRetryStrategy : SqlServerRetryingExecutionStrategy
