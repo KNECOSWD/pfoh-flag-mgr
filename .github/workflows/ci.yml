@@ -1,5 +1,7 @@
 name: CI
 
+# pull_request, plus push to main only. A push to a pull request branch
+# must not start a second run for the same commit.
 on:
   pull_request:
   push:
@@ -8,6 +10,11 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -17,86 +24,131 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Docs-only changes skip the suite inside this job instead of using
+      # workflow paths-ignore. paths-ignore would skip the whole workflow, and
+      # a required check named "test" would stay pending. predicate-quantifier
+      # every makes the negated globs exclude docs/** and markdown; v3.0.4.
+      - name: Detect code changes
+        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad
+        id: changes
+        with:
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!docs/**'
+              - '!**/*.md'
+
+      - name: Note docs-only changes
+        if: steps.changes.outputs.code == 'false'
+        run: echo "Change is limited to docs/** and markdown. Skipping the suite. This job still succeeds so the test check is reported."
+
       - name: Setup Node
+        if: steps.changes.outputs.code != 'false'
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
 
       - name: Install frontend dependencies
+        if: steps.changes.outputs.code != 'false'
         working-directory: frontend
         run: npm ci
 
       - name: Reject user-facing veteran copy
+        if: steps.changes.outputs.code != 'false'
         run: node frontend/scripts/check-honoree-copy.mjs
 
       - name: Check the shared version
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-version.mjs
 
       - name: Check the content to footer gap
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-content-footer-gap.mjs
 
       - name: Check duplicate review
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-duplicate-review.mjs
 
       - name: Check the admin bar duplicate prompt
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-admin-bar.mjs
 
       - name: Check the removal queue
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-removal-queue.mjs
 
       - name: Check the Find page intro
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-find-search.mjs
 
       - name: Check mapped phone and organization claims
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-entra-claims.mjs
 
       - name: Check US phone formats
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-us-phone.mjs
 
       - name: Check administrator tab errors
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-admin-access.mjs
 
       - name: Check profile load and public requests
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-profile-load.mjs
 
       - name: Check thumbnail blob url lifetime
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-blob-url.mjs
 
       - name: Check submission display
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-submission-display.mjs
 
       - name: Check Print Center viewer
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-print-center.mjs
 
       - name: Check the public flag map
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-public-flag-map.mjs
 
       - name: Check network retry
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-token-retry.mjs
 
       - name: Check sign-in redirect
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-auth-redirect.mjs
 
       - name: Check submit photo preparation
+        if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-submit-photo.mjs
 
       - name: Typecheck frontend
+        if: steps.changes.outputs.code != 'false'
         working-directory: frontend
         run: npx tsc --noEmit
 
       - name: Setup .NET
+        if: steps.changes.outputs.code != 'false'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
 
       - name: Install honoree card fonts
+        if: steps.changes.outputs.code != 'false'
         run: sudo apt-get update && sudo apt-get install -y fonts-dejavu-core
 
       - name: Test API
+        if: steps.changes.outputs.code != 'false'
         run: dotnet test backend/PFOH.Api.Tests/PFOH.Api.Tests.csproj --configuration Release
 
       - name: Test snapshot job
+        if: steps.changes.outputs.code != 'false'
         run: dotnet test backend/PFOH.Snapshot.Tests/PFOH.Snapshot.Tests.csproj --configuration Release
 
       - name: Build snapshot function
+        if: steps.changes.outputs.code != 'false'
         run: dotnet build backend/PFOH.Snapshot.Function/PFOH.Snapshot.Function.csproj --configuration Release
