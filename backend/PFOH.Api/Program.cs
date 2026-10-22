@@ -413,9 +413,11 @@ app.MapFallbackToFile("index.html");
 try
 {
     // SQL Server startup does not use the request retry. A separate context
-    // has no execution-strategy retry and a short connect timeout, so these
-    // nine steps cannot approach App Service's 230s start limit when the
-    // database is down. Tests that replace the provider keep their own context.
+    // has no execution-strategy retry. StartupDatabase.Create applies
+    // StartupDatabase.ConnectTimeout (4 seconds) and the command timeout.
+    // Nine steps plus per-step overhead are StartupDatabase.ExpectedWhenDatabaseHangs
+    // (about 38 seconds) when the endpoint accepts and never answers.
+    // Tests that replace the provider keep their own context.
     await using var scope = app.Services.CreateAsyncScope();
     var configured = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
     var sqlServer = configured.Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;

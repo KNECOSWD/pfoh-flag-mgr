@@ -131,18 +131,41 @@ public class ProfileSqlRetryTests
     [Fact]
     public void Startup_with_the_database_down_stays_well_under_230_seconds()
     {
-        var worst = StartupDatabase.WorstCaseWhenDatabaseIsDown;
         Assert.Equal(9, StartupDatabase.StepCount);
-        Assert.Equal(TimeSpan.FromSeconds(5), StartupDatabase.ConnectTimeout);
-        Assert.Equal(TimeSpan.FromSeconds(45), worst);
-        Assert.True(worst < TimeSpan.FromSeconds(120));
-        Assert.True(worst < TimeSpan.FromSeconds(230));
+        Assert.Equal(TimeSpan.FromSeconds(4), StartupDatabase.ConnectTimeout);
+        Assert.Equal(TimeSpan.FromMilliseconds(100), StartupDatabase.PerStepOverhead);
+        Assert.Equal(TimeSpan.FromMilliseconds(1100), StartupDatabase.HostOverhead);
+        Assert.Equal(TimeSpan.FromSeconds(36), StartupDatabase.NominalConnectBudget);
+        Assert.Equal(TimeSpan.FromSeconds(38), StartupDatabase.ExpectedWhenDatabaseHangs);
+        Assert.True(StartupDatabase.NominalConnectBudget <= TimeSpan.FromSeconds(45));
+        Assert.True(StartupDatabase.ExpectedWhenDatabaseHangs <= TimeSpan.FromSeconds(45));
+        Assert.True(StartupDatabase.ExpectedWhenDatabaseHangs < TimeSpan.FromSeconds(230));
 
         using var db = StartupDatabase.Create(
-            "Server=127.0.0.1,1433;Database=unused;User ID=unused;Password=unused;Encrypt=False");
+            "Server=127.0.0.1,1433;Database=unused;User ID=unused;Password=unused;Encrypt=False;Connect Timeout=30");
         Assert.False(db.Database.CreateExecutionStrategy().RetriesOnFailure);
+        var configured = new SqlConnectionStringBuilder(db.Database.GetConnectionString());
+        Assert.Equal(4, configured.ConnectTimeout);
+        Assert.Equal(4, db.Database.GetCommandTimeout());
         var program = File.ReadAllText(RepoFile("backend", "PFOH.Api", "Program.cs"));
         Assert.Contains("StartupDatabase.Create", program, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Readiness_probe_uses_a_short_non_retrying_timeout()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(3), ReadinessDatabase.ConnectTimeout);
+        using var db = ReadinessDatabase.Create(
+            "Server=127.0.0.1,1433;Database=unused;User ID=unused;Password=unused;Encrypt=False;Connect Timeout=30");
+        Assert.False(db.Database.CreateExecutionStrategy().RetriesOnFailure);
+        var configured = new SqlConnectionStringBuilder(db.Database.GetConnectionString());
+        Assert.Equal(3, configured.ConnectTimeout);
+        Assert.Equal(3, db.Database.GetCommandTimeout());
+        var health = File.ReadAllText(RepoFile("backend", "PFOH.Api", "Services", "ProfileStoreHealthCheck.cs"));
+        Assert.Contains("ReadinessDatabase.Create", health, StringComparison.Ordinal);
+        Assert.Contains("CreateLinkedTokenSource", health, StringComparison.Ordinal);
+        var program = File.ReadAllText(RepoFile("backend", "PFOH.Api", "Program.cs"));
+        Assert.Contains("Predicate = static _ => false", program, StringComparison.Ordinal);
     }
 
     [Fact]

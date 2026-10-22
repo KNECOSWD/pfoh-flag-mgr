@@ -114,7 +114,7 @@ public class FlagRemovalQueueTests : IDisposable
 
             var confirmed = await db.Honorees.Where(honoree => honoree.Id == 4 || honoree.Id == 5).ToListAsync();
             var survivor = confirmed.Single(honoree => honoree.Id == 5);
-            await HonoreeMerge.ApplyAsync(db, survivor, confirmed, Fields(5), null, "admin@example.com", CancellationToken.None);
+            await HonoreeMerge.ApplyAsync(db, survivor, confirmed, Fields(5), null, "admin@example.com", Guid.NewGuid(), CancellationToken.None);
         }
 
         await using (var scope = factory.Services.CreateAsyncScope())
@@ -160,6 +160,7 @@ public class FlagRemovalQueueTests : IDisposable
                 Fields(5),
                 null,
                 "admin@example.com",
+                Guid.NewGuid(),
                 CancellationToken.None);
             var item = await db.FlagRemovalQueueItems.SingleAsync();
             item.DoneUtc = now;

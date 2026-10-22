@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using PFOH.Api.Data;
 using PFOH.Api.Extensions;
 using PFOH.Api.Models;
@@ -43,47 +44,64 @@ public class AdminDuplicatesController(
             adminName = User.GetDisplayName() ?? "PFOH.Admin";
         }
 
+        var clientRequestId = Guid.NewGuid();
         var strategy = db.Database.CreateExecutionStrategy();
-        return await strategy.ExecuteAsync(async () =>
+        try
         {
-            // Survivor and the other rows were loaded before this delegate.
-            // Clear and load them again so a retry does not save the detached copies.
-            db.ChangeTracker.Clear();
-            await using var transaction = await db.Database.BeginTransactionAsync(ct);
-            var orderedIds = prepared.Ordered.Select(honoree => honoree.Id).ToList();
-            var survivorId = prepared.Survivor.Id;
-            var loaded = await db.Honorees
-                .Include(honoree => honoree.FlagGrid)
-                .Include(honoree => honoree.ServiceBranch)
-                .Where(honoree => orderedIds.Contains(honoree.Id))
-                .ToListAsync(ct);
-            var ordered = orderedIds.Select(id => loaded.Single(honoree => honoree.Id == id)).ToList();
-            var survivor = ordered.Single(honoree => honoree.Id == survivorId);
-            var before = await db.Honorees.CountAsync(ct);
-            var result = await HonoreeMerge.ApplyAsync(
-                db,
-                survivor,
-                ordered,
-                prepared.Fields,
-                prepared.Custom,
-                adminName,
-                ct);
-            var after = await db.Honorees.CountAsync(ct);
-            if (after != before)
-            {
-                await transaction.RollbackAsync(ct);
-                return (ActionResult<DuplicateMergeResultDto>)StatusCode(
-                    StatusCodes.Status500InternalServerError,
-                    new { message = "The merge stopped because it would have created or removed a record." });
-            }
+            return await strategy.ExecuteInTransactionAsync<ActionResult<DuplicateMergeResultDto>>(
+                async _ =>
+                {
+                    // Survivor and the other rows were loaded before this delegate.
+                    // Clear and load them again so a retry does not save the detached copies.
+                    db.ChangeTracker.Clear();
+                    var orderedIds = prepared.Ordered.Select(honoree => honoree.Id).ToList();
+                    var survivorId = prepared.Survivor.Id;
+                    var loaded = await db.Honorees
+                        .Include(honoree => honoree.FlagGrid)
+                        .Include(honoree => honoree.ServiceBranch)
+                        .Where(honoree => orderedIds.Contains(honoree.Id))
+                        .ToListAsync(ct);
+                    var ordered = orderedIds.Select(id => loaded.Single(honoree => honoree.Id == id)).ToList();
+                    var survivor = ordered.Single(honoree => honoree.Id == survivorId);
+                    var before = await db.Honorees.CountAsync(ct);
+                    var result = await HonoreeMerge.ApplyAsync(
+                        db,
+                        survivor,
+                        ordered,
+                        prepared.Fields,
+                        prepared.Custom,
+                        adminName,
+                        clientRequestId,
+                        ct);
+                    var after = await db.Honorees.CountAsync(ct);
+                    if (after != before)
+                    {
+                        // Returning here would commit the bad write. Throw so the
+                        // transaction rolls back and the strategy does not retry.
+                        throw new MergeRecordCountException();
+                    }
 
-            await transaction.CommitAsync(ct);
-            return new DuplicateMergeResultDto(
-                result.SurvivorId,
-                DisplayName(survivor),
-                result.DeactivatedIds,
-                result.Claimants.Select(ToClaimant).ToList());
-        });
+                    return new ActionResult<DuplicateMergeResultDto>(new DuplicateMergeResultDto(
+                        result.SurvivorId,
+                        DisplayName(survivor),
+                        result.DeactivatedIds,
+                        result.Claimants.Select(ToClaimant).ToList()));
+                },
+                async _ =>
+                {
+                    db.ChangeTracker.Clear();
+                    return await db.HonoreeMergeAudits.AnyAsync(
+                        audit => audit.ClientRequestId == clientRequestId,
+                        ct);
+                },
+                ct);
+        }
+        catch (MergeRecordCountException)
+        {
+            return new ActionResult<DuplicateMergeResultDto>(StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { message = "The merge stopped because it would have created or removed a record." }));
+        }
     }
 
     /// <summary>
@@ -262,26 +280,33 @@ public class AdminDuplicatesController(
         }
 
         var strategy = db.Database.CreateExecutionStrategy();
-        return await strategy.ExecuteAsync<IActionResult>(async () =>
-        {
-            db.ChangeTracker.Clear();
-            await using var transaction = await db.Database.BeginTransactionAsync(ct);
-            var error = await HonoreeMergeAuditLog.UndoAsync(db, id, adminName, ct);
-            if (error == "missing")
+        return await strategy.ExecuteInTransactionAsync<IActionResult>(
+            async _ =>
             {
-                await transaction.RollbackAsync(ct);
-                return NotFound(new { message = "That merge was not found." });
-            }
+                db.ChangeTracker.Clear();
+                var error = await HonoreeMergeAuditLog.UndoAsync(db, id, adminName, ct);
+                if (error == "missing")
+                {
+                    return NotFound(new { message = "That merge was not found." });
+                }
 
-            if (error is not null)
+                if (error is not null)
+                {
+                    return Conflict(new { message = error });
+                }
+
+                return Ok(new { id });
+            },
+            async _ =>
             {
-                await transaction.RollbackAsync(ct);
-                return Conflict(new { message = error });
-            }
-
-            await transaction.CommitAsync(ct);
-            return Ok(new { id });
-        });
+                db.ChangeTracker.Clear();
+                var undone = await db.HonoreeMergeAudits
+                    .Where(audit => audit.Id == id)
+                    .Select(audit => audit.UndoneUtc)
+                    .FirstOrDefaultAsync(ct);
+                return undone != null;
+            },
+            ct);
     }
 
     [HttpPost("not-duplicates")]
@@ -430,6 +455,15 @@ public class AdminDuplicatesController(
         }
 
         return honoree.EndYear.HasValue ? $"- {honoree.EndYear}" : string.Empty;
+    }
+
+    /// <summary>
+    /// The merge would have changed the honoree count. It is not a SQL error,
+    /// so the execution strategy does not retry it, and the open transaction
+    /// rolls back instead of committing.
+    /// </summary>
+    private sealed class MergeRecordCountException : Exception
+    {
     }
 }
 

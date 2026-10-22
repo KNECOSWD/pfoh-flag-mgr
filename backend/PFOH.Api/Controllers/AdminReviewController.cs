@@ -835,10 +835,9 @@ public class AdminReviewController(
             }
 
             var strategy = db.Database.CreateExecutionStrategy();
-            return await strategy.ExecuteAsync<ActionResult<AdminReviewItemDto>>(async () =>
+            return await strategy.ExecuteInTransactionAsync<ActionResult<AdminReviewItemDto>>(async _ =>
             {
             db.ChangeTracker.Clear();
-            await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
             var change = await db.HonoreeChangeRequests
                 .Include(r => r.FlagClaim)
@@ -876,7 +875,6 @@ public class AdminReviewController(
                     }
                 }
 
-                await transaction.CommitAsync(ct);
                 return Ok(ToReviewDto(change));
             }
 
@@ -970,8 +968,6 @@ public class AdminReviewController(
                 }
             }
 
-            await transaction.CommitAsync(ct);
-
             var approved = ToReviewDto(change);
             if (isNewSubmission)
             {
@@ -986,7 +982,17 @@ public class AdminReviewController(
             }
 
             return Ok(approved);
-            });
+            },
+            async _ =>
+            {
+                db.ChangeTracker.Clear();
+                var status = await db.HonoreeChangeRequests
+                    .Where(row => row.Id == changeRequestId)
+                    .Select(row => row.RequestStatus)
+                    .FirstOrDefaultAsync(ct);
+                return status == "Approved";
+            },
+            ct);
         }
         catch (RetryLimitExceededException)
         {

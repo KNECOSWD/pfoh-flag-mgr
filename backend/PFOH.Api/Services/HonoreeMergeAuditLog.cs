@@ -37,6 +37,7 @@ public static class HonoreeMergeAuditLog
         MergeCustom? custom,
         string adminName,
         DateTime now,
+        Guid clientRequestId,
         CancellationToken ct)
     {
         custom ??= new MergeCustom();
@@ -82,6 +83,7 @@ public static class HonoreeMergeAuditLog
         var absorbed = confirmed.Where(honoree => honoree.Id != survivor.Id).Select(honoree => honoree.Id).ToList();
         var audit = new HonoreeMergeAudit
         {
+            ClientRequestId = clientRequestId,
             SurvivorId = survivor.Id,
             AbsorbedHonoreeIds = JsonSerializer.Serialize(absorbed, Json),
             BeforeState = JsonSerializer.Serialize(before, Json),

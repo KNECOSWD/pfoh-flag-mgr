@@ -26,9 +26,9 @@ public class StartupSchemaSqlTests
         ["CardPrintEventSchema"] = 1,
         ["FlagRemovalQueueSchema"] = 1,
         ["HonoreeClaimSchema"] = 3,
-        ["HonoreeMergeAuditSchema"] = 2,
+        ["HonoreeMergeAuditSchema"] = 3,
         ["HonoreeNotDuplicatePairSchema"] = 1,
-        ["PendingSubmissionGridSchema"] = 2,
+        ["PendingSubmissionGridSchema"] = 3,
         ["ReprintDuplicateReviewSchema"] = 1,
         ["UserProfileSchema"] = 4
     };
@@ -63,13 +63,20 @@ public class StartupSchemaSqlTests
             .Where(statement => statement.Source.Contains("HonoreeMergeAuditSchema", StringComparison.Ordinal))
             .ToList();
 
-        Assert.Equal(2, statements.Count);
-        Assert.All(statements, statement =>
+        Assert.Equal(3, statements.Count);
+        var defaults = statements
+            .Where(statement => statement.IntendedSql.Contains("DEFAULT N'{}'", StringComparison.Ordinal))
+            .ToList();
+        Assert.Equal(2, defaults.Count);
+        Assert.All(defaults, statement =>
         {
             var formatted = string.Format(statement.PassedToExecuteSqlRaw, Array.Empty<object>());
             Assert.Equal(statement.IntendedSql, formatted);
-            Assert.Contains("DEFAULT N'{}'", formatted, StringComparison.Ordinal);
         });
+        Assert.Contains(
+            statements,
+            statement => statement.IntendedSql.Contains("ClientRequestId", StringComparison.Ordinal)
+                && statement.IntendedSql.Contains("IS NOT NULL", StringComparison.Ordinal));
 
         Assert.Contains("DEFAULT N'{}'", HonoreeMergeAuditSchema.CreateSql, StringComparison.Ordinal);
         Assert.Contains("DEFAULT N'{}'", HonoreeMergeAuditSchema.AddColumnSql, StringComparison.Ordinal);
