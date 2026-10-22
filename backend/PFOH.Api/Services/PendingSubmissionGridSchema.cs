@@ -83,16 +83,20 @@ public static class PendingSubmissionGridSchema
         """;
 
     /// <summary>
-    /// Nullable client id for one nominate request, plus a unique index that
-    /// ignores nulls. Existing rows stay null. Nothing is backfilled.
+    /// Nullable client id for one nominate request. Existing rows stay null.
+    /// Nothing is backfilled. The unique index is its own batch: SQL Server
+    /// compiles a batch before it runs, and an index on a column added in that
+    /// same batch fails with error 207 when the table already exists.
     /// </summary>
-    internal const string AddClientRequestIdSql = """
+    internal const string AddClientRequestIdColumnSql = """
         IF OBJECT_ID(N'dbo.FlagClaims', N'U') IS NOT NULL
            AND COL_LENGTH(N'dbo.FlagClaims', N'ClientRequestId') IS NULL
         BEGIN
             ALTER TABLE [dbo].[FlagClaims] ADD [ClientRequestId] uniqueidentifier NULL;
         END
+        """;
 
+    internal const string AddClientRequestIdIndexSql = """
         IF OBJECT_ID(N'dbo.FlagClaims', N'U') IS NOT NULL
            AND NOT EXISTS (
                 SELECT 1
@@ -129,7 +133,8 @@ public static class PendingSubmissionGridSchema
 
             await db.Database.ExecuteSqlRawAsync(MakeFlagGridOptionalSql, ct);
             await db.Database.ExecuteSqlRawAsync(ActiveFlagGridIndexSql, ct);
-            await db.Database.ExecuteSqlRawAsync(AddClientRequestIdSql, ct);
+            await db.Database.ExecuteSqlRawAsync(AddClientRequestIdColumnSql, ct);
+            await db.Database.ExecuteSqlRawAsync(AddClientRequestIdIndexSql, ct);
             ready = true;
         }
         finally
