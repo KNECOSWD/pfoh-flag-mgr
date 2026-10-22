@@ -11826,7 +11826,7 @@ footer.appFooter.footerNavy .footerContact a {
   border: 0 !important;
   box-shadow: none !important;
   color: #fff !important;
-  padding: 0.35rem 0.15rem !important;
+  padding: 0 0.15rem !important;
   font-weight: 800 !important;
   text-decoration: none;
   display: inline-flex;
@@ -12453,12 +12453,21 @@ header.hero .authBox strong {
 }
 
 /* Side-by-side columns share one bottom edge: the last Explore link,
-   Built by KNECO, and Contact Us. The phone stack stays as it is. */
+   Built by KNECO, and Contact Us. Extra footer height stays below that
+   edge, so the headings stay at the top. The phone stack is unchanged. */
 @media (min-width: 761px) {
+  footer.appFooter .appFooterInner {
+    align-content: start;
+  }
+
   footer.appFooter .footerExplore,
   footer.appFooter .footerCredit,
   footer.appFooter .footerContact {
     align-self: end;
+  }
+
+  footer.appFooter.footerNavy .footerContact a {
+    align-items: flex-end;
   }
 }
 
