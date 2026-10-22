@@ -97,8 +97,8 @@ builder.Services.AddDbContext<PfohDbContext>((sp, options) =>
         ?? throw new InvalidOperationException("Missing DefaultConnection connection string.");
     options.UseSqlServer(connectionString, sqlServerOptionsAction: sql =>
         sql.EnableRetryOnFailure(
-            maxRetryCount: 3,
-            maxRetryDelay: TimeSpan.FromSeconds(5),
+            maxRetryCount: ProfileSqlRetry.MaxRetryCount,
+            maxRetryDelay: ProfileSqlRetry.MaxRetryDelay,
             errorNumbersToAdd: null));
     options.AddInterceptors(sp.GetRequiredService<PublicFlagMapCacheInvalidator>());
 });
@@ -412,8 +412,20 @@ app.MapFallbackToFile("index.html");
 
 try
 {
+    // SQL Server startup does not use the request retry. A separate context
+    // has no execution-strategy retry and a short connect timeout, so these
+    // nine steps cannot approach App Service's 230s start limit when the
+    // database is down. Tests that replace the provider keep their own context.
     await using var scope = app.Services.CreateAsyncScope();
-    var startupDb = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+    var configured = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+    var sqlServer = configured.Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;
+    var startupConnection = app.Configuration.GetConnectionString("DefaultConnection")
+        ?? throw new InvalidOperationException("Missing DefaultConnection connection string.");
+    await using var startupOwned = sqlServer ? StartupDatabase.Create(startupConnection) : null;
+    var startupDb = startupOwned ?? configured;
+    var startupMaintenance = startupOwned is null
+        ? scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>()
+        : new PendingReviewMaintenance(startupDb, scope.ServiceProvider.GetRequiredService<HonoreeFileStorage>());
     try
     {
         await PendingSubmissionGridSchema.EnsureAsync(startupDb, CancellationToken.None);
@@ -509,7 +521,6 @@ try
 
     try
     {
-        var startupMaintenance = scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>();
         await startupMaintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
     }
     catch (Exception ex)

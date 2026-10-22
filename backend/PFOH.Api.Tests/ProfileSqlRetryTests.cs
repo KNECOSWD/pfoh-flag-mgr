@@ -46,9 +46,93 @@ public class ProfileSqlRetryTests
         Assert.Equal(4, attempts);
         Assert.IsType<SqlException>(error.InnerException);
         var program = File.ReadAllText(RepoFile("backend", "PFOH.Api", "Program.cs"));
-        Assert.Contains("maxRetryCount: 3", program, StringComparison.Ordinal);
-        Assert.Contains("maxRetryDelay: TimeSpan.FromSeconds(5)", program, StringComparison.Ordinal);
+        Assert.Contains("maxRetryCount: ProfileSqlRetry.MaxRetryCount", program, StringComparison.Ordinal);
+        Assert.Contains("maxRetryDelay: ProfileSqlRetry.MaxRetryDelay", program, StringComparison.Ordinal);
         Assert.Contains("EnableRetryOnFailure", program, StringComparison.Ordinal);
+        Assert.Equal(3, ProfileSqlRetry.MaxRetryCount);
+        Assert.Equal(TimeSpan.Zero, ProfileSqlRetry.MaxRetryDelay);
+    }
+
+    [Fact]
+    public async Task Throttled_retry_waits_stay_at_or_under_five_seconds_and_nineteen_total()
+    {
+        var options = new DbContextOptionsBuilder<PfohDbContext>()
+            .UseSqlServer("Server=127.0.0.1,1433;Database=unused;User ID=unused;Password=unused;Encrypt=False;Connect Timeout=1")
+            .Options;
+        await using var db = new PfohDbContext(options);
+        var delays = new List<TimeSpan>();
+        var strategy = new RecordingSqlRetryStrategy(
+            db,
+            ProfileSqlRetry.MaxRetryCount,
+            ProfileSqlRetry.MaxRetryDelay,
+            delays);
+        await Assert.ThrowsAsync<RetryLimitExceededException>(() =>
+            strategy.ExecuteAsync<int>(() => Task.FromException<int>(SqlError(40613, "database unavailable"))));
+
+        Assert.Equal(ProfileSqlRetry.MaxRetryCount, delays.Count);
+        Assert.All(delays, delay => Assert.Equal(ProfileSqlRetry.ThrottledWaitCap, delay));
+        var total = delays.Aggregate(TimeSpan.Zero, (sum, delay) => sum + delay);
+        Assert.Equal(TimeSpan.FromSeconds(15), total);
+        Assert.True(total <= ProfileSqlRetry.TotalWaitBudget);
+    }
+
+    [Fact]
+    public async Task Schema_step_retries_in_a_single_layer()
+    {
+        UserProfileSchema.ResetForTests();
+        ProfileStoreResilience.PipelineForTests.Value = ProfileStoreResilience.ImmediateRetries();
+        var options = new DbContextOptionsBuilder<PfohDbContext>()
+            .UseSqlServer(
+                "Server=127.0.0.1,1433;Database=unused;User ID=unused;Password=unused;Encrypt=False;Connect Timeout=1",
+                sql => sql.EnableRetryOnFailure(
+                    maxRetryCount: ProfileSqlRetry.MaxRetryCount,
+                    maxRetryDelay: TimeSpan.FromMilliseconds(1),
+                    errorNumbersToAdd: null))
+            .Options;
+        await using var db = new PfohDbContext(options);
+        var attempts = 0;
+        UserProfileSchema.EnsureFailureForTests.Value = _ =>
+        {
+            attempts++;
+            throw SqlError(1205, "deadlock");
+        };
+        var circuit = new ProfileStoreCircuit();
+        try
+        {
+            await Assert.ThrowsAsync<RetryLimitExceededException>(() =>
+                UserProfileSchema.EnsureAsync(
+                    db,
+                    Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+                    CancellationToken.None,
+                    circuit));
+            var limit = ProfileSqlRetry.MaxRetryCount + 1;
+            Assert.Equal(limit, attempts);
+            Assert.True(attempts <= limit);
+            Assert.Equal(ProfileStoreCircuitState.Open, circuit.State);
+        }
+        finally
+        {
+            UserProfileSchema.EnsureFailureForTests.Value = null;
+            ProfileStoreResilience.PipelineForTests.Value = null;
+            UserProfileSchema.ResetForTests();
+        }
+    }
+
+    [Fact]
+    public void Startup_with_the_database_down_stays_well_under_230_seconds()
+    {
+        var worst = StartupDatabase.WorstCaseWhenDatabaseIsDown;
+        Assert.Equal(9, StartupDatabase.StepCount);
+        Assert.Equal(TimeSpan.FromSeconds(5), StartupDatabase.ConnectTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(45), worst);
+        Assert.True(worst < TimeSpan.FromSeconds(120));
+        Assert.True(worst < TimeSpan.FromSeconds(230));
+
+        using var db = StartupDatabase.Create(
+            "Server=127.0.0.1,1433;Database=unused;User ID=unused;Password=unused;Encrypt=False");
+        Assert.False(db.Database.CreateExecutionStrategy().RetriesOnFailure);
+        var program = File.ReadAllText(RepoFile("backend", "PFOH.Api", "Program.cs"));
+        Assert.Contains("StartupDatabase.Create", program, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -120,6 +204,33 @@ public class ProfileSqlRetryTests
             types: new[] { typeof(string), collectionType, typeof(Exception), typeof(Guid) },
             modifiers: null);
         return (SqlException)ctor!.Invoke(new object?[] { message, collection, null, Guid.Empty });
+    }
+
+    private sealed class RecordingSqlRetryStrategy : SqlServerRetryingExecutionStrategy
+    {
+        private readonly List<TimeSpan> delays;
+
+        public RecordingSqlRetryStrategy(
+            DbContext context,
+            int maxRetryCount,
+            TimeSpan maxRetryDelay,
+            List<TimeSpan> delays)
+            : base(context, maxRetryCount, maxRetryDelay, errorNumbersToAdd: null)
+        {
+            this.delays = delays;
+        }
+
+        protected override TimeSpan? GetNextDelay(Exception lastException)
+        {
+            var delay = base.GetNextDelay(lastException);
+            if (delay is null)
+            {
+                return null;
+            }
+
+            delays.Add(delay.Value);
+            return TimeSpan.Zero;
+        }
     }
 
     private sealed class RetryExhaustedFactory : WebApplicationFactory<Program>

@@ -837,6 +837,7 @@ public class AdminReviewController(
             var strategy = db.Database.CreateExecutionStrategy();
             return await strategy.ExecuteAsync<ActionResult<AdminReviewItemDto>>(async () =>
             {
+            db.ChangeTracker.Clear();
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
             var change = await db.HonoreeChangeRequests

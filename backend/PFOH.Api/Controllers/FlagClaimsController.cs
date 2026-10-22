@@ -372,6 +372,9 @@ public class FlagClaimsController(
         var strategy = db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync<ActionResult<FlagClaimDto>>(async () =>
         {
+        // A failed save leaves Added entities tracked. Clear before rebuilding
+        // them so a retry cannot insert the same claim twice.
+        db.ChangeTracker.Clear();
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         var flagGrid = await db.FlagGrids
@@ -447,6 +450,7 @@ public class FlagClaimsController(
         var strategy = db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync<ActionResult<FlagClaimDto>>(async () =>
         {
+        db.ChangeTracker.Clear();
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         var honoree = await db.Honorees
@@ -550,14 +554,15 @@ public class FlagClaimsController(
         await PendingSubmissionGridSchema.EnsureAsync(db, ct);
 
         var strategy = db.Database.CreateExecutionStrategy();
-        return await strategy.ExecuteAsync<ActionResult<FlagClaimDto>>(async () =>
+        var created = await strategy.ExecuteAsync<(int ChangeId, ActionResult<FlagClaimDto>? Error)>(async () =>
         {
+        db.ChangeTracker.Clear();
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         var submitter = await GetOrCreateSubmitterSponsorAsync(email, name, ct);
         if (submitter is null)
         {
-            return Conflict("No sponsor category exists for creating the submitter record.");
+            return (0, new ActionResult<FlagClaimDto>(Conflict("No sponsor category exists for creating the submitter record.")));
         }
 
         var claim = new FlagClaim
@@ -594,19 +599,49 @@ public class FlagClaimsController(
 
         db.FlagClaims.Add(claim);
         await db.SaveChangesAsync(ct);
-
-        var pendingPhotoFileName = await fileStorage.UploadPendingImageAsync(request.Photo, change.Id, ct);
-        if (!string.IsNullOrWhiteSpace(pendingPhotoFileName))
-        {
-            change.PhotoFileName = pendingPhotoFileName;
-            await db.SaveChangesAsync(ct);
-        }
-
         await pendingReviews.SupersedeOlderPendingAsync(change, ct);
         await transaction.CommitAsync(ct);
 
-        return Ok(ToDto(claim, null));
+        return (change.Id, null);
         });
+
+        if (created.Error is not null)
+        {
+            return created.Error;
+        }
+
+        // The blob name is pending/{changeRequestId}. The row is committed first so
+        // the id exists, then the file is uploaded once, outside the retry. Only the
+        // filename write is retried. A final failure deletes the blob.
+        var pendingPhotoFileName = await fileStorage.UploadPendingImageAsync(request.Photo, created.ChangeId, ct);
+        if (!string.IsNullOrWhiteSpace(pendingPhotoFileName))
+        {
+            try
+            {
+                await strategy.ExecuteAsync(async () =>
+                {
+                    db.ChangeTracker.Clear();
+                    await using var transaction = await db.Database.BeginTransactionAsync(ct);
+                    var stored = await db.HonoreeChangeRequests
+                        .FirstAsync(row => row.Id == created.ChangeId, ct);
+                    stored.PhotoFileName = pendingPhotoFileName;
+                    await db.SaveChangesAsync(ct);
+                    await transaction.CommitAsync(ct);
+                });
+            }
+            catch
+            {
+                await fileStorage.DeletePendingImageAsync(pendingPhotoFileName, CancellationToken.None);
+                throw;
+            }
+        }
+
+        var saved = await db.FlagClaims
+            .Include(claim => claim.FlagGrid)
+            .Include(claim => claim.Honoree)
+            .Include(claim => claim.HonoreeChangeRequests)
+            .FirstAsync(claim => claim.HonoreeChangeRequests.Any(row => row.Id == created.ChangeId), ct);
+        return Ok(ToDto(saved, null));
     }
 
     [Authorize(Policy = "AdminOnly")]
@@ -784,6 +819,7 @@ public class FlagClaimsController(
         var strategy = db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync<ActionResult<FlagClaimDto>>(async () =>
         {
+        db.ChangeTracker.Clear();
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         var claim = await db.FlagClaims

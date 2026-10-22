@@ -46,12 +46,24 @@ public class AdminDuplicatesController(
         var strategy = db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
+            // Survivor and the other rows were loaded before this delegate.
+            // Clear and load them again so a retry does not save the detached copies.
+            db.ChangeTracker.Clear();
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            var orderedIds = prepared.Ordered.Select(honoree => honoree.Id).ToList();
+            var survivorId = prepared.Survivor.Id;
+            var loaded = await db.Honorees
+                .Include(honoree => honoree.FlagGrid)
+                .Include(honoree => honoree.ServiceBranch)
+                .Where(honoree => orderedIds.Contains(honoree.Id))
+                .ToListAsync(ct);
+            var ordered = orderedIds.Select(id => loaded.Single(honoree => honoree.Id == id)).ToList();
+            var survivor = ordered.Single(honoree => honoree.Id == survivorId);
             var before = await db.Honorees.CountAsync(ct);
             var result = await HonoreeMerge.ApplyAsync(
                 db,
-                prepared.Survivor,
-                prepared.Ordered,
+                survivor,
+                ordered,
                 prepared.Fields,
                 prepared.Custom,
                 adminName,
@@ -68,7 +80,7 @@ public class AdminDuplicatesController(
             await transaction.CommitAsync(ct);
             return new DuplicateMergeResultDto(
                 result.SurvivorId,
-                DisplayName(prepared.Survivor),
+                DisplayName(survivor),
                 result.DeactivatedIds,
                 result.Claimants.Select(ToClaimant).ToList());
         });
@@ -252,6 +264,7 @@ public class AdminDuplicatesController(
         var strategy = db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync<IActionResult>(async () =>
         {
+            db.ChangeTracker.Clear();
             await using var transaction = await db.Database.BeginTransactionAsync(ct);
             var error = await HonoreeMergeAuditLog.UndoAsync(db, id, adminName, ct);
             if (error == "missing")

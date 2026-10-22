@@ -342,17 +342,29 @@ public static class UserProfileSchema
 
             try
             {
-                if (circuit is null)
+                // One retry layer, still bounded by the caller's token (the
+                // server-owned 30s budget on the request path). SQL Server retries
+                // the whole batch and that suppresses the per-command retry.
+                // SQLite does not retry, so the explicit loop is the only layer there.
+                var strategy = db.Database.CreateExecutionStrategy();
+                if (strategy.RetriesOnFailure)
                 {
-                    await ExecuteOnceAsync(ct);
+                    await strategy.ExecuteAsync(
+                        async token => await ExecuteOnceAsync(token),
+                        ct);
                 }
-                else
+                else if (circuit is not null)
                 {
                     await ProfileStoreResilience.Pipeline.ExecuteAsync(
                         async token => await ExecuteOnceAsync(token),
                         ct);
-                    circuit.Close();
                 }
+                else
+                {
+                    await ExecuteOnceAsync(ct);
+                }
+
+                circuit?.Close();
             }
             catch (Exception ex) when (circuit is not null && ex is not ProfileStoreUnavailableException)
             {
