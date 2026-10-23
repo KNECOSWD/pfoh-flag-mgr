@@ -127,23 +127,29 @@ footer.appFooter.footerNavy .footerCredit a:focus-visible {
 
 footer.appFooter.footerNavy .footerLoop {
   display: grid;
-  justify-items: start;
-  align-items: start;
+  justify-items: center;
+  align-items: center;
   gap: var(--space-xs);
-  text-align: start;
+  text-align: center;
   @media (min-width: 761px) {
     grid-column: 3;
     grid-row: 1;
     justify-self: end;
+    justify-items: start;
+    align-items: start;
     align-self: start;
+    text-align: start;
   }
 }
 
 footer.appFooter.footerNavy .footerSocials {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-start;
+  justify-content: center;
   gap: var(--space-xs);
+  @media (min-width: 761px) {
+    justify-content: flex-start;
+  }
 }
 
 footer.appFooter.footerNavy .footerSocials a {
@@ -181,8 +187,16 @@ footer.appFooter.footerNavy .footerSocials a svg {
 }
 
 footer.appFooter.footerNavy .footerContact {
-  justify-self: start;
-  text-align: start;
+  display: flex;
+  flex-direction: column;
+  justify-self: center;
+  align-items: center;
+  text-align: center;
+  @media (min-width: 761px) {
+    justify-self: start;
+    align-items: start;
+    text-align: start;
+  }
 }
 
 footer.appFooter.footerNavy .footerContact a {
