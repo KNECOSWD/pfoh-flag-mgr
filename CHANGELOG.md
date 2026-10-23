@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.4
+
+- The admin attention bar shows on every page for a signed-in administrator, including Search. Pending review and Duplicates load once when that administrator signs in. Approving or rejecting a submission, resolving a duplicate pair, merging duplicates, or undoing a merge refreshes those counts. A signed-out visitor or a signed-in non-administrator does not see the bar, and those counts are not requested.
+
 ## 3.1.3
 
 - The site starts again on a database that already has flag claims or merge history. The client request id column and its unique index are applied in separate steps, so duplicate groups, my claims, honoree claimants, and the approved reprint queue load. A database that already has the column, or has the column and not the index, still starts. Existing rows stay empty. Nothing is backfilled.

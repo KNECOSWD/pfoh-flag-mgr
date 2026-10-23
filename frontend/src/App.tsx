@@ -39,6 +39,8 @@ import {
 } from "./api";
 import { decideAdminLoad } from "./adminAccess.js";
 import { adminAttentionItems } from "./adminAttention.js";
+import { AdminAttentionBanner } from "./adminAttentionBanner.js";
+import { canRequestAdminAttention, requestAdminAttentionCounts } from "./adminAttentionLoad.js";
 import { thumbnailLoadKey } from "./authorizedThumbnail.js";
 import { startVersionWatch, versionUrl } from "./versionReload.js";
 import { AdminNavMenu } from "./AdminNavMenu";
@@ -1213,6 +1215,34 @@ export default function App() {
     }
   }
 
+  async function refreshAttentionCounts() {
+    if (!account) return;
+
+    try {
+      const counts = await requestAdminAttentionCounts(
+        {
+          isAuthenticated,
+          isAdmin,
+          loadSignedInData: kioskChrome(kioskLocked, true).loadSignedInData
+        },
+        () => adminApi.pending(instance, account)
+      );
+      const pending = counts.pending as { items?: AdminReviewItem[]; openDuplicateGroupCount?: number } | null;
+      if (!counts.requested || !pending?.items) return;
+      setPendingReviews(pending.items);
+      setOpenDuplicateGroups(pending.openDuplicateGroupCount ?? 0);
+      attentionLoadedForRef.current = account.homeAccountId;
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+        noteServerAdmin(window.sessionStorage, account.homeAccountId, false);
+        setIsAdmin(false);
+        setCachedApiAdmin(false);
+        setPendingReviews([]);
+        setOpenDuplicateGroups(0);
+      }
+    }
+  }
+
   async function loadAdminData() {
     if (!account) return;
 
@@ -1244,6 +1274,7 @@ export default function App() {
 
     noteServerAdmin(window.sessionStorage, account.homeAccountId, true);
     setIsAdmin(true);
+    attentionLoadedForRef.current = account.homeAccountId;
     setReviewLoadError(decision.errors.review ?? "");
     setPrintLoadError(decision.errors.printing ?? "");
     setFlagMapLoadError(decision.errors.flagMap ?? "");
@@ -1322,11 +1353,13 @@ export default function App() {
   }
 
   const stickyAccountRef = useRef<string | null>(null);
+  const attentionLoadedForRef = useRef<string | null>(null);
   useEffect(() => {
     const previous = stickyAccountRef.current;
     if (previous === accountKey) return;
     if (previous) clearStickyAdmin(window.sessionStorage, previous);
     stickyAccountRef.current = accountKey;
+    attentionLoadedForRef.current = null;
     setCachedApiAdmin(false);
     setIsAdmin(accountKey ? readStickyAdmin(window.sessionStorage, accountKey) : false);
   }, [accountKey]);
@@ -1360,6 +1393,23 @@ export default function App() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, account?.homeAccountId, kioskLocked, activeRoute]);
+
+  useEffect(() => {
+    const gate = {
+      isAuthenticated,
+      isAdmin,
+      loadSignedInData: kioskChrome(kioskLocked, true).loadSignedInData
+    };
+    if (!canRequestAdminAttention(gate)) return;
+    const key = account?.homeAccountId ?? "";
+    if (!key || attentionLoadedForRef.current === key) return;
+    // Review, printing, and the flag map already load these counts. Public routes such as /find do not.
+    if (!isPublicPage(activeRoute)) return;
+    attentionLoadedForRef.current = key;
+    void refreshAttentionCounts();
+    // One load per signed-in administrator. Navigation does not poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, isAdmin, account?.homeAccountId, kioskLocked, activeRoute]);
 
   useEffect(() => {
     const timers: number[] = [];
@@ -2623,6 +2673,7 @@ export default function App() {
     try {
       const approved = await adminApi.approve(instance, account, item.changeRequestId, requiresCardReprint);
       await loadData();
+      void refreshAttentionCounts();
       if (approved.flagSpotAssigned === false) {
         setFlagSpotNotice(
           approved.flagSpotNotice ||
@@ -2664,6 +2715,7 @@ export default function App() {
     try {
       await adminApi.reject(instance, account, item.changeRequestId, reviewNotes.trim());
       await loadData();
+      void refreshAttentionCounts();
       setNotice(`${item.honoreeName} rejected.`);
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to reject item."));
@@ -3159,33 +3211,16 @@ export default function App() {
       </header>
       {!isAdminRoute && showTenYearsBanner() ? <TenYearsBanner /> : null}
 
+          <AdminAttentionBanner
+            show={chrome.adminBanner && adminAlertItems.length > 0}
+            items={adminAlertItems}
+            totalCount={adminAlertTotalCount}
+            activeRoute={activeRoute}
+            onNavigate={(event: MouseEvent<HTMLAnchorElement>, route: string) => handleRouteLink(event, route as AppRoute)}
+          />
+
           {!isPublicFlagMapRoute ? (
           <>
-
-          {chrome.adminBanner && adminAlertItems.length > 0 ? (
-            <section className="adminAlertBanner" aria-label="Administrator notifications">
-              <div className="adminAlertBannerText">
-                <strong>Admin attention needed</strong>
-                <span>
-                  {adminAlertTotalCount} item{adminAlertTotalCount === 1 ? "" : "s"} need attention.
-                </span>
-              </div>
-
-              <div className="adminAlertBannerLinks">
-                {adminAlertItems.map((item) => (
-                  <a
-                    key={item.key}
-                    href={item.route}
-                    className={activeRoute === item.route ? "isActive" : ""}
-                    onClick={(event) => handleRouteLink(event, item.route)}
-                  >
-                    <strong>{item.count}</strong>
-                    <span>{item.label}</span>
-                  </a>
-                ))}
-              </div>
-            </section>
-          ) : null}
 
           {flagSpotNotice ? (
             <div
@@ -4175,6 +4210,7 @@ export default function App() {
                   account={account ?? null}
                   onSignIn={() => void signIn("login")}
                   onOpenHistory={() => navigateToRoute("/admin/duplicates/history")}
+                  onCountsChanged={() => { void refreshAttentionCounts(); }}
                 />
               ) : null}
 
@@ -4183,6 +4219,7 @@ export default function App() {
                   instance={instance}
                   account={account ?? null}
                   onBack={() => navigateToRoute("/admin/duplicates")}
+                  onCountsChanged={() => { void refreshAttentionCounts(); }}
                 />
               ) : null}
 
