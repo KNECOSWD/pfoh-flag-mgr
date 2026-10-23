@@ -1,5 +1,14 @@
 # Changelog
 
+## 4.0.1
+
+- Profile and Sign out are text pills in the header. The empty white circles no longer cover the labels, and the signed-in controls stay in the header grid.
+- The admin attention counts are navy on a solid badge so Pending review and Duplicates read clearly, in one flex row.
+- The Search heading info control is a centered icon, and Search and Clear share one flex row at the same height.
+- The Search field keeps a visible border at rest.
+- The three how-it-works cards use one grid gap and one padding.
+- Built by KNECO keeps the logo and the version in one center column.
+
 ## 4.0.0
 
 - The site's CSS is one mobile-first stylesheet per component. Old override blocks are gone. The build rejects `!important` and duplicate selectors.

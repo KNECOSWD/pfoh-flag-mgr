@@ -3787,7 +3787,10 @@ export default function App() {
                 onClick={() => setShowHowItWorks(true)}
                 aria-label="How this works"
               >
-                i
+                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                  <circle cx="8" cy="4.15" r="1.2" fill="currentColor" />
+                  <path fill="currentColor" d="M7.15 6.55h1.7V12h-1.7z" />
+                </svg>
               </button>
             }
           >

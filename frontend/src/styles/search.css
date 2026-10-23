@@ -84,54 +84,6 @@ input[type="search"] {
   }
 }
 
-.searchHeader .infoIconButton:hover:not(:disabled) {
-  transform: none;
-  box-shadow: none;
-  @media (min-width: 761px) {
-    transform: unset;
-    box-shadow: unset;
-  }
-}
-
-.searchHeader .infoIconButton {
-  flex: 0 0 1.15rem;
-  place-items: center;
-  margin: 0;
-  padding: 0;
-  border-radius: 999px;
-  overflow: hidden;
-  aspect-ratio: 1 / 1;
-  display: inline-grid;
-  line-height: 1;
-  transform: none;
-  box-shadow: none;
-  flex-basis: 1.05rem;
-  width: 1.05rem;
-  min-width: 1.05rem;
-  max-width: 1.05rem;
-  height: 1.05rem;
-  min-height: 1.05rem;
-  max-height: 1.05rem;
-  font-size: var(--font-meta);
-  @media (min-width: 761px) {
-    flex: unset;
-    width: 1.15rem;
-    min-width: 1.15rem;
-    max-width: unset;
-    height: 1.15rem;
-    min-height: 1.15rem;
-    max-height: unset;
-    aspect-ratio: unset;
-    display: inline-flex;
-    place-items: unset;
-    margin: unset;
-    border-radius: 50%;
-    overflow: visible;
-    transform: unset;
-    flex-basis: unset;
-  }
-}
-
 .searchBar input:focus {
   outline: none;
   border-color: #1e4b87;
@@ -157,15 +109,21 @@ input[type="search"] {
   box-shadow: none;
   font-size: var(--font-caption);
   @media (min-width: 761px) {
-    width: unset;
-    grid-column: unset;
-    min-height: unset;
-    justify-self: unset;
-    margin-top: unset;
-    padding: unset;
-    border-radius: unset;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    width: auto;
+    grid-column: auto;
+    min-height: 2.45rem;
+    margin-top: 0;
+    padding: 0 var(--space-sm);
+    border-radius: var(--radius-pill);
     background: #eef2f8;
-    font-size: unset;
+    color: var(--color-navy);
+    box-shadow: none;
+    font-size: var(--font-caption);
+    white-space: nowrap;
   }
 }
 
@@ -217,14 +175,18 @@ input[type="search"] {
   min-width: 5.2rem;
   font-size: var(--font-caption);
   @media (min-width: 761px) {
-    width: unset;
-    min-width: unset;
-    min-height: unset;
-    padding: unset;
-    border-radius: unset;
-    box-shadow: unset;
-    font-size: unset;
-    padding-inline: unset;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    width: auto;
+    min-width: 0;
+    min-height: 2.45rem;
+    padding: 0 var(--space-sm);
+    border-radius: var(--radius-pill);
+    box-shadow: none;
+    font-size: var(--font-caption);
+    white-space: nowrap;
   }
 }
 
@@ -681,7 +643,8 @@ img.honoreePhoto {
   font-weight: 900;
   grid-row: 1 / 3;
   @media (min-width: 761px) {
-    grid-row: unset;
+    grid-row: auto;
+    justify-self: start;
   }
 }
 
@@ -698,11 +661,11 @@ img.honoreePhoto {
   column-gap: var(--space-xs);
   row-gap: var(--space-3xs);
   @media (min-width: 761px) {
+    min-width: 0;
     min-height: 7.75rem;
     padding: var(--space-sm);
-    grid-template-columns: unset;
-    column-gap: unset;
-    row-gap: unset;
+    gap: var(--space-2xs);
+    grid-template-columns: minmax(0, 1fr);
   }
   @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
     min-height: 0;
@@ -717,6 +680,8 @@ img.honoreePhoto {
   margin-top: var(--space-sm);
   @media (min-width: 761px) {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+    justify-items: stretch;
     gap: var(--space-xs);
     margin-top: clamp(1.35rem, 4vh, 2.65rem);
   }
@@ -892,14 +857,13 @@ img.honoreePhoto {
     font-size: unset;
     min-width: unset;
     padding: unset;
-    border: unset;
     background: unset;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%23173b73' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'%3E%3C/circle%3E%3Cline x1='16.65' y1='16.65' x2='21' y2='21'%3E%3C/line%3E%3C/svg%3E");
+    background-image: none;
     color: unset;
     text-align: unset;
     caret-color: unset;
-    -webkit-appearance: searchfield;
-    appearance: auto;
+    -webkit-appearance: none;
+    appearance: none;
   }
   @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
     font-size: var(--font-body);
@@ -924,22 +888,22 @@ img.honoreePhoto {
   -webkit-appearance: none;
   appearance: none;
   @media (min-width: 761px) {
-    display: unset;
-    min-height: unset;
-    font-size: unset;
-    width: unset;
-    min-width: unset;
-    padding: unset;
-    border: unset;
-    border-radius: unset;
-    background: unset;
-    background-image: unset;
-    box-shadow: unset;
-    color: unset;
-    text-align: unset;
-    caret-color: unset;
-    -webkit-appearance: unset;
-    appearance: unset;
+    display: block;
+    width: 100%;
+    min-width: 0;
+    min-height: 2.6rem;
+    padding: var(--space-2xs) var(--space-xs);
+    border: 1px solid color-mix(in srgb, var(--color-navy) 22%, var(--color-line));
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    background-image: none;
+    box-shadow: none;
+    color: var(--color-navy-deep);
+    font-size: var(--font-body);
+    text-align: left;
+    caret-color: var(--color-navy);
+    -webkit-appearance: none;
+    appearance: none;
   }
   @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
     min-height: 3.4rem;
@@ -1099,19 +1063,19 @@ img.honoreePhoto {
 }
 
 .searchHeader h2 {
-  gap: var(--space-3xs);
+  gap: var(--space-2xs);
   display: flex;
   align-items: center;
   font-size: var(--font-heading);
   text-align: center;
   justify-content: center;
   @media (min-width: 761px) {
-    display: unset;
-    align-items: unset;
-    gap: unset;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--space-2xs);
     font-size: unset;
-    text-align: unset;
-    justify-content: unset;
+    text-align: start;
   }
   @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
     font-size: var(--font-heading);

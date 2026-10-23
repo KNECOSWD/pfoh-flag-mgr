@@ -784,35 +784,33 @@ input[type="tel"] {
 }
 
 .infoIconButton {
-  padding: 0;
-  border-radius: 50%;
-  background: #1b4a86;
-  overflow: visible;
-  font-weight: 900;
-  font-style: italic;
-  font-family: Georgia, serif;
-  box-shadow: none;
-  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  line-height: 1;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 1.15rem;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  min-height: 1.15rem;
+  margin: 0;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  background: var(--color-navy);
   color: var(--color-surface);
-  width: 1rem;
-  min-width: 1rem;
-  height: 1rem;
-  min-height: 1rem;
-  margin-left: 0;
-  font-size: var(--font-meta);
-  vertical-align: 0;
-  @media (min-width: 761px) {
-    width: 1.15rem;
-    min-width: 1.15rem;
-    height: 1.15rem;
-    min-height: 1.15rem;
-    margin-left: var(--space-3xs);
-    vertical-align: 0.22em;
-  }
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.infoIconButton svg {
+  display: block;
+  width: 0.72rem;
+  height: 0.72rem;
+}
+
+.infoIconButton:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
 }
 
 .subtleRefreshButton:hover:not(:disabled) {
