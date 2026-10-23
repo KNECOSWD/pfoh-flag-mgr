@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { cssSource } from "./css-source.mjs";
 
 const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
-const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+const css = readFileSync(new URL("../src/styles/base.css", import.meta.url), "utf8");
+const tokens = readFileSync(new URL("../src/styles/tokens.css", import.meta.url), "utf8");
+const allCss = cssSource();
 
 const ROOT_PX = 16;
 
@@ -13,11 +16,30 @@ function rem(value) {
   return Number(match[1]) * ROOT_PX;
 }
 
-function pageBodyBlock(source, from = 0) {
-  const start = source.indexOf(".pageBody {", from);
+function tokenRem(value) {
+  const named = String(value).trim().match(/^var\((--[\w-]+)\)$/);
+  if (!named) return rem(value);
+  const defined = tokens.match(new RegExp(`${named[1]}:\\s*([^;]+);`));
+  assert.ok(defined, `${named[1]} is a token`);
+  return rem(defined[1].trim());
+}
+
+function balancedBlock(source, start) {
+  let depth = 0;
+  for (let i = start; i < source.length; i += 1) {
+    if (source[i] === "{") depth += 1;
+    else if (source[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, i + 1);
+    }
+  }
+  throw new Error("unbalanced block");
+}
+
+function pageBodyBlock(source) {
+  const start = source.indexOf(".pageBody {");
   assert.ok(start >= 0, ".pageBody rule exists");
-  const end = source.indexOf("}", start);
-  return { start, text: source.slice(start, end + 1) };
+  return { start, text: balancedBlock(source, start) };
 }
 
 // The footer follows the content container, so this padding is the gap above
@@ -28,14 +50,14 @@ function contentFooterGapPx(width) {
   assert.ok(basePadding, "phone padding-bottom is set");
   let padding = basePadding[1].trim();
 
-  const tabletQuery = css.indexOf("@media (min-width: 761px)", base.start);
-  assert.ok(tabletQuery > base.start);
-  const tablet = pageBodyBlock(css, tabletQuery);
-  const tabletPadding = tablet.text.match(/padding-bottom:\s*([^;]+);/);
+  const tabletQuery = base.text.indexOf("@media (min-width: 761px)");
+  assert.ok(tabletQuery > 0, "tablet gap is nested in .pageBody");
+  const tabletText = base.text.slice(tabletQuery);
+  const tabletPadding = tabletText.match(/padding-bottom:\s*([^;]+);/);
   assert.ok(tabletPadding, "tablet padding-bottom is set");
   if (width >= 761) padding = tabletPadding[1].trim();
 
-  return rem(padding);
+  return tokenRem(padding);
 }
 
 test("the last content element keeps a non-zero gap above the footer", () => {
@@ -45,8 +67,8 @@ test("the last content element keeps a non-zero gap above the footer", () => {
 
   const base = pageBodyBlock(css);
   assert.doesNotMatch(base.text, /!important/);
-  const tablet = pageBodyBlock(css, css.indexOf("@media (min-width: 761px)", base.start));
-  assert.doesNotMatch(tablet.text, /!important/);
+  const tabletText = base.text.slice(base.text.indexOf("@media (min-width: 761px)"));
+  assert.doesNotMatch(tabletText, /!important/);
 
   const phone = contentFooterGapPx(390);
   const tabletGap = contentFooterGapPx(768);
@@ -62,9 +84,10 @@ test("the last content element keeps a non-zero gap above the footer", () => {
 
   // Flag Manager used its own bottom margin and footer top margin. Those would
   // stack on the shared gap, so they are gone.
-  assert.doesNotMatch(css, /margin-bottom:\s*3\.25rem\s*!important/);
-  assert.doesNotMatch(css, /margin-bottom:\s*1\.75rem\s*!important/);
-  assert.doesNotMatch(css, /margin-bottom:\s*1\.5rem\s*!important/);
-  assert.doesNotMatch(css, /margin-top:\s*3\.5rem\s*!important/);
-  assert.doesNotMatch(css, /main:has\(\.flagPositionManager\.adminStandalonePanel\) \.appFooter\s*\{[^}]*margin-top/);
+  assert.doesNotMatch(allCss, /margin-bottom:\s*3\.25rem\s*!important/);
+  assert.doesNotMatch(allCss, /margin-bottom:\s*1\.75rem\s*!important/);
+  assert.doesNotMatch(allCss, /margin-bottom:\s*1\.5rem\s*!important/);
+  assert.doesNotMatch(allCss, /margin-top:\s*3\.5rem\s*!important/);
+  assert.doesNotMatch(allCss, /main:has\(\.flagPositionManager\.adminStandalonePanel\) \.appFooter\s*\{[^}]*margin-top/);
+  assert.doesNotMatch(allCss, /!important/);
 });
