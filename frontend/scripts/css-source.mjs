@@ -15,7 +15,8 @@ const order = [
   "admin-print.css",
   "admin-flag-manager.css",
   "admin-removal.css",
-  "flag-map.css"
+  "flag-map.css",
+  "kiosk.css"
 ];
 
 export function cssSource() {
