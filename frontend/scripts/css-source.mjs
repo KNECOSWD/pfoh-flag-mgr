@@ -8,7 +8,8 @@ const order = [
   "search.css",
   "forms.css",
   "cards.css",
-  "my-flags.css"
+  "my-flags.css",
+  "admin-shared.css"
 ];
 
 export function cssSource() {
