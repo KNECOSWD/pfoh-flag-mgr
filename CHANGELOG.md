@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.0.0
+
+- The site's CSS is one mobile-first stylesheet per component. Old override blocks are gone. The build rejects `!important` and duplicate selectors.
+- Page color is one color. A short page such as Search no longer shows a lighter content-width band with seams beside it down to the footer.
+- Footer columns start on one top line, so Built by KNECO and the version sit with the headings instead of floating in the column.
+- "Built by" uses the caption text size.
+- Footer social buttons are 44px touch targets.
+- In Stay in the loop, the heading, the social icons, and Contact Us share one left edge. From tablet width up, that column sits on the right edge of the footer. Phones use the same shared edge.
+- Header, Find, My Flags, Honor a Hero, the public Flag Map, Review, Duplicate honorees, merge history, the Print Center, Flag Manager, and Removal Queue keep their current behavior, including the admin attention bar, the kiosk, and the gap above the footer.
+
 ## 3.1.4
 
 - The admin attention bar shows on every page for a signed-in administrator, including Search. Pending review and Duplicates load once when that administrator signs in. Approving or rejecting a submission, resolving a duplicate pair, merging duplicates, or undoing a merge refreshes those counts. A signed-out visitor or a signed-in non-administrator does not see the bar, and those counts are not requested.
