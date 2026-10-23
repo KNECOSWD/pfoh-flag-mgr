@@ -1,0 +1,390 @@
+.printActions button:disabled {
+  background: #eef2f8;
+  color: #8a9ab3;
+  opacity: 1;
+  box-shadow: none;
+}
+
+.printQueueTable td[data-label="Select"] {
+  grid-template-columns: 1fr;
+  @media (min-width: 761px) {
+    grid-template-columns: unset;
+  }
+}
+
+.printQueueTable td[data-label="Select"]::before {
+  display: none;
+  @media (min-width: 761px) {
+    display: unset;
+  }
+}
+
+.printQueueTable input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  @media (min-width: 761px) {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.reprintQueuePanel {
+  margin-top: var(--space-sm);
+  padding-top: var(--space-xs);
+  border-top: 1px solid #e3eaf4;
+}
+
+.reprintQueuePanel.collapsedEmptyPanel {
+  margin: var(--space-2xs) 0;
+  padding: var(--space-2xs) var(--space-2xs);
+  border-radius: 0.75rem;
+  background: #fbfdff;
+}
+
+.printActions {
+  padding: var(--space-2xs);
+  border: 1px solid rgba(15, 55, 107, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
+  gap: var(--space-2xs);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  position: sticky;
+  bottom: var(--space-xs);
+  z-index: var(--z-sticky);
+  box-shadow: 0 12px 28px rgba(20, 31, 48, 0.18);
+  backdrop-filter: blur(6px);
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr;
+  @media (min-width: 761px) {
+    display: flex;
+    width: unset;
+    position: unset;
+    bottom: unset;
+    z-index: unset;
+    padding: unset;
+    border: unset;
+    border-radius: unset;
+    background: unset;
+    box-shadow: unset;
+    backdrop-filter: unset;
+    grid-template-columns: unset;
+  }
+}
+
+.printActions .selectedCount {
+  grid-column: 1 / -1;
+  min-height: 1.85rem;
+  justify-content: center;
+  font-size: var(--font-caption);
+  width: 100%;
+  @media (min-width: 761px) {
+    grid-column: unset;
+    min-height: 0;
+    justify-content: unset;
+    width: unset;
+  }
+}
+
+.printActions button {
+  padding-inline: var(--space-2xs);
+  border-radius: 0.7rem;
+  white-space: nowrap;
+  min-height: 2.25rem;
+  font-size: var(--font-caption);
+  width: 100%;
+  @media (min-width: 761px) {
+    min-height: 2.45rem;
+    padding-inline: unset;
+    font-size: unset;
+    width: unset;
+    border-radius: 12px;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    min-height: 3.25rem;
+  }
+}
+
+.printQueueTable .compactButton {
+  width: 100%;
+  min-height: 2.1rem;
+  @media (min-width: 761px) {
+    width: unset;
+    min-height: unset;
+  }
+}
+
+.adminPrintingCard .reprintQueuePanel {
+  margin-left: 0;
+  margin-right: 0;
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.adminPrintingCard .printActions button {
+  @media (min-width: 761px) {
+    width: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+.adminPrintingCard .printQueueTable {
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    width: 100%;
+    min-width: 48rem;
+  }
+}
+
+.adminPrintingCard .printActions .selectedCount {
+  @media (min-width: 761px) {
+    width: unset;
+    grid-column: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    grid-column: 1 / -1;
+  }
+}
+
+.cardPreviewFrame {
+  border: 1px solid #dbe5f2;
+  border-radius: 0.6rem;
+  background: #f4f7fb;
+}
+
+.cardPreviewStatus {
+  flex: 1 1 auto;
+  place-items: center;
+  margin: 0;
+  padding: var(--space-lg);
+  border: 1px solid #dbe5f2;
+  border-radius: 0.6rem;
+  background: #f4f7fb;
+  display: grid;
+  min-height: 0;
+  text-align: center;
+  font-weight: 700;
+}
+
+.adminPrintingCard .printCenterHeader .helperText {
+  margin-top: var(--space-3xs);
+}
+
+.adminPrintingCard .compactReprintQueuePanel {
+  margin-top: var(--space-xs);
+  padding-top: 0;
+  border-top: 0;
+}
+
+.adminPrintingCard .printCenterHeader {
+  align-items: start;
+  padding-bottom: var(--space-xs);
+  border-bottom: 1px solid #e4ebf5;
+  grid-template-columns: 1fr;
+  @media (min-width: 761px) {
+    grid-template-columns: unset;
+  }
+}
+
+.adminPrintingCard .printActions {
+  align-self: center;
+  width: 100%;
+  justify-content: stretch;
+  @media (min-width: 761px) {
+    width: unset;
+    justify-content: flex-end;
+    display: flex;
+    grid-template-columns: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    width: 100%;
+    justify-content: stretch;
+    max-width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    overflow: hidden;
+  }
+}
+
+.cardPreviewModal h2 {
+  flex: 0 0 auto;
+}
+
+.cardPreviewModal .helperText {
+  flex: 0 0 auto;
+}
+
+.cardPreviewModal .cardPreviewFrame {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+.cardPreviewModal .modalActions {
+  flex: 0 0 auto;
+  gap: var(--space-xs);
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.cardPreviewModal .modalActions button {
+  width: auto;
+}
+
+.printBatchStatus {
+  overflow: auto;
+}
+
+.printBatchBody {
+  gap: var(--space-2xs);
+  display: grid;
+  width: min(34rem, 100%);
+  justify-items: center;
+}
+
+.printBatchBody p {
+  margin: 0;
+}
+
+.printBatchCounter {
+  color: var(--color-navy);
+  font-size: clamp(2.4rem, 9vw, 3.6rem);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.printBatchPhase {
+  color: var(--color-navy);
+  font-size: var(--font-body);
+}
+
+.printBatchBar {
+  width: 100%;
+  height: 0.85rem;
+  accent-color: var(--color-navy);
+}
+
+.printBatchCurrent {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.printBatchCounts {
+  gap: var(--space-3xs) var(--space-md);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-weight: 600;
+  color: #475569;
+}
+
+.printBatchFailedCount {
+  color: #9b1c1c;
+}
+
+.printBatchHint {
+  font-weight: 400;
+  font-size: var(--font-caption);
+  color: #475569;
+}
+
+.printBatchError {
+  overflow: auto;
+  place-items: start center;
+}
+
+.printBatchError .printBatchBody {
+  width: min(48rem, 100%);
+  justify-items: stretch;
+  text-align: left;
+}
+
+.printBatchFailures {
+  gap: var(--space-2xs);
+  margin: 0;
+  padding: 0;
+  display: grid;
+  list-style: none;
+}
+
+.printBatchFailures li {
+  gap: var(--space-3xs);
+  padding: var(--space-2xs) var(--space-xs);
+  border: 1px solid #f3c2c2;
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  display: grid;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.appConfirmOverlay.cardPreviewOverlay {
+  padding: 0;
+  place-items: stretch;
+  @media (min-width: 761px) {
+    padding: 1.25vh 2vw;
+    place-items: center;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    padding: 0;
+    place-items: stretch;
+  }
+}
+
+.appConfirmModal.cardPreviewModal {
+  overflow: hidden;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  height: 100dvh;
+  max-height: 100dvh;
+  @media (min-width: 761px) {
+    width: 94vw;
+    max-width: 94vw;
+    height: 94vh;
+    max-height: 94vh;
+    border-radius: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+}
+
+.markPrintedComment {
+  gap: var(--space-3xs);
+  display: grid;
+  margin-top: var(--space-sm);
+  color: var(--color-navy);
+  font-weight: 750;
+}
+
+.markPrintedComment textarea {
+  width: 100%;
+  min-height: 6.5rem;
+  resize: vertical;
+}
+
+.markPrintedCount {
+  margin: var(--space-3xs) 0 0;
+  color: #526179;
+  font-size: var(--font-caption);
+}
