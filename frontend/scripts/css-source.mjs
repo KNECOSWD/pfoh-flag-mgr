@@ -5,7 +5,10 @@ const order = [
   "base.css",
   "header.css",
   "footer.css",
-  "search.css"
+  "search.css",
+  "forms.css",
+  "cards.css",
+  "my-flags.css"
 ];
 
 export function cssSource() {

@@ -1,0 +1,212 @@
+.message span {
+  flex: 1;
+}
+
+.status {
+  border-radius: 999px;
+  padding: var(--space-3xs) var(--space-xs);
+  background: #e7ecf5;
+  display: inline-block;
+  font-size: var(--font-meta);
+  font-weight: 800;
+  color: var(--color-navy);
+}
+
+.card + .card {
+  margin-top: var(--space-sm);
+  @media (min-width: 761px) {
+    margin-top: var(--space-md);
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    margin-top: var(--space-sm);
+  }
+}
+
+.card + .messageStack {
+  margin-top: var(--space-sm);
+  @media (min-width: 761px) {
+    margin-top: var(--space-md);
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    margin-top: var(--space-sm);
+  }
+}
+
+.messageStack + .card {
+  margin-top: var(--space-sm);
+  @media (min-width: 761px) {
+    margin-top: var(--space-md);
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    margin-top: var(--space-sm);
+  }
+}
+
+.card h3 {
+  font-size: clamp(1.25rem, 5.8vw, 1.75rem);
+  line-height: var(--leading-tight);
+  @media (min-width: 761px) {
+    font-size: unset;
+    line-height: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    font-size: clamp(1.25rem, 5.8vw, 1.75rem);
+    line-height: var(--leading-tight);
+  }
+}
+
+.card h2 {
+  line-height: var(--leading-tight);
+  font-size: var(--font-heading);
+  @media (min-width: 761px) {
+    font-size: unset;
+    line-height: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    font-size: clamp(1.65rem, 7vw, 2.35rem);
+    line-height: var(--leading-tight);
+  }
+}
+
+.card p {
+  font-size: var(--font-caption);
+  line-height: var(--leading-body);
+  @media (min-width: 761px) {
+    font-size: unset;
+    line-height: unset;
+  }
+}
+
+.message {
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-xs);
+  border-radius: 0.85rem;
+  display: flex;
+  justify-content: space-between;
+  font-weight: 700;
+  align-items: start;
+  font-size: var(--font-caption);
+  @media (min-width: 761px) {
+    align-items: center;
+    border-radius: 16px;
+    padding: var(--space-xs) var(--space-sm);
+    font-size: unset;
+  }
+}
+
+main > .pageBody > .card {
+  width: min(100%, 34rem);
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+  max-width: calc(100vw - 1.1rem);
+  @media (min-width: 761px) {
+    width: unset;
+    margin-left: unset;
+    margin-right: unset;
+    max-width: unset;
+    box-sizing: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid #e1e7f0;
+  padding: var(--space-xs);
+  border-radius: 0.95rem;
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: var(--space-xs);
+  box-shadow: 0 8px 20px rgba(20, 31, 48, 0.07);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  @media (min-width: 761px) {
+    margin-top: var(--space-md);
+    border-radius: 22px;
+    padding: var(--space-lg);
+    box-shadow: 0 12px 30px rgba(20, 31, 48, 0.08);
+    width: unset;
+    max-width: unset;
+    margin-left: unset;
+    margin-right: unset;
+    box-sizing: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    margin-top: var(--space-2xs);
+    border-radius: 0.8rem;
+    padding: var(--space-2xs);
+    box-shadow: 0 14px 34px rgba(17, 34, 64, 0.10);
+    width: calc(100% - 1.75rem);
+    max-width: 46rem;
+    margin-left: auto;
+    margin-right: auto;
+    min-width: 0;
+    overflow: hidden;
+  }
+}
+
+main > .pageBody > .guestNotice {
+  width: min(100%, 34rem);
+  max-width: calc(100vw - 1.44rem);
+  margin-left: auto;
+  margin-right: auto;
+  @media (min-width: 761px) {
+    width: unset;
+    max-width: unset;
+    margin-left: unset;
+    margin-right: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+.guestNotice {
+  gap: var(--space-sm);
+  background: #fbfcff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-direction: column;
+  flex-wrap: wrap;
+  @media (min-width: 761px) {
+    flex-direction: unset;
+    flex-wrap: unset;
+  }
+}
+
+.guestNotice h2 {
+  margin: 0 0 var(--space-3xs);
+  text-align: center;
+  justify-content: center;
+  @media (min-width: 761px) {
+    text-align: unset;
+    justify-content: unset;
+  }
+}
+
+.guestNotice p {
+  margin: 0;
+  color: var(--color-muted);
+  text-align: left;
+  @media (min-width: 761px) {
+    text-align: unset;
+  }
+}
+
+.guestNotice .authChoiceButtons {
+  flex: 0 0 auto;
+  justify-content: center;
+  @media (min-width: 761px) {
+    justify-content: unset;
+  }
+}
