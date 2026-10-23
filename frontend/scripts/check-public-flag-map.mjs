@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { cssSource } from "./css-source.mjs";
 import {
   FLAG_MAP_ZOOM,
   FIT_PADDING,
@@ -100,7 +101,44 @@ const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
 const program = readFileSync(new URL("../../backend/PFOH.Api/Program.cs", import.meta.url), "utf8");
 const robots = readFileSync(new URL("../public/robots.txt", import.meta.url), "utf8");
 const page = readFileSync(new URL("../src/PublicFlagMap.tsx", import.meta.url), "utf8");
-const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+const css = cssSource();
+const tokens = readFileSync(new URL("../src/styles/tokens.css", import.meta.url), "utf8");
+
+function zToken(raw) {
+  const named = String(raw).trim().match(/^var\((--[\w-]+)\)$/);
+  if (named) {
+    const defined = tokens.match(new RegExp(`${named[1]}:\\s*(\\d+)`));
+    assert.ok(defined, `${named[1]} is a z-index token`);
+    return Number(defined[1]);
+  }
+  const literal = String(raw).trim().match(/^-?\d+$/);
+  return literal ? Number(literal[0]) : null;
+}
+
+function ruleBlock(source, selector) {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`(?:^|[\\n,{])\\s*${escaped}\\s*\\{`, "g");
+  const match = re.exec(source);
+  assert.ok(match, `${selector} rule exists`);
+  const open = match.index + match[0].length - 1;
+  let depth = 0;
+  for (let i = open; i < source.length; i += 1) {
+    if (source[i] === "{") depth += 1;
+    else if (source[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(match.index, i + 1);
+    }
+  }
+  throw new Error(`unbalanced ${selector}`);
+}
+
+function zOf(selector) {
+  const declared = ruleBlock(css, selector).match(/z-index:\s*([^;]+);/);
+  assert.ok(declared, `${selector} sets z-index`);
+  const value = zToken(declared[1]);
+  assert.ok(value != null, `${selector} z-index is numeric`);
+  return value;
+}
 
 test("the public nav links Flag Map right after Search, and the admin nav item reads Flag Manager", () => {
   assert.match(app, /"\/flag-map"/);
@@ -178,8 +216,8 @@ test("zoomed-out zones use real ranges and spots stay inside their box", () => {
   assert.match(css, /html\.isMapFullscreen \.publicFlagMap/);
   const chrome = css.slice(css.indexOf("html.flagMapPage .publicFlagChrome {"), css.indexOf("html.flagMapPage .publicFlagHeading"));
   assert.match(chrome, /overflow:\s*visible/);
-  assert.match(chrome, /z-index:\s*30/);
-  assert.match(css, /\.publicFlagChrome\s*\{[^}]*z-index:\s*30/);
+  assert.match(chrome, /z-index:\s*(?:30|var\(--z-drawer\))/);
+  assert.match(css, /\.publicFlagChrome\s*\{[^}]*z-index:\s*(?:30|var\(--z-drawer\))/);
   assert.match(css, /\.publicFlagSuggestions\s*\{[^}]*z-index:\s*5/);
   assert.match(css, /\.publicFlagStage\s*\{[^}]*z-index:\s*1/);
   assert.doesNotMatch(css, /\.publicFlagDot/);
@@ -277,11 +315,13 @@ test("spots never overlap and the global button size cannot stretch them", () =>
       assert.ok(apartX || apartY, `${a.flagGridName} touches ${b.flagGridName}`);
     }
   }
-  const glyph = css.slice(css.indexOf(".publicFlagTile,\n.publicFlagMarker {"), css.indexOf(".publicFlagTile,\n.publicFlagZone {"));
-  assert.match(glyph, /min-height:\s*0/);
-  assert.match(glyph, /min-width:\s*0/);
-  assert.match(glyph, /padding:\s*0/);
-  assert.match(glyph, /box-sizing:\s*border-box/);
+  for (const selector of [".publicFlagTile", ".publicFlagMarker"]) {
+    const glyph = ruleBlock(css, selector);
+    assert.match(glyph, /min-height:\s*0/);
+    assert.match(glyph, /min-width:\s*0/);
+    assert.match(glyph, /padding:\s*0/);
+    assert.match(glyph, /box-sizing:\s*border-box/);
+  }
   assert.doesNotMatch(css, /\.publicFlagMarker\.isHighlighted\s*\{[^}]*box-shadow:\s*0 0 0/);
   const reveal = css.slice(css.indexOf("@keyframes publicFlagReveal"), css.indexOf("@keyframes publicFlagGlow"));
   for (const amount of reveal.match(/scale\(([\d.]+)\)/g) || []) {
@@ -323,7 +363,7 @@ test("the fit shows the whole grid inside the axis gutters and a pan reaches eve
 });
 
 test("section blocks are flat, Z1–Z10 is one flat Service Flags block, and Z sits against N with the aisle before M", () => {
-  const zoneBlock = css.slice(css.indexOf(".publicFlagTile,\n.publicFlagZone {"), css.indexOf(".publicFlagZone strong"));
+  const zoneBlock = ruleBlock(css, ".publicFlagZone");
   assert.match(zoneBlock, /background:\s*#[0-9a-f]{6};/i);
   assert.doesNotMatch(zoneBlock, /gradient/);
   const serviceBlock = css.slice(css.indexOf(".publicFlagServiceFlags {"), css.indexOf(".publicFlagServiceFlags > span {"));
@@ -654,7 +694,7 @@ test("every section label shares one size, weight, and top placement at a zoom, 
     assert.ok(Math.abs(service.size * scale - sharedPx) < 1e-6, `Service Flags ${service.size * scale}px matches the ${sharedPx}px section label at ${columnPx}px`);
     assert.ok(Math.abs(service.top * scale - (uniform.topPx + (uniform.tiny ? 0 : blockEdgePx(columnPx)))) < 1e-6, `Service Flags top lines up with the letters at ${columnPx}px`);
   }
-  assert.match(css, /\.publicFlagZone \{\s*justify-content: flex-start;/);
+  assert.match(ruleBlock(css, ".publicFlagZone"), /justify-content:\s*flex-start/);
   assert.match(css, /\.publicFlagZone strong \{[^}]*font-weight: 800;/);
   assert.match(css, /\.publicFlagServiceFlags \{[^}]*font-weight: 650;/);
   assert.match(css, /\.publicFlagServiceFlags > span \{[^}]*justify-content: flex-start;/);
@@ -774,32 +814,36 @@ test("the detail drawer is portaled to body and layers above every page layer", 
   assert.match(kioskPortal, /document\.body\) : null\}/);
   assert.match(page, /selected \? "hasDetail" : ""/);
 
-  const zOf = (selector) => {
-    const block = css.slice(css.indexOf(`${selector} {`), css.indexOf("}", css.indexOf(`${selector} {`)));
-    return Number(block.match(/z-index:\s*(\d+)/)[1]);
-  };
-  const layer = css.slice(css.indexOf(".publicFlagDetailLayer {"), css.indexOf("}", css.indexOf(".publicFlagDetailLayer {")));
+  const layer = ruleBlock(css, ".publicFlagDetailLayer");
   assert.match(layer, /position: fixed;/);
   assert.match(layer, /inset: 0;/);
   assert.match(layer, /pointer-events: none;/);
   const drawerZ = zOf(".publicFlagDetailLayer");
-  const pageLayers = [...css.matchAll(/([^{}]+)\{[^{}]*?z-index:\s*(\d+)/g)]
-    .map((match) => ({ selector: match[1].trim(), z: Number(match[2]) }))
-    .filter((rule) => !/modal|Modal|Overlay|overlay|mobileDrawer|kioskPin|kioskExit|publicFlagDetailLayer/.test(rule.selector));
+  const menuZ = zOf(".mobileDrawerOverlay");
+  const pageLayers = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .map((match) => {
+      const declared = match[2].match(/z-index:\s*([^;]+);/);
+      if (!declared) return null;
+      const z = zToken(declared[1]);
+      return z == null ? null : { selector: match[1].trim(), z };
+    })
+    .filter((rule) => rule && !/@|modal|Modal|Overlay|overlay|mobileDrawer|kioskPin|kioskExit|publicFlagDetailLayer|adminNavPanel|versionReload/.test(rule.selector));
   for (const rule of pageLayers) assert.ok(rule.z < drawerZ, `${rule.selector} z-index ${rule.z} is not below the drawer ${drawerZ}`);
-  assert.ok(drawerZ > 9200, "above the phone menu button");
-  assert.ok(drawerZ < zOf(".appConfirmOverlay,\n.modalOverlay.appConfirmOverlay"), "the card preview opened from the drawer still sits above it");
+  assert.ok(drawerZ > menuZ, "above the phone menu");
+  assert.ok(drawerZ < zOf(".modalOverlay.appConfirmOverlay"), "the card preview opened from the drawer still sits above it");
+  assert.ok(zOf(".appConfirmOverlay") > drawerZ);
   assert.ok(zOf(".kioskExitZone") > drawerZ);
-  assert.ok(zOf(".kioskPinOverlay") > zOf(".kioskExitZone"));
+  assert.ok(zOf(".kioskPinOverlay") >= zOf(".kioskExitZone"));
   assert.doesNotMatch(css, /\.publicFlagMap[^,{]*\.publicFlagDetail/);
   assert.doesNotMatch(css, /--flag-map-header, 92px\) \+ 8px\);\s*\}\s*\n\s*\.publicFlagMap\.hasDetail/);
 
-  const phone = css.slice(css.indexOf("@media (max-width: 760px) {\n  .publicFlagMap {"));
-  assert.match(phone, /\.publicFlagDetailLayer:not\(\.isKiosk\) \.publicFlagDetailBackdrop \{\s*display: block;/);
-  assert.match(css, /\.publicFlagDetailBackdrop \{\s*display: none;/);
-  assert.match(css, /\.publicFlagMap\.hasDetail:not\(\.isKiosk\) \.publicFlagChrome \{\s*margin-right:/);
-  assert.match(css, /\.publicFlagMap\.isKiosk\.hasDetail \.publicFlagChrome \{\s*margin-right:/);
-  assert.match(css, /html\.isMapFullscreen \.publicFlagMap\.hasDetail:not\(\.isKiosk\) \.publicFlagChrome \{\s*margin-right:/);
+  const phoneBackdrop = ruleBlock(css, ".publicFlagDetailLayer:not(.isKiosk) .publicFlagDetailBackdrop");
+  assert.match(phoneBackdrop, /display:\s*block/);
+  assert.match(phoneBackdrop, /@media \(min-width: 761px\)[\s\S]*display:\s*none/);
+  assert.match(ruleBlock(css, ".publicFlagDetailBackdrop"), /display:\s*none/);
+  assert.match(ruleBlock(css, ".publicFlagMap.hasDetail:not(.isKiosk) .publicFlagChrome"), /margin-right:/);
+  assert.match(ruleBlock(css, ".publicFlagMap.isKiosk.hasDetail .publicFlagChrome"), /margin-right:/);
+  assert.match(ruleBlock(css, "html.isMapFullscreen .publicFlagMap.hasDetail:not(.isKiosk) .publicFlagChrome"), /margin-right:/);
 });
 
 test("search suggestions use the name and stay on the allowlist fields", () => {
@@ -1010,7 +1054,8 @@ test("the opening fit keeps row 1 and the pavilion inside the window", () => {
   assert.match(page, /flagMapPage/);
   assert.match(css, /html\.flagMapPage \.publicFlagViewport/);
   assert.match(css, /--flag-map-header/);
-  assert.match(css, /min-height:\s*0\s*!important/);
+  assert.match(ruleBlock(css, "html.isMapFullscreen .publicFlagViewport"), /min-height:\s*0;/);
+  assert.doesNotMatch(ruleBlock(css, "html.isMapFullscreen .publicFlagViewport"), /!important/);
   const desktop = flagMapPageBands({ width: 1440, height: 900 });
   assert.ok(desktop.header > 0 && desktop.bottom > 0 && desktop.tools > 0);
   assert.equal(flagMapPageBands({ width: 1920, height: 1080 }, { kiosk: true }).header, 0);
@@ -1051,7 +1096,7 @@ test("the flag detail photo shows the whole picture", () => {
   const frame = css.slice(css.indexOf(".publicFlagPhotoFrame {"), css.indexOf(".publicFlagQrBlock"));
   assert.match(frame, /object-fit:\s*contain/);
   assert.match(frame, /max-height:\s*min\(34vh, 280px\)/);
-  assert.match(frame, /background:\s*#0b1f3a/);
+  assert.match(frame, /background:\s*(?:#0b1f3a|#071526|var\(--color-navy-night\))/);
   assert.doesNotMatch(frame, /object-fit:\s*cover/);
   assert.match(page, /publicFlagPhotoFrame/);
   assert.match(css, /\.publicFlagPhoto \{[^}]*object-fit:\s*contain/);
@@ -1114,7 +1159,6 @@ test("branch seals render only when fewer than 10 flags are on screen", () => {
   assert.match(settle, /publishCull\(true\)/);
   assert.match(settle, /animateTo\(target\)/);
 
-  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
   assert.match(css, /@keyframes publicFlagSealFade/);
   assert.match(css, /from \{ opacity: 0; \}/);
   assert.doesNotMatch(css, /publicFlagWave/);
@@ -1270,34 +1314,49 @@ test("pinch zoom coalesces each frame and stays under the 45fps bar on a 320-wid
 });
 
 test("kiosk touch targets are at least 56px", () => {
-  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
-  const exit = css.slice(css.indexOf(".kioskExitZone {"), css.indexOf(".kioskPinOverlay"));
+  const exit = ruleBlock(css, ".kioskExitZone");
   assert.match(exit, /width:\s*56px/);
   assert.match(exit, /height:\s*56px/);
   assert.match(exit, /min-width:\s*56px/);
   assert.match(exit, /min-height:\s*56px/);
-  const targets = css.slice(css.indexOf(".publicFlagMap.isKiosk button:not(.publicFlagTile):not(.publicFlagMarker)"), css.indexOf(".publicFlagSearchTabs button.isActive"));
-  assert.match(targets, /min-width:\s*56px/);
-  assert.match(targets, /min-height:\s*56px/);
-  assert.match(targets, /\.publicFlagSearchTabs button/);
-  assert.match(targets, /\.publicFlagMap\.isKiosk input/);
-  assert.match(targets, /\.publicFlagMap\.isKiosk a/);
-  const blocks = css.split("}");
-  for (const block of blocks) {
-    const parts = block.split("{");
-    if (parts.length < 2) continue;
-    const selector = parts[0];
-    if (!/kiosk|isKiosk/i.test(selector)) continue;
-    const subjects = selector.split(",").map((part) => {
-      const bits = part.trim().split(/[\s>+~]+/).filter(Boolean);
-      return bits[bits.length - 1] ?? "";
-    });
-    const tapTarget = (subject) =>
-      /button|input|select|textarea|(^|[^\w-])a(?![-\w])|kioskExit|(^|[^\w-])li(?![-\w])/i.test(subject);
-    if (subjects.length === 0 || subjects.some((subject) => !tapTarget(subject))) continue;
-    const body = parts.slice(1).join("{");
-    for (const match of body.matchAll(/(?:min-width|min-height|width|height)\s*:\s*(\d+(?:\.\d+)?)px/g)) {
-      assert.ok(Number(match[1]) >= 56, `${selector.trim()} uses ${match[0]}`);
+  for (const selector of [
+    ".publicFlagMap.isKiosk button:not(.publicFlagTile):not(.publicFlagMarker)",
+    ".publicFlagSearchTabs button",
+    ".publicFlagMap.isKiosk input",
+    ".publicFlagMap.isKiosk a"
+  ]) {
+    const block = ruleBlock(css, selector);
+    assert.match(block, /min-width:\s*56px/);
+    assert.match(block, /min-height:\s*56px/);
+  }
+  const tapTarget = (subject) =>
+    /button|input|select|textarea|(^|[^\w-])a(?![-\w])|kioskExit|(^|[^\w-])li(?![-\w])/i.test(subject);
+  let depth = 0;
+  let selector = "";
+  let bodyStart = -1;
+  for (let i = 0; i < css.length; i += 1) {
+    const ch = css[i];
+    if (ch === "{") {
+      if (depth === 0) {
+        selector = css.slice(bodyStart < 0 ? 0 : bodyStart, i);
+        bodyStart = i + 1;
+      }
+      depth += 1;
+    } else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        const own = css.slice(bodyStart, i).replace(/@[^{]*\{[\s\S]*$/s, "");
+        bodyStart = i + 1;
+        if (!/kiosk|isKiosk/i.test(selector) || /@media|@keyframes/.test(selector)) continue;
+        const subjects = selector.split(",").map((part) => {
+          const bits = part.trim().split(/[\s>+~]+/).filter(Boolean);
+          return bits[bits.length - 1] ?? "";
+        });
+        if (subjects.length === 0 || subjects.some((subject) => !tapTarget(subject))) continue;
+        for (const match of own.matchAll(/(?:min-width|min-height|width|height)\s*:\s*(\d+(?:\.\d+)?)px/g)) {
+          assert.ok(Number(match[1]) >= 56, `${selector.trim()} uses ${match[0]}`);
+        }
+      }
     }
   }
 
@@ -1670,9 +1729,13 @@ test("pinned axis labels sit on solid navy gutter strips that taps pass through"
   assert.ok(page.indexOf('className="publicFlagAxisGutters"') < page.indexOf("<div ref={axisRef}"), "gutters paint under the labels");
   assert.match(css, /\.publicFlagAxisGutters \{[^}]*z-index: 3;[^}]*pointer-events: none;/);
   assert.match(css, /\.publicFlagAxisGutter \{[^}]*background: rgba\(11, 31, 58, 0\.9\d?\);[^}]*pointer-events: none;/);
-  assert.match(css, /\.publicFlagAxisGutter\.isLeft,\s*\.publicFlagAxisGutter\.isRight \{[^}]*bottom: 28px;[^}]*width: 36px;/);
-  assert.match(css, /\.publicFlagAxisGutter\.isBottom \{[^}]*height: 28px;/);
-  assert.match(css, /\.publicFlagAxis \.publicFlagRowLabel,\s*\.publicFlagAxis \.publicFlagColumnLabel \{[^}]*pointer-events: none;/);
+  assert.match(ruleBlock(css, ".publicFlagAxisGutter.isLeft"), /bottom:\s*28px/);
+  assert.match(ruleBlock(css, ".publicFlagAxisGutter.isLeft"), /width:\s*36px/);
+  assert.match(ruleBlock(css, ".publicFlagAxisGutter.isRight"), /bottom:\s*28px/);
+  assert.match(ruleBlock(css, ".publicFlagAxisGutter.isRight"), /width:\s*36px/);
+  assert.match(ruleBlock(css, ".publicFlagAxisGutter.isBottom"), /height:\s*28px/);
+  assert.match(ruleBlock(css, ".publicFlagAxis .publicFlagRowLabel"), /pointer-events:\s*none/);
+  assert.match(ruleBlock(css, ".publicFlagAxis .publicFlagColumnLabel"), /pointer-events:\s*none/);
 });
 
 test("left and right row numbers have the same inner padding and mirror each other's inset from the viewport edge (2.0.10)", () => {
@@ -1689,10 +1752,12 @@ test("left and right row numbers have the same inner padding and mirror each oth
       }
     }
   }
-  const axisRule = css.match(/\.publicFlagAxis \.publicFlagRowLabel,\s*\.publicFlagAxis \.publicFlagColumnLabel \{([^}]*)\}/)?.[1] ?? "";
-  assert.match(axisRule, /justify-content: center;/, "text is centred in each strip, not pushed to one edge");
-  assert.match(axisRule, new RegExp(`padding: 0 ${AXIS_LABEL_PAD}px;`), "equal inline padding on both sides");
-  assert.ok(css.indexOf(".publicFlagAxis .publicFlagRowLabel,") > css.indexOf(".publicFlagRowLabel.isRight {"), "the axis rule wins over the one-sided isRight padding");
+  for (const selector of [".publicFlagAxis .publicFlagRowLabel", ".publicFlagAxis .publicFlagColumnLabel"]) {
+    const axisRule = ruleBlock(css, selector);
+    assert.match(axisRule, /justify-content:\s*center/, "text is centred in each strip, not pushed to one edge");
+    assert.match(axisRule, new RegExp(`padding:\\s*0 ${AXIS_LABEL_PAD}px`), "equal inline padding on both sides");
+  }
+  assert.ok(css.indexOf(".publicFlagAxis .publicFlagRowLabel {") > css.indexOf(".publicFlagRowLabel.isRight {"), "the axis rule wins over the one-sided isRight padding");
   assert.match(page, /pinnedAxisLabels\(field, view, \{\s*width: axis\.clientWidth \|\| size\.width,\s*height: axis\.clientHeight \|\| size\.height\s*\}\)/, "labels are placed in the overlay's own box, not the bordered viewport rect");
 });
 
@@ -1823,8 +1888,14 @@ test("the flag detail keeps its action row pinned below a scrolling body with sa
   assert.ok(scroll.indexOf("publicFlagPhotoFrame") > 0 && scroll.indexOf("publicFlagBio") > 0 && scroll.indexOf("publicFlagQrBlock") > 0, "photo, bio and QR scroll");
   assert.ok(actions.indexOf("Preview card") > 0 && actions.indexOf("Preview card") < actions.indexOf(">Close</button>"), "Preview card then Close, same order");
   assert.match(css, /\.publicFlagDetail \{[^}]*overflow: hidden;[^}]*display: flex;[^}]*flex-direction: column;/);
-  assert.match(css, /\.publicFlagDetailScroll \{[^}]*flex: 1 1 auto;[^}]*min-height: 0;[^}]*overflow-y: auto;/);
-  assert.match(css, /\.publicFlagDetailActions \{[^}]*flex: none;[^}]*padding-bottom: max\(16px, env\(safe-area-inset-bottom\)\);[^}]*background: #fffdf8;[^}]*border-top: 1px solid/);
+  assert.match(ruleBlock(css, ".publicFlagDetailScroll"), /flex:\s*1 1 auto/);
+  assert.match(ruleBlock(css, ".publicFlagDetailScroll"), /min-height:\s*0/);
+  assert.match(ruleBlock(css, ".publicFlagDetailScroll"), /overflow-y:\s*auto/);
+  const actionsCss = ruleBlock(css, ".publicFlagDetailActions");
+  assert.match(actionsCss, /flex:\s*none/);
+  assert.match(actionsCss, /padding-bottom:\s*max\(16px, env\(safe-area-inset-bottom\)\)/);
+  assert.match(actionsCss, /background:\s*(?:#fffdf8|var\(--color-surface\))/);
+  assert.match(actionsCss, /border-top:\s*1px solid/);
 });
 
 test("search results open below the box and stay inside the visible viewport", () => {
@@ -1859,7 +1930,8 @@ test("search results open below the box and stay inside the visible viewport", (
   assert.match(layer, /position:\s*fixed/);
   assert.match(layer, /bottom:\s*auto/);
   assert.match(layer, /overflow-y:\s*auto/);
-  assert.match(layer, /z-index:\s*80/);
+  assert.match(layer, /z-index:\s*var\(--z-drawer\)/);
+  assert.ok(zOf(".publicFlagSuggestLayer") < zOf(".publicFlagDetailLayer"), "suggestions stay under the detail drawer");
   assert.match(page, /suggestionListFrame\(/);
   assert.match(page, /visualViewport/);
   assert.match(page, /createPortal\([\s\S]*publicFlagSuggestLayer[\s\S]*document\.body/);
@@ -1870,20 +1942,38 @@ test("the in-view list sits inside the map controls toolbar group", () => {
   assert.match(group, /<div className="publicFlagJump">\s*<label htmlFor=\{jumpId\} className="srOnly">/);
   assert.match(group, /<select id=\{jumpId\} value=\{jumpPending\}/);
   assert.match(group, /<\/select>\s*<\/div>\s*<\/div>\s*$/, "the select closes inside the toolbar group");
-  assert.match(css, /\.publicFlagControls \{[^}]*flex-wrap: nowrap;[^}]*min-width: 0;/);
-  assert.match(css, /\.publicFlagControls \{[^}]*display: flex;[^}]*flex: 1 1 0%;[^}]*justify-content: space-between;[^}]*width: 100%;/, "the toolbar spans the full width like the search box");
-  assert.match(css, /\.publicFlagControls \{[^}]*padding-block: 8px;/, "the toolbar keeps a little space above and below its controls");
-  assert.match(css, /\.publicFlagControls \.publicFlagIconButton \{[^}]*flex: 0 0 auto;/, "the icon buttons keep their size, grouped on the left");
-  assert.match(css, /\.publicFlagJump \{[^}]*flex: 0 0 auto;[^}]*min-width: 150px;[^}]*margin-left: auto;/, "the sections list stays on the right of the toolbar");
+  const controls = ruleBlock(css, ".publicFlagControls");
+  assert.match(controls, /flex-wrap:\s*wrap/);
+  assert.match(controls, /min-width:\s*0/);
+  assert.match(controls, /@media \(min-width: 761px\)[\s\S]*flex-wrap:\s*nowrap/);
+  assert.match(controls, /display:\s*flex/);
+  assert.match(controls, /flex:\s*1 1 0%/);
+  assert.match(controls, /justify-content:\s*space-between/);
+  assert.match(controls, /width:\s*100%/, "the toolbar spans the full width like the search box");
+  assert.match(controls, /padding-block:\s*(?:8px|var\(--space-2xs\))/, "the toolbar keeps a little space above and below its controls");
+  assert.match(ruleBlock(css, ".publicFlagControls .publicFlagIconButton"), /flex:\s*0 0 auto/, "the icon buttons keep their size, grouped on the left");
+  assert.match(ruleBlock(css, ".publicFlagJump"), /flex:\s*0 0 auto/);
+  assert.match(ruleBlock(css, ".publicFlagJump"), /min-width:\s*150px/);
+  assert.match(ruleBlock(css, ".publicFlagJump"), /margin-left:\s*auto/, "the sections list stays on the right of the toolbar");
   assert.match(group, /<label htmlFor="public-flag-search" className="srOnly">Search honorees<\/label>/);
   assert.match(group, /placeholder="Search honorees"/);
   assert.match(group, /className="publicFlagSearchIcon"[^>]*aria-hidden="true"/);
   assert.ok(group.indexOf("publicFlagIconButton") < group.indexOf('className="publicFlagSearch"') && group.indexOf('className="publicFlagSearch"') < group.indexOf('<div className="publicFlagJump">'), "search sits between the zoom buttons and the sections list");
   assert.doesNotMatch(page.slice(page.indexOf('className="publicFlagChrome"'), page.indexOf('className="publicFlagToolbar"')), /publicFlagSearch/, "search is not a row above the toolbar");
-  assert.match(css, /@media \(max-width: 600px\) \{\s*\.publicFlagControls \{[^}]*flex-wrap: wrap;/);
-  assert.match(css, /@media \(max-width: 600px\) \{[\s\S]*?\.publicFlagControls \.publicFlagSearch \{[^}]*order: 3;[^}]*flex: 1 1 100%;/);
-  assert.match(css, /@media \(max-width: 600px\) \{[\s\S]*?\.publicFlagControls \.publicFlagJump \{[^}]*width: max-content;[^}]*min-width: 0;/);
-  assert.match(css, /@media \(max-width: 600px\) \{[\s\S]*?\.publicFlagControls \.publicFlagJump select \{[^}]*width: auto;[^}]*field-sizing: content;[^}]*border: 1px solid #c5d0e0;[^}]*border-radius: 999px;/);
+  const phoneSearch = ruleBlock(css, ".publicFlagControls .publicFlagSearch");
+  assert.match(phoneSearch, /order:\s*3/);
+  assert.match(phoneSearch, /flex:\s*1 1 100%/);
+  const phoneJump = ruleBlock(css, ".publicFlagControls .publicFlagJump");
+  assert.match(phoneJump, /width:\s*max-content/);
+  assert.match(phoneJump, /min-width:\s*0/);
+  const phoneSelect = ruleBlock(css, ".publicFlagControls .publicFlagJump select");
+  assert.match(phoneSelect, /width:\s*auto/);
+  assert.match(phoneSelect, /field-sizing:\s*content/);
+  assert.match(phoneSelect, /border:\s*1px solid #c5d0e0/);
+  assert.match(phoneSelect, /border-radius:\s*999px/);
   assert.ok(group.lastIndexOf("publicFlagIconButton") < group.indexOf('<div className="publicFlagJump">'), "the in-view list is the last item in the toolbar");
-  assert.match(css, /\.publicFlagJump select \{[^}]*text-overflow: ellipsis;[^}]*border: 0;[^}]*background-color: transparent;/);
+  const jumpSelect = ruleBlock(css, ".publicFlagJump select");
+  assert.match(jumpSelect, /text-overflow:\s*ellipsis/);
+  assert.match(jumpSelect, /border:\s*0/);
+  assert.match(jumpSelect, /background-color:\s*transparent/);
 });

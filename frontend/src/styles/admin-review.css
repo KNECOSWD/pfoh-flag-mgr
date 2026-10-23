@@ -1,0 +1,81 @@
+.adminReviewCard .sectionHeader h2 {
+  font-size: var(--font-heading);
+  line-height: var(--leading-tight);
+  @media (min-width: 761px) {
+    font-size: unset;
+    line-height: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    font-size: var(--font-heading);
+  }
+}
+
+.adminReviewCard .sectionHeader {
+  grid-template-columns: 1fr;
+  @media (min-width: 761px) {
+    grid-template-columns: unset;
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    display: grid;
+    align-items: start;
+    gap: var(--space-xs);
+  }
+}
+
+.reviewTable {
+  overflow: visible;
+}
+
+.reviewTable tbody {
+  overflow: visible;
+}
+
+.reviewTable tr {
+  overflow: visible;
+}
+
+.reviewTable td {
+  overflow: visible;
+}
+
+.adminReviewCard {
+  overflow: visible;
+  border-top: 3px solid var(--color-navy);
+  margin-top: 0;
+  border-top-width: 2px;
+  @media (min-width: 761px) {
+    border-top-width: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    min-width: 0;
+  }
+}
+
+.reviewTable .rowActions {
+  overflow: visible;
+  min-width: 13rem;
+}
+
+.adminReviewCard .adminCardSummary:empty {
+  display: none;
+}
+
+.adminReviewCard > p {
+  font-size: var(--font-caption);
+  margin-top: var(--space-xs);
+  @media (min-width: 761px) {
+    font-size: unset;
+  }
+}
+
+.adminReviewCard .emptyState {
+  font-size: var(--font-caption);
+  margin-top: var(--space-xs);
+  @media (min-width: 761px) {
+    font-size: unset;
+  }
+}

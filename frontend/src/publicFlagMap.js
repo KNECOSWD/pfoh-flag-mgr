@@ -145,7 +145,7 @@ export const SPOT_SIZE = Object.freeze({ width: FLAG_WIDTH, height: FLAG_HEIGHT,
 export const FIELD_AISLE_AFTER_ROW = 20;
 export const FIT_PADDING = 12;
 export const AXIS_STRIP = Object.freeze({ row: 36, column: 28 });
-// Matches the inline padding on .publicFlagAxis labels in style.css.
+// Matches the inline padding on .publicFlagAxis labels in styles/flag-map.css.
 export const AXIS_LABEL_PAD = 4;
 
 // The pinned row numbers and section letters live in solid gutters on the left,

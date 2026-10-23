@@ -1,0 +1,302 @@
+html.flagMapKiosk {
+  overflow: hidden;
+  background: var(--color-navy-night);
+  height: 100%;
+  touch-action: pan-x pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+}
+
+html.flagMapKiosk body {
+  overflow: hidden;
+  background: var(--color-navy-night);
+  height: 100%;
+  touch-action: pan-x pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+}
+
+html.flagMapKiosk input {
+  user-select: text;
+  -webkit-user-select: text;
+  touch-action: manipulation;
+}
+
+html.flagMapKiosk textarea {
+  user-select: text;
+  -webkit-user-select: text;
+  touch-action: manipulation;
+}
+
+html.flagMapKiosk main {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: none;
+}
+
+html.flagMapKiosk main > header {
+  display: none;
+}
+
+html.flagMapKiosk button:hover:not(:disabled) {
+  transform: none;
+}
+
+html.flagMapKiosk img {
+  -webkit-user-drag: none;
+}
+
+html.flagMapKiosk a {
+  -webkit-user-drag: none;
+}
+
+.kioskLock {
+  background: var(--color-navy-night);
+  min-height: 100dvh;
+}
+
+.kioskExitZone {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  z-index: var(--z-toast);
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+  min-height: 56px;
+  opacity: 0;
+  cursor: default;
+}
+
+.kioskPinOverlay {
+  inset: 0;
+  padding: var(--space-lg);
+  background: rgba(7, 21, 38, 0.72);
+  position: fixed;
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kioskPinPad {
+  padding: var(--space-md);
+  border: 1px solid rgba(212, 175, 55, 0.5);
+  border-radius: 18px;
+  background: var(--color-navy-night);
+  width: min(360px, 100%);
+  color: #f7f1de;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+
+.kioskPinDots {
+  margin: 0 0 var(--space-xs);
+  min-height: 1.6em;
+  text-align: center;
+  font-size: var(--font-heading);
+  letter-spacing: 0.28em;
+}
+
+.kioskPinKeys {
+  gap: var(--space-2xs);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: var(--space-xs);
+}
+
+.publicFlagMap.isKiosk button:not(.publicFlagTile):not(.publicFlagMarker) {
+  min-width: 56px;
+  min-height: 56px;
+}
+
+.publicFlagMap.isKiosk input {
+  min-width: 56px;
+  min-height: 56px;
+}
+
+.publicFlagMap.isKiosk select {
+  min-width: 56px;
+  min-height: 56px;
+}
+
+.publicFlagMap.isKiosk textarea {
+  min-width: 56px;
+  min-height: 56px;
+}
+
+.publicFlagMap.isKiosk a {
+  min-width: 56px;
+  min-height: 56px;
+}
+
+.publicFlagMap.isKiosk .publicFlagSuggestions button {
+  min-width: 56px;
+  min-height: 56px;
+}
+
+.publicFlagDetailLayer.isKiosk button {
+  min-width: 56px;
+  min-height: 56px;
+}
+
+.kioskPinKeys button {
+  font-size: var(--font-heading);
+  min-width: 56px;
+  min-height: 56px;
+}
+
+.kioskPinPad > button {
+  font-size: var(--font-heading);
+  min-width: 56px;
+  min-height: 56px;
+}
+
+.publicFlagMap.isKiosk .publicFlagSearch label {
+  color: #f3e2a7;
+}
+
+.publicFlagMap.isKiosk .publicFlagChrome {
+  flex: 0 0 auto;
+}
+
+.publicFlagMap.isKiosk .publicFlagStage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.publicFlagMap.isKiosk .publicFlagViewport {
+  flex: 1 1 auto;
+  border-radius: 28px;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+
+.publicFlagMap.isKiosk .publicFlagSearch input {
+  padding: 0 var(--space-sm) 0 var(--space-xl);
+  min-width: 56px;
+  min-height: 64px;
+  font-size: var(--font-heading);
+}
+
+.publicFlagMap.isKiosk .publicFlagSuggestions li {
+  padding: var(--space-xs) var(--space-sm);
+  min-width: 56px;
+  min-height: 64px;
+  font-size: var(--font-heading);
+}
+
+.publicFlagMap.isKiosk .publicFlagToolbar button {
+  padding: 0 var(--space-sm);
+  min-height: 56px;
+  min-width: 56px;
+  font-size: var(--font-body);
+}
+
+.publicFlagDetailLayer.isKiosk .publicFlagDetail {
+  top: var(--space-sm);
+  right: var(--space-sm);
+  bottom: var(--space-sm);
+  width: min(460px, calc(100% - 32px));
+  max-height: none;
+}
+
+.publicFlagMap.isKiosk.hasDetail .publicFlagChrome {
+  @media (min-width: 761px) {
+    margin-right: calc(min(460px, 100vw - 32px) + 38px - 22px);
+  }
+}
+
+.publicFlagDetailLayer.isKiosk .publicFlagDetail h3 {
+  font-size: var(--font-heading);
+}
+
+.publicFlagDetailLayer.isKiosk .publicFlagDetail p {
+  font-size: var(--font-heading);
+}
+
+.publicFlagDetailLayer.isKiosk .publicFlagDetail button {
+  min-height: 56px;
+  min-width: 56px;
+  font-size: var(--font-heading);
+}
+
+.publicFlagDetailLayer.isKiosk .publicFlagPhotoFrame {
+  max-height: min(38vh, 340px);
+}
+
+.publicFlagDetailLayer.isKiosk .publicFlagPhoto {
+  max-height: min(38vh, 340px);
+}
+
+.publicFlagMap.isKiosk .publicFlagQr {
+  width: 180px;
+  height: 180px;
+}
+
+.publicFlagMap.isKiosk .publicFlagLegend {
+  color: #f3e2a7;
+  height: 30px;
+  font-size: var(--font-body);
+}
+
+.publicFlagMap.isKiosk .publicFlagLegend i {
+  width: 22px;
+  height: 15px;
+}
+
+.publicFlagMap.isKiosk .publicFlagIconButton svg {
+  width: 28px;
+  height: 28px;
+}
+
+.publicFlagMap.isKiosk .publicFlagJump select {
+  padding: 0 var(--space-xl) 0 var(--space-sm);
+  font-size: var(--font-body);
+}
+
+.publicFlagMap.isKiosk {
+  inset: 0;
+  margin: 0;
+  background: radial-gradient(circle at 12% 0%, rgba(212, 175, 55, 0.2), transparent 26rem),
+    radial-gradient(circle at 90% 100%, rgba(23, 59, 115, 0.45), transparent 28rem),
+    var(--color-navy-night);
+  padding: var(--space-xs);
+  position: fixed;
+  z-index: var(--z-sticky);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  color: #f7f1e4;
+  @media (min-width: 761px) {
+    padding: var(--space-sm) var(--space-md) var(--space-sm);
+  }
+}
+
+html.isMapFullscreen .publicFlagMap.isKiosk {
+  inset: 0;
+  margin: 0;
+  padding: var(--space-2xs) var(--space-xs) var(--space-xs);
+  background: var(--color-navy-night);
+  position: fixed;
+  z-index: var(--z-drawer);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  box-sizing: border-box;
+}

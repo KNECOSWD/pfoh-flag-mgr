@@ -1,0 +1,75 @@
+/* Design tokens. Components use these variables. */
+:root {
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.25rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2.25rem;
+  --space-2xl: 3rem;
+  --page-gutter: clamp(1rem, (100vw - 73.75rem) / 2, 24rem);
+  --footer-padding-block: var(--space-md);
+  --footer-version-gap: var(--space-3xs);
+  --header-menu-gap: var(--space-xs);
+
+  --size-touch: 2.75rem;
+  --size-kiosk: 3.5rem;
+  --footer-social-size: 2.75rem;
+  --footer-social-icon-size: 1.05rem;
+  --header-menu-size: var(--size-touch);
+
+  --font-meta: 0.75rem;
+  --font-caption: 0.875rem;
+  --font-body: 1rem;
+  --font-lead: clamp(1rem, 0.96rem + 0.2vw, 1.125rem);
+  --font-heading: clamp(1.15rem, 1.05rem + 0.4vw, 1.5rem);
+  --font-display: clamp(0.94rem, 0.94rem + 3.83vw, 4rem);
+  --font-eyebrow: 0.75rem;
+  --font-footer-heading: 0.875rem;
+  --footer-version-size: var(--font-meta);
+  --leading-tight: 1.15;
+  --leading-body: 1.5;
+  --leading-ui: 1.25;
+
+  --color-page: #eef3f9;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f7f9fc;
+  --color-ink: #162033;
+  --color-muted: #53627a;
+  --color-line: #dce6f3;
+  --color-navy: #173b73;
+  --color-navy-deep: #102f5f;
+  --color-navy-night: #071526;
+  --color-gold: #ffe08a;
+  --color-crimson: #9b1c31;
+  --color-on-navy: #ffffff;
+  --color-on-navy-muted: rgba(255, 255, 255, 0.65);
+  --footer-muted: var(--color-on-navy-muted);
+  --color-success-bg: #e6f8ed;
+  --color-success-ink: #0f6b3a;
+  --color-warning-bg: #fff3d6;
+  --color-warning-ink: #8a5a00;
+  --color-danger-bg: #ffe7e7;
+  --color-danger-ink: var(--color-crimson);
+  --hero-overlay: linear-gradient(
+    90deg,
+    rgba(3, 12, 30, 0.94) 0%,
+    rgba(6, 20, 48, 0.91) 42%,
+    rgba(6, 20, 48, 0.80) 70%,
+    rgba(45, 8, 16, 0.74) 100%
+  );
+  --gradient-hero: var(--hero-overlay);
+
+  --z-base: 1;
+  --z-sticky: 10;
+  --z-drawer: 30;
+  --z-modal: 40;
+  --z-toast: 50;
+
+  --radius-sm: 12px;
+  --radius-md: 22px;
+  --radius-pill: 999px;
+  --shadow-card: 0 12px 30px rgba(20, 31, 48, 0.08);
+  --shadow-button: 0 8px 18px rgba(23, 59, 115, 0.14);
+}

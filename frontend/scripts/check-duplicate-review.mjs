@@ -374,10 +374,12 @@ test("the preview normalizes typed text the same way the save request does", () 
   assert.equal(buildMergeRequest(honorees, customGrid).fields.flagGrid, 2);
   assert.equal(buildMergeRequest(honorees, customGrid).values.flagGrid, "AA-10");
 
-  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
-  const stacked = css.slice(css.indexOf("@media (max-width: 720px)"));
-  assert.match(stacked, /\.mergeBoard\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
-  assert.match(stacked, /\.resultField\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  const css = readFileSync(new URL("../src/styles/admin-duplicates.css", import.meta.url), "utf8");
+  const board = css.slice(css.indexOf(".mergeBoard {"), css.indexOf("@media (min-width: 761px)", css.indexOf(".mergeBoard {")));
+  const resultField = css.slice(css.indexOf(".resultField {"), css.indexOf("@media (min-width: 761px)", css.indexOf(".resultField {")));
+  assert.match(board, /grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.match(resultField, /grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+  assert.doesNotMatch(board, /!important/);
 });
 
 test("exact matches are preselected on load and the flag grid never is", () => {
@@ -568,8 +570,9 @@ test("the resulting photo is a thumbnail, or No photo, or Not chosen", () => {
   assert.match(previewBlock(unset, "photo"), /Not chosen/);
   assert.doesNotMatch(previewBlock(unset, "photo"), /<img /);
 
-  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
-  assert.match(css, /\.resultControl \.duplicatePhoto,\s*\.resultControl \.duplicateNoPhoto\s*\{[^}]*max-width:\s*100%/);
+  const css = readFileSync(new URL("../src/styles/admin-duplicates.css", import.meta.url), "utf8");
+  assert.match(css, /\.resultControl \.duplicatePhoto\s*\{[^}]*max-width:\s*100%/);
+  assert.match(css, /\.resultControl \.duplicateNoPhoto\s*\{[^}]*max-width:\s*100%/);
 });
 
 test("a changed resulting row highlights, then clears, and reduced motion does not animate", () => {
@@ -608,14 +611,15 @@ test("a changed resulting row highlights, then clears, and reduced motion does n
   assert.match(resulting, /PREVIEW_FLASH_MS/);
   assert.match(resulting, /setLit\(\(current\) => current\.filter/);
 
-  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../src/styles/admin-duplicates.css", import.meta.url), "utf8");
   assert.match(css, /\.resultField\.resultFlash\s*\{[^}]*animation:\s*resultFlash 1s/);
-  assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)\s*\{[^}]*\.resultField\.resultFlash\s*\{[^}]*animation:\s*none/);
+  assert.match(css, /\.resultField\.resultFlash\s*\{[\s\S]*prefers-reduced-motion:\s*reduce[\s\S]*animation:\s*none/);
   const selected = css.slice(css.indexOf(".mergeChoice.isSelected {"), css.indexOf(".mergeChoice.isSelected strong"));
-  assert.match(selected, /background:\s*#e7eef8/i);
-  assert.match(selected, /color:\s*#0A2342/i);
-  assert.match(selected, /outline:[^;]*solid\s+#0A2342/i);
-  assert.doesNotMatch(selected, /background:\s*#0A2342/i);
+  assert.match(selected, /background:\s*(?:#e7eef8|var\(--color-surface-muted\))/i);
+  assert.match(selected, /color:\s*(?:#0A2342|#102f5f|var\(--color-navy-deep\))/i);
+  assert.match(selected, /outline:[^;]*solid\s+(?:#0A2342|#102f5f|var\(--color-navy-deep\))/i);
+  assert.doesNotMatch(selected, /background:\s*(?:#0A2342|#102f5f|var\(--color-navy-deep\))/i);
+  assert.ok(contrast("#102f5f", "#f7f9fc") >= 4.5);
   assert.ok(contrast("#0A2342", "#E7EEF8") >= 4.5);
   assert.ok(contrast("#162033", "#FFF4D6") >= 4.5);
   assert.ok(contrast("#162033", "#FFE08A") >= 4.5);
@@ -657,10 +661,10 @@ test("the preview note names an off-screen field and stays out of the layout", (
   assert.match(resulting, /shouldShowPreviewNote/);
   assert.match(resulting, /PREVIEW_NOTE_MS/);
   assert.match(resulting, /previewNotePlacement/);
-  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../src/styles/admin-duplicates.css", import.meta.url), "utf8");
   assert.match(css, /\.previewUpdateNote\s*\{[^}]*position:\s*fixed/);
   assert.match(css, /\.previewUpdateNote\.isOffset\s*\{[^}]*top:\s*4\.25rem/);
-  assert.match(css, /\.previewUpdateNote\.isBottom\s*\{[^}]*bottom:\s*0\.75rem/);
+  assert.match(css, /\.previewUpdateNote\.isBottom\s*\{[^}]*bottom:\s*(?:0\.75rem|var\(--space-xs\))/);
 });
 
 test("merge history lists newest first and shows when undo is blocked", () => {
@@ -728,9 +732,9 @@ test("merge history lists newest first and shows when undo is blocked", () => {
   assert.ok(row.indexOf(">Undo<") < row.indexOf('role="alert"'));
   assert.match(row, /class="message error"/);
   assert.match(row, /edited after the merge/);
-  const historyCss = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  const historyCss = readFileSync(new URL("../src/styles/admin-duplicates.css", import.meta.url), "utf8");
   assert.match(historyCss, /\.mergeHistoryActions\s*\{[^}]*align-items:\s*flex-end/);
-  assert.match(historyCss, /button\.destructive\s*\{[^}]*color:\s*#8b1e2c/);
+  assert.match(historyCss, /button\.destructive\s*\{[^}]*color:\s*(?:#8b1e2c|var\(--color-crimson\))/);
   assert.equal(2.75 * 16, 44);
   assert.match(historyCss, /\.duplicateIconButton\s*\{[^}]*min-width:\s*2\.75rem/);
   assert.match(historyCss, /\.duplicateIconButton\s*\{[^}]*min-height:\s*2\.75rem/);

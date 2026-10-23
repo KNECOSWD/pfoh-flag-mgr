@@ -1,0 +1,17 @@
+/* Barrel. Order is the cascade between files. */
+@import "./tokens.css";
+@import "./base.css";
+@import "./header.css";
+@import "./footer.css";
+@import "./search.css";
+@import "./forms.css";
+@import "./cards.css";
+@import "./my-flags.css";
+@import "./admin-shared.css";
+@import "./admin-review.css";
+@import "./admin-duplicates.css";
+@import "./admin-print.css";
+@import "./admin-flag-manager.css";
+@import "./admin-removal.css";
+@import "./flag-map.css";
+@import "./kiosk.css";

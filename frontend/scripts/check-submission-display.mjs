@@ -91,7 +91,7 @@ test("honoree records and the review queue share the Honoree Card viewer", () =>
 
 test("the honoree card viewer fits the whole page", () => {
   const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
-  const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../src/styles/admin-print.css", import.meta.url), "utf8");
   assert.match(app, /function honoreeCardViewUrl\(url: string\)/);
   assert.match(app, /#view=Fit&zoom=page-fit/);
   assert.match(app, /src=\{honoreeCardViewUrl\(cardPreview\.url\)\}/);
@@ -106,10 +106,12 @@ test("the honoree card viewer fits the whole page", () => {
 
   const layout = css.slice(css.indexOf(".appConfirmOverlay.cardPreviewOverlay"));
   assert.ok(layout.length > 0);
-  assert.match(layout, /\.appConfirmModal\.cardPreviewModal[\s\S]*width:\s*94vw !important/);
-  assert.match(layout, /\.appConfirmModal\.cardPreviewModal[\s\S]*height:\s*94vh !important/);
-  assert.match(layout, /@media \(max-width: 760px\)[\s\S]*\.appConfirmModal\.cardPreviewModal[\s\S]*width:\s*100% !important/);
-  assert.match(layout, /@media \(max-width: 760px\)[\s\S]*height:\s*100dvh !important/);
+  const modal = layout.slice(layout.indexOf(".appConfirmModal.cardPreviewModal"));
+  assert.match(modal, /width:\s*100%/);
+  assert.match(modal, /height:\s*100dvh/);
+  assert.match(modal, /@media \(min-width: 761px\)[\s\S]*width:\s*94vw/);
+  assert.match(modal, /@media \(min-width: 761px\)[\s\S]*height:\s*94vh/);
+  assert.doesNotMatch(modal, /!important/);
 });
 
 test("the review list shows a badge, field diff, and card preview", () => {

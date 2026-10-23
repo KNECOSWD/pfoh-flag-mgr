@@ -132,6 +132,15 @@ jobs:
         if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-submit-photo.mjs
 
+      - name: Check the stylelint config
+        if: steps.changes.outputs.code != 'false'
+        run: node --test frontend/scripts/check-stylelint-config.mjs
+
+      - name: Lint CSS
+        if: steps.changes.outputs.code != 'false'
+        working-directory: frontend
+        run: npm run lint:css
+
       - name: Typecheck frontend
         if: steps.changes.outputs.code != 'false'
         working-directory: frontend

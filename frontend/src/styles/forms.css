@@ -1,0 +1,72 @@
+.requiredFieldsNote {
+  margin: 0 0 var(--space-sm);
+  color: var(--color-muted);
+  font-size: var(--font-body);
+}
+
+.photoPreview img {
+  image-orientation: from-image;
+}
+
+.photoRotationControls .compactButton {
+  border-radius: 999px;
+  padding: var(--space-3xs) var(--space-2xs);
+  min-height: 1.9rem;
+  font-size: var(--font-meta);
+  @media (min-width: 761px) {
+    min-height: 2rem;
+    padding: var(--space-3xs) var(--space-xs);
+    font-size: var(--font-caption);
+  }
+}
+
+.photoRotationControls {
+  gap: var(--space-2xs);
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: var(--space-2xs);
+  align-items: center;
+}
+
+.formCard {
+  padding: var(--space-sm);
+  border-top: 5px solid var(--color-crimson);
+  @media (min-width: 761px) {
+    padding: unset;
+  }
+}
+
+.fieldLabelText {
+  gap: var(--space-3xs);
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--font-caption);
+  @media (min-width: 761px) {
+    font-size: unset;
+  }
+}
+
+.profileForm {
+  gap: var(--space-sm);
+  display: grid;
+  margin-top: var(--space-sm);
+}
+
+.profileForm input[readonly] {
+  background: #f3f6fb;
+  color: #3d4d66;
+}
+
+.formCard label {
+  text-align: left;
+  @media (min-width: 761px) {
+    text-align: unset;
+  }
+}
+
+.formCard .requiredFieldsNote {
+  text-align: left;
+  @media (min-width: 761px) {
+    text-align: unset;
+  }
+}
