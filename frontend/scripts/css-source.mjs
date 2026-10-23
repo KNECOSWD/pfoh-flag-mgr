@@ -4,7 +4,8 @@ const order = [
   "tokens.css",
   "base.css",
   "header.css",
-  "footer.css"
+  "footer.css",
+  "search.css"
 ];
 
 export function cssSource() {
