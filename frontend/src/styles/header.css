@@ -160,16 +160,19 @@ header.hero::after {
   min-height: 1.48rem;
   font-size: var(--font-meta);
   @media (min-width: 761px) {
-    min-height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-height: var(--size-touch);
+    margin-left: 0;
+    padding: 0 var(--space-sm);
+    border-radius: var(--radius-pill);
     background: rgba(255, 255, 255, 0.94);
     color: var(--color-navy);
-    padding: var(--space-2xs) var(--space-xs);
     box-shadow: none;
     font-size: var(--font-caption);
-    flex: unset;
-    margin-left: unset;
-    white-space: unset;
-    padding-inline: unset;
+    white-space: nowrap;
   }
   @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
     min-height: 2.85rem;
@@ -1708,6 +1711,7 @@ header.hero > .heroBrand {
 
 header.hero .heroNav {
   @media (min-width: 761px) {
+    grid-column: 1 / -1;
     grid-row: 2;
     min-width: 0;
   }
@@ -1760,7 +1764,12 @@ header.hero .heroLead {
 header.hero .authBox {
   right: var(--page-gutter);
   @media (min-width: 761px) {
+    position: static;
+    top: auto;
     right: auto;
+    left: auto;
+    grid-column: 2;
+    grid-row: 1;
     width: auto;
     max-width: 100%;
     margin: 0;

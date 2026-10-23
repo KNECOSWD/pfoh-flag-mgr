@@ -667,33 +667,40 @@ main > .pageBody > .adminSectionStack > .card {
 }
 
 .adminAlertBannerLinks a strong {
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  min-width: 1.35rem;
-  min-height: 1.35rem;
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  color: var(--color-navy);
+  align-self: center;
+  box-sizing: border-box;
+  min-inline-size: 1.65rem;
+  block-size: 1.65rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-navy);
+  color: var(--color-surface);
   font-size: var(--font-caption);
 }
 
 .adminAlertBannerLinks a:hover strong {
   background: var(--color-surface);
+  color: var(--color-navy);
 }
 
 .adminAlertBannerLinks a:focus-visible strong {
   background: var(--color-surface);
+  color: var(--color-navy);
 }
 
 .adminAlertBannerLinks a.isActive strong {
   background: var(--color-surface);
+  color: var(--color-navy);
 }
 
 .adminAlertBannerLinks {
-  gap: var(--space-2xs);
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs);
   justify-content: stretch;
   @media (min-width: 761px) {
     justify-content: flex-end;
