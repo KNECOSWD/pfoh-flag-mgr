@@ -25,8 +25,10 @@ import {
   previewRows,
   previewUpdateText,
   previewValue,
+  formatSubmissionDate,
   recordsDiffer,
   schedulePreviewFlash,
+  submissionDateLabel,
   shouldShowPreviewNote,
   stillToChooseHint,
   survivorIdFromChoices
@@ -165,6 +167,64 @@ function fillFrom(sourceId) {
   }
   return choices;
 }
+
+function identityBlock(html, id) {
+  const start = html.indexOf(`data-record="${id}"`);
+  const identity = html.indexOf('data-field="fullName"', start);
+  const next = html.indexOf('data-field="', identity + 'data-field="'.length);
+  return html.slice(identity, next);
+}
+
+test("each duplicate record shows the date it was submitted", () => {
+  assert.equal(submissionDateLabel(""), "");
+  assert.equal(submissionDateLabel(null), "");
+  assert.equal(formatSubmissionDate("not-a-date"), "not-a-date");
+  const older = formatSubmissionDate("2019-06-01T15:30:00Z");
+  const newer = formatSubmissionDate("2024-11-03T08:00:00Z");
+  assert.match(older, /2019/);
+  assert.match(newer, /2024/);
+  assert.notEqual(older, newer);
+  assert.equal(submissionDateLabel("2019-06-01T15:30:00Z"), `Submitted ${older}`);
+
+  const dated = [
+    { ...left, createdDate: "2019-06-01T15:30:00Z" },
+    { ...right, createdDate: "2024-11-03T08:00:00Z" }
+  ];
+  const board = renderToStaticMarkup(
+    createElement(DuplicateReviewBoard, {
+      honorees: dated,
+      includedIds: [1, 2],
+      choices: {},
+      onToggleIncluded: () => {},
+      onChooseSource: () => {}
+    })
+  );
+  const leftIdentity = identityBlock(board, 1);
+  const rightIdentity = identityBlock(board, 2);
+  assert.match(leftIdentity, /Submitted/);
+  assert.match(leftIdentity, /2019/);
+  assert.doesNotMatch(leftIdentity, /2024/);
+  assert.match(rightIdentity, /Submitted/);
+  assert.match(rightIdentity, /2024/);
+  assert.doesNotMatch(rightIdentity, /2019/);
+
+  const undated = renderToStaticMarkup(
+    createElement(DuplicateReviewBoard, {
+      honorees,
+      includedIds: included,
+      choices: {},
+      onToggleIncluded: () => {},
+      onChooseSource: () => {}
+    })
+  );
+  assert.doesNotMatch(undated, /Submitted/);
+
+  const screen = readFileSync(new URL("../src/DuplicateMerge.tsx", import.meta.url), "utf8");
+  const listStart = screen.indexOf('className="duplicateMemberList"');
+  const list = screen.slice(listStart, screen.indexOf("</ul>", listStart));
+  assert.match(list, /submissionDateLabel\(honoree\.createdDate\)/);
+  assert.match(list, /\{submitted \? <span>\{submitted\}<\/span> : null\}/);
+});
 
 test("every field has a select on both records and only exact matches are preselected", () => {
   assert.equal(recordsDiffer(["Jr.", "Sr."]), true);

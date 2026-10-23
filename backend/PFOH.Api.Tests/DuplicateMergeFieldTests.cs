@@ -18,6 +18,16 @@ public class DuplicateMergeFieldApiTests(PfohApiFactory factory) : IClassFixture
     {
         await ResetAsync();
         await SeedPairAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            (await db.Honorees.SingleAsync(honoree => honoree.Id == 1)).CreatedDate =
+                new DateTime(2019, 6, 1, 15, 30, 0, DateTimeKind.Utc);
+            (await db.Honorees.SingleAsync(honoree => honoree.Id == 2)).CreatedDate =
+                new DateTime(2024, 11, 3, 8, 0, 0, DateTimeKind.Utc);
+            await db.SaveChangesAsync();
+        }
+
         var client = factory.CreateClient();
 
         var listed = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/duplicates/groups"));
@@ -25,6 +35,11 @@ public class DuplicateMergeFieldApiTests(PfohApiFactory factory) : IClassFixture
         var groups = await listed.Content.ReadFromJsonAsync<List<GroupBody>>(Json);
         var group = Assert.Single(groups!);
         var left = Assert.Single(group.Honorees, honoree => honoree.Id == 1);
+        Assert.Equal(2019, left.CreatedDate.Year);
+        Assert.Equal(6, left.CreatedDate.Month);
+        Assert.Equal(1, left.CreatedDate.Day);
+        Assert.Equal(15, left.CreatedDate.Hour);
+        Assert.Equal(30, left.CreatedDate.Minute);
         Assert.Equal("Jr.", left.Suffix);
         Assert.Equal("Photo bio", left.Description);
         Assert.Equal("United States Army", left.ServiceBranchName);
@@ -36,6 +51,9 @@ public class DuplicateMergeFieldApiTests(PfohApiFactory factory) : IClassFixture
         Assert.Contains("Jr.", left.Name);
 
         var right = Assert.Single(group.Honorees, honoree => honoree.Id == 2);
+        Assert.Equal(2024, right.CreatedDate.Year);
+        Assert.Equal(11, right.CreatedDate.Month);
+        Assert.Equal(3, right.CreatedDate.Day);
         Assert.Equal("Sr.", right.Suffix);
         Assert.Equal("", right.PhotoFileName);
         Assert.Null(right.PhotoUrl);
@@ -1443,7 +1461,8 @@ public class DuplicateMergeFieldApiTests(PfohApiFactory factory) : IClassFixture
         string ServiceYears,
         string Awards,
         string PhotoFileName,
-        string? PhotoUrl);
+        string? PhotoUrl,
+        DateTime CreatedDate);
     private sealed record MergeBody(int SurvivorId, List<ClaimantBody> Claimants);
     private sealed record ClaimantBody(string Email);
 }

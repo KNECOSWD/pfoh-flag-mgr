@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.0.1
+
+- Duplicate honoree review shows when each record was submitted. The date is the honoree record's created date, shown on each record in a group and on the side-by-side comparison, so a reviewer can see which entry is newer.
+
 ## 5.0.0
 
 - Bootstrap 5 is the base for forms, buttons, the header nav and hamburger, the how-it-works cards, and shared fields. Brand colors stay Plano Flags of Honor through a CSS variable bridge. Dialogs stay on Radix. The Flag Map, kiosk, and print layouts stay on their own styles.

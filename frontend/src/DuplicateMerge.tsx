@@ -24,6 +24,7 @@ import {
   changedPreviewKeys,
   choicesAfterIncludedChange,
   previewRows,
+  submissionDateLabel,
   survivorIdFromChoices
 } from "./duplicateReview.js";
 import { DuplicateHistoryLink, DuplicateIconButton } from "./duplicateChrome.js";
@@ -333,14 +334,18 @@ export function DuplicateMergeScreen({
                 </header>
                 <p className="duplicateWhy">{item.explanation}</p>
                 <ul className="duplicateMemberList">
-                  {item.honorees.map((honoree) => (
-                    <li key={honoree.id}>
-                      <strong>{honoree.name}</strong>
-                      <span>#{honoree.id}</span>
-                      <span>{honoree.serviceBranchName || "No branch"}</span>
-                      <span>{honoree.flagGridName || "No flag grid"}</span>
-                    </li>
-                  ))}
+                  {item.honorees.map((honoree) => {
+                    const submitted = submissionDateLabel(honoree.createdDate);
+                    return (
+                      <li key={honoree.id}>
+                        <strong>{honoree.name}</strong>
+                        <span>#{honoree.id}</span>
+                        {submitted ? <span>{submitted}</span> : null}
+                        <span>{honoree.serviceBranchName || "No branch"}</span>
+                        <span>{honoree.flagGridName || "No flag grid"}</span>
+                      </li>
+                    );
+                  })}
                 </ul>
                 <button type="button" onClick={() => openGroup(item)}>
                   Review

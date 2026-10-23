@@ -215,6 +215,8 @@ export type DuplicateHonoree = {
   emailAddress: string;
   sponsorName: string;
   claimants: DuplicateClaimant[];
+  // Honoree.CreatedDate: when this record was created and received.
+  createdDate: string;
 };
 
 export type DuplicatePair = {
