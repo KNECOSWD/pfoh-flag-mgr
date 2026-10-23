@@ -9,7 +9,8 @@ const order = [
   "forms.css",
   "cards.css",
   "my-flags.css",
-  "admin-shared.css"
+  "admin-shared.css",
+  "admin-review.css"
 ];
 
 export function cssSource() {
