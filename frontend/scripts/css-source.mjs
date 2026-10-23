@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 
 const order = [
   "tokens.css",
-  "base.css"
+  "base.css",
+  "header.css"
 ];
 
 export function cssSource() {
