@@ -722,35 +722,18 @@ main > .pageBody > .adminSectionStack > .card {
   border: 1px solid #d8e4f2;
   background: linear-gradient(180deg, var(--color-surface) 0%, #f8fbff 100%);
   gap: var(--space-xs);
-  margin: 0 auto 0.85rem;
-  padding: var(--space-xs);
-  border-radius: 0;
-  display: grid;
-  align-items: center;
-  box-shadow: 0 14px 34px rgba(7, 26, 59, 0.10);
-  grid-template-columns: 1fr;
   margin-top: 0;
   margin-bottom: var(--space-sm);
-  border-left: 0;
-  border-right: 0;
+  padding: var(--space-xs);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 14px 34px rgba(7, 26, 59, 0.10);
   box-sizing: border-box;
-  width: 100vw;
-  max-width: none;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
-  padding-left: var(--space-2xs);
-  padding-right: var(--space-2xs);
   @media (min-width: 761px) {
-    grid-template-columns: minmax(0, 1fr) auto;
     gap: var(--space-sm);
-    margin: 0 auto 1rem;
-    padding: var(--space-xs) var(--space-xs);
-    padding-left: max(1rem, calc((100vw - 1180px) / 2 + 1rem));
-    padding-right: max(1rem, calc((100vw - 1180px) / 2 + 1rem));
-  }
-  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
-    padding-left: var(--space-xs);
-    padding-right: var(--space-xs);
   }
 }
 

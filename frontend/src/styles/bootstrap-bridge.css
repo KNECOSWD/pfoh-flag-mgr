@@ -1,0 +1,133 @@
+/* PFOH tokens drive Bootstrap. Loaded after bootstrap.css. No Sass. */
+:root {
+  --bs-primary: var(--color-navy);
+  --bs-primary-rgb: 23, 59, 115;
+  --bs-secondary: var(--color-muted);
+  --bs-secondary-rgb: 83, 98, 122;
+  --bs-success: var(--color-success-ink);
+  --bs-success-rgb: 15, 107, 58;
+  --bs-danger: var(--color-crimson);
+  --bs-danger-rgb: 155, 28, 49;
+  --bs-warning: var(--color-gold);
+  --bs-warning-rgb: 255, 224, 138;
+  --bs-body-color: var(--color-ink);
+  --bs-body-color-rgb: 22, 32, 51;
+  --bs-body-bg: var(--color-page);
+  --bs-body-bg-rgb: 238, 243, 249;
+  --bs-body-font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bs-body-font-size: var(--font-body);
+  --bs-body-line-height: var(--leading-body);
+  --bs-emphasis-color: var(--color-navy-deep);
+  --bs-secondary-color: var(--color-muted);
+  --bs-tertiary-bg: var(--color-surface-muted);
+  --bs-link-color: var(--color-navy);
+  --bs-link-color-rgb: 23, 59, 115;
+  --bs-link-hover-color: var(--color-navy-deep);
+  --bs-link-hover-color-rgb: 16, 47, 95;
+  --bs-focus-ring-color: rgba(23, 59, 115, 0.25);
+  --bs-border-radius: var(--radius-sm);
+  --bs-border-radius-sm: var(--radius-sm);
+  --bs-border-radius-lg: var(--radius-md);
+  --bs-border-radius-pill: var(--radius-pill);
+}
+
+.btn {
+  --bs-btn-border-radius: var(--radius-pill);
+  min-height: var(--size-touch);
+  font-weight: 700;
+}
+
+.btn-primary {
+  --bs-btn-color: var(--color-on-navy);
+  --bs-btn-bg: var(--color-navy);
+  --bs-btn-border-color: var(--color-navy);
+  --bs-btn-hover-color: var(--color-on-navy);
+  --bs-btn-hover-bg: var(--color-navy-deep);
+  --bs-btn-hover-border-color: var(--color-navy-deep);
+  --bs-btn-focus-shadow-rgb: 23, 59, 115;
+  --bs-btn-active-color: var(--color-on-navy);
+  --bs-btn-active-bg: var(--color-navy-night);
+  --bs-btn-active-border-color: var(--color-navy-night);
+  --bs-btn-disabled-color: var(--color-on-navy);
+  --bs-btn-disabled-bg: var(--color-navy);
+  --bs-btn-disabled-border-color: var(--color-navy);
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--color-navy);
+  --bs-btn-border-color: var(--color-navy);
+  --bs-btn-hover-color: var(--color-on-navy);
+  --bs-btn-hover-bg: var(--color-navy);
+  --bs-btn-hover-border-color: var(--color-navy);
+  --bs-btn-focus-shadow-rgb: 23, 59, 115;
+  --bs-btn-active-color: var(--color-on-navy);
+  --bs-btn-active-bg: var(--color-navy-deep);
+  --bs-btn-active-border-color: var(--color-navy-deep);
+  --bs-btn-disabled-color: var(--color-navy);
+  --bs-btn-disabled-border-color: var(--color-navy);
+}
+
+.btn-light {
+  --bs-btn-color: var(--color-navy);
+  --bs-btn-bg: var(--color-surface);
+  --bs-btn-border-color: var(--color-surface);
+  --bs-btn-hover-color: var(--color-navy-deep);
+  --bs-btn-hover-bg: var(--color-gold);
+  --bs-btn-hover-border-color: var(--color-gold);
+  --bs-btn-focus-shadow-rgb: 255, 224, 138;
+  --bs-btn-active-color: var(--color-navy-deep);
+  --bs-btn-active-bg: var(--color-gold);
+  --bs-btn-active-border-color: var(--color-gold);
+  --bs-btn-disabled-color: var(--color-navy);
+  --bs-btn-disabled-bg: var(--color-surface);
+  --bs-btn-disabled-border-color: var(--color-surface);
+}
+
+.btn-outline-light {
+  --bs-btn-color: var(--color-on-navy);
+  --bs-btn-border-color: rgba(255, 255, 255, 0.7);
+  --bs-btn-hover-color: var(--color-navy);
+  --bs-btn-hover-bg: var(--color-surface);
+  --bs-btn-hover-border-color: var(--color-surface);
+  --bs-btn-focus-shadow-rgb: 255, 255, 255;
+  --bs-btn-active-color: var(--color-navy);
+  --bs-btn-active-bg: var(--color-surface);
+  --bs-btn-active-border-color: var(--color-surface);
+  --bs-btn-disabled-color: var(--color-on-navy);
+  --bs-btn-disabled-border-color: rgba(255, 255, 255, 0.4);
+}
+
+.btn-danger {
+  --bs-btn-color: var(--color-on-navy);
+  --bs-btn-bg: var(--color-crimson);
+  --bs-btn-border-color: var(--color-crimson);
+  --bs-btn-hover-color: var(--color-on-navy);
+  --bs-btn-hover-bg: #841629;
+  --bs-btn-hover-border-color: #841629;
+  --bs-btn-focus-shadow-rgb: 155, 28, 49;
+  --bs-btn-active-color: var(--color-on-navy);
+  --bs-btn-active-bg: #841629;
+  --bs-btn-active-border-color: #841629;
+  --bs-btn-disabled-color: var(--color-on-navy);
+  --bs-btn-disabled-bg: var(--color-crimson);
+  --bs-btn-disabled-border-color: var(--color-crimson);
+}
+
+.form-control,
+.form-select {
+  min-height: var(--size-touch);
+  border-color: #5f7394;
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--color-navy);
+  box-shadow: 0 0 0 0.2rem rgba(23, 59, 115, 0.25);
+}
+
+.badge.text-bg-primary {
+  background-color: var(--color-navy);
+  color: var(--color-on-navy);
+}

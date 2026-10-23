@@ -4,7 +4,6 @@ header.hero::after {
 }
 
 .authBox button:hover:not(:disabled) {
-  background: var(--color-surface);
   box-shadow: none;
 }
 
@@ -149,39 +148,7 @@ header.hero::after {
 
 .authBox button {
   flex: 0 0 auto;
-  padding: var(--space-2xs) var(--space-sm);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.96);
-  padding-inline: var(--space-2xs);
-  margin-left: auto;
   white-space: nowrap;
-  color: #123463;
-  box-shadow: 0 9px 20px rgba(0, 0, 0, 0.24);
-  min-height: 1.48rem;
-  font-size: var(--font-meta);
-  @media (min-width: 761px) {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    min-height: var(--size-touch);
-    margin-left: 0;
-    padding: 0 var(--space-sm);
-    border-radius: var(--radius-pill);
-    background: rgba(255, 255, 255, 0.94);
-    color: var(--color-navy);
-    box-shadow: none;
-    font-size: var(--font-caption);
-    white-space: nowrap;
-  }
-  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
-    min-height: 2.85rem;
-    color: #123463;
-    padding: var(--space-xs) var(--space-md);
-    box-shadow: 0 8px 22px rgba(10, 24, 50, 0.22);
-    margin-left: auto;
-    white-space: nowrap;
-  }
 }
 
 .hero:has(.heroNav.isOpen)::after {
@@ -239,60 +206,6 @@ header.hero::after {
   display: none;
   @media (min-width: 761px) {
     display: flex;
-  }
-  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
-    display: none;
-  }
-}
-
-.mobileNavToggle::before {
-  content: "☰";
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--font-body);
-  line-height: 1;
-  transform: translateY(-0.02rem);
-  @media (min-width: 761px) {
-    content: unset;
-    display: unset;
-    align-items: unset;
-    justify-content: unset;
-    font-size: unset;
-    line-height: unset;
-    transform: unset;
-  }
-  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
-    content: "☰";
-    font-size: var(--font-body);
-    line-height: 1;
-  }
-}
-
-.mobileNavToggle[aria-expanded="true"]::before {
-  content: "×";
-  font-size: var(--font-heading);
-  font-weight: 900;
-  @media (min-width: 761px) {
-    content: unset;
-    font-size: unset;
-    font-weight: unset;
-  }
-  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
-    content: "×";
-    font-size: var(--font-heading);
-    font-weight: 900;
-  }
-}
-
-.mobileNavToggle span {
-  opacity: 0.9;
-  font-size: var(--font-meta);
-  display: none;
-  @media (min-width: 761px) {
-    opacity: unset;
-    font-size: unset;
-    display: unset;
   }
   @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
     display: none;
@@ -415,6 +328,12 @@ header.hero::after {
   @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
     background: rgba(255, 255, 255, 0.10);
   }
+}
+
+.navbar-dark .heroNav a.nav-link,
+.navbar-dark .heroNav a.nav-link:hover,
+.navbar-dark .heroNav a.nav-link:focus-visible {
+  color: var(--color-surface);
 }
 
 .hero .kicker {
@@ -1127,7 +1046,6 @@ header.hero::after {
   color: var(--color-surface);
   box-shadow: none;
   backdrop-filter: blur(7px);
-  font-size: 0;
   font-weight: 850;
   line-height: 1;
   text-shadow: none;

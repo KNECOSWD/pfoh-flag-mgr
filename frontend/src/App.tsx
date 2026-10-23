@@ -3052,7 +3052,7 @@ export default function App() {
     <main>
       <div className="pageBody">
       {versionReloadNotice()}
-      <header className={mobileNavOpen ? "hero mobileMenuOpen" : isPublicFlagMapRoute ? "hero publicMapHero" : "hero"}>
+      <header className={mobileNavOpen ? "navbar navbar-dark hero mobileMenuOpen" : isPublicFlagMapRoute ? "navbar navbar-dark hero publicMapHero" : "navbar navbar-dark hero"}>
         <div className="heroBrand">
           <a
             className="heroDogTagLink"
@@ -3074,38 +3074,38 @@ export default function App() {
             <>
               <strong>{displayName}</strong>
               <div className="authActions">
-                <button type="button" onClick={() => void openProfile()}>
+                <button type="button" className="btn btn-light" onClick={() => void openProfile()}>
                   Profile
                 </button>
-                <button type="button" onClick={signOut}>
+                <button type="button" className="btn btn-light" onClick={signOut}>
                   Sign out
                 </button>
               </div>
             </>
           ) : (
             <div className="authActions">
-              <button type="button" onClick={() => void signIn("login")}>
+              <button type="button" className="btn btn-light" onClick={() => void signIn("login")}>
                 Log in
               </button>
-              <button type="button" className="secondary" onClick={() => void signIn("create")}>
+              <button type="button" className="btn btn-outline-light" onClick={() => void signIn("create")}>
                 Create an account
               </button>
             </div>
           )}
         </div>
 
-          <nav id="hero-navigation" className="heroNav desktopHeroNav" aria-label="Main navigation">
+          <nav id="hero-navigation" className="heroNav desktopHeroNav navbar-nav flex-row flex-wrap" aria-label="Main navigation">
             {siteNav.filter((item) => item.show).map((item) => (
-              <a key={item.route} className={activeRoute === item.route ? "isActive" : ""} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
+              <a key={item.route} className={activeRoute === item.route ? "nav-link isActive" : "nav-link"} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
             ))}
             <a
-              className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
+              className={activeRoute === "/honor-a-hero" ? "nav-link isActive" : "nav-link"}
               href="/honor-a-hero"
               onClick={(event) => handleRouteLink(event, "/honor-a-hero")}
             >
               {publicCopy.submitHonoree}
             </a>
-            <a href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer">
+            <a className="nav-link" href="https://planoflagsofhonor.com" target="_blank" rel="noreferrer">
               PlanoFlagsOfHonor.com
             </a>
             {chrome.adminLinks ? (
@@ -3115,9 +3115,8 @@ export default function App() {
 
           <Dialog.Root open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
             <Dialog.Trigger asChild>
-              <button type="button" className="mobileNavToggle" aria-label="Open menu">
-                <span aria-hidden="true" className="mobileNavIcon">☰</span>
-                <span>Menu</span>
+              <button type="button" className="navbar-toggler mobileNavToggle" aria-label="Open menu">
+                <span className="navbar-toggler-icon" />
               </button>
             </Dialog.Trigger>
 
@@ -3166,6 +3165,7 @@ export default function App() {
                       <strong>{displayName}</strong>
                       <button
                         type="button"
+                        className="btn btn-light"
                         onClick={() => {
                           setMobileNavOpen(false);
                           void openProfile();
@@ -3175,6 +3175,7 @@ export default function App() {
                       </button>
                       <button
                         type="button"
+                        className="btn btn-light"
                         onClick={() => {
                           setMobileNavOpen(false);
                           void signOut();
@@ -3187,6 +3188,7 @@ export default function App() {
                     <>
                       <button
                         type="button"
+                        className="btn btn-light"
                         onClick={() => {
                           void signIn("login");
                         }}
@@ -3195,7 +3197,7 @@ export default function App() {
                       </button>
                       <button
                         type="button"
-                        className="secondary"
+                        className="btn btn-outline-light"
                         onClick={() => {
                           void signIn("create");
                         }}
@@ -3314,10 +3316,11 @@ export default function App() {
                   </p>
                 </div>
 
-                <form className="profileForm" onSubmit={(event) => void saveProfile(event)}>
-                  <label>
+                <form className="profileForm row g-3" onSubmit={(event) => void saveProfile(event)}>
+                  <label className="col-12">
                     Name
                     <input
+                      className="form-control"
                       type="text"
                       name="name"
                       autoComplete="name"
@@ -3332,9 +3335,10 @@ export default function App() {
                       required
                     />
                   </label>
-                  <label>
+                  <label className="col-12">
                     Email
                     <input
+                      className="form-control"
                       type="email"
                       name="email"
                       value={profileEmail}
@@ -3343,9 +3347,10 @@ export default function App() {
                       required
                     />
                   </label>
-                  <label>
+                  <label className="col-12">
                     Phone
                     <input
+                      className="form-control"
                       type="tel"
                       name="phone"
                       autoComplete="tel"
@@ -3360,10 +3365,11 @@ export default function App() {
                       required
                     />
                   </label>
-                  <p className="helperText">Use a 10-digit US number, like 214-555-1234.</p>
-                  <label>
+                  <p className="helperText col-12">Use a 10-digit US number, like 214-555-1234.</p>
+                  <label className="col-12">
                     Organization <span className="helperText">(optional)</span>
                     <input
+                      className="form-control"
                       type="text"
                       name="organization"
                       autoComplete="organization"
@@ -3380,16 +3386,16 @@ export default function App() {
                   {profileError ? <p className="profileFieldError" role="alert">{profileError}</p> : null}
                   {profileNotice ? <p className="profileSaved" role="status">{profileNotice}</p> : null}
 
-                  <div className="modalActions">
+                  <div className="modalActions col-12">
                     <button
                       type="button"
-                      className="secondary"
+                      className="btn btn-outline-primary"
                       disabled={profileSaving}
                       onClick={() => setProfileOpen(false)}
                     >
                       Close
                     </button>
-                    <button type="submit" disabled={profileLoading || profileSaving}>
+                    <button className="btn btn-primary" type="submit" disabled={profileLoading || profileSaving}>
                       {profileSaving ? "Saving..." : "Save profile"}
                     </button>
                   </div>
@@ -3795,61 +3801,72 @@ export default function App() {
             }
           >
 
-            <form className="searchBar nativeSearchBar" onSubmit={searchHonorees}>
-              <label className="visuallyHidden" htmlFor="honoree-search">
-                Search honorees
-              </label>
-              <input
-                id="honoree-search"
-                type="search"
-                placeholder={publicCopy.searchPlaceholder}
-                value={honoreeSearchText}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setHonoreeSearchText(value);
+            <form className="searchBar nativeSearchBar row g-2 align-items-stretch" onSubmit={searchHonorees}>
+              <div className="col-12 col-md">
+                <label className="visually-hidden" htmlFor="honoree-search">
+                  Search honorees
+                </label>
+                <input
+                  id="honoree-search"
+                  className="form-control"
+                  type="search"
+                  placeholder={publicCopy.searchPlaceholder}
+                  value={honoreeSearchText}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setHonoreeSearchText(value);
 
-                  if (value.trim() === "") {
-                    setHonoreeResults([]);
-                    setHonoreeSearchPerformed(false);
-                  }
-                }}
-                aria-label="Search honorees"
-              />
-              <div className="searchActionButtons">
-                <button
-                  type="submit"
-                  className="searchSubmitButton"
-                  disabled={searchLoading || honoreeSearchText.trim() === ""}
-                >
-                  {searchLoading ? "Searching..." : "Search"}
-                </button>
-                <button
-                  type="button"
-                  className="secondary searchClearButton"
-                  onClick={clearHonoreeSearch}
-                  disabled={searchLoading || (honoreeSearchText.trim() === "" && !honoreeSearchPerformed)}
-                >
-                  Clear
-                </button>
+                    if (value.trim() === "") {
+                      setHonoreeResults([]);
+                      setHonoreeSearchPerformed(false);
+                    }
+                  }}
+                  aria-label="Search honorees"
+                />
+              </div>
+              <div className="col-12 col-md-auto">
+                <div className="searchActionButtons d-flex gap-2">
+                  <button
+                    type="submit"
+                    className="btn btn-primary flex-grow-1 flex-md-grow-0"
+                    disabled={searchLoading || honoreeSearchText.trim() === ""}
+                  >
+                    {searchLoading ? "Searching..." : "Search"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary flex-grow-1 flex-md-grow-0"
+                    onClick={clearHonoreeSearch}
+                    disabled={searchLoading || (honoreeSearchText.trim() === "" && !honoreeSearchPerformed)}
+                  >
+                    Clear
+                  </button>
+                </div>
               </div>
             </form>
 
             {showInlineHowItWorks ? (
-              <section className="inlineHowItWorks" aria-label="How to submit or suggest a change">
-                <div>
-                  <span>1</span>
-                  <strong>{publicCopy.stepSearchTitle}</strong>
-                  <p>{publicCopy.stepSearchBody}</p>
+              <section className="inlineHowItWorks row row-cols-1 row-cols-md-3 g-3" aria-label="How to submit or suggest a change">
+                <div className="col">
+                  <div className="howStep h-100">
+                    <span className="badge rounded-pill text-bg-primary">1</span>
+                    <strong>{publicCopy.stepSearchTitle}</strong>
+                    <p>{publicCopy.stepSearchBody}</p>
+                  </div>
                 </div>
-                <div>
-                  <span>2</span>
-                  <strong>{publicCopy.stepSubmitTitle}</strong>
-                  <p>{publicCopy.stepSubmitBody}</p>
+                <div className="col">
+                  <div className="howStep h-100">
+                    <span className="badge rounded-pill text-bg-primary">2</span>
+                    <strong>{publicCopy.stepSubmitTitle}</strong>
+                    <p>{publicCopy.stepSubmitBody}</p>
+                  </div>
                 </div>
-                <div>
-                  <span>3</span>
-                  <strong>{publicCopy.stepReviewTitle}</strong>
-                  <p>{publicCopy.stepReviewBody}</p>
+                <div className="col">
+                  <div className="howStep h-100">
+                    <span className="badge rounded-pill text-bg-primary">3</span>
+                    <strong>{publicCopy.stepReviewTitle}</strong>
+                    <p>{publicCopy.stepReviewBody}</p>
+                  </div>
                 </div>
               </section>
             ) : null}
@@ -4835,7 +4852,7 @@ export default function App() {
                 </div>
                 <button
                   type="button"
-                  className="secondary"
+                  className="btn btn-outline-primary"
                   onClick={() => {
                     setSelectedClaim(null);
                     setIsNominating(false);
@@ -4858,12 +4875,13 @@ export default function App() {
                 Fields marked <span className="requiredMark" aria-hidden="true">*</span> are required.
               </p>
 
-              <form className="gridForm" onSubmit={isNominating ? submitNomination : submitClaim}>
-                <label>
+              <form className="row g-3" onSubmit={isNominating ? submitNomination : submitClaim}>
+                <label className="col-12 col-md-6">
                   <span className="fieldLabelText">
                     First name <span className="requiredMark" aria-hidden="true">*</span>
                   </span>
                   <input
+                    className="form-control"
                     ref={firstFormInputRef}
                     required
                     value={form.firstName}
@@ -4871,55 +4889,61 @@ export default function App() {
                   />
                 </label>
 
-                <label>
+                <label className="col-12 col-md-6">
                   Middle name
                   <input
+                    className="form-control"
                     value={form.middleName ?? ""}
                     onChange={(e) => update("middleName", e.target.value)}
                   />
                 </label>
 
-                <label>
+                <label className="col-12 col-md-6">
                   <span className="fieldLabelText">
                     Last name <span className="requiredMark" aria-hidden="true">*</span>
                   </span>
                   <input
+                    className="form-control"
                     required
                     value={form.lastName}
                     onChange={(e) => update("lastName", e.target.value)}
                   />
                 </label>
 
-                <label>
+                <label className="col-12 col-md-6">
                   Suffix
                   <input
+                    className="form-control"
                     placeholder="Jr., Sr., III"
                     value={form.suffix ?? ""}
                     onChange={(e) => update("suffix", e.target.value)}
                   />
                 </label>
 
-                <label>
+                <label className="col-12 col-md-6">
                   Nickname
                   <input
+                    className="form-control"
                     value={form.nickname ?? ""}
                     onChange={(e) => update("nickname", e.target.value)}
                   />
                 </label>
 
-                <label>
+                <label className="col-12 col-md-6">
                   Rank / title
                   <input
+                    className="form-control"
                     value={form.rank ?? ""}
                     onChange={(e) => update("rank", e.target.value)}
                   />
                 </label>
 
-                <label>
+                <label className="col-12 col-md-6">
                   <span className="fieldLabelText">
                     Service branch category <span className="requiredMark" aria-hidden="true">*</span>
                   </span>
                   <select
+                    className="form-select"
                     required
                     value={form.serviceBranchCategoryId ?? ""}
                     onChange={(e) => {
@@ -4940,11 +4964,12 @@ export default function App() {
                   </select>
                 </label>
 
-                <label>
+                <label className="col-12 col-md-6">
                   <span className="fieldLabelText">
                     Service branch <span className="requiredMark" aria-hidden="true">*</span>
                   </span>
                   <select
+                    className="form-select"
                     required
                     disabled={!form.serviceBranchCategoryId}
                     value={form.serviceBranchId ?? ""}
@@ -4961,9 +4986,10 @@ export default function App() {
                   </select>
                 </label>
 
-                <label>
+                <label className="col-12 col-md-6">
                   Start year
                   <input
+                    className="form-control"
                     type="number"
                     inputMode="numeric"
                     value={form.startYear ?? ""}
@@ -4971,9 +4997,10 @@ export default function App() {
                   />
                 </label>
 
-                <label>
+                <label className="col-12 col-md-6">
                   End year
                   <input
+                    className="form-control"
                     type="number"
                     inputMode="numeric"
                     value={form.endYear ?? ""}
@@ -4981,36 +5008,39 @@ export default function App() {
                   />
                 </label>
 
-                <label className="wide">
+                <label className="col-12">
                   Conflicts served
                   <textarea
+                    className="form-control"
                     rows={3}
                     value={form.conflictsServed ?? ""}
                     onChange={(e) => update("conflictsServed", e.target.value)}
                   />
                 </label>
 
-                <label className="wide">
+                <label className="col-12">
                   Awards
                   <textarea
+                    className="form-control"
                     rows={3}
                     value={form.awards ?? ""}
                     onChange={(e) => update("awards", e.target.value)}
                   />
                 </label>
 
-                <label className="wide">
+                <label className="col-12">
                   <span className="fieldLabelText">
                     Honoree description / tribute <span className="requiredMark" aria-hidden="true">*</span>
                   </span>
                   <textarea
+                    className="form-control"
                     required
                     rows={6}
                     value={form.description ?? ""}
                     onChange={(e) => update("description", e.target.value)}
                   />
                 </label>
-                <label className="wide">
+                <label className="col-12">
                   Honoree photo
                   {(selectedPhotoPreviewUrl ||
                     pendingPhotoObjectUrl ||
@@ -5033,6 +5063,7 @@ export default function App() {
                     <span className="pendingPhotoLabel">Photo received, pending review</span>
                   ) : null}
                   <input
+                    className="form-control"
                     type="file"
                     accept="image/*"
                     onChange={(e) => handlePhotoSelected(e.target.files?.[0] ?? null)}
@@ -5041,14 +5072,14 @@ export default function App() {
                     <div className="photoRotationControls" aria-label="Photo rotation controls">
                       <button
                         type="button"
-                        className="secondary compactButton"
+                        className="btn btn-outline-primary btn-sm"
                         onClick={() => void rotateDisplayedPhoto(-90)}
                       >
                         ↺ Rotate left
                       </button>
                       <button
                         type="button"
-                        className="secondary compactButton"
+                        className="btn btn-outline-primary btn-sm"
                         onClick={() => void rotateDisplayedPhoto(90)}
                       >
                         Rotate right ↻
@@ -5067,22 +5098,24 @@ export default function App() {
                 </label>
 
 
-                <label>
+                <label className="col-12 col-md-6">
                   <span className="fieldLabelText">
                     Submitter phone <span className="requiredMark" aria-hidden="true">*</span>
                   </span>
                   <input
+                    className="form-control"
                     required
                     value={form.submitterPhoneNumber ?? ""}
                     onChange={(e) => update("submitterPhoneNumber", e.target.value)}
                   />
                 </label>
 
-                <label>
+                <label className="col-12 col-md-6">
                   <span className="fieldLabelText">
                     Submitter email <span className="requiredMark" aria-hidden="true">*</span>
                   </span>
                   <input
+                    className="form-control"
                     required
                     type="email"
                     value={form.submitterEmailAddress ?? ""}
@@ -5090,8 +5123,9 @@ export default function App() {
                   />
                 </label>
 
-                <label className="checkRow wide">
+                <label className="col-12 form-check checkRow">
                   <input
+                    className="form-check-input"
                     type="checkbox"
                     checked={form.kia}
                     onChange={(e) => update("kia", e.target.checked)}
@@ -5100,16 +5134,16 @@ export default function App() {
                 </label>
 
                 {selectedClaim?.claimStatus === "AdminDirectEdit" ? null : (
-                  <p className="helperText wide">{publicCopy.aboveSubmit}</p>
+                  <p className="helperText col-12">{publicCopy.aboveSubmit}</p>
                 )}
 
-                <div className="actions wide">
+                <div className="actions col-12 d-flex flex-wrap gap-2">
                   {!isNominating ? (
-                    <button type="button" className="secondary" disabled={saving} onClick={saveDraft}>
+                    <button type="button" className="btn btn-outline-primary" disabled={saving} onClick={saveDraft}>
                       {saving ? "Saving..." : "Save draft"}
                     </button>
                   ) : null}
-                  <button type="submit" disabled={saving}>
+                  <button className="btn btn-primary" type="submit" disabled={saving}>
                     {saving
                       ? submitPhase || "Submitting..."
                       : selectedClaim?.claimStatus === "AdminDirectEdit"
@@ -5177,7 +5211,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="footerCredit">
+          <div className="footerCredit text-center">
             <div className="footerCreditBrand">
               <span>Built by</span>
               <a href="https://www.kneco.com" target="_blank" rel="noreferrer" aria-label="KNECO, Inc. website">

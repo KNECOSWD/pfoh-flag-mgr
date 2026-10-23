@@ -53,7 +53,7 @@ test("the Find page renders the heading, search box, and steps without the intro
   assert.equal(app.includes("no account needed"), false);
   assert.match(app, /<FindSearchFrame/);
   assert.match(app, /id="honoree-search"/);
-  assert.match(app, /className="inlineHowItWorks"/);
+  assert.match(app, /className="inlineHowItWorks/);
   assert.match(app, /publicCopy\.stepSearchTitle/);
   assert.match(app, /publicCopy\.stepSubmitTitle/);
   assert.match(app, /publicCopy\.stepReviewTitle/);
