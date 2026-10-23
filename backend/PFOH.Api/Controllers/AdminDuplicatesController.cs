@@ -427,7 +427,10 @@ public class AdminDuplicatesController(
             honoree.EmailAddress,
             honoree.SponsorId,
             SponsorName(honoree.Sponsor),
-            claims.OrderBy(claim => claim.DisplayName ?? claim.Email).Select(ToClaimant).ToList());
+            claims.OrderBy(claim => claim.DisplayName ?? claim.Email).Select(ToClaimant).ToList(),
+            // CreatedDate is when this honoree record was created. Reviewers
+            // use it as the submission date when two records only differ.
+            honoree.CreatedDate);
     }
 
     private static DuplicateClaimantDto ToClaimant(HonoreeClaim claim) =>
@@ -551,7 +554,8 @@ public sealed record DuplicateHonoreeDto(
     string EmailAddress,
     int? SponsorId,
     string SponsorName,
-    IReadOnlyList<DuplicateClaimantDto> Claimants);
+    IReadOnlyList<DuplicateClaimantDto> Claimants,
+    DateTime CreatedDate);
 
 public sealed record DuplicateMergeResultDto(
     int SurvivorId,

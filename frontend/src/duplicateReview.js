@@ -35,6 +35,23 @@ export function recordsDiffer(values) {
   return new Set(values.map(normalizeCompare)).size > 1;
 }
 
+// Same calendar date the pending-review queue uses for a submission.
+export function formatSubmissionDate(value) {
+  if (value == null || value === "") return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+  }).format(date);
+}
+
+export function submissionDateLabel(value) {
+  const formatted = formatSubmissionDate(value);
+  return formatted ? `Submitted ${formatted}` : "";
+}
+
 function isControlCharacter(character) {
   const code = character.codePointAt(0);
   return code <= 0x1f || (code >= 0x7f && code <= 0x9f);
@@ -508,6 +525,7 @@ export function DuplicateReviewBoard({
     honorees.map((honoree) => {
       const included = includedIds.includes(honoree.id);
       const name = fullName(honoree) || honoree.name;
+      const submitted = submissionDateLabel(honoree.createdDate);
       return h(
         "article",
         { key: honoree.id, className: "mergeColumn", "data-record": honoree.id },
@@ -526,7 +544,8 @@ export function DuplicateReviewBoard({
           { className: nameDiffers ? "mergeIdentity isDiff" : "mergeIdentity", "data-field": "fullName" },
           photoBlock(honoree),
           h("h3", null, name),
-          differsFlag(nameDiffers)
+          differsFlag(nameDiffers),
+          submitted ? h("span", null, submitted) : null
         ),
         mergeFields.map((field) => {
           const differs = recordsDiffer(honorees.map((item) => field.value(item)));
