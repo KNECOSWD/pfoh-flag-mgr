@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 const order = [
   "tokens.css",
+  "bootstrap-bridge.css",
   "base.css",
   "header.css",
   "footer.css",

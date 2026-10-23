@@ -1,5 +1,6 @@
-/* 3.0.0 footer. One mobile-first block. Phones stack. From 761px the
-   columns share a 3-column grid and start on one top line. */
+/* 3.0.0 footer. One mobile-first block. Phones stack, with Built by last.
+   From 761px the columns share a 3-column grid. Explore and Stay in the
+   loop start at the top. Built by and the version sit at the bottom. */
 footer.appFooter.footerNavy {
   --footer-version-gap: var(--space-3xs);
   line-height: var(--leading-ui);
@@ -215,12 +216,11 @@ footer.appFooter.footerNavy .footerCredit {
   column-gap: var(--space-xs);
   row-gap: var(--footer-version-gap);
   color: rgba(255, 255, 255, 0.8);
-  align-self: start;
+  align-self: end;
   justify-self: center;
   @media (min-width: 761px) {
     grid-column: 2;
     grid-row: 1;
-    align-self: start;
     justify-self: center;
   }
 }

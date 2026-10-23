@@ -1,5 +1,7 @@
-/* Barrel. Order is the cascade between files. */
+/* Barrel. Order is the cascade between files. Bootstrap CSS is imported
+   before this barrel. The bridge remaps --bs-* onto PFOH tokens. */
 @import "./tokens.css";
+@import "./bootstrap-bridge.css";
 @import "./base.css";
 @import "./header.css";
 @import "./footer.css";

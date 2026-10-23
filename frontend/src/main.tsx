@@ -10,6 +10,7 @@ import { msalConfig } from "./authConfig";
 import App from "./App";
 import { publishSignInError, readAuthErrorFromLocation } from "./signInError";
 import { isRecoverableAuthError } from "./tokenRequest.js";
+import "bootstrap/dist/css/bootstrap.min.css";
 import "./styles/index.css";
 
 const msalInstance = new PublicClientApplication(msalConfig);

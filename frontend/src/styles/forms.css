@@ -47,8 +47,6 @@
 }
 
 .profileForm {
-  gap: var(--space-sm);
-  display: grid;
   margin-top: var(--space-sm);
 }
 

@@ -32,7 +32,7 @@ export function AdminAttentionBanner({ show, items, totalCount, activeRoute, onN
             className: activeRoute === item.route ? "isActive" : "",
             onClick: (event) => onNavigate(event, item.route)
           },
-          h("strong", null, item.count),
+          h("strong", { className: "badge rounded-pill text-bg-primary" }, item.count),
           h("span", null, item.label)
         )
       )

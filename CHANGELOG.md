@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.0.0
+
+- Bootstrap 5 is the base for forms, buttons, the header nav and hamburger, the how-it-works cards, and shared fields. Brand colors stay Plano Flags of Honor through a CSS variable bridge. Dialogs stay on Radix. The Flag Map, kiosk, and print layouts stay on their own styles.
+- The admin attention bar uses the same width as the Search card, on phones and on wide screens.
+- The Search heading info control stays a square icon beside the title on phones.
+- Built by KNECO and the version sit at the bottom of the footer. Explore and Stay in the loop stay at the top.
+
 ## 4.0.1
 
 - Profile and Sign out are text pills in the header. The empty white circles no longer cover the labels, and the signed-in controls stay in the header grid.

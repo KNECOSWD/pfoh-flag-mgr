@@ -352,7 +352,7 @@ img {
   }
 }
 
-.sectionHeader button {
+.sectionHeader > button {
   flex: 1 1 auto;
   @media (min-width: 761px) {
     flex: unset;
@@ -781,36 +781,6 @@ input[type="tel"] {
   @media (min-width: 761px) {
     width: unset;
   }
-}
-
-.infoIconButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  box-sizing: border-box;
-  width: 1.15rem;
-  min-width: 1.15rem;
-  height: 1.15rem;
-  min-height: 1.15rem;
-  margin: 0;
-  padding: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-navy);
-  color: var(--color-surface);
-  box-shadow: none;
-  overflow: hidden;
-}
-
-.infoIconButton svg {
-  display: block;
-  width: 0.72rem;
-  height: 0.72rem;
-}
-
-.infoIconButton:hover:not(:disabled) {
-  transform: none;
-  box-shadow: none;
 }
 
 .subtleRefreshButton:hover:not(:disabled) {
@@ -1366,16 +1336,6 @@ a.textLink {
   @media (min-width: 761px) {
     min-height: 0;
     justify-content: unset;
-  }
-}
-
-.gridForm {
-  gap: var(--space-xs);
-  display: grid;
-  grid-template-columns: 1fr;
-  @media (min-width: 761px) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-sm);
   }
 }
 
