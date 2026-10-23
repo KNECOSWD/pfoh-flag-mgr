@@ -13,7 +13,8 @@ const order = [
   "admin-review.css",
   "admin-duplicates.css",
   "admin-print.css",
-  "admin-flag-manager.css"
+  "admin-flag-manager.css",
+  "admin-removal.css"
 ];
 
 export function cssSource() {
