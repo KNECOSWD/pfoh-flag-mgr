@@ -1,0 +1,1342 @@
+.flagMapExportOverlay {
+  inset: 0;
+  place-items: center;
+  padding: var(--space-sm);
+  background: rgba(7, 18, 38, 0.42);
+  position: fixed;
+  z-index: var(--z-toast);
+  display: grid;
+  backdrop-filter: blur(2px);
+}
+
+.flagMapExportModal {
+  overflow: auto;
+  padding: var(--space-lg) var(--space-lg) var(--space-md);
+  border: 1px solid var(--color-line);
+  border-radius: 1.1rem;
+  background: var(--color-surface);
+  box-sizing: border-box;
+  width: min(100% - 2rem, 32rem);
+  max-height: min(90vh, 42rem);
+  color: var(--color-navy-deep);
+  box-shadow: 0 28px 80px rgba(7, 26, 59, 0.34);
+}
+
+.flagMapExportModal .sectionHeader {
+  gap: var(--space-sm);
+  align-items: flex-start;
+  margin-bottom: var(--space-xs);
+}
+
+.flagMapExportModal h2 {
+  margin: 0;
+  color: var(--color-navy-deep);
+}
+
+.flagMapExportFields {
+  gap: var(--space-2xs);
+  margin: var(--space-3xs) 0 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  min-inline-size: 0;
+}
+
+.flagMapExportFields .checkRow {
+  gap: var(--space-2xs);
+  margin: 0;
+  padding: var(--space-2xs) var(--space-2xs);
+  border: 1px solid #e3e9f2;
+  border-radius: 0.75rem;
+  background: #f9fbfe;
+}
+
+.flagMapExportHint {
+  color: #526179;
+  font-size: var(--font-caption);
+}
+
+.flagMapExportError {
+  margin: var(--space-xs) 0 0;
+}
+
+.flagMapExportModal .modalActions button:not(.secondary) {
+  background: var(--color-navy);
+  color: var(--color-surface);
+  box-shadow: 0 10px 24px rgba(23, 59, 115, 0.22);
+}
+
+.flagMapExportModal .modalActions button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.flagPositionSummary {
+  gap: var(--space-2xs);
+  margin: var(--space-xs) 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  color: var(--color-muted);
+  font-size: var(--font-caption);
+}
+
+.flagPositionSummary span {
+  padding: var(--space-3xs) var(--space-2xs);
+  border-radius: 999px;
+  background: var(--color-page);
+}
+
+.flagSeat small {
+  color: #718098;
+  font-size: var(--font-meta);
+  line-height: var(--leading-tight);
+}
+
+.flagSeat.canAssign {
+  border-color: #7fa7de;
+  box-shadow: 0 0 0 3px rgba(23, 59, 115, 0.08);
+}
+
+.flagPositionFilters label {
+  gap: var(--space-3xs);
+  display: grid;
+}
+
+.flagPositionFilters input[type="search"] {
+  border: 1px solid #cfd8e8;
+  border-radius: 0.65rem;
+  padding: var(--space-2xs) var(--space-xs);
+  background: var(--color-surface);
+  min-height: 2.35rem;
+  color: var(--color-navy-deep);
+  font-size: var(--font-caption);
+}
+
+.flagPositionFilters select {
+  border: 1px solid #cfd8e8;
+  border-radius: 0.65rem;
+  padding: var(--space-2xs) var(--space-xs);
+  background: var(--color-surface);
+  min-height: 2.35rem;
+  color: var(--color-navy-deep);
+  font-size: var(--font-caption);
+}
+
+.flagSeatLegend {
+  gap: var(--space-2xs);
+  margin: var(--space-xs) 0 var(--space-xs);
+  display: flex;
+  flex-wrap: wrap;
+  color: var(--color-muted);
+  font-size: var(--font-caption);
+  font-weight: 700;
+  align-items: center;
+}
+
+.flagSeatLegend i {
+  border-radius: 0.22rem;
+  width: 0.8rem;
+  height: 0.8rem;
+  display: inline-block;
+  vertical-align: -0.12rem;
+  margin-right: 0;
+}
+
+.flagPositionFilters .subtleRefreshButton {
+  justify-self: start;
+  @media (min-width: 761px) {
+    justify-self: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    justify-self: start;
+  }
+}
+
+.flagPositionFilters {
+  gap: var(--space-xs);
+  padding: var(--space-xs);
+  border: 1px solid var(--color-line);
+  border-radius: 0.9rem;
+  background: var(--color-surface);
+  margin: var(--space-3xs) 0 var(--space-xs);
+  display: grid;
+  align-items: end;
+  grid-template-columns: 1fr;
+  @media (min-width: 761px) {
+    grid-template-columns: minmax(13rem, 1.4fr) minmax(8rem, 0.7fr) auto;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.modalOverlay.assignFlagModalOverlay {
+  inset: 0;
+  place-items: center;
+  padding: var(--space-sm);
+  background: rgba(7, 18, 38, 0.42);
+  position: fixed;
+  z-index: var(--z-toast);
+  display: grid;
+  backdrop-filter: blur(2px);
+}
+
+.assignFlagModal label {
+  color: var(--color-navy-deep);
+}
+
+.assignFlagModal .fieldLabelText {
+  color: var(--color-navy-deep);
+}
+
+.assignFlagModal .subtleRefreshButton {
+  background: #f4f7fb;
+  border: 1px solid var(--color-line);
+  color: var(--color-navy);
+  box-shadow: none;
+}
+
+.assignFlagModal .modalActions .secondary {
+  background: #f4f7fb;
+  border: 1px solid var(--color-line);
+  color: var(--color-navy);
+  box-shadow: none;
+}
+
+.assignFlagModal .subtleRefreshButton:hover:not(:disabled) {
+  background: #e8f2ff;
+  transform: none;
+  box-shadow: none;
+}
+
+.assignFlagModal .modalActions .secondary:hover:not(:disabled) {
+  background: #e8f2ff;
+  transform: none;
+  box-shadow: none;
+}
+
+.assignFlagModalPicker select {
+  border: 1px solid #cfd8e8;
+  border-radius: 0.7rem;
+  padding: var(--space-2xs) var(--space-xs);
+  background: var(--color-surface);
+  width: 100%;
+  min-height: 2.55rem;
+  font-size: var(--font-body);
+  background-color: var(--color-surface);
+  color: var(--color-navy-deep);
+  border-color: #cfd8e8;
+  box-shadow: inset 0 1px 2px rgba(15, 55, 107, 0.04);
+}
+
+.assignFlagModalPicker select:focus {
+  outline: none;
+  border-color: #1e4b87;
+  box-shadow: 0 0 0 3px rgba(30, 75, 135, 0.13),
+    inset 0 1px 2px rgba(15, 55, 107, 0.04);
+}
+
+.assignFlagModal .modalActions button:not(.secondary) {
+  background: var(--color-navy);
+  color: var(--color-surface);
+  box-shadow: 0 10px 24px rgba(23, 59, 115, 0.22);
+}
+
+.assignFlagModal .modalActions button:not(.secondary):hover:not(:disabled) {
+  background: var(--color-navy-deep);
+}
+
+.assignFlagModal .modalActions button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.assignFlagModal .sectionHeader > div {
+  min-width: 0;
+}
+
+.assignFlagModal h2 {
+  margin: 0 0 var(--space-2xs);
+  overflow: visible;
+  color: var(--color-navy-deep);
+  line-height: var(--leading-tight);
+}
+
+.assignFlagModal .helperText {
+  margin: 0;
+  color: #526179;
+  line-height: var(--leading-body);
+}
+
+.assignFlagModalPicker {
+  gap: var(--space-2xs);
+  margin: var(--space-sm) 0;
+  display: grid;
+  margin-top: var(--space-sm);
+}
+
+.assignFlagModal .modalActions {
+  margin-top: var(--space-sm);
+}
+
+.assignFlagModalOverlay .assignFlagModal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 1.15rem;
+  overflow: visible;
+  padding: var(--space-md) var(--space-sm) var(--space-sm);
+  max-height: min(90vh, 42rem);
+  opacity: 1;
+  color: var(--color-navy-deep);
+  box-shadow: 0 28px 80px rgba(7, 26, 59, 0.34);
+  box-sizing: border-box;
+  max-width: 36rem;
+  width: min(100% - 1rem, 36rem);
+  @media (min-width: 761px) {
+    width: min(100% - 2rem, 36rem);
+    padding: var(--space-lg) var(--space-lg) var(--space-md);
+  }
+}
+
+.modalCard.assignFlagModal {
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 1.15rem;
+  overflow: visible;
+  padding: var(--space-md) var(--space-sm) var(--space-sm);
+  opacity: 1;
+  color: var(--color-navy-deep);
+  box-shadow: 0 28px 80px rgba(7, 26, 59, 0.34);
+  box-sizing: border-box;
+  max-width: 36rem;
+  width: min(100% - 1rem, 36rem);
+  @media (min-width: 761px) {
+    width: min(100% - 2rem, 36rem);
+    padding: var(--space-lg) var(--space-lg) var(--space-md);
+  }
+}
+
+.assignFlagModal .sectionHeader {
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-sm);
+  display: grid;
+  align-items: start;
+  column-gap: var(--space-sm);
+  row-gap: var(--space-2xs);
+  grid-template-columns: 1fr;
+  @media (min-width: 761px) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+.assignFlagModal .sectionHeader .subtleRefreshButton {
+  margin: 0;
+  align-self: start;
+  min-height: 2rem;
+  white-space: nowrap;
+  justify-self: end;
+  grid-row: 1;
+  @media (min-width: 761px) {
+    justify-self: unset;
+    grid-row: unset;
+  }
+}
+
+.assignFlagModal .eyebrow {
+  margin: 0 0 var(--space-2xs);
+  overflow: visible;
+  color: var(--color-crimson);
+  display: block;
+  padding-left: 0;
+  line-height: var(--leading-tight);
+  white-space: normal;
+  letter-spacing: 0.14em;
+  padding-right: var(--space-2xl);
+  @media (min-width: 761px) {
+    padding-right: unset;
+  }
+}
+
+.flagSeatLegend .legendButton {
+  background: #f4f7fb;
+  border-color: var(--color-line);
+  color: var(--color-navy);
+  box-shadow: none;
+}
+
+.flagSeatLegend .legendButton:hover:not(:disabled) {
+  background: #e8f2ff;
+  border-color: #9eb9dc;
+  color: var(--color-navy);
+  transform: none;
+  box-shadow: none;
+}
+
+.flagSeatLegend .legendButton:focus-visible {
+  background: #e8f2ff;
+  border-color: #9eb9dc;
+  color: var(--color-navy);
+  transform: none;
+  box-shadow: none;
+}
+
+.flagSeatLegend .legendButton.isActive {
+  background: var(--color-navy);
+  border-color: var(--color-navy);
+  color: var(--color-surface);
+  transform: none;
+  box-shadow: none;
+}
+
+.flagSeatLegend .legendButton.isActive:hover:not(:disabled) {
+  background: var(--color-navy);
+  border-color: var(--color-navy);
+  color: var(--color-surface);
+  transform: none;
+  box-shadow: none;
+}
+
+.flagSeatLegend .legendButton.isActive:focus-visible {
+  background: var(--color-navy);
+  border-color: var(--color-navy);
+  color: var(--color-surface);
+  transform: none;
+  box-shadow: none;
+}
+
+.flagSeatLegend .legendButton i {
+  flex: 0 0 auto;
+}
+
+.flagSeatLegend .legendButton.isActive .legendOpen {
+  background: #dff7e7;
+  border-color: #b9e3c5;
+}
+
+.flagSeatLegend .legendButton.isActive:hover .legendOpen {
+  background: #dff7e7;
+  border-color: #b9e3c5;
+}
+
+.flagSeatLegend .legendButton.isActive:focus-visible .legendOpen {
+  background: #dff7e7;
+  border-color: #b9e3c5;
+}
+
+.flagSeatLegend .legendButton.isActive .legendReserved {
+  background: #e5e7eb;
+  border-color: #cbd5e1;
+}
+
+.flagSeatLegend .legendButton.isActive:hover .legendReserved {
+  background: #e5e7eb;
+  border-color: #cbd5e1;
+}
+
+.flagSeatLegend .legendButton.isActive:focus-visible .legendReserved {
+  background: #e5e7eb;
+  border-color: #cbd5e1;
+}
+
+.flagSeat.isReserved small {
+  color: #64748b;
+}
+
+.flagSeat.isReserved .seatAction {
+  display: none;
+}
+
+.flagSeat:hover:not(:disabled) {
+  transform: none;
+  border-color: var(--color-navy);
+  box-shadow: 0 0 0 3px rgba(23, 59, 115, 0.09);
+}
+
+.flagSeat:focus-visible {
+  transform: none;
+  border-color: var(--color-navy);
+  box-shadow: 0 0 0 3px rgba(23, 59, 115, 0.09);
+}
+
+.flagSeat.isBusy {
+  opacity: 0.72;
+}
+
+.modalOverlay.flagPositionDetailOverlay {
+  inset: 0;
+  place-items: center;
+  padding: var(--space-sm);
+  background: rgba(7, 18, 38, 0.42);
+  position: fixed;
+  z-index: var(--z-toast);
+  display: grid;
+  backdrop-filter: blur(2px);
+}
+
+.flagPositionDetailList {
+  gap: var(--space-xs);
+  margin: var(--space-sm) 0;
+  display: grid;
+}
+
+.flagPositionDetailList dt {
+  color: var(--color-muted);
+  font-size: var(--font-meta);
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.flagPositionDetailList dd {
+  margin: 0;
+  color: var(--color-navy-deep);
+  font-weight: 750;
+}
+
+.flagPositionDetailList div {
+  padding: var(--space-2xs) 0;
+  gap: var(--space-3xs);
+  display: grid;
+  border-bottom: 1px solid #edf2f7;
+  grid-template-columns: 1fr;
+  @media (min-width: 761px) {
+    grid-template-columns: 6rem minmax(0, 1fr);
+    gap: var(--space-xs);
+  }
+}
+
+.flagSeat.isOccupied {
+  background: var(--color-surface-muted);
+  border-color: #cbd8e7;
+}
+
+.flagSeat.isOccupied:hover {
+  background: #eef4fb;
+  border-color: #8ca9cd;
+}
+
+.flagSeat.isOccupied:focus-visible {
+  background: #eef4fb;
+  border-color: #8ca9cd;
+}
+
+.flagSeat.isOpen {
+  background: #f2fbf5;
+  border-color: #b9e3c5;
+}
+
+.flagSeat.isReserved {
+  background: #f1f5f9;
+  box-shadow: none;
+  color: #64748b;
+  filter: grayscale(0.22);
+  border-color: #cbd5e1;
+}
+
+.flagSeat.isSelected {
+  border-color: var(--color-navy);
+  box-shadow: 0 0 0 3px rgba(23, 59, 115, 0.16);
+}
+
+.flagSeat.isSelected:hover {
+  border-color: var(--color-navy);
+  box-shadow: 0 0 0 3px rgba(23, 59, 115, 0.16);
+}
+
+.flagSeat.isSelected:focus-visible {
+  border-color: var(--color-navy);
+  box-shadow: 0 0 0 3px rgba(23, 59, 115, 0.16);
+}
+
+.flagPositionDetailModal .dangerButton {
+  background: #8b1d1d;
+  color: var(--color-surface);
+}
+
+.assignFlagModal .dangerButton {
+  background: #8b1d1d;
+  color: var(--color-surface);
+}
+
+.flagSeatLegend .legendButton.isActive .legendOccupied {
+  background: var(--color-surface-muted);
+  border-color: #cbd8e7;
+}
+
+.flagSeatLegend .legendButton.isActive:hover .legendOccupied {
+  background: var(--color-surface-muted);
+  border-color: #cbd8e7;
+}
+
+.flagSeatLegend .legendButton.isActive:focus-visible .legendOccupied {
+  background: var(--color-surface-muted);
+  border-color: #cbd8e7;
+}
+
+.flagSeatLegend .legendButton:hover .legendOccupied {
+  background: #eef4fb;
+  border-color: #8ca9cd;
+}
+
+.flagSeatLegend .legendButton:focus-visible .legendOccupied {
+  background: #eef4fb;
+  border-color: #8ca9cd;
+}
+
+.flagMapToolbar .flagPositionFilters label {
+  gap: var(--space-3xs);
+  display: block;
+}
+
+.flagMapToolbar .fieldLabelText {
+  overflow: hidden;
+  font-size: var(--font-meta);
+  letter-spacing: 0.04em;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.flagMapToolbar .subtleRefreshButton {
+  padding: var(--space-3xs) var(--space-2xs);
+  font-size: var(--font-meta);
+  min-height: 1.82rem;
+}
+
+.flagMapToolbar .flagPositionFilters input[type="search"]::placeholder {
+  color: #60708a;
+  opacity: 1;
+  font-weight: 680;
+}
+
+.flagSeat.isOccupied span {
+  color: #243752;
+}
+
+.flagSeat.isReserved span {
+  color: #4d5e74;
+}
+
+.flagSeat.isReserved strong {
+  color: #4d5e74;
+}
+
+.adminSectionStack .flagPositionManager.adminStandalonePanel {
+  border-top: 3px solid var(--color-navy);
+}
+
+.adminSectionStack .flagPositionManager .sectionHeader {
+  border-bottom: 1px solid #e4ebf5;
+}
+
+.flagMapToolbar .legendButton {
+  flex: 0 0 auto;
+  padding: var(--space-3xs) var(--space-2xs);
+  border-radius: 999px;
+  white-space: nowrap;
+  min-height: 1.9rem;
+  font-size: var(--font-meta);
+  @media (min-width: 761px) {
+    min-height: 1.82rem;
+    flex: unset;
+  }
+}
+
+.flagMapToolbar .flagPositionFilters input[type="search"] {
+  background: var(--color-surface);
+  padding: var(--space-3xs) var(--space-2xs);
+  border-radius: 0.55rem;
+  color: #061a38;
+  font-weight: 760;
+  width: 100%;
+  min-height: 2rem;
+  font-size: var(--font-caption);
+  @media (min-width: 761px) {
+    min-height: 1.82rem;
+    border-radius: 0.5rem;
+    font-size: var(--font-meta);
+    width: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    width: 100%;
+  }
+}
+
+.flagMapToolbar .flagPositionFilters select {
+  background: var(--color-surface);
+  padding: var(--space-3xs) var(--space-2xs);
+  border-radius: 0.55rem;
+  color: #061a38;
+  font-weight: 760;
+  width: 100%;
+  min-height: 2rem;
+  font-size: var(--font-caption);
+  @media (min-width: 761px) {
+    min-height: 1.82rem;
+    border-radius: 0.5rem;
+    font-size: var(--font-meta);
+  }
+}
+
+.flagSeatRow {
+  gap: var(--space-3xs);
+  display: grid;
+  align-items: start;
+  grid-template-columns: 1.65rem minmax(0, 1fr);
+  @media (min-width: 761px) {
+    grid-template-columns: 1.85rem minmax(0, 1fr);
+  }
+}
+
+.flagSeatRowLabel {
+  place-items: center;
+  background: var(--color-navy);
+  border-radius: 0.44rem;
+  display: grid;
+  color: var(--color-surface);
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  position: sticky;
+  left: 0;
+  min-height: 2.08rem;
+  font-size: var(--font-meta);
+  z-index: 2;
+  @media (min-width: 761px) {
+    z-index: 1;
+    min-height: 2.35rem;
+    border-radius: 0.46rem;
+  }
+}
+
+.flagSeat strong {
+  color: #031633;
+  font-weight: 1000;
+  font-size: var(--font-meta);
+  line-height: 1;
+  @media (min-width: 761px) {
+    line-height: var(--leading-tight);
+  }
+}
+
+.flagSeat span {
+  overflow: hidden;
+  width: 100%;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #1f304d;
+  font-weight: 820;
+  font-size: var(--font-meta);
+  line-height: var(--leading-tight);
+}
+
+.flagPositionManager {
+  margin: var(--space-sm) 0 var(--space-sm);
+  border: 1px solid var(--color-line);
+  background: #fbfcff;
+  padding: var(--space-xs);
+  border-radius: 0.95rem;
+  @media (min-width: 761px) {
+    padding: var(--space-sm);
+    border-radius: 1rem;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    padding: var(--space-2xs);
+  }
+}
+
+.flagMapToolbar .flagPositionFilters {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  gap: var(--space-2xs);
+  display: grid;
+  align-items: center;
+  grid-template-columns: 1fr;
+  @media (min-width: 761px) {
+    grid-template-columns: minmax(13rem, 1fr) minmax(8rem, 0.42fr) auto;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    grid-template-columns: minmax(0, 1fr) minmax(7rem, 0.55fr) auto;
+  }
+}
+
+.flagMapToolbar .flagPositionFilters .subtleRefreshButton {
+  padding-inline: var(--space-2xs);
+  grid-column: 1 / -1;
+  min-height: 1.9rem;
+  justify-self: start;
+  width: auto;
+  @media (min-width: 761px) {
+    grid-column: unset;
+    min-height: 2rem;
+    justify-self: unset;
+    width: unset;
+    padding-inline: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    grid-column: auto;
+    justify-self: start;
+  }
+}
+
+.flagSeatCells {
+  gap: var(--space-3xs);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(3.95rem, 1fr));
+  @media (min-width: 761px) {
+    grid-template-columns: repeat(auto-fill, minmax(5.05rem, 1fr));
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    grid-template-columns: repeat(auto-fill, minmax(4.2rem, 1fr));
+  }
+}
+
+.flagSeat {
+  gap: var(--space-3xs);
+  border: 1px solid #dbe5f2;
+  background: var(--color-surface);
+  padding: var(--space-3xs) var(--space-3xs);
+  border-radius: 0.42rem;
+  width: 100%;
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-navy-deep);
+  border-width: 1.35px;
+  box-shadow: none;
+  min-height: 2.24rem;
+  @media (min-width: 761px) {
+    min-height: 2.45rem;
+    border-radius: 0.46rem;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    min-height: 2rem;
+  }
+}
+
+.assignFlagModalOverlay {
+  inset: 0;
+  background: rgba(7, 18, 38, 0.42);
+  place-items: end center;
+  padding: var(--space-xs);
+  position: fixed;
+  z-index: var(--z-toast);
+  display: grid;
+  backdrop-filter: blur(2px);
+  @media (min-width: 761px) {
+    place-items: center;
+    padding: var(--space-sm);
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    padding: var(--space-2xs);
+  }
+}
+
+.flagPositionDetailOverlay {
+  inset: 0;
+  background: rgba(7, 18, 38, 0.42);
+  place-items: end center;
+  padding: var(--space-xs);
+  position: fixed;
+  z-index: var(--z-toast);
+  display: grid;
+  backdrop-filter: blur(2px);
+  @media (min-width: 761px) {
+    place-items: center;
+    padding: var(--space-sm);
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    padding: var(--space-2xs);
+  }
+}
+
+.assignFlagModal {
+  border-radius: 1rem;
+  width: 100%;
+  max-width: 100%;
+  max-height: 86vh;
+  @media (min-width: 761px) {
+    width: min(100% - 2rem, 34rem);
+    max-width: unset;
+    max-height: unset;
+    border-radius: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    width: min(100% - 1rem, 36rem);
+    max-height: calc(100vh - 1rem);
+    border-radius: 0.9rem;
+    overflow-y: auto;
+  }
+}
+
+.flagPositionDetailModal {
+  overflow: auto;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+  padding: var(--space-md) var(--space-sm) var(--space-sm);
+  border-radius: 1rem;
+  color: var(--color-navy-deep);
+  box-shadow: 0 28px 80px rgba(7, 26, 59, 0.34);
+  width: 100%;
+  max-width: 100%;
+  max-height: 86vh;
+  @media (min-width: 761px) {
+    width: min(100% - 2rem, 34rem);
+    max-height: min(90vh, 42rem);
+    padding: var(--space-lg) var(--space-lg) var(--space-md);
+    border-radius: 1.1rem;
+    max-width: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    width: min(100% - 1rem, 36rem);
+    max-height: calc(100vh - 1rem);
+    border-radius: 0.9rem;
+    overflow-y: auto;
+  }
+}
+
+.adminSectionStack > .flagPositionManager {
+  margin: 0;
+  scroll-margin-top: 1rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  @media (min-width: 761px) {
+    width: unset;
+    max-width: unset;
+    box-sizing: unset;
+  }
+}
+
+main > .pageBody > .adminSectionStack > .flagPositionManager {
+  width: 100%;
+  max-width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+  box-sizing: border-box;
+  @media (min-width: 761px) {
+    width: unset;
+    max-width: unset;
+    margin-left: unset;
+    margin-right: unset;
+    box-sizing: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    box-sizing: border-box;
+    min-width: 0;
+  }
+}
+
+.flagPositionManager.adminStandalonePanel {
+  overflow: hidden;
+  border-top-width: 2px;
+  @media (min-width: 761px) {
+    border-top-width: unset;
+    overflow: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    overflow: hidden;
+    min-width: 0;
+  }
+}
+
+.flagPositionActions {
+  gap: var(--space-2xs);
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  @media (min-width: 761px) {
+    display: flex;
+    width: unset;
+    grid-template-columns: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    width: auto;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+}
+
+.flagPositionActions button {
+  border-radius: 0.7rem;
+  width: 100%;
+  min-height: 2.25rem;
+  font-size: var(--font-caption);
+  min-width: 0;
+  @media (min-width: 761px) {
+    width: unset;
+    min-height: 2.45rem;
+    border-radius: 12px;
+    font-size: unset;
+    min-width: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    width: auto;
+    min-height: 2rem;
+    font-size: var(--font-caption);
+    min-width: max-content;
+    padding: var(--space-3xs) var(--space-xs);
+  }
+}
+
+.flagMapToolbar {
+  border-radius: 0;
+  gap: var(--space-2xs);
+  padding: 0;
+  margin: var(--space-2xs) 0 var(--space-2xs);
+  border: 0;
+  background: transparent;
+  justify-content: space-between;
+  align-items: center;
+  display: grid;
+  grid-template-columns: 1fr;
+  @media (min-width: 761px) {
+    grid-template-columns: auto minmax(18rem, 1fr);
+    margin: var(--space-xs) 0 var(--space-xs);
+    display: flex;
+    padding: var(--space-3xs) 0;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    grid-template-columns: 1fr;
+    margin: var(--space-3xs) 0 var(--space-2xs);
+    display: grid;
+    gap: var(--space-3xs);
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+}
+
+.flagMapToolbar .flagSeatLegend {
+  flex: 0 0 auto;
+  margin: 0;
+  gap: var(--space-3xs);
+  align-items: center;
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: var(--space-3xs);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  @media (min-width: 761px) {
+    flex-wrap: wrap;
+    overflow-x: unset;
+    padding-bottom: unset;
+    -webkit-overflow-scrolling: unset;
+    scrollbar-width: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    overflow-x: auto;
+    scrollbar-width: none;
+    max-width: 100%;
+  }
+}
+
+.flagMapToolbar .flagSeatLegend::-webkit-scrollbar {
+  display: none;
+  @media (min-width: 761px) {
+    display: unset;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    display: none;
+  }
+}
+
+.flagSeatMap {
+  overflow: auto;
+  gap: var(--space-2xs);
+  padding: var(--space-3xs);
+  border: 1px solid var(--color-line);
+  border-radius: 0.8rem;
+  background: var(--color-surface);
+  display: grid;
+  overscroll-behavior: contain;
+  max-height: 50vh;
+  @media (min-width: 761px) {
+    padding: var(--space-3xs) var(--space-3xs) var(--space-2xs) 0;
+    max-height: 34rem;
+    border: unset;
+    border-radius: unset;
+    background: unset;
+    overscroll-behavior: unset;
+    padding-top: var(--space-3xs);
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    max-height: calc(100vh - 8.4rem);
+    width: 100%;
+    max-width: 100%;
+  }
+}
+
+.assignGridFilters label {
+  gap: var(--space-3xs);
+  display: grid;
+}
+
+.assignGridFilters input {
+  border: 1px solid #cfd8e8;
+  border-radius: 0.65rem;
+  padding: var(--space-2xs) var(--space-xs);
+  background: var(--color-surface);
+  width: 100%;
+  min-height: 2.35rem;
+  color: var(--color-navy-deep);
+  font-size: var(--font-body);
+}
+
+.assignGridFilters select {
+  border: 1px solid #cfd8e8;
+  border-radius: 0.65rem;
+  padding: var(--space-2xs) var(--space-xs);
+  background: var(--color-surface);
+  width: 100%;
+  min-height: 2.35rem;
+  color: var(--color-navy-deep);
+  font-size: var(--font-body);
+}
+
+.assignGridListHeader {
+  gap: var(--space-xs);
+  margin: var(--space-3xs) 0 var(--space-2xs);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--color-muted);
+  font-size: var(--font-caption);
+}
+
+.assignGridListHeader strong {
+  color: var(--color-navy-deep);
+}
+
+.assignGridListHeader span {
+  flex: 0 0 auto;
+  padding: var(--space-3xs) var(--space-2xs);
+  border-radius: 999px;
+  background: var(--color-page);
+  color: var(--color-navy);
+  font-weight: 850;
+}
+
+.assignGridOption strong {
+  font-size: var(--font-body);
+  line-height: 1;
+}
+
+.assignGridOption span {
+  color: var(--color-muted);
+  font-size: var(--font-meta);
+  font-weight: 800;
+}
+
+.assignGridOption:hover:not(:disabled) {
+  background: #eaf2fc;
+  border-color: var(--color-navy);
+  color: var(--color-navy-deep);
+  transform: none;
+  box-shadow: 0 0 0 3px rgba(23, 59, 115, 0.10);
+}
+
+.assignGridOption:focus-visible {
+  background: #eaf2fc;
+  border-color: var(--color-navy);
+  color: var(--color-navy-deep);
+  transform: none;
+  box-shadow: 0 0 0 3px rgba(23, 59, 115, 0.10);
+}
+
+.assignGridOption.isSelected {
+  background: var(--color-navy);
+  border-color: var(--color-navy);
+  color: var(--color-surface);
+}
+
+.assignGridOption.isSelected span {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.assignGridOption {
+  gap: var(--space-3xs);
+  padding: var(--space-2xs);
+  border: 1px solid #bfe4ce;
+  border-radius: 0.7rem;
+  background: #f0fbf4;
+  display: grid;
+  align-content: center;
+  color: var(--color-navy-deep);
+  box-shadow: none;
+  text-align: left;
+  min-height: 3.05rem;
+  @media (min-width: 761px) {
+    min-height: 3.35rem;
+  }
+}
+
+.assignGridModal {
+  width: min(100% - 1rem, 44rem);
+  @media (min-width: 761px) {
+    width: min(100% - 2rem, 44rem);
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    width: min(100% - 1rem, 48rem);
+    max-height: calc(100vh - 1rem);
+    overflow: auto;
+  }
+}
+
+.assignGridFilters {
+  margin: var(--space-xs) 0 var(--space-xs);
+  gap: var(--space-2xs);
+  display: grid;
+  grid-template-columns: 1fr;
+  @media (min-width: 761px) {
+    grid-template-columns: minmax(12rem, 1fr) minmax(9rem, 0.45fr);
+    gap: var(--space-xs);
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    grid-template-columns: minmax(12rem, 1fr) minmax(8rem, 0.45fr);
+    margin-top: var(--space-2xs);
+  }
+}
+
+.assignGridList {
+  gap: var(--space-2xs);
+  overflow: auto;
+  padding: var(--space-2xs);
+  border: 1px solid var(--color-line);
+  border-radius: 0.85rem;
+  background: #fbfdff;
+  display: grid;
+  max-height: 38vh;
+  grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr));
+  @media (min-width: 761px) {
+    max-height: min(42vh, 22rem);
+    grid-template-columns: repeat(auto-fill, minmax(5.6rem, 1fr));
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    max-height: 30vh;
+  }
+}
+
+main:has(.flagPositionManager.adminStandalonePanel)::before {
+  content: "";
+  display: none;
+}
+
+.flagPositionManager .sectionHeader {
+  grid-template-columns: 1fr;
+  margin-bottom: var(--space-sm);
+  @media (min-width: 761px) {
+    grid-template-columns: unset;
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    display: grid;
+    align-items: start;
+    gap: var(--space-xs);
+  }
+}
+
+.flagPositionManager .flagMapToolbar {
+  gap: var(--space-2xs);
+}
+
+.flagPositionManager .flagSeatCell {
+  min-height: 2.85rem;
+}
+
+.flagPositionManager .flagSeatSection {
+  gap: var(--space-2xs);
+}
+
+.adminSectionStack:has(.flagPositionManager.adminStandalonePanel) .flagPositionManager.adminStandalonePanel {
+  padding: var(--space-xs);
+  width: 100%;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  box-shadow: 0 14px 38px rgba(7, 26, 59, 0.10);
+  @media (min-width: 761px) {
+    padding: var(--space-md) var(--space-md);
+  }
+}
+
+main:has(.flagPositionManager.adminStandalonePanel) {
+  background: var(--color-page);
+  width: 100%;
+  max-width: 100%;
+  padding-left: var(--space-2xs);
+  padding-right: var(--space-2xs);
+  @media (min-width: 761px) {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    padding-left: var(--space-2xs);
+    padding-right: var(--space-2xs);
+  }
+}
+
+main > .pageBody > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin-top: var(--space-xs);
+  @media (min-width: 761px) {
+    width: min(1680px, calc(100vw - 2.5rem));
+    max-width: min(1680px, calc(100vw - 2.5rem));
+    margin-top: var(--space-lg);
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    width: 100%;
+    max-width: 100%;
+    margin-top: var(--space-xs);
+  }
+}
+
+.flagPositionManager .flagSeatMap {
+  padding: var(--space-2xs);
+  background: #f8fbff;
+  min-height: 28rem;
+  max-height: calc(100vh - 12rem);
+  @media (min-width: 761px) {
+    max-height: calc(100vh - 18.5rem);
+    min-height: 34rem;
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    max-height: calc(100vh - 8rem);
+    min-height: 22rem;
+  }
+}
+
+.flagPositionManager .flagSeatCells {
+  gap: var(--space-3xs);
+  grid-template-columns: repeat(auto-fill, minmax(4.55rem, 1fr));
+  @media (min-width: 761px) {
+    grid-template-columns: repeat(auto-fill, minmax(6.55rem, 1fr));
+    gap: var(--space-2xs);
+  }
+  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
+    grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr));
+  }
+}

@@ -11,4 +11,5 @@
 @import "./admin-review.css";
 @import "./admin-duplicates.css";
 @import "./admin-print.css";
+@import "./admin-flag-manager.css";
 @import "../style.css";
