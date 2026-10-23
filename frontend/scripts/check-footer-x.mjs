@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
-const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+const css = [
+  readFileSync(new URL("../src/styles/tokens.css", import.meta.url), "utf8"),
+  readFileSync(new URL("../src/styles/footer.css", import.meta.url), "utf8")
+].join("\n");
 
 test("the shared footer links to Plano Flags of Honor on X", () => {
   assert.equal(app.split('className="appFooter footerNavy"').length - 1, 1, "one footer for every signed-in state");

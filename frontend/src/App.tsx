@@ -5167,12 +5167,11 @@ export default function App() {
                 </svg>
               </a>
             </div>
-          </div>
-
-          <div className="footerContact">
-            <a href="https://planoflagsofhonor.com/contact-us/" target="_blank" rel="noreferrer">
-              Contact Us
-            </a>
+            <div className="footerContact">
+              <a href="https://planoflagsofhonor.com/contact-us/" target="_blank" rel="noreferrer">
+                Contact Us
+              </a>
+            </div>
           </div>
 
           <div className="footerCredit">

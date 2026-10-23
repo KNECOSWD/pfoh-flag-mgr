@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 const order = [
   "tokens.css",
   "base.css",
-  "header.css"
+  "header.css",
+  "footer.css"
 ];
 
 export function cssSource() {

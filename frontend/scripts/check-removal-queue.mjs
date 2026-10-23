@@ -15,9 +15,10 @@ import {
   toggleSelectAllRemovalItems
 } from "../src/removalQueue.js";
 import { showTenYearsBanner, TEN_YEARS_BANNER_END, TenYearsBanner } from "../src/tenYearsBanner.js";
+import { cssSource } from "./css-source.mjs";
 
 const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
-const css = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+const css = cssSource();
 
 const openItems = [
   {
@@ -59,7 +60,7 @@ test("the header subtitle drops the cost sentence and the dog tag links to Searc
   assert.match(app, /aria-label="Plano Flags of Honor, go to Search"/);
   assert.match(app, /onClick=\{\(event\) => handleRouteLink\(event, "\/find"\)\}/);
   assert.match(app, /className="heroDogTag"[^>]*alt=""/);
-  assert.match(css, /\.hero \.heroDogTagLink:focus-visible[\s\S]*outline:\s*3px solid #ffe08a/);
+  assert.match(css, /\.hero \.heroDogTagLink:focus-visible[\s\S]*outline:\s*3px solid (?:#ffe08a|var\(--color-gold\))/);
   assert.match(css, /\.hero \.heroDogTag\s*\{[^}]*width:\s*clamp\(4rem, 10vw, 8\.25rem\)/);
   assert.match(css, /\.hero \.heroDogTag\s*\{[^}]*aspect-ratio:\s*480 \/ 315/);
   assert.match(css, /\.hero \.heroDogTag\s*\{[^}]*width:\s*clamp\(3\.5rem, 18vw, 4rem\)/);
@@ -298,4 +299,5 @@ test("phone tap targets in the new rules use 2.75rem", () => {
   assert.match(added, /rqIconButton/);
   assert.match(added, /min-height:\s*2\.75rem/);
   assert.doesNotMatch(added, /(?:min-height|min-width|width|height):\s*44px/);
+  assert.doesNotMatch(css, /!important/);
 });

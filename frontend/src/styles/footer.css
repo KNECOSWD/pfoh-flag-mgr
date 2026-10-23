@@ -1,0 +1,248 @@
+/* 3.0.0 footer. One mobile-first block. Phones stack. From 761px the
+   columns share a 3-column grid and start on one top line. */
+footer.appFooter.footerNavy {
+  --footer-version-gap: var(--space-3xs);
+  line-height: var(--leading-ui);
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 100%;
+  margin-top: auto;
+  margin-bottom: 0;
+  margin-left: 0;
+  margin-right: 0;
+  padding-block: 0;
+  padding-inline: var(--page-gutter);
+  border: 0;
+  overflow: clip;
+  color: var(--color-on-navy);
+  background:
+    linear-gradient(90deg, rgba(3, 12, 30, 0.94) 0%, rgba(6, 20, 48, 0.91) 42%, rgba(6, 20, 48, 0.88) 100%),
+    var(--color-navy-deep);
+}
+
+footer.appFooter.footerNavy .appFooterInner {
+  position: relative;
+  z-index: var(--z-base);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  justify-items: stretch;
+  width: 100%;
+  margin: 0;
+  gap: var(--space-sm);
+  padding-block: var(--footer-padding-block);
+  @media (min-width: 761px) {
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
+    align-items: start;
+    column-gap: var(--space-xl);
+    row-gap: 0;
+  }
+}
+
+footer.appFooter.footerNavy .appFooterInner::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  right: -14rem;
+  bottom: -11.5rem;
+  width: 40rem;
+  height: 14rem;
+  pointer-events: none;
+  opacity: 0.12;
+  filter: invert(1);
+  background:
+    linear-gradient(30deg, transparent 0 18%, rgba(23, 59, 115, 0.14) 18% 19%, transparent 19% 38%, rgba(23, 59, 115, 0.14) 38% 39%, transparent 39% 58%, rgba(23, 59, 115, 0.14) 58% 59%, transparent 59%),
+    linear-gradient(150deg, transparent 0 18%, rgba(23, 59, 115, 0.14) 18% 19%, transparent 19% 38%, rgba(23, 59, 115, 0.14) 38% 39%, transparent 39% 58%, rgba(23, 59, 115, 0.14) 58% 59%, transparent 59%);
+  background-size: 9rem 5.2rem;
+}
+
+footer.appFooter.footerNavy .footerColumn,
+footer.appFooter.footerNavy .footerContact,
+footer.appFooter.footerNavy .footerCredit {
+  position: relative;
+  z-index: var(--z-base);
+  min-width: 0;
+}
+
+footer.appFooter.footerNavy .footerColumn {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: var(--space-xs);
+  text-align: center;
+  @media (min-width: 761px) {
+    justify-items: start;
+    text-align: start;
+  }
+}
+
+footer.appFooter.footerNavy .footerColumn h2 {
+  margin: 0;
+  color: var(--color-gold);
+  font-size: var(--font-footer-heading);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+footer.appFooter.footerNavy .footerExplore {
+  @media (min-width: 761px) {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+  }
+}
+
+footer.appFooter.footerNavy .footerExploreMain {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  @media (min-width: 761px) {
+    display: contents;
+  }
+}
+
+footer.appFooter.footerNavy .footerColumn a,
+footer.appFooter.footerNavy .footerContact a {
+  color: var(--color-on-navy);
+  font-size: var(--font-caption);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+footer.appFooter.footerNavy .footerColumn a:hover,
+footer.appFooter.footerNavy .footerContact a:hover {
+  color: var(--color-gold);
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
+}
+
+footer.appFooter.footerNavy .footerColumn a:focus-visible,
+footer.appFooter.footerNavy .footerContact a:focus-visible,
+footer.appFooter.footerNavy .footerCredit a:focus-visible {
+  outline: 3px solid var(--color-gold);
+  outline-offset: 3px;
+}
+
+footer.appFooter.footerNavy .footerLoop {
+  display: grid;
+  justify-items: start;
+  align-items: start;
+  gap: var(--space-xs);
+  text-align: start;
+  @media (min-width: 761px) {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    align-self: start;
+  }
+}
+
+footer.appFooter.footerNavy .footerSocials {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: var(--space-xs);
+}
+
+footer.appFooter.footerNavy .footerSocials a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: var(--footer-social-size);
+  inline-size: var(--footer-social-size);
+  block-size: var(--footer-social-size);
+  min-inline-size: var(--footer-social-size);
+  min-block-size: var(--footer-social-size);
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--color-on-navy);
+  font-size: var(--font-caption);
+  font-weight: 900;
+  text-decoration: none;
+}
+
+footer.appFooter.footerNavy .footerSocials a:hover,
+footer.appFooter.footerNavy .footerSocials a:focus-visible {
+  color: var(--color-on-navy);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+footer.appFooter.footerNavy .footerSocials a svg {
+  display: block;
+  width: var(--footer-social-icon-size);
+  height: var(--footer-social-icon-size);
+}
+
+footer.appFooter.footerNavy .footerContact {
+  justify-self: start;
+  text-align: start;
+}
+
+footer.appFooter.footerNavy .footerContact a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-block-size: var(--footer-social-size);
+  font-weight: 800;
+}
+
+footer.appFooter.footerNavy .footerCredit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--footer-version-gap);
+  color: rgba(255, 255, 255, 0.8);
+  align-self: start;
+  @media (min-width: 761px) {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    justify-self: center;
+  }
+}
+
+footer.appFooter.footerNavy .footerCreditBrand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+}
+
+footer.appFooter.footerNavy .footerCredit span {
+  font-size: var(--font-caption);
+}
+
+footer.appFooter.footerNavy .footerCredit a {
+  display: inline-flex;
+  background: none;
+}
+
+footer.appFooter.footerNavy .footerCredit img {
+  display: block;
+  width: 6.75rem;
+  max-width: 6.75rem;
+  height: auto;
+}
+
+footer.appFooter.footerNavy .appVersionStamp {
+  margin: 0;
+  padding: 0;
+  color: var(--footer-muted);
+  font-size: var(--footer-version-size);
+  letter-spacing: normal;
+  text-align: center;
+}
+
+html.isMapFullscreen .appFooter {
+  display: none;
+}
+
+/* End footer */
