@@ -4288,109 +4288,93 @@ export default function App() {
               ) : pendingReviews.length === 0 ? (
                 <p>No submitted changes are waiting for review.</p>
               ) : (
-                <div className="tableWrap">
-                  <table className="responsiveTable reviewTable">
-                    <thead>
-                      <tr>
-                        <th>Honoree</th>
-                        <th>Flag grid</th>
-                        <th>Submitted by</th>
-                        <th>Submitted</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pendingReviews.map((item) => (
-                        <tr key={item.changeRequestId}>
-                          <td data-label="Honoree">
-                            <div className="reviewHonoreeCell">
-                              {isPendingHonoreePhoto(item.photoFileName) && account ? (
-                                <AuthorizedThumbnail
-                                  instance={instance}
-                                  account={account}
-                                  url={changeRequestPhotoUrl(item.changeRequestId)}
-                                  photoKey={`${item.changeRequestId}:${item.photoFileName}`}
-                                  alt={`${item.honoreeName} pending honoree photo`}
-                                  className="reviewPendingPhoto"
-                                  emptyLabel={null}
-                                />
-                              ) : null}
+                <div className="reviewPendingList">
+                  {pendingReviews.map((item) => (
+                    <article key={item.changeRequestId} className="card reviewPendingCard">
+                      <header className="card-header reviewPendingCardHeader">
+                        {isPendingHonoreePhoto(item.photoFileName) && account ? (
+                          <AuthorizedThumbnail
+                            instance={instance}
+                            account={account}
+                            url={changeRequestPhotoUrl(item.changeRequestId)}
+                            photoKey={`${item.changeRequestId}:${item.photoFileName}`}
+                            alt={`${item.honoreeName} pending honoree photo`}
+                            className="reviewPendingPhoto"
+                            emptyLabel={null}
+                          />
+                        ) : null}
+                        <div className="reviewPendingIdentity">
+                          <div className="reviewPendingNameLine">
+                            <strong>{item.honoreeName}</strong>
+                            <span className={`reviewKindBadge ${item.submissionKind === "Change" ? "isChange" : item.submissionKind === "Withdrawal" ? "isWithdrawal" : "isNew"}`}>
+                              {submissionKindLabel(item.submissionKind)}
+                            </span>
+                          </div>
+                          <span className="reviewPendingRank">{[item.rank, item.serviceBranchName].filter(Boolean).join(" • ")}</span>
+                          <details className="reviewDetails">
+                            <summary>View details</summary>
+                            <dl>
                               <div>
-                                <strong>{item.honoreeName}</strong>{" "}
-                                <span className={`reviewKindBadge ${item.submissionKind === "Change" ? "isChange" : item.submissionKind === "Withdrawal" ? "isWithdrawal" : "isNew"}`}>
-                                  {submissionKindLabel(item.submissionKind)}
-                                </span>
-                                <br />
-                                <span>{[item.rank, item.serviceBranchName].filter(Boolean).join(" • ")}</span>
-                                <details className="reviewDetails">
-                                  <summary>View details</summary>
-                                  <dl>
-                                    <div>
-                                      <dt>Description</dt>
-                                      <dd>{item.description?.trim() || "Not provided"}</dd>
-                                    </div>
-                                    <div>
-                                      <dt>Awards</dt>
-                                      <dd>{item.awards?.trim() || "Not provided"}</dd>
-                                    </div>
-                                    <div>
-                                      <dt>Conflicts served</dt>
-                                      <dd>{item.conflictsServed?.trim() || "Not provided"}</dd>
-                                    </div>
-                                    {item.submissionKind === "Change" && item.fieldChanges && item.fieldChanges.length > 0 ? (
-                                      <div>
-                                        <dt>Changes</dt>
-                                        <dd>
-                                          <ul className="reviewFieldChanges">
-                                            {item.fieldChanges.map((change) => (
-                                              <li key={change.label}>
-                                                <strong>{change.label}</strong> {fieldChangeText(change)}
-                                              </li>
-                                            ))}
-                                          </ul>
-                                        </dd>
-                                      </div>
-                                    ) : null}
-                                  </dl>
-                                </details>
+                                <dt>Description</dt>
+                                <dd>{item.description?.trim() || "Not provided"}</dd>
                               </div>
-                            </div>
-                          </td>
-                          <td data-label="Flag grid">{flagSpotLabel(item.flagGridName, item.flagGridId)}</td>
-                          <td data-label="Submitted by">
-                            {item.claimantName || item.claimantEmail}
-                            <br />
+                              <div>
+                                <dt>Awards</dt>
+                                <dd>{item.awards?.trim() || "Not provided"}</dd>
+                              </div>
+                              <div>
+                                <dt>Conflicts served</dt>
+                                <dd>{item.conflictsServed?.trim() || "Not provided"}</dd>
+                              </div>
+                              {item.submissionKind === "Change" && item.fieldChanges && item.fieldChanges.length > 0 ? (
+                                <div>
+                                  <dt>Changes</dt>
+                                  <dd>
+                                    <ul className="reviewFieldChanges">
+                                      {item.fieldChanges.map((change) => (
+                                        <li key={change.label}>
+                                          <strong>{change.label}</strong> {fieldChangeText(change)}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </dd>
+                                </div>
+                              ) : null}
+                            </dl>
+                          </details>
+                        </div>
+                      </header>
+                      <div className="card-body reviewPendingCardBody">
+                        <dl className="reviewPendingFacts">
+                          <dt>Flag grid</dt>
+                          <dd>{flagSpotLabel(item.flagGridName, item.flagGridId)}</dd>
+                          <dt>Submitted by</dt>
+                          <dd className="reviewPendingValue">
+                            <span>{item.claimantName || item.claimantEmail}</span>
                             <span>{item.claimantEmail}</span>
-                            {item.claimantPhone ? (
-                              <>
-                                <br />
-                                <span>{displayUsPhone(item.claimantPhone)}</span>
-                              </>
-                            ) : null}
-                            {item.claimantOrganization ? (
-                              <>
-                                <br />
-                                <span>{item.claimantOrganization}</span>
-                              </>
-                            ) : null}
-                          </td>
-                          <td data-label="Submitted">
+                            {item.claimantPhone ? <span>{displayUsPhone(item.claimantPhone)}</span> : null}
+                            {item.claimantOrganization ? <span>{item.claimantOrganization}</span> : null}
+                          </dd>
+                          <dt>Submitted</dt>
+                          <dd>
                             {item.submissionKind === "Withdrawal"
                               ? `Withdrawn ${formatDate(item.submittedUtc)}`
                               : formatDate(item.submittedUtc)}
-                          </td>
-                          <td data-label="Actions" className="rowActions">
-                            {item.submissionKind === "Withdrawal" ? (
-                              <button
-                                type="button"
-                                className="secondary compactButton"
-                                disabled={adminBusyId === item.changeRequestId}
-                                onClick={() => void confirmRemovedFromField(item)}
-                              >
-                                {adminBusyId === item.changeRequestId ? "Saving..." : "Removed from field"}
-                              </button>
-                            ) : (
-                            <>
+                          </dd>
+                        </dl>
+                      </div>
+                      <footer className="card-footer reviewPendingCardFooter">
+                        {item.submissionKind === "Withdrawal" ? (
+                          <button
+                            type="button"
+                            className="secondary compactButton"
+                            disabled={adminBusyId === item.changeRequestId}
+                            onClick={() => void confirmRemovedFromField(item)}
+                          >
+                            {adminBusyId === item.changeRequestId ? "Saving..." : "Removed from field"}
+                          </button>
+                        ) : (
+                          <>
                             <select
                               className="reviewActionSelect"
                               aria-label={`Review actions for ${item.honoreeName}`}
@@ -4431,13 +4415,11 @@ export default function App() {
                             >
                               Honoree Card
                             </button>
-                            </>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </>
+                        )}
+                      </footer>
+                    </article>
+                  ))}
                 </div>
               )}
 
@@ -4758,9 +4740,10 @@ export default function App() {
                               />
                             </td>
                             <td data-label="Honoree">
-                              <strong>{item.honoreeName}</strong>
-                              <br />
-                              <span>{item.serviceBranchName}</span>
+                              <div className="printHonoree">
+                                <strong>{item.honoreeName}</strong>
+                                {item.serviceBranchName ? <span>{item.serviceBranchName}</span> : null}
+                              </div>
                             </td>
                             <td data-label="Flag grid">{item.flagGridName}</td>
                             <td data-label="Approved">{formatDate(item.approvedUtc)}</td>
