@@ -4290,8 +4290,8 @@ export default function App() {
               ) : (
                 <div className="reviewPendingList">
                   {pendingReviews.map((item) => (
-                    <article key={item.changeRequestId} className="card reviewPendingCard">
-                      <header className="card-header reviewPendingCardHeader">
+                    <article key={item.changeRequestId} className="reviewPendingCard">
+                      <header className="reviewPendingCardHeader">
                         {isPendingHonoreePhoto(item.photoFileName) && account ? (
                           <AuthorizedThumbnail
                             instance={instance}
@@ -4344,7 +4344,7 @@ export default function App() {
                           </details>
                         </div>
                       </header>
-                      <div className="card-body reviewPendingCardBody">
+                      <div className="reviewPendingCardBody">
                         <dl className="reviewPendingFacts">
                           <dt>Flag grid</dt>
                           <dd>{flagSpotLabel(item.flagGridName, item.flagGridId)}</dd>
@@ -4363,7 +4363,7 @@ export default function App() {
                           </dd>
                         </dl>
                       </div>
-                      <footer className="card-footer reviewPendingCardFooter">
+                      <footer className="reviewPendingCardFooter">
                         {item.submissionKind === "Withdrawal" ? (
                           <button
                             type="button"

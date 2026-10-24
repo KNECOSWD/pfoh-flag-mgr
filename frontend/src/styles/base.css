@@ -1191,7 +1191,7 @@ a.textLink {
 .responsiveTable thead {
   display: none;
   @media (min-width: 761px) {
-    display: unset;
+    display: table-header-group;
   }
 }
 
@@ -1201,7 +1201,7 @@ a.textLink {
   width: 100%;
   @media (min-width: 761px) {
     min-width: unset;
-    display: unset;
+    display: table;
     width: unset;
   }
 }
@@ -1210,7 +1210,7 @@ a.textLink {
   display: block;
   width: 100%;
   @media (min-width: 761px) {
-    display: unset;
+    display: table-row-group;
     width: unset;
   }
 }
@@ -1221,7 +1221,7 @@ a.textLink {
   width: 100%;
   border-bottom: 1px solid #e4ebf5;
   @media (min-width: 761px) {
-    display: unset;
+    display: table-row;
     width: unset;
     padding: unset;
     border-bottom: unset;
@@ -1236,7 +1236,7 @@ a.textLink {
   grid-template-columns: 6.5rem minmax(0, 1fr);
   font-size: var(--font-caption);
   @media (min-width: 761px) {
-    display: unset;
+    display: table-cell;
     width: unset;
     grid-template-columns: unset;
     gap: unset;

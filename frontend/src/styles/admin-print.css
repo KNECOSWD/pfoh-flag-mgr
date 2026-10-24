@@ -144,39 +144,6 @@
   }
 }
 
-.adminPrintingCard .printQueueTable thead {
-  @media (min-width: 761px) {
-    display: table-header-group;
-  }
-}
-
-.adminPrintingCard .printQueueTable tbody {
-  @media (min-width: 761px) {
-    display: table-row-group;
-  }
-}
-
-.adminPrintingCard .printQueueTable tr {
-  @media (min-width: 761px) {
-    display: table-row;
-  }
-}
-
-.adminPrintingCard .printQueueTable th,
-.adminPrintingCard .printQueueTable td {
-  @media (min-width: 761px) {
-    display: table-cell;
-    vertical-align: top;
-    overflow-wrap: break-word;
-  }
-}
-
-.adminPrintingCard .printQueueTable td::before {
-  @media (min-width: 761px) {
-    content: none;
-  }
-}
-
 .printHonoree {
   display: flex;
   flex-direction: column;
