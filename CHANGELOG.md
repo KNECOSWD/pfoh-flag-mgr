@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.0.2
+
+- Ready to Print keeps each honoree name on the same line as that card's flag grid, on screen and when the tab is printed. The name had moved up one line.
+- Pending review shows each submission as a card: photo, name, and rank in the header, flag grid and submitter details in aligned rows, and review actions in a footer that spans the card.
+
 ## 5.0.1
 
 - Duplicate honoree review shows when each record was submitted. The date is the honoree record's created date, shown on each record in a group and on the side-by-side comparison, so a reviewer can see which entry is newer.

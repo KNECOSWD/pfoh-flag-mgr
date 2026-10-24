@@ -26,22 +26,6 @@
   }
 }
 
-.reviewTable {
-  overflow: visible;
-}
-
-.reviewTable tbody {
-  overflow: visible;
-}
-
-.reviewTable tr {
-  overflow: visible;
-}
-
-.reviewTable td {
-  overflow: visible;
-}
-
 .adminReviewCard {
   overflow: visible;
   border-top: 3px solid var(--color-navy);
@@ -53,11 +37,6 @@
   @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
     min-width: 0;
   }
-}
-
-.reviewTable .rowActions {
-  overflow: visible;
-  min-width: 13rem;
 }
 
 .adminReviewCard .adminCardSummary:empty {
@@ -77,5 +56,246 @@
   margin-top: var(--space-xs);
   @media (min-width: 761px) {
     font-size: unset;
+  }
+}
+
+.reviewPendingList {
+  display: grid;
+  gap: var(--space-sm);
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.reviewPendingCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: none;
+  box-sizing: border-box;
+  overflow: visible;
+  min-width: 0;
+}
+
+.reviewPendingCardHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  margin: 0;
+  padding: var(--space-sm);
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-surface);
+  min-width: 0;
+}
+
+.reviewPendingPhoto {
+  width: 4rem;
+  height: 4rem;
+  flex: 0 0 auto;
+  object-fit: cover;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+}
+
+.reviewPendingIdentity {
+  display: flex;
+  flex: 1 1 12rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3xs);
+  min-width: 0;
+}
+
+.reviewPendingNameLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2xs);
+  min-width: 0;
+}
+
+.reviewPendingNameLine strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-ink);
+  font-size: var(--font-body);
+}
+
+.reviewPendingRank {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--color-muted);
+  font-size: var(--font-caption);
+}
+
+.reviewKindBadge {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: var(--space-3xs) var(--space-2xs);
+  border-radius: var(--radius-pill);
+  font-size: var(--font-meta);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.reviewKindBadge.isNew {
+  background: var(--color-success-bg);
+  color: var(--color-success-ink);
+}
+
+.reviewKindBadge.isChange {
+  background: #e8f0fb;
+  color: var(--color-navy);
+}
+
+.reviewKindBadge.isWithdrawal {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-ink);
+}
+
+.reviewDetails {
+  width: 100%;
+  margin: 0;
+  min-width: 0;
+}
+
+.reviewDetails summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--size-touch);
+  cursor: pointer;
+  color: var(--color-navy);
+  font-weight: 700;
+  font-size: var(--font-caption);
+}
+
+.reviewDetails dl {
+  display: grid;
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-2xs);
+}
+
+.reviewDetails dt {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-meta);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.reviewDetails dd {
+  margin: var(--space-3xs) 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.reviewFieldChanges {
+  margin: var(--space-3xs) 0 0;
+  padding-left: var(--space-sm);
+}
+
+.reviewPendingCardBody {
+  padding: var(--space-sm);
+  min-width: 0;
+}
+
+.reviewPendingFacts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-sm);
+  margin: 0;
+  @media (min-width: 761px) {
+    grid-template-columns: 9.5rem minmax(0, 1fr);
+    column-gap: var(--space-md);
+    row-gap: var(--space-sm);
+    align-items: start;
+  }
+}
+
+.reviewPendingFacts dt {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: var(--font-meta);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.reviewPendingFacts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--color-ink);
+  font-weight: 700;
+}
+
+.reviewPendingValue {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3xs);
+  min-width: 0;
+}
+
+.reviewPendingValue span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.reviewPendingValue span + span {
+  color: var(--color-muted);
+  font-size: var(--font-caption);
+  font-weight: 600;
+}
+
+.reviewPendingCardFooter {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2xs);
+  margin: 0;
+  padding: var(--space-sm);
+  border-top: 1px solid var(--color-line);
+  background: var(--color-surface-muted);
+  min-width: 0;
+  @media (min-width: 761px) {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+}
+
+.reviewPendingCardFooter > .reviewActionSelect,
+.reviewPendingCardFooter > .compactButton {
+  width: 100%;
+  min-height: var(--size-touch);
+  min-width: 0;
+  @media (min-width: 761px) {
+    width: auto;
+    min-height: var(--size-touch);
+  }
+}
+
+.reviewPendingCardFooter > .reviewActionSelect {
+  @media (min-width: 761px) {
+    flex: 1 1 12rem;
+  }
+}
+
+.reviewPendingCardFooter > .compactButton {
+  @media (min-width: 761px) {
+    flex: 0 0 auto;
   }
 }

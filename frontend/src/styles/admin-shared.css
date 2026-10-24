@@ -190,7 +190,7 @@
   @media (min-width: 761px) {
     min-width: unset;
     width: unset;
-    display: unset;
+    display: table;
     border-collapse: unset;
   }
 }
@@ -198,7 +198,7 @@
 .adminCard .responsiveTable thead {
   display: none;
   @media (min-width: 761px) {
-    display: unset;
+    display: table-header-group;
   }
 }
 
@@ -206,7 +206,7 @@
   gap: var(--space-xs);
   display: grid;
   @media (min-width: 761px) {
-    display: unset;
+    display: table-row-group;
     gap: unset;
   }
 }
@@ -220,7 +220,7 @@
   display: grid;
   box-shadow: 0 8px 18px rgba(20, 31, 48, 0.06);
   @media (min-width: 761px) {
-    display: unset;
+    display: table-row;
     gap: unset;
     padding: unset;
     border: unset;
@@ -309,13 +309,14 @@
   font-size: var(--font-caption);
   grid-template-columns: 1fr;
   @media (min-width: 761px) {
-    display: unset;
+    display: table-cell;
     grid-template-columns: unset;
     gap: unset;
     align-items: unset;
     padding: var(--space-sm);
     border: unset;
     font-size: unset;
+    vertical-align: top;
   }
 }
 
