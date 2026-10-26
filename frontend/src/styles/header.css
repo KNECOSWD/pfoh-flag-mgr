@@ -1545,7 +1545,7 @@ header.hero::after {
   }
 }
 
-main > .pageBody > .anniversaryBanner + * {
+main > .pageBody > .anniversaryBanner + :not(.adminAlertBanner) {
   margin-top: var(--space-md);
 }
 

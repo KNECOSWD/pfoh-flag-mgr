@@ -321,18 +321,9 @@
 }
 
 .adminCard {
-  padding: var(--space-sm);
-  border-radius: var(--radius-md);
   gap: var(--space-xs);
   border-top: 4px solid var(--color-navy);
   display: grid;
-  @media (min-width: 761px) {
-    padding: var(--space-lg);
-    border-radius: var(--radius-md);
-  }
-  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
-    padding: var(--space-sm);
-  }
 }
 
 .adminStandalonePanel {
@@ -720,7 +711,8 @@ main > .pageBody > .adminSectionStack > .card {
 }
 
 .adminAlertBanner {
-  border: 1px solid #d8e4f2;
+  border-block: 1px solid #d8e4f2;
+  border-inline: 0;
   border-radius: 0;
   background: linear-gradient(180deg, var(--color-surface) 0%, #f8fbff 100%);
   gap: var(--space-xs);

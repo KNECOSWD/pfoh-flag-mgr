@@ -56,15 +56,6 @@
   font-size: var(--font-caption);
 }
 
-.ownershipCard {
-  border-radius: var(--radius-md);
-  padding: var(--space-sm);
-  @media (min-width: 761px) {
-    border-radius: var(--radius-md);
-    padding: var(--space-lg);
-  }
-}
-
 .ownershipCard .sectionHeader h2 {
   font-size: var(--font-heading);
   @media (min-width: 761px) {
@@ -219,9 +210,9 @@ img.ownedFlagImage {
 .ownedFlagCard {
   border: 1px solid #e4ebf5;
   background: #fbfcff;
-  border-radius: 0.95rem;
+  border-radius: var(--radius-md);
   gap: var(--space-xs);
-  padding: var(--space-xs);
+  padding: var(--space-sm);
   max-width: 46rem;
   margin-left: auto;
   margin-right: auto;
@@ -232,8 +223,7 @@ img.ownedFlagImage {
   align-items: start;
   @media (min-width: 761px) {
     gap: var(--space-sm);
-    border-radius: var(--radius-md);
-    padding: var(--space-sm);
+    padding: var(--space-md);
     width: unset;
     max-width: unset;
     margin-left: unset;
