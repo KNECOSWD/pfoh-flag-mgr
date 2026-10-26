@@ -240,6 +240,7 @@ export type DuplicateMergeResult = {
   survivorName: string;
   deactivatedIds: number[];
   claimants: DuplicateClaimant[];
+  reprintQueued?: boolean;
 };
 
 export type MergeHistoryAbsorbed = {
@@ -798,7 +799,12 @@ export const flagClaimApi = {
     }),
 
   unclaim: (instance: IPublicClientApplication, account: AccountInfo, claimId: number) =>
-    request<{ message: string }>(instance, account, `/api/flag-claims/${claimId}/unclaim`, {
+    request<{ message: string; removalRequested?: boolean }>(instance, account, `/api/flag-claims/${claimId}/unclaim`, {
+      method: "POST"
+    }),
+
+  unlink: (instance: IPublicClientApplication, account: AccountInfo, claimId: number) =>
+    request<{ message: string }>(instance, account, `/api/flag-claims/${claimId}/unlink`, {
       method: "POST"
     }),
 
@@ -853,6 +859,11 @@ export const adminApi = {
     request<AdminReviewItem>(instance, account, `/api/admin/review/${changeRequestId}/reject`, {
       method: "POST",
       body: JSON.stringify({ reviewNotes })
+    }),
+
+  declineRemoval: (instance: IPublicClientApplication, account: AccountInfo, changeRequestId: number) =>
+    request<{ message: string }>(instance, account, `/api/admin/review/${changeRequestId}/decline-removal`, {
+      method: "POST"
     }),
 
   removedFromField: (instance: IPublicClientApplication, account: AccountInfo, changeRequestId: number) =>
@@ -944,6 +955,7 @@ export const adminApi = {
       fields: Record<string, number>;
       values?: Record<string, string>;
       combineAwards?: boolean;
+      queueReprint?: boolean;
     }
   ) =>
     request<DuplicateMergeResult>(instance, account, "/api/admin/duplicates/merge", {
@@ -1011,6 +1023,18 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify({ ids })
     }),
+
+  exportRemovalQueue: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    status: "open" | "done"
+  ) =>
+    downloadFile(
+      instance,
+      account,
+      `/api/admin/removal-queue/export?status=${status}`,
+      `pfoh-removal-queue-${new Date().toISOString().slice(0, 10)}.xlsx`
+    ),
 
   flagPositions: (instance: IPublicClientApplication, account: AccountInfo) =>
     request<AdminFlagPosition[]>(instance, account, "/api/admin/review/flag-positions"),

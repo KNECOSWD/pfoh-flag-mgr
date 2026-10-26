@@ -20,7 +20,7 @@ export function submissionPhotoKind(claim) {
  */
 export function submissionKindLabel(kind) {
   if (kind === "Change") return "Change";
-  if (kind === "Withdrawal") return "Withdrawal";
+  if (kind === "Withdrawal") return "Removal request";
   return "New submission";
 }
 

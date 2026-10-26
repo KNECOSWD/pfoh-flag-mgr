@@ -1237,6 +1237,63 @@ public class DuplicateMergeFieldApiTests(PfohApiFactory factory) : IClassFixture
         Assert.Null((await after.HonoreeMergeAudits.SingleAsync(row => row.MergedBy == "admin@example.com")).UndoneUtc);
     }
 
+    [Fact]
+    public async Task Merge_with_reprint_queues_the_survivor_card()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        var client = factory.CreateClient();
+        var merged = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields = SourceFields(2, 1, 2),
+            queueReprint = true
+        }));
+        var body = await merged.Content.ReadAsStringAsync();
+        Assert.True(merged.StatusCode == HttpStatusCode.OK, body);
+        var payload = JsonSerializer.Deserialize<ReprintMergeBody>(body, Json);
+        Assert.True(payload!.ReprintQueued);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var reprint = await db.HonoreeChangeRequests.Include(request => request.FlagClaim).SingleAsync(request => request.RequiresCardReprint);
+        Assert.Equal(2, reprint.HonoreeId);
+        Assert.Equal(12, reprint.FlagGridId);
+        Assert.Equal("Approved", reprint.RequestStatus);
+        Assert.Null(reprint.CardPrintedUtc);
+        Assert.True(reprint.RequiresCardReprint);
+        Assert.Equal("AdminReprintQueued", reprint.FlagClaim!.ClaimStatus);
+        Assert.StartsWith("admin-reprint:", reprint.FlagClaim.ExternalUserObjectId);
+        Assert.True((await db.Honorees.SingleAsync(honoree => honoree.Id == 2)).IsActive);
+    }
+
+    [Fact]
+    public async Task Merge_without_reprint_does_not_queue_a_card()
+    {
+        await ResetAsync();
+        await SeedPairAsync();
+        var client = factory.CreateClient();
+        var merged = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/duplicates/merge", new
+        {
+            survivorId = 2,
+            duplicateIds = new[] { 1, 2 },
+            fields = SourceFields(2, 1, 2),
+            queueReprint = false
+        }));
+        var body = await merged.Content.ReadAsStringAsync();
+        Assert.True(merged.StatusCode == HttpStatusCode.OK, body);
+        var payload = JsonSerializer.Deserialize<ReprintMergeBody>(body, Json);
+        Assert.False(payload!.ReprintQueued);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Equal(0, await db.HonoreeChangeRequests.CountAsync(request => request.RequiresCardReprint));
+        Assert.Equal(0, await db.FlagClaims.CountAsync(claim => claim.ClaimStatus == "AdminReprintQueued"));
+        Assert.True((await db.Honorees.SingleAsync(honoree => honoree.Id == 2)).IsActive);
+        Assert.False((await db.Honorees.SingleAsync(honoree => honoree.Id == 1)).IsActive);
+    }
+
     private static object GridValue(Dictionary<string, int> fields, string gridName)
     {
         var copy = new Dictionary<string, int>(fields) { ["flagGrid"] = 2 };
@@ -1464,5 +1521,6 @@ public class DuplicateMergeFieldApiTests(PfohApiFactory factory) : IClassFixture
         string? PhotoUrl,
         DateTime CreatedDate);
     private sealed record MergeBody(int SurvivorId, List<ClaimantBody> Claimants);
+    private sealed record ReprintMergeBody(int SurvivorId, bool ReprintQueued);
     private sealed record ClaimantBody(string Email);
 }

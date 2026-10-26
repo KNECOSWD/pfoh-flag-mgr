@@ -54,6 +54,24 @@ export function RemovalQueue({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account?.homeAccountId]);
 
+  function printReport() {
+    window.print();
+  }
+
+  async function exportExcel() {
+    if (!account) return;
+    setBusy(true);
+    setError("");
+    try {
+      await adminApi.exportRemovalQueue(instance, account, status);
+    } catch (err) {
+      if (isQuietAuthRejection(err)) return;
+      setError(err instanceof ApiError ? err.serverMessage || err.message : "The removal queue could not be exported.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function markDone(ids: number[]) {
     if (!account || ids.length === 0) return;
     setBusy(true);
@@ -91,6 +109,8 @@ export function RemovalQueue({
       onShowOpen={() => setStatus("open")}
       onShowDone={() => setStatus("done")}
       onNavigate={onNavigate}
+      onPrint={printReport}
+      onExport={() => void exportExcel()}
     />
   );
 }

@@ -31,7 +31,7 @@ test("review badges and field diffs use the submission kind", () => {
   assert.equal(submissionKindLabel("New"), "New submission");
   assert.equal(submissionKindLabel(null), "New submission");
   assert.equal(submissionKindLabel("Change"), "Change");
-  assert.equal(submissionKindLabel("Withdrawal"), "Withdrawal");
+  assert.equal(submissionKindLabel("Withdrawal"), "Removal request");
   assert.equal(fieldChangeText({ previous: "Private", proposed: "Sergeant" }), "Private → Sergeant");
   assert.equal(fieldChangeText({ previous: "  ", proposed: "" }), "(blank) → (blank)");
   assert.equal(flagSpotLabel("", null), "Not assigned");

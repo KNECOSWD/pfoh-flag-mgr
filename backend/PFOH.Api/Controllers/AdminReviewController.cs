@@ -1160,8 +1160,6 @@ public class AdminReviewController(
 
             if (removedGrid is not null && !await FlagRemovalQueue.HasOpenAsync(db, honoree.Id, removedGrid.Id, ct))
             {
-                // The admin is confirming the card is already off the field, so the
-                // history row is written already done.
                 FlagRemovalQueue.Record(
                     db,
                     honoree,
@@ -1169,8 +1167,7 @@ public class AdminReviewController(
                     FlagRemovalQueue.Other,
                     adminName,
                     now,
-                    sourceDetail: FlagRemovalQueue.WithdrawalDetail,
-                    alreadyDone: true);
+                    sourceDetail: FlagRemovalQueue.RemovalApprovedDetail);
             }
 
             honoree.FlagGridId = null;
@@ -1184,6 +1181,7 @@ public class AdminReviewController(
         if (change.FlagClaim is not null)
         {
             change.FlagClaim.FlagGridId = null;
+            change.FlagClaim.ClaimStatus = "Unclaimed";
         }
 
         change.RequestStatus = PendingReviewMaintenance.Removed;
@@ -1191,10 +1189,62 @@ public class AdminReviewController(
         change.ReviewedBy = adminName;
         change.ReviewNotes = AppendReviewNote(
             change.ReviewNotes,
-            "Removed from the field. The flag spot was released and the honoree record was deactivated.");
+            "Removal request approved. The card is in the removal queue.");
 
         await db.SaveChangesAsync(ct);
-        return Ok(new { message = "Honoree removed from the field." });
+        return Ok(new { message = "Removal approved. The card is in the removal queue." });
+    }
+
+    [HttpPost("{id:int}/decline-removal")]
+    public async Task<IActionResult> DeclineRemoval(int id, CancellationToken ct)
+    {
+        var adminName = User.GetEmail();
+        if (string.IsNullOrWhiteSpace(adminName))
+        {
+            adminName = User.GetDisplayName() ?? "PFOH.Admin";
+        }
+
+        var change = await db.HonoreeChangeRequests
+            .Include(request => request.FlagClaim)
+            .Include(request => request.Honoree)
+            .FirstOrDefaultAsync(request => request.Id == id, ct);
+
+        if (change is null)
+        {
+            return NotFound("Change request was not found.");
+        }
+
+        if (change.RequestStatus != PendingReviewMaintenance.Withdrawal)
+        {
+            return Conflict(new
+            {
+                message = "Only a removal request can be declined.",
+                currentStatus = change.RequestStatus
+            });
+        }
+
+        var now = DateTime.UtcNow;
+        if (change.Honoree is { } honoree)
+        {
+            honoree.IsActive = true;
+            honoree.DeletedDate = null;
+            honoree.DeletedBy = null;
+        }
+
+        if (change.FlagClaim is { ClaimStatus: "Unclaimed" })
+        {
+            change.FlagClaim.ClaimStatus = "Claimed";
+        }
+
+        change.RequestStatus = "Rejected";
+        change.ReviewedUtc = now;
+        change.ReviewedBy = adminName;
+        change.ReviewNotes = AppendReviewNote(
+            change.ReviewNotes,
+            "Removal request declined. The honoree stays on the field.");
+
+        await db.SaveChangesAsync(ct);
+        return Ok(new { message = "Removal declined. The honoree stays on the field." });
     }
 
     private async Task<Sponsor?> GetOrCreateSubmitterSponsorAsync(

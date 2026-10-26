@@ -10,7 +10,7 @@ namespace PFOH.Api.Services;
 /// </summary>
 public static class HonoreeClaimStore
 {
-    public static readonly string[] HiddenStatuses = ["Unclaimed", "Cancelled", "AdminDirectEditCompleted"];
+    public static readonly string[] HiddenStatuses = ["Unclaimed", "Cancelled", "Unlinked", "AdminDirectEditCompleted"];
 
     public static bool IsPerson(string? userId) =>
         !string.IsNullOrWhiteSpace(userId) &&

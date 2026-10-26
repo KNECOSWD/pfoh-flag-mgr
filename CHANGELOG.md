@@ -1,5 +1,15 @@
 # Changelog
 
+## 5.1.0
+
+- Duplicate merge can send the merged card to Ready to print when that option is checked.
+- The removal queue can print a report and export the current list to Excel.
+- Request Removal asks for confirmation. An approved honoree stays on the field until an administrator approves the request. Declining it leaves the honoree on the field.
+- Unlink from my account removes a submission from My submissions without cancelling the honoree.
+- My submissions actions have more room, and section cards share one corner radius and padding.
+- The admin attention bar sits full width under the header, and Flag Manager uses the full page width.
+- The header title and subtitle match the page you are on.
+
 ## 5.0.2
 
 - Ready to Print keeps each honoree name on the same line as that card's flag grid, on screen and when the tab is printed. The name had moved up one line.

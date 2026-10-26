@@ -134,6 +134,25 @@ function sourceClass(source) {
   return "other";
 }
 
+function removalStatusLabel(item) {
+  if (item?.canceledUtc) return "Canceled";
+  if (item?.doneUtc) return "Done";
+  return "Open";
+}
+
+function removalFinishedWhen(item) {
+  return formatRemovalWhen(item?.canceledUtc || item?.doneUtc);
+}
+
+function removalFinishedBy(item) {
+  return item?.canceledBy || item?.doneBy || "";
+}
+
+function reportCell(value) {
+  const text = String(value ?? "").trim();
+  return text || "";
+}
+
 export function RemovalQueueScreen({
   status,
   openItems,
@@ -149,7 +168,9 @@ export function RemovalQueueScreen({
   onRefresh,
   onShowOpen,
   onShowDone,
-  onNavigate
+  onNavigate,
+  onPrint,
+  onExport
 }) {
   const open = sortOpenRemovalItems(openItems);
   const done = doneItems ?? [];
@@ -191,6 +212,26 @@ export function RemovalQueueScreen({
           disabled: busy,
           onClick: onRefresh
         }),
+        h(
+          "button",
+          {
+            type: "button",
+            className: "secondary",
+            disabled: busy,
+            onClick: () => onPrint?.()
+          },
+          "Print report"
+        ),
+        h(
+          "button",
+          {
+            type: "button",
+            className: "secondary",
+            disabled: busy,
+            onClick: () => onExport?.()
+          },
+          "Export to Excel"
+        ),
         viewingDone
           ? null
           : h(
@@ -362,6 +403,42 @@ export function RemovalQueueScreen({
             );
           })
         )
-      : null
+      : null,
+    h(
+      "table",
+      { className: "rqPrintSheet" },
+      h("caption", null, viewingDone ? "Removal queue, done" : "Removal queue, open"),
+      h(
+        "thead",
+        null,
+        h(
+          "tr",
+          null,
+          ["Flag spot", "Honoree", "Source", "What happened", "New flag spot", "Logged", "Logged by", "Status", "Finished", "Finished by"].map(
+            (heading) => h("th", { key: heading }, heading)
+          )
+        )
+      ),
+      h(
+        "tbody",
+        null,
+        rows.map((item) =>
+          h(
+            "tr",
+            { key: item.id },
+            h("td", null, reportCell(item.flagGridName)),
+            h("td", null, reportCell(item.honoreeName)),
+            h("td", null, reportCell(item.source)),
+            h("td", null, reportCell(removalSummary(item))),
+            h("td", null, reportCell(item.newFlagGridName)),
+            h("td", null, reportCell(formatRemovalWhen(item.createdUtc))),
+            h("td", null, reportCell(item.createdBy)),
+            h("td", null, removalStatusLabel(item)),
+            h("td", null, removalFinishedWhen(item)),
+            h("td", null, reportCell(removalFinishedBy(item)))
+          )
+        )
+      )
+    )
   );
 }

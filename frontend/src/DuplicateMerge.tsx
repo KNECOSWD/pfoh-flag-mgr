@@ -45,6 +45,7 @@ export type DuplicateMergeBody = {
   fields: Record<string, number>;
   values?: Record<string, string>;
   combineAwards?: boolean;
+  queueReprint?: boolean;
 };
 
 function claimantLabel(claimant: DuplicateClaimant) {
@@ -97,6 +98,7 @@ export function DuplicateMergeScreen({
   const [error, setError] = useState("");
   const [result, setResult] = useState<DuplicateMergeResult | null>(null);
   const [pendingPair, setPendingPair] = useState<{ leftId: number; rightId: number } | null>(null);
+  const [queueReprint, setQueueReprint] = useState(false);
 
   const group = groups.find((item) => item.groupKey === openKey) ?? null;
   const listState = duplicateListState({ loaded, loadError, count: groups.length });
@@ -131,6 +133,7 @@ export function DuplicateMergeScreen({
     setError("");
     setMessage("");
     setPendingPair(null);
+    setQueueReprint(false);
     setStep("review");
   }
 
@@ -243,12 +246,19 @@ export function DuplicateMergeScreen({
       return;
     }
     setError("");
-    const body = buildMergeRequest(includedHonorees, choices);
+    const body = {
+      ...buildMergeRequest(includedHonorees, choices),
+      ...(queueReprint ? { queueReprint: true } : {})
+    };
     try {
       const merged = await onMerge(body);
       setResult(merged);
       setStep("done");
-      setMessage(`${merged.survivorName} now has the chosen values. The other confirmed records are inactive and their flag spots were released.`);
+      setMessage(
+        merged.reprintQueued
+          ? `${merged.survivorName} now has the chosen values. The other confirmed records are inactive and their flag spots were released. The merged card is in Ready to print.`
+          : `${merged.survivorName} now has the chosen values. The other confirmed records are inactive and their flag spots were released.`
+      );
     } catch (err) {
       setError(err instanceof ApiError ? err.serverMessage || err.message : "The merge could not be saved.");
     }
@@ -450,6 +460,17 @@ export function DuplicateMergeScreen({
             highlightToken={highlight.token}
           />
           {claimants}
+          <label className="mergeReprintOption">
+            <input
+              type="checkbox"
+              checked={queueReprint}
+              onChange={(event) => setQueueReprint(event.target.checked)}
+            />
+            <span>
+              <strong>Send the merged card to Ready to print</strong>
+              <span className="helperText">Use this when the merge adds or updates information on the honoree record.</span>
+            </span>
+          </label>
           <MergeActions
             ready={ready}
             busy={busy}
@@ -463,6 +484,7 @@ export function DuplicateMergeScreen({
       {step === "done" && result ? (
         <section className="survivorClaimants" aria-label="Survivor claimants">
           <h3>{result.survivorName} claimants</h3>
+          {result.reprintQueued ? <p>The merged card is in Ready to print.</p> : null}
           {result.claimants.length === 0 ? (
             <p>The surviving record is not claimed.</p>
           ) : (

@@ -187,8 +187,6 @@ function isSubmitHonoreeIntent(intent: { action: string }) {
 }
 
 const publicCopy = {
-  title: "HONOR A HERO",
-  subtitle: "Find an honoree or submit a tribute.",
   searchHeading: "Search honoree records",
   searchHelp:
     "Search by name, military branch, rank, submitter’s name, or flag grid location. A flag grid location is the spot on the field, such as AA-10.",
@@ -251,6 +249,54 @@ const appRoutes: AppRoute[] = [
   "/admin/removal-queue"
 ];
 
+const pageBanners: Record<AppRoute, { title: string; subtitle: string }> = {
+  "/find": {
+    title: "FIND A HERO",
+    subtitle: "Search by name, branch, rank, submitter, or flag grid."
+  },
+  "/honor-a-hero": {
+    title: "HONOR A HERO",
+    subtitle: "Submit a tribute. An administrator reviews it before it is public."
+  },
+  "/flag-map": {
+    title: "FLAG MAP",
+    subtitle: "Find a flag on the field and open that honoree's tribute."
+  },
+  "/my-flags": {
+    title: "MY SUBMISSIONS",
+    subtitle: "Review the honoree records and changes you submitted."
+  },
+  "/admin/review": {
+    title: "PENDING REVIEW",
+    subtitle: "Review new tributes, suggested changes, and removal requests."
+  },
+  "/admin/printing": {
+    title: "READY TO PRINT",
+    subtitle: "Print the honoree cards waiting in the queue."
+  },
+  "/admin/removal-queue": {
+    title: "REMOVAL QUEUE",
+    subtitle: "Flag cards waiting to be pulled from the field."
+  },
+  "/admin/duplicates": {
+    title: "DUPLICATE HONOREES",
+    subtitle: "Compare likely duplicates and merge the records you confirm."
+  },
+  "/admin/duplicates/history": {
+    title: "MERGE HISTORY",
+    subtitle: "Review completed merges and undo one while it is still safe."
+  },
+  "/admin/flag-map": {
+    title: "FLAG MANAGER",
+    subtitle: "Assign open grids, move honorees, and clear spots on the field."
+  }
+};
+
+const profileBanner = {
+  title: "YOUR PROFILE",
+  subtitle: "Update the name, phone, and organization on your account."
+};
+
 function normalizeAppRoute(pathname: string): AppRoute {
   const normalized = pathname.replace(/\/$/, "") || "/find";
   return appRoutes.includes(normalized as AppRoute) ? (normalized as AppRoute) : "/find";
@@ -288,6 +334,7 @@ function ownershipStatusLabel(claim: FlagClaim) {
   const latest = claim.latestChangeRequest?.requestStatus ?? claim.claimStatus;
 
   if (latest === "Submitted") return publicCopy.pendingReview;
+  if (latest === "Withdrawal") return "Removal requested";
   if (latest === "Approved") return "Approved";
   if (latest === "Rejected") return "Needs revision";
   if (latest === "Draft") return "Draft saved";
@@ -1075,9 +1122,10 @@ export default function App() {
   }
 
   function resolveConfirmation(confirmed: boolean) {
-    confirmResolveRef.current?.(confirmed);
+    const resolve = confirmResolveRef.current;
     confirmResolveRef.current = null;
     setConfirmDialog(null);
+    resolve?.(confirmed);
   }
 
   useEffect(() => {
@@ -1642,21 +1690,68 @@ export default function App() {
 
   async function unclaimFlag(claim: FlagClaim) {
     if (!account) return;
+    if (claim.latestChangeRequest?.requestStatus === "Withdrawal") return;
 
+    const name = claim.honoreeName || "this honoree";
+    const onField = (claim.honoreeId ?? 0) > 0;
     const ok = await requestConfirmation(
-      `Withdraw your submission for ${claim.honoreeName || "this honoree"}? It will be removed from My submissions.`,
-      { title: "Withdraw submission", confirmText: "Withdraw", tone: "danger" }
+      onField
+        ? `Request removal of ${name} from the field? An administrator reviews the request before the card moves to the removal queue. The flag stays on the field until that review is approved.`
+        : `Request removal of ${name}? This submission will be withdrawn and removed from My submissions.`,
+      { title: "Are you sure?", confirmText: "Request Removal", cancelText: "Cancel", tone: "danger" }
     );
 
     if (!ok) return;
 
     setSaving(true);
     setError("");
-    setNotice(`Withdrawing ${claim.honoreeName || "this submission"}...`);
+    setNotice(`Requesting removal for ${name}...`);
 
     try {
-      await flagClaimApi.unclaim(instance, account, claim.id);
+      const result = await flagClaimApi.unclaim(instance, account, claim.id);
 
+      if (selectedClaim?.id === claim.id && !result.removalRequested) {
+        setSelectedClaim(null);
+        setForm(blankForm);
+        setSelectedPhoto(null);
+        setSelectedPhotoRotation(0);
+      }
+
+      if (result.removalRequested) {
+        void loadData();
+        setNotice(`Removal requested for ${name}. An administrator will review it before the card leaves the field.`);
+      } else {
+        const remaining = dropWithdrawnSubmission(myClaims, pendingReviews, claim.id);
+        setMyClaims(remaining.claims);
+        setPendingReviews(remaining.reviews);
+        void loadData();
+        setNotice(`${name} was withdrawn.`);
+      }
+    } catch (err) {
+      setError(reportableErrorMessage(err, "Unable to request removal for this submission."));
+      setNotice("");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function unlinkFlag(claim: FlagClaim) {
+    if (!account) return;
+
+    const name = claim.honoreeName || "this submission";
+    const ok = await requestConfirmation(
+      `Unlink ${name} from your account? It will leave My submissions. The honoree stays on the field.`,
+      { title: "Are you sure?", confirmText: "Unlink from my account", cancelText: "Cancel", tone: "danger" }
+    );
+
+    if (!ok) return;
+
+    setSaving(true);
+    setError("");
+    setNotice(`Unlinking ${name}...`);
+
+    try {
+      await flagClaimApi.unlink(instance, account, claim.id);
       const remaining = dropWithdrawnSubmission(myClaims, pendingReviews, claim.id);
       setMyClaims(remaining.claims);
       setPendingReviews(remaining.reviews);
@@ -1669,9 +1764,9 @@ export default function App() {
       }
 
       void loadData();
-      setNotice(`${claim.honoreeName || "This submission"} was withdrawn.`);
+      setNotice(`${name} was unlinked from your account.`);
     } catch (err) {
-      setError(reportableErrorMessage(err, "Unable to withdraw this submission."));
+      setError(reportableErrorMessage(err, "Unable to unlink this submission."));
       setNotice("");
     } finally {
       setSaving(false);
@@ -2631,22 +2726,52 @@ export default function App() {
     }
 
     const ok = await requestConfirmation(
-      `Confirm that ${item.honoreeName}'s flag was removed from ${flagSpotLabel(item.flagGridName, item.flagGridId)}? The spot will be released and the record will stay on file.`,
-      { title: "Removed from field", confirmText: "Removed from field", tone: "danger" }
+      `Approve removal of ${item.honoreeName}? The card moves to the removal queue and the flag spot is released.`,
+      { title: "Are you sure?", confirmText: "Approve removal", cancelText: "Cancel", tone: "danger" }
     );
     if (!ok) return;
 
     setAdminBusyId(item.changeRequestId);
     setAdminBusyAction("approve");
     setError("");
-    setNotice(`Removing ${item.honoreeName} from the field...`);
+    setNotice(`Approving removal for ${item.honoreeName}...`);
 
     try {
       await adminApi.removedFromField(instance, account, item.changeRequestId);
       await loadData();
-      setNotice(`${item.honoreeName} was removed from the field. The record stays on file.`);
+      setNotice(`${item.honoreeName} was approved for removal. The card is in the removal queue.`);
     } catch (err) {
-      setError(reportableErrorMessage(err, "Unable to confirm this flag was removed from the field."));
+      setError(reportableErrorMessage(err, "Unable to approve this removal request."));
+      setNotice("");
+    } finally {
+      setAdminBusyId(null);
+      setAdminBusyAction(null);
+    }
+  }
+
+  async function declineRemoval(item: AdminReviewItem) {
+    if (!account) {
+      setError("You must be signed in as an administrator to decline a removal request.");
+      return;
+    }
+
+    const ok = await requestConfirmation(
+      `Decline the removal request for ${item.honoreeName}? The honoree stays on the field.`,
+      { title: "Are you sure?", confirmText: "Decline", cancelText: "Cancel", tone: "danger" }
+    );
+    if (!ok) return;
+
+    setAdminBusyId(item.changeRequestId);
+    setAdminBusyAction("reject");
+    setError("");
+    setNotice(`Declining the removal request for ${item.honoreeName}...`);
+
+    try {
+      await adminApi.declineRemoval(instance, account, item.changeRequestId);
+      await loadData();
+      setNotice(`${item.honoreeName} stays on the field.`);
+    } catch (err) {
+      setError(reportableErrorMessage(err, "Unable to decline this removal request."));
       setNotice("");
     } finally {
       setAdminBusyId(null);
@@ -3064,8 +3189,8 @@ export default function App() {
           </a>
           <div className="heroContent">
             <p className="eyebrow">Plano Flags of Honor</p>
-            <h1>{isPublicFlagMapRoute ? "Public Flag Map" : publicCopy.title}</h1>
-            {isPublicFlagMapRoute ? null : <p className="heroLead">{publicCopy.subtitle}</p>}
+            <h1>{(profileOpen ? profileBanner : pageBanners[activeRoute]).title}</h1>
+            <p className="heroLead">{(profileOpen ? profileBanner : pageBanners[activeRoute]).subtitle}</p>
           </div>
         </div>
 
@@ -3473,39 +3598,39 @@ export default function App() {
             </div>
           ) : null}
 
-          {confirmDialog ? (
-            <div
-              className="modalOverlay appConfirmOverlay"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="app-confirm-title"
-              onClick={() => resolveConfirmation(false)}
-            >
-              <div className="modalCard appConfirmModal" onClick={(event) => event.stopPropagation()}>
-                <div>
-                  <p className="eyebrow">Confirm action</p>
-                  <h2 id="app-confirm-title">{confirmDialog.title}</h2>
-                  <p className="helperText">{confirmDialog.message}</p>
-                </div>
+          <Dialog.Root
+            open={confirmDialog !== null}
+            onOpenChange={(open) => {
+              if (!open) resolveConfirmation(false);
+            }}
+          >
+            <Dialog.Portal>
+              <Dialog.Overlay className="modalOverlay appConfirmOverlay" />
+              <Dialog.Content className="modalCard appConfirmModal appConfirmModalDialog" aria-describedby="app-confirm-description">
+                <p className="eyebrow">Confirm action</p>
+                <Dialog.Title id="app-confirm-title">{confirmDialog?.title ?? "Are you sure?"}</Dialog.Title>
+                <Dialog.Description id="app-confirm-description" className="helperText">
+                  {confirmDialog?.message}
+                </Dialog.Description>
                 <div className="modalActions">
                   <button
                     type="button"
                     className="secondary"
                     onClick={() => resolveConfirmation(false)}
                   >
-                    {confirmDialog.cancelText}
+                    {confirmDialog?.cancelText ?? "Cancel"}
                   </button>
                   <button
                     type="button"
-                    className={confirmDialog.tone === "danger" ? "dangerButton" : ""}
+                    className={confirmDialog?.tone === "danger" ? "dangerButton" : ""}
                     onClick={() => resolveConfirmation(true)}
                   >
-                    {confirmDialog.confirmText}
+                    {confirmDialog?.confirmText ?? "Continue"}
                   </button>
                 </div>
-              </div>
-            </div>
-          ) : null}
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
 
           {flagPositionDetailPosition ? (
             <div
@@ -4131,7 +4256,7 @@ export default function App() {
                       </div>
 
                       <div className="ownedFlagActions">
-                        <button type="button" onClick={() => beginEdit(claim)}>
+                        <button type="button" className="secondary" onClick={() => beginEdit(claim)}>
                           Open
                         </button>
                         <button
@@ -4143,29 +4268,25 @@ export default function App() {
                         </button>
                         <button
                           type="button"
-                          className="secondary"
+                          className="ghostButton"
                           onClick={() => unclaimFlag(claim)}
+                          disabled={saving || claim.latestChangeRequest?.requestStatus === "Withdrawal"}
+                        >
+                          {claim.latestChangeRequest?.requestStatus === "Withdrawal" ? "Removal requested" : "Request Removal"}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghostButton"
+                          onClick={() => unlinkFlag(claim)}
                           disabled={saving}
                         >
-                          Withdraw
+                          Unlink from my account
                         </button>
                       </div>
-
-
 
                       {claim.claimNotice ? (
                         <p className="claimNotice">{claim.claimNotice}</p>
                       ) : null}
-
-                      <div className="miniTimeline" aria-label="Submission timeline">
-                        <span>Started {formatDate(claim.createdUtc)}</span>
-                        {claim.latestChangeRequest?.submittedUtc ? (
-                          <span>Submitted {formatDate(claim.latestChangeRequest.submittedUtc)}</span>
-                        ) : null}
-                        {claim.latestChangeRequest?.requestStatus ? (
-                          <span>Status: {ownershipStatusLabel(claim)}</span>
-                        ) : null}
-                      </div>
                     </article>
                   );
                 })}
@@ -4358,21 +4479,32 @@ export default function App() {
                           <dt>Submitted</dt>
                           <dd>
                             {item.submissionKind === "Withdrawal"
-                              ? `Withdrawn ${formatDate(item.submittedUtc)}`
+                              ? `Requested ${formatDate(item.submittedUtc)}`
                               : formatDate(item.submittedUtc)}
                           </dd>
                         </dl>
                       </div>
                       <footer className="reviewPendingCardFooter">
                         {item.submissionKind === "Withdrawal" ? (
-                          <button
-                            type="button"
-                            className="secondary compactButton"
-                            disabled={adminBusyId === item.changeRequestId}
-                            onClick={() => void confirmRemovedFromField(item)}
-                          >
-                            {adminBusyId === item.changeRequestId ? "Saving..." : "Removed from field"}
-                          </button>
+                          <>
+                            <p className="helperText">Removed from field after you approve. Approving places the card in the removal queue. Declining leaves the honoree on the field.</p>
+                            <button
+                              type="button"
+                              className="secondary compactButton"
+                              disabled={adminBusyId === item.changeRequestId}
+                              onClick={() => void confirmRemovedFromField(item)}
+                            >
+                              {adminBusyId === item.changeRequestId && adminBusyAction === "approve" ? "Saving..." : "Approve removal"}
+                            </button>
+                            <button
+                              type="button"
+                              className="ghostButton compactButton"
+                              disabled={adminBusyId === item.changeRequestId}
+                              onClick={() => void declineRemoval(item)}
+                            >
+                              {adminBusyId === item.changeRequestId && adminBusyAction === "reject" ? "Saving..." : "Decline"}
+                            </button>
+                          </>
                         ) : (
                           <>
                             <select
