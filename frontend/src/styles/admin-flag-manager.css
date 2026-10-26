@@ -908,10 +908,11 @@
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+  min-width: 0;
   @media (min-width: 761px) {
-    width: unset;
-    max-width: unset;
-    box-sizing: unset;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 }
 
@@ -921,12 +922,13 @@ main > .pageBody > .adminSectionStack > .flagPositionManager {
   margin-left: 0;
   margin-right: 0;
   box-sizing: border-box;
+  min-width: 0;
   @media (min-width: 761px) {
-    width: unset;
-    max-width: unset;
-    margin-left: unset;
-    margin-right: unset;
-    box-sizing: unset;
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    box-sizing: border-box;
   }
   @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
     width: 100%;
@@ -941,9 +943,10 @@ main > .pageBody > .adminSectionStack > .flagPositionManager {
 .flagPositionManager.adminStandalonePanel {
   overflow: hidden;
   border-top-width: 2px;
+  border-radius: var(--radius-md);
   @media (min-width: 761px) {
     border-top-width: unset;
-    overflow: unset;
+    overflow: hidden;
   }
   @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
     overflow: hidden;
@@ -1268,14 +1271,16 @@ main:has(.flagPositionManager.adminStandalonePanel)::before {
 }
 
 .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) .flagPositionManager.adminStandalonePanel {
-  padding: var(--space-xs);
+  padding: var(--space-sm);
   width: 100%;
   max-width: 100%;
-  margin-left: auto;
-  margin-right: auto;
+  margin-left: 0;
+  margin-right: 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
   box-shadow: 0 14px 38px rgba(7, 26, 59, 0.10);
   @media (min-width: 761px) {
-    padding: var(--space-md) var(--space-md);
+    padding: var(--space-lg);
   }
 }
 
@@ -1283,8 +1288,8 @@ main:has(.flagPositionManager.adminStandalonePanel) {
   background: var(--color-page);
   width: 100%;
   max-width: 100%;
-  padding-left: var(--space-2xs);
-  padding-right: var(--space-2xs);
+  padding-left: 0;
+  padding-right: 0;
   @media (min-width: 761px) {
     padding-left: 0;
     padding-right: 0;
@@ -1295,16 +1300,20 @@ main:has(.flagPositionManager.adminStandalonePanel) {
   }
 }
 
+.pageBody:has(.flagPositionManager.adminStandalonePanel) {
+  padding-inline: 0;
+}
+
 main > .pageBody > .adminSectionStack:has(.flagPositionManager.adminStandalonePanel) {
-  margin-left: auto;
-  margin-right: auto;
+  margin-left: 0;
+  margin-right: 0;
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
   margin-top: var(--space-xs);
   @media (min-width: 761px) {
-    width: min(1680px, calc(100vw - 2.5rem));
-    max-width: min(1680px, calc(100vw - 2.5rem));
+    width: 100%;
+    max-width: 100%;
     margin-top: var(--space-lg);
   }
   @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {

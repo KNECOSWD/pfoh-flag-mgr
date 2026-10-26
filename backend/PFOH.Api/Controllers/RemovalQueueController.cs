@@ -42,31 +42,27 @@ public class RemovalQueueController(PfohDbContext db) : ControllerBase
         [FromQuery] string status = "open",
         CancellationToken ct = default)
     {
-        await FlagRemovalQueueSchema.EnsureAsync(db, ct);
-        var normalized = (status ?? "open").Trim();
-        var rows = await db.FlagRemovalQueueItems.AsNoTracking().ToListAsync(ct);
-        IEnumerable<Models.FlagRemovalQueueItem> chosen;
-        if (normalized.Equals("open", StringComparison.OrdinalIgnoreCase))
+        var chosen = await ChooseAsync(status, ct);
+        if (chosen.Error is not null)
         {
-            chosen = rows
-                .Where(item => item.DoneUtc == null && item.CanceledUtc == null)
-                .OrderBy(item => item, Comparer<Models.FlagRemovalQueueItem>.Create((left, right) =>
-                    FlagRemovalQueue.CompareSpots(left.FlagGridName, right.FlagGridName)))
-                .ThenBy(item => item.Id);
-        }
-        else if (normalized.Equals("done", StringComparison.OrdinalIgnoreCase))
-        {
-            chosen = rows
-                .Where(item => item.DoneUtc != null || item.CanceledUtc != null)
-                .OrderByDescending(Activity)
-                .ThenByDescending(item => item.Id);
-        }
-        else
-        {
-            return BadRequest("Status must be open or done.");
+            return chosen.Error;
         }
 
-        return Ok(chosen.Select(ToDto).ToList());
+        return Ok(chosen.Items.Select(ToDto).ToList());
+    }
+
+    [HttpGet("export")]
+    public async Task<IActionResult> Export([FromQuery] string status = "open", CancellationToken ct = default)
+    {
+        var chosen = await ChooseAsync(status, ct);
+        if (chosen.Error is not null)
+        {
+            return chosen.Error;
+        }
+
+        var bytes = RemovalQueueExcelExporter.Build(chosen.Items);
+        var fileName = $"pfoh-removal-queue-{DateTime.UtcNow:yyyyMMdd}.xlsx";
+        return File(bytes, RemovalQueueExcelExporter.ContentType, fileName);
     }
 
     [HttpGet("count")]
@@ -113,6 +109,37 @@ public class RemovalQueueController(PfohDbContext db) : ControllerBase
     [HttpPost("{id:int}/done")]
     public Task<IActionResult> MarkOne(int id, CancellationToken ct) =>
         MarkDone(new MarkRemovalDoneRequest { Ids = [id] }, ct);
+
+    private async Task<(List<Models.FlagRemovalQueueItem> Items, ActionResult? Error)> ChooseAsync(
+        string? status,
+        CancellationToken ct)
+    {
+        await FlagRemovalQueueSchema.EnsureAsync(db, ct);
+        var normalized = (status ?? "open").Trim();
+        var rows = await db.FlagRemovalQueueItems.AsNoTracking().ToListAsync(ct);
+        if (normalized.Equals("open", StringComparison.OrdinalIgnoreCase))
+        {
+            var open = rows
+                .Where(item => item.DoneUtc == null && item.CanceledUtc == null)
+                .OrderBy(item => item, Comparer<Models.FlagRemovalQueueItem>.Create((left, right) =>
+                    FlagRemovalQueue.CompareSpots(left.FlagGridName, right.FlagGridName)))
+                .ThenBy(item => item.Id)
+                .ToList();
+            return (open, null);
+        }
+
+        if (normalized.Equals("done", StringComparison.OrdinalIgnoreCase))
+        {
+            var done = rows
+                .Where(item => item.DoneUtc != null || item.CanceledUtc != null)
+                .OrderByDescending(Activity)
+                .ThenByDescending(item => item.Id)
+                .ToList();
+            return (done, null);
+        }
+
+        return (new List<Models.FlagRemovalQueueItem>(), BadRequest("Status must be open or done."));
+    }
 
     private string AdminName()
     {

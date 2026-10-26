@@ -319,6 +319,34 @@
   display: flex;
 }
 
+.mergeReprintOption {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-xs);
+  margin: var(--space-sm) 0;
+  padding: var(--space-sm);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.mergeReprintOption input {
+  width: var(--size-touch);
+  height: var(--size-touch);
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+.mergeReprintOption strong {
+  display: block;
+  color: var(--color-navy);
+}
+
+.mergeReprintOption .helperText {
+  display: block;
+  margin: var(--space-3xs) 0 0;
+}
+
 .mergeStepFooter {
   gap: var(--space-2xs);
   margin: var(--space-xs) 0;

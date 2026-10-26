@@ -187,7 +187,7 @@ public class FlagRemovalQueueTests : IDisposable
     }
 
     [Fact]
-    public async Task Withdrawal_is_logged_already_done()
+    public async Task Approved_removal_enters_the_open_queue_and_exports()
     {
         await ResetAsync();
         var now = DateTime.UtcNow;
@@ -217,15 +217,27 @@ public class FlagRemovalQueueTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, confirmed.StatusCode);
 
         var open = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/removal-queue/count"));
-        Assert.Equal(0, (await open.Content.ReadFromJsonAsync<CountPayload>())!.Count);
-        var done = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/removal-queue?status=done"));
-        var doneRows = await done.Content.ReadFromJsonAsync<List<QueueRow>>();
-        Assert.NotNull(doneRows);
-        var row = Assert.Single(doneRows);
+        Assert.Equal(1, (await open.Content.ReadFromJsonAsync<CountPayload>())!.Count);
+        var listed = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/removal-queue?status=open"));
+        var openRows = await listed.Content.ReadFromJsonAsync<List<QueueRow>>();
+        Assert.NotNull(openRows);
+        var row = Assert.Single(openRows);
         Assert.Equal(FlagRemovalQueue.Other, row.Source);
-        Assert.Equal(FlagRemovalQueue.WithdrawalDetail, row.SourceDetail);
-        Assert.True(row.LoggedAlreadyDone);
-        Assert.Equal(row.CreatedUtc, row.DoneUtc);
+        Assert.Equal(FlagRemovalQueue.RemovalApprovedDetail, row.SourceDetail);
+        Assert.False(row.LoggedAlreadyDone);
+        Assert.Null(row.DoneUtc);
+
+        var exported = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/removal-queue/export?status=open"));
+        Assert.Equal(HttpStatusCode.OK, exported.StatusCode);
+        Assert.Equal(RemovalQueueExcelExporter.ContentType, exported.Content.Headers.ContentType?.MediaType);
+        var bytes = await exported.Content.ReadAsByteArrayAsync();
+        using var workbook = new ClosedXML.Excel.XLWorkbook(new MemoryStream(bytes));
+        var sheet = workbook.Worksheet(RemovalQueueExcelExporter.SheetName);
+        Assert.Equal("Flag spot", sheet.Cell(1, 1).GetString());
+        Assert.Equal("Honoree", sheet.Cell(1, 2).GetString());
+        Assert.Equal("E-15", sheet.Cell(2, 1).GetString());
+        Assert.Contains("Honoree G", sheet.Cell(2, 2).GetString());
+        Assert.Equal("Open", sheet.Cell(2, 8).GetString());
     }
 
     [Fact]

@@ -277,6 +277,11 @@
   }
 }
 
+.reviewPendingCardFooter .helperText {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
 .reviewPendingCardFooter > .reviewActionSelect,
 .reviewPendingCardFooter > .compactButton {
   width: 100%;

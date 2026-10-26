@@ -53,7 +53,9 @@ const openItems = [
 ];
 
 test("the header subtitle drops the cost sentence and the dog tag links to Search", () => {
-  assert.match(app, /subtitle: "Find an honoree or submit a tribute\."/);
+  assert.match(app, /title: "FIND A HERO"/);
+  assert.match(app, /subtitle: "Search by name, branch, rank, submitter, or flag grid\."/);
+  assert.doesNotMatch(app, /Find an honoree or submit a tribute\./);
   assert.doesNotMatch(app, /No cost to look or submit a hero\./);
   assert.match(app, /className="heroDogTagLink"/);
   assert.match(app, /href="\/find"/);
@@ -224,6 +226,12 @@ test("the open, done, and empty screens match the queue controls", () => {
   assert.match(openMarkup, /secondary compactButton/);
   assert.equal((openMarkup.match(/Mark done/g) || []).length, 4);
   assert.doesNotMatch(openMarkup, /confirm/i);
+  assert.match(openMarkup, /Print report/);
+  assert.match(openMarkup, /Export to Excel/);
+  assert.match(openMarkup, /class="rqPrintSheet"/);
+  assert.match(openMarkup, /Flag spot/);
+  assert.match(openMarkup, /Example Honoree A/);
+  assert.match(openMarkup, />Open</);
 
   const doneMarkup = renderToStaticMarkup(h(RemovalQueueScreen, {
     status: "done",

@@ -176,6 +176,7 @@ public class FlagClaimsController(
                 c.ClaimStatus != "AdminDirectEdit" &&
                 c.ClaimStatus != "AdminDirectEditCompleted" &&
                 c.ClaimStatus != "Unclaimed" &&
+                c.ClaimStatus != "Unlinked" &&
                 c.ClaimStatus != "Cancelled")
             .OrderByDescending(c => c.CreatedUtc)
             .ToListAsync(ct);
@@ -284,37 +285,12 @@ public class FlagClaimsController(
         var now = DateTime.UtcNow;
         var honoree = claim.Honoree;
         var approvedOnField = honoree is { IsActive: true, DeletedDate: null } && claim.HonoreeId is > 0;
-        claim.ClaimStatus = "Unclaimed";
-        claim.AdminNotes = string.IsNullOrWhiteSpace(claim.AdminNotes)
-            ? $"Withdrawn on {now:u}."
-            : $"{claim.AdminNotes}\nWithdrawn on {now:u}.";
-
-        if (!approvedOnField)
-        {
-            claim.FlagGridId = null;
-        }
-
-        foreach (var request in claim.HonoreeChangeRequests.Where(r => r.RequestStatus is "Submitted" or "Draft"))
-        {
-            request.RequestStatus = PendingReviewMaintenance.Withdrawn;
-            request.ReviewNotes = string.IsNullOrWhiteSpace(request.ReviewNotes)
-                ? "Withdrawn by the submitter."
-                : $"{request.ReviewNotes}\nWithdrawn by the submitter.";
-
-            if (!approvedOnField || request.HonoreeId is not > 0)
-            {
-                request.FlagGridId = null;
-            }
-
-            await fileStorage.DeletePendingImageAsync(request.PhotoFileName, ct);
-            if (HonoreeFileStorage.IsPendingPhotoName(request.PhotoFileName))
-            {
-                request.PhotoFileName = null;
-            }
-        }
 
         if (approvedOnField && honoree is not null)
         {
+            claim.AdminNotes = AppendNote(claim.AdminNotes, $"Removal requested on {now:u}.");
+            await WithdrawOpenEditsAsync(claim, approvedOnField: true, ct);
+
             var spotId = honoree.FlagGridId ?? claim.FlagGridId;
             if (honoree.FlagGridId is null && spotId is not null)
             {
@@ -352,15 +328,78 @@ public class FlagClaimsController(
                     RequestStatus = PendingReviewMaintenance.Withdrawal,
                     CreatedUtc = now,
                     SubmittedUtc = now,
-                    ReviewNotes = "Withdrawn by the submitter. The flag spot stays assigned until an administrator confirms it was removed from the field."
+                    ReviewNotes = "Removal requested by the submitter. The flag stays on the field until an administrator approves the request."
                 });
             }
+
+            await HonoreeClaimStore.SyncAsync(db, ct);
+            return Ok(new { message = "Removal requested.", removalRequested = true });
         }
 
+        claim.ClaimStatus = "Unclaimed";
+        claim.AdminNotes = AppendNote(claim.AdminNotes, $"Withdrawn on {now:u}.");
+        claim.FlagGridId = null;
+        await WithdrawOpenEditsAsync(claim, approvedOnField: false, ct);
         await HonoreeClaimStore.SyncAsync(db, ct);
-
-        return Ok(new { message = "Flag unclaimed." });
+        return Ok(new { message = "Flag unclaimed.", removalRequested = false });
     }
+
+    [HttpPost("{claimId:int}/unlink")]
+    public async Task<ActionResult> Unlink(int claimId, CancellationToken ct)
+    {
+        var userObjectId = User.GetExternalObjectId();
+        var isAdmin = User.IsInRole("PFOH.Admin");
+
+        var claim = await db.FlagClaims
+            .Include(c => c.Honoree)
+            .FirstOrDefaultAsync(c => c.Id == claimId, ct);
+
+        if (claim is null)
+        {
+            return NotFound(new { message = "Flag claim was not found." });
+        }
+
+        if (!isAdmin && claim.ExternalUserObjectId != userObjectId)
+        {
+            return Forbid();
+        }
+
+        if (claim.ClaimStatus is "AdminDirectEdit" or "AdminReprintQueued")
+        {
+            return BadRequest(new { message = "This record cannot be unlinked from My submissions." });
+        }
+
+        claim.ClaimStatus = "Unlinked";
+        claim.AdminNotes = AppendNote(
+            claim.AdminNotes,
+            $"Unlinked from the submitter account on {DateTime.UtcNow:u}. The honoree was not cancelled.");
+
+        await HonoreeClaimStore.SyncAsync(db, ct);
+        return Ok(new { message = "Unlinked from your account." });
+    }
+
+    private async Task WithdrawOpenEditsAsync(FlagClaim claim, bool approvedOnField, CancellationToken ct)
+    {
+        foreach (var request in claim.HonoreeChangeRequests.Where(r => r.RequestStatus is "Submitted" or "Draft"))
+        {
+            request.RequestStatus = PendingReviewMaintenance.Withdrawn;
+            request.ReviewNotes = AppendNote(request.ReviewNotes, "Withdrawn by the submitter.");
+
+            if (!approvedOnField || request.HonoreeId is not > 0)
+            {
+                request.FlagGridId = null;
+            }
+
+            await fileStorage.DeletePendingImageAsync(request.PhotoFileName, ct);
+            if (HonoreeFileStorage.IsPendingPhotoName(request.PhotoFileName))
+            {
+                request.PhotoFileName = null;
+            }
+        }
+    }
+
+    private static string AppendNote(string? existing, string note) =>
+        string.IsNullOrWhiteSpace(existing) ? note : $"{existing.Trim()}\n{note}";
 
 
     [HttpPost("{flagGridId:int}/claim")]

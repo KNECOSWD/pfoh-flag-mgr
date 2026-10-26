@@ -57,11 +57,11 @@
 }
 
 .ownershipCard {
-  border-radius: 15px;
+  border-radius: var(--radius-md);
   padding: var(--space-sm);
   @media (min-width: 761px) {
-    border-radius: unset;
-    padding: unset;
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
   }
 }
 
@@ -173,11 +173,11 @@ img.ownedFlagImage {
   margin-top: var(--space-3xs);
   grid-column: 1 / -1;
   @media (min-width: 761px) {
-    flex-direction: column;
-    gap: var(--space-3xs);
-    flex-wrap: unset;
-    grid-column: unset;
-    margin-top: unset;
+    flex-direction: row;
+    gap: var(--space-xs);
+    flex-wrap: wrap;
+    grid-column: 1 / -1;
+    margin-top: var(--space-2xs);
   }
   @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
     display: none;
@@ -187,56 +187,32 @@ img.ownedFlagImage {
 }
 
 .ownedFlagActions {
-  gap: var(--space-2xs);
+  gap: var(--space-xs);
   justify-content: flex-start;
-  align-self: start;
-  flex-direction: row;
-  flex-wrap: nowrap;
+  align-self: stretch;
   align-items: center;
-  justify-self: start;
   width: 100%;
   grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: 1fr;
-  margin-top: var(--space-2xs);
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: var(--space-xs);
   @media (min-width: 761px) {
-    justify-content: flex-end;
-    display: flex;
-    grid-column: 2 / -1;
-    margin-top: var(--space-3xs);
-    grid-template-columns: unset;
-    width: unset;
-    @media (min-width: 1280px) {
-      justify-self: end;
-      grid-column: unset;
-      margin-top: unset;
-    }
-  }
-  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
     justify-content: flex-start;
-    grid-column: 1 / -1;
-    grid-template-columns: 1fr 1fr;
+    margin-top: var(--space-sm);
   }
 }
 
 .ownedFlagActions button {
-  padding: var(--space-2xs) var(--space-xs);
+  padding: var(--space-2xs) var(--space-sm);
   border-radius: 0.72rem;
-  white-space: nowrap;
-  width: 100%;
+  white-space: normal;
+  width: auto;
   min-width: 0;
   font-size: var(--font-caption);
-  min-height: 2.35rem;
+  min-height: var(--size-touch);
   @media (min-width: 761px) {
-    width: unset;
-    min-width: 6.75rem;
-    padding: var(--space-2xs) var(--space-sm);
-    font-size: unset;
-    min-height: 2.45rem;
+    min-height: var(--size-touch);
     border-radius: 12px;
-  }
-  @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
-    min-height: 2.05rem;
   }
 }
 
@@ -256,16 +232,13 @@ img.ownedFlagImage {
   align-items: start;
   @media (min-width: 761px) {
     gap: var(--space-sm);
-    border-radius: 18px;
+    border-radius: var(--radius-md);
     padding: var(--space-sm);
     width: unset;
     max-width: unset;
     margin-left: unset;
     margin-right: unset;
-    grid-template-columns: 86px minmax(0, 1fr) minmax(170px, auto);
-    @media (min-width: 1280px) {
-      grid-template-columns: 96px minmax(0, 1fr) minmax(190px, auto) minmax(180px, auto);
-    }
+    grid-template-columns: 5.5rem minmax(0, 1fr);
   }
   @media (orientation: landscape) and (max-height: 560px) and (max-width: 1100px) {
     gap: var(--space-2xs);

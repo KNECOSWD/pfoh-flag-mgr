@@ -81,11 +81,18 @@ public class AdminDuplicatesController(
                         throw new MergeRecordCountException();
                     }
 
+                    var reprintQueued = false;
+                    if (request.QueueReprint && survivor.FlagGridId is int gridId)
+                    {
+                        reprintQueued = await QueueMergedReprintAsync(survivor, gridId, adminName, ct);
+                    }
+
                     return new ActionResult<DuplicateMergeResultDto>(new DuplicateMergeResultDto(
                         result.SurvivorId,
                         DisplayName(survivor),
                         result.DeactivatedIds,
-                        result.Claimants.Select(ToClaimant).ToList()));
+                        result.Claimants.Select(ToClaimant).ToList(),
+                        reprintQueued));
                 },
                 async _ =>
                 {
@@ -102,6 +109,78 @@ public class AdminDuplicatesController(
                 StatusCodes.Status500InternalServerError,
                 new { message = "The merge stopped because it would have created or removed a record." }));
         }
+    }
+
+    private async Task<bool> QueueMergedReprintAsync(
+        Honoree survivor,
+        int gridId,
+        string adminName,
+        CancellationToken ct)
+    {
+        var alreadyQueued = await db.HonoreeChangeRequests.AnyAsync(request =>
+            request.HonoreeId == survivor.Id &&
+            request.RequestStatus == "Approved" &&
+            request.RequiresCardReprint &&
+            request.CardPrintedUtc == null, ct);
+        if (alreadyQueued)
+        {
+            return true;
+        }
+
+        var grid = survivor.FlagGrid ?? await db.FlagGrids.FirstAsync(item => item.Id == gridId, ct);
+        var now = DateTime.UtcNow;
+        var queueClaim = new FlagClaim
+        {
+            FlagGridId = gridId,
+            HonoreeId = survivor.Id,
+            ExternalUserObjectId = $"admin-reprint:{Guid.NewGuid():N}",
+            ExternalUserEmail = adminName,
+            ExternalUserName = "PFOH Admin reprint queue",
+            ClaimStatus = "AdminReprintQueued",
+            CreatedUtc = now,
+            ApprovedUtc = now,
+            ApprovedBy = adminName,
+            AdminNotes = "Internal claim created when a duplicate merge queued the merged card.",
+            FlagGrid = grid,
+            Honoree = survivor
+        };
+        var queueRequest = new HonoreeChangeRequest
+        {
+            FlagClaim = queueClaim,
+            FlagGridId = gridId,
+            HonoreeId = survivor.Id,
+            FirstName = survivor.FirstName ?? string.Empty,
+            MiddleName = survivor.MiddleName,
+            LastName = survivor.LastName ?? string.Empty,
+            Suffix = survivor.Suffix,
+            Nickname = survivor.Nickname,
+            Rank = survivor.Rank,
+            ServiceBranchId = survivor.ServiceBranchId,
+            ServiceBranchCategoryId = survivor.ServiceBranchCategoryId,
+            StartYear = survivor.StartYear,
+            EndYear = survivor.EndYear,
+            DatesUserEntry = survivor.DatesUserEntry,
+            ConflictsServed = survivor.ConflictsServed,
+            Awards = survivor.Awards,
+            Description = survivor.Description,
+            KIA = survivor.KIA,
+            PhotoFileName = survivor.PhotoFileName,
+            SubmitterPhoneNumber = survivor.PhoneNumber,
+            SubmitterEmailAddress = survivor.EmailAddress,
+            RequestStatus = "Approved",
+            CreatedUtc = now,
+            SubmittedUtc = now,
+            ReviewedUtc = now,
+            ReviewedBy = adminName,
+            ReviewNotes = "Added to Ready to print from a duplicate merge.",
+            RequiresCardReprint = true,
+            FlagGrid = grid,
+            ServiceBranch = survivor.ServiceBranch
+        };
+        db.FlagClaims.Add(queueClaim);
+        db.HonoreeChangeRequests.Add(queueRequest);
+        await db.SaveChangesAsync(ct);
+        return true;
     }
 
     /// <summary>
@@ -490,6 +569,11 @@ public sealed class DuplicateMergeRequest
     /// Join the included records' award lists. An awards entry in <see cref="Values"/> wins.
     /// </summary>
     public bool CombineAwards { get; set; }
+
+    /// <summary>
+    /// When true, the surviving record is added to Ready to print after the merge.
+    /// </summary>
+    public bool QueueReprint { get; set; }
 }
 
 public sealed class NotDuplicatePairRequest
@@ -561,4 +645,5 @@ public sealed record DuplicateMergeResultDto(
     int SurvivorId,
     string SurvivorName,
     IReadOnlyList<int> DeactivatedIds,
-    IReadOnlyList<DuplicateClaimantDto> Claimants);
+    IReadOnlyList<DuplicateClaimantDto> Claimants,
+    bool ReprintQueued = false);

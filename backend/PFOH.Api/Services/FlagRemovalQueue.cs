@@ -22,6 +22,8 @@ public static class FlagRemovalQueue
     public const string SameSpotReason = "Canceled: put back at same spot";
     public const string WithdrawalDetail = "Withdrawal confirmed removed from field";
 
+    public const string RemovalApprovedDetail = "Removal request approved";
+
     public static FlagRemovalQueueItem Record(
         PfohDbContext db,
         Honoree? honoree,
