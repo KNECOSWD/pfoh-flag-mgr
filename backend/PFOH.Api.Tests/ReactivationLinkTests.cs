@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -13,6 +14,46 @@ using PFOH.Api.Services;
 using Xunit;
 
 namespace PFOH.Api.Tests;
+
+public sealed class ReactivationRedeemRaceInterceptor : SaveChangesInterceptor
+{
+    public static int FailuresRemaining;
+
+    public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
+    {
+        ThrowIfRacing(eventData.Context);
+        return base.SavingChanges(eventData, result);
+    }
+
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfRacing(eventData.Context);
+        return base.SavingChangesAsync(eventData, result, cancellationToken);
+    }
+
+    private static void ThrowIfRacing(DbContext? context)
+    {
+        if (FailuresRemaining <= 0 || context is null)
+        {
+            return;
+        }
+
+        var racing = context.ChangeTracker.Entries<HonoreeReactivationRequest>()
+            .Any(entry => entry.State == EntityState.Added);
+        if (!racing)
+        {
+            return;
+        }
+
+        FailuresRemaining--;
+        throw new DbUpdateException(
+            "Unique constraint failed.",
+            new InvalidOperationException("Violation of UNIQUE KEY constraint 'UQ_HonoreeReactivationRequests_TokenId'."));
+    }
+}
 
 public class ReactivationTokenTests
 {
@@ -99,6 +140,17 @@ public class ReactivationTokenTests
         ]);
         Assert.StartsWith("honoree id,name,requester email,link,expiry,eligibility reason", csv, StringComparison.Ordinal);
         Assert.Contains("not found", csv, StringComparison.Ordinal);
+        var formula = ReactivationCsv.Write(
+        [
+            new("1", "=cmd|'/c calc'!A0", "+1", "-1", "@sum", "\tkept")
+        ]);
+        Assert.Contains("'=cmd|'/c calc'!A0", formula, StringComparison.Ordinal);
+        Assert.Contains("'+1", formula, StringComparison.Ordinal);
+        Assert.Contains("'-1", formula, StringComparison.Ordinal);
+        Assert.Contains("'@sum", formula, StringComparison.Ordinal);
+        Assert.Contains("'\tkept", formula, StringComparison.Ordinal);
+        Assert.Contains("\r", ReactivationCsv.Neutralize("\rline"), StringComparison.Ordinal);
+        Assert.StartsWith("'", ReactivationCsv.Neutralize("\rline"), StringComparison.Ordinal);
         var parsed = ReactivationCsv.Parse("honoree id,requester email\n4,requester@example.test\nnope,\n");
         Assert.Equal("4", parsed[0].HonoreeId);
         Assert.Equal("requester@example.test", parsed[0].Email);
@@ -392,7 +444,7 @@ public class ReactivationLinkTests(ReactivationApiFactory factory) : IClassFixtu
             "admin@example.test",
             "Admin",
             roles: "PFOH.Admin",
-            body: new { honoreeIds = Array.Empty<int>() }));
+            body: new { allEligible = true }));
         var generated = await all.Content.ReadFromJsonAsync<GenerateDto>(Json);
         Assert.NotNull(generated);
         Assert.StartsWith("honoree id,name,requester email,link,expiry,eligibility reason", generated.Csv, StringComparison.Ordinal);
@@ -467,6 +519,158 @@ public class ReactivationLinkTests(ReactivationApiFactory factory) : IClassFixtu
     }
 
     [Fact]
+    public async Task Generating_with_no_selection_does_not_revoke_existing_links()
+    {
+        await ResetAsync();
+        var honoreeId = await SeedInactiveAsync(Requester, "TEST", "Reactivation Honoree");
+        var client = factory.CreateClient();
+        var token = TokenOf(await GenerateAsync(client, honoreeId));
+
+        var empty = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/admin/reactivation/links",
+            "admin-user",
+            "admin@example.test",
+            "Admin",
+            roles: "PFOH.Admin",
+            body: new { honoreeIds = Array.Empty<int>() }));
+        Assert.Equal(HttpStatusCode.BadRequest, empty.StatusCode);
+
+        var still = await client.GetFromJsonAsync<StateDto>($"/api/reactivate/{token}", Json);
+        Assert.Equal("sign-in", still!.Status);
+    }
+
+    [Fact]
+    public async Task Bulk_revoke_clears_selected_links_and_every_active_link()
+    {
+        await ResetAsync();
+        var first = await SeedInactiveAsync(Requester, "TEST", "Reactivation Honoree");
+        var second = await SeedInactiveAsync(OtherRequester, "TEST", "Second Honoree");
+        var third = await SeedInactiveAsync("third-requester@example.test", "TEST", "Third Honoree");
+        var client = factory.CreateClient();
+        var firstToken = TokenOf(await GenerateAsync(client, first));
+        var secondToken = TokenOf(await GenerateAsync(client, second));
+        var thirdToken = TokenOf(await GenerateAsync(client, third));
+
+        var selected = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/admin/reactivation/revoke",
+            "admin-user",
+            "admin@example.test",
+            "Admin",
+            roles: "PFOH.Admin",
+            body: new { honoreeIds = new[] { first, second } }));
+        var selectedBody = await selected.Content.ReadFromJsonAsync<RevokeBulkDto>(Json);
+        Assert.Equal(HttpStatusCode.OK, selected.StatusCode);
+        Assert.Equal(2, selectedBody!.RevokedCount);
+        Assert.Equal("invalid", (await client.GetFromJsonAsync<StateDto>($"/api/reactivate/{firstToken}", Json))!.Status);
+        Assert.Equal("invalid", (await client.GetFromJsonAsync<StateDto>($"/api/reactivate/{secondToken}", Json))!.Status);
+        Assert.Equal("sign-in", (await client.GetFromJsonAsync<StateDto>($"/api/reactivate/{thirdToken}", Json))!.Status);
+
+        var none = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/admin/reactivation/revoke",
+            "admin-user",
+            "admin@example.test",
+            "Admin",
+            roles: "PFOH.Admin",
+            body: new { honoreeIds = Array.Empty<int>() }));
+        Assert.Equal(HttpStatusCode.BadRequest, none.StatusCode);
+
+        var all = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/admin/reactivation/revoke",
+            "admin-user",
+            "admin@example.test",
+            "Admin",
+            roles: "PFOH.Admin",
+            body: new { all = true }));
+        var allBody = await all.Content.ReadFromJsonAsync<RevokeBulkDto>(Json);
+        Assert.Equal(1, allBody!.RevokedCount);
+        Assert.Equal("invalid", (await client.GetFromJsonAsync<StateDto>($"/api/reactivate/{thirdToken}", Json))!.Status);
+    }
+
+    [Fact]
+    public async Task A_losing_redeem_returns_the_generic_invalid_message()
+    {
+        await ResetAsync();
+        var honoreeId = await SeedInactiveAsync(Requester, "TEST", "Reactivation Honoree");
+        var client = factory.CreateClient();
+        var token = TokenOf(await GenerateAsync(client, honoreeId));
+        ReactivationRedeemRaceInterceptor.FailuresRemaining = 1;
+        try
+        {
+            var response = await client.SendAsync(Authed(
+                HttpMethod.Post,
+                $"/api/reactivate/{token}",
+                "requester-user",
+                Requester,
+                "Test Requester",
+                body: new { note = "Race" }));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var body = await response.Content.ReadFromJsonAsync<StateDto>(Json);
+            Assert.Equal("invalid", body!.Status);
+            Assert.Equal(ReactivationLinkService.InvalidMessage, body.Message);
+        }
+        finally
+        {
+            ReactivationRedeemRaceInterceptor.FailuresRemaining = 0;
+        }
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Empty(await db.HonoreeChangeRequests.ToListAsync());
+        Assert.Null((await db.HonoreeReactivationTokens.SingleAsync()).UsedUtc);
+    }
+
+    [Fact]
+    public async Task Approval_stops_when_the_honoree_is_no_longer_inactive_and_unflagged()
+    {
+        await ResetAsync();
+        await SeedGridAsync("A-01");
+        var activeId = await SeedInactiveAsync(Requester, "TEST", "Reactivation Honoree");
+        var flaggedId = await SeedInactiveAsync(OtherRequester, "TEST", "Flagged Honoree");
+        var client = factory.CreateClient();
+        await SubmitAsync(client, TokenOf(await GenerateAsync(client, activeId)), Requester, "requester-user");
+        await SubmitAsync(client, TokenOf(await GenerateAsync(client, flaggedId)), OtherRequester, "other-user");
+
+        int activeChange;
+        int flaggedChange;
+        int gridId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            activeChange = await db.HonoreeChangeRequests.Where(item => item.HonoreeId == activeId).Select(item => item.Id).SingleAsync();
+            flaggedChange = await db.HonoreeChangeRequests.Where(item => item.HonoreeId == flaggedId).Select(item => item.Id).SingleAsync();
+            var active = await db.Honorees.SingleAsync(item => item.Id == activeId);
+            active.IsActive = true;
+            gridId = await db.FlagGrids.Select(grid => grid.Id).FirstAsync();
+            var flagged = await db.Honorees.SingleAsync(item => item.Id == flaggedId);
+            flagged.FlagGridId = gridId;
+            var grid = await db.FlagGrids.SingleAsync(item => item.Id == gridId);
+            grid.HonoreeId = flaggedId;
+            await db.SaveChangesAsync();
+        }
+
+        var activeResponse = await ApproveAsync(client, activeChange);
+        Assert.Equal(HttpStatusCode.Conflict, activeResponse.StatusCode);
+        var flaggedResponse = await ApproveAsync(client, flaggedChange);
+        Assert.Equal(HttpStatusCode.Conflict, flaggedResponse.StatusCode);
+        Assert.Contains("no longer inactive and unflagged", await activeResponse.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var database = check.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var stillActive = await database.Honorees.SingleAsync(item => item.Id == activeId);
+        Assert.True(stillActive.IsActive);
+        Assert.Null(stillActive.FlagGridId);
+        var stillFlagged = await database.Honorees.SingleAsync(item => item.Id == flaggedId);
+        Assert.False(stillFlagged.IsActive);
+        Assert.Equal(gridId, stillFlagged.FlagGridId);
+        Assert.Equal("Submitted", (await database.HonoreeChangeRequests.SingleAsync(item => item.Id == activeChange)).RequestStatus);
+        Assert.Equal("Submitted", (await database.HonoreeChangeRequests.SingleAsync(item => item.Id == flaggedChange)).RequestStatus);
+    }
+
+    [Fact]
     public async Task The_reactivate_endpoint_is_rate_limited()
     {
         await using var limited = new PfohApiFactory
@@ -482,6 +686,30 @@ public class ReactivationLinkTests(ReactivationApiFactory factory) : IClassFixtu
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/api/reactivate/{token}")).StatusCode);
         var blocked = await client.GetAsync($"/api/reactivate/{token}");
         Assert.Equal(HttpStatusCode.TooManyRequests, blocked.StatusCode);
+    }
+
+    private static async Task SubmitAsync(HttpClient client, string token, string email, string owner)
+    {
+        var response = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            $"/api/reactivate/{token}",
+            owner,
+            email,
+            "Test Requester",
+            body: new { note = "Please restore this honoree." }));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    private static async Task<HttpResponseMessage> ApproveAsync(HttpClient client, int changeId)
+    {
+        return await client.SendAsync(Authed(
+            HttpMethod.Post,
+            $"/api/admin/review/{changeId}/approve",
+            "admin-user",
+            "admin@example.test",
+            "Admin",
+            roles: "PFOH.Admin",
+            body: new { requiresCardReprint = false, reviewNotes = "Approved" }));
     }
 
     private async Task<string> GenerateAsync(HttpClient client, int honoreeId)
@@ -704,6 +932,8 @@ public class ReactivationLinkTests(ReactivationApiFactory factory) : IClassFixtu
     private sealed record EligibleDto(int HonoreeId, string Name, string RequesterEmail);
 
     private sealed record RevokeDto(bool Revoked);
+
+    private sealed record RevokeBulkDto(int RevokedCount);
 }
 
 public sealed class ReactivationApiFactory : PfohApiFactory

@@ -181,10 +181,71 @@ public sealed class ReactivationLinkService(
             CreatedUtc = now
         });
 
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueConflict(ex))
+        {
+            return (Invalid(), null);
+        }
+
         await pendingReviews.SupersedeOlderPendingAsync(change, ct);
         ReactivationAudit.Used(logger, honoree.Id);
         return (new ReactivationLinkStateDto(SubmittedStatus, SubmittedMessage, null), null);
+    }
+
+    public async Task<int> RevokeManyAsync(IReadOnlyCollection<int>? honoreeIds, bool all, CancellationToken ct)
+    {
+        var query = db.HonoreeReactivationTokens
+            .Where(token => token.UsedUtc == null && token.RevokedUtc == null);
+        if (!all)
+        {
+            var ids = honoreeIds?.Distinct().ToList() ?? [];
+            if (ids.Count == 0)
+            {
+                return 0;
+            }
+
+            query = query.Where(token => ids.Contains(token.HonoreeId));
+        }
+
+        var active = await query.ToListAsync(ct);
+        if (active.Count == 0)
+        {
+            return 0;
+        }
+
+        var now = DateTime.UtcNow;
+        foreach (var token in active)
+        {
+            token.RevokedUtc = now;
+        }
+
+        await db.SaveChangesAsync(ct);
+        foreach (var honoreeId in active.Select(token => token.HonoreeId).Distinct())
+        {
+            ReactivationAudit.Revoked(logger, honoreeId);
+        }
+
+        return active.Count;
+    }
+
+    private static bool IsUniqueConflict(DbUpdateException ex)
+    {
+        for (var current = (Exception?)ex; current is not null; current = current.InnerException)
+        {
+            var text = current.Message;
+            if (text.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("duplicate", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("2601", StringComparison.Ordinal)
+                || text.Contains("2627", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public async Task<IReadOnlyList<ReactivationEligibleDto>> ListEligibleAsync(CancellationToken ct)
@@ -206,12 +267,13 @@ public sealed class ReactivationLinkService(
 
     public async Task<IReadOnlyList<ReactivationLinkRowDto>> GenerateAsync(
         IReadOnlyList<int>? honoreeIds,
+        bool allEligible,
         string createdBy,
         string baseUrl,
         CancellationToken ct)
     {
-        var context = await LoadContextAsync(honoreeIds, ct);
-        if (honoreeIds is null || honoreeIds.Count == 0)
+        var context = await LoadContextAsync(allEligible ? null : honoreeIds, ct);
+        if (allEligible)
         {
             var eligible = context.Honorees
                 .Where(honoree => Reason(honoree, context, rawCsvEmail: null) is null)
@@ -223,7 +285,7 @@ public sealed class ReactivationLinkService(
             return await MaterializeAsync(eligible, context, createdBy, baseUrl, ct);
         }
 
-        var requested = honoreeIds
+        var requested = (honoreeIds ?? [])
             .Select(id => (id.ToString(System.Globalization.CultureInfo.InvariantCulture), (string?)null))
             .ToList();
         return await MaterializeAsync(requested, context, createdBy, baseUrl, ct);

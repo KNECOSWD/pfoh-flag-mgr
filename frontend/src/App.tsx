@@ -105,7 +105,7 @@ import dogTagIcon from "./assets/pfoh-dogtag-icon-480.png";
 import knecoLogoWhite from "./assets/kneco-logo-white-216.png";
 import { RemovalQueue } from "./RemovalQueue";
 import { AdminReactivation } from "./AdminReactivation";
-import { ReactivationPage, type ReactivationPreview } from "./ReactivationPage";
+import { ReactivationPage } from "./ReactivationPage";
 import { reactivationTokenFromPath, signInReturnHref } from "./reactivationPath.js";
 import { showTenYearsBanner, TenYearsBanner } from "./tenYearsBanner.js";
 
@@ -671,23 +671,6 @@ export default function App() {
   const isPrintingRoute = activeRoute === "/admin/printing";
   const isRemovalQueueRoute = activeRoute === "/admin/removal-queue";
   const isReactivationAdminRoute = activeRoute === "/admin/reactivation";
-  const reactivationPreview = ((): ReactivationPreview | null => {
-    if (!import.meta.env.DEV || !reactivationToken) return null;
-    const value = new URLSearchParams(window.location.search).get("preview");
-    if (value === "invalid" || value === "sign-in" || value === "mismatch" || value === "ready" || value === "done") {
-      return value;
-    }
-    return null;
-  })();
-  const reactivationAdminPreview = ((): "list" | "result" | null => {
-    if (!import.meta.env.DEV || !isReactivationAdminRoute) return null;
-    const value = new URLSearchParams(window.location.search).get("preview");
-    if (value === "list" || value === "result") return value;
-    return null;
-  })();
-  const reactivationReviewPreview = import.meta.env.DEV
-    && activeRoute === "/admin/review"
-    && new URLSearchParams(window.location.search).get("preview") === "reactivation";
   const isAdminRoute = activeRoute.startsWith("/admin");
   const stickyAdmin = adminFromApi || readStickyAdmin(window.sessionStorage, account?.homeAccountId ?? "");
   const publicAdmin = isPublicPage(activeRoute)
@@ -1470,30 +1453,6 @@ export default function App() {
       cancelled = true;
     };
   }, [activeRoute, accountKey, adminFromApi, instance]);
-
-  useEffect(() => {
-    if (!reactivationReviewPreview) return;
-    setPendingReviews([{
-      changeRequestId: 1,
-      claimId: 1,
-      flagGridName: "",
-      honoreeName: "TEST Reactivation Honoree",
-      rank: "Sergeant",
-      serviceBranchName: "Army",
-      claimantEmail: "test-requester@example.test",
-      claimantName: "Test Requester",
-      requestStatus: "Submitted",
-      createdUtc: "2026-10-30T18:00:00Z",
-      submittedUtc: "2026-10-30T18:00:00Z",
-      requiresCardReprint: false,
-      description: "A clearly fake tribute.",
-      awards: "Example award",
-      conflictsServed: "Example conflict",
-      submissionKind: "Reactivation",
-      requesterNote: "Please put this flag back.",
-      linkUsedUtc: "2026-10-30T18:05:00Z"
-    }]);
-  }, [reactivationReviewPreview]);
 
   useEffect(() => {
     if (!kioskChrome(kioskLocked, true).loadSignedInData) return;
@@ -3975,7 +3934,6 @@ export default function App() {
               token={reactivationToken}
               instance={instance}
               account={account ?? null}
-              preview={reactivationPreview}
               onSignIn={() => { void signIn("login"); }}
               onCreateAccount={() => { void signIn("create"); }}
               onUseDifferentAccount={() => { void signOut(); }}
@@ -4401,7 +4359,7 @@ export default function App() {
             </section>
           ) : null}
 
-          {isAdminRoute && !kioskLocked && !isAdmin && !reactivationAdminPreview && !reactivationReviewPreview ? (
+          {isAdminRoute && !kioskLocked && !isAdmin ? (
             <section className="card guestNotice">
               <h2>Administrator access required</h2>
               <p>Sign in with an account assigned the PFOH.Admin role to use review, duplicates, flag map, printing, removal queue, and reactivation tools.</p>
@@ -4418,7 +4376,7 @@ export default function App() {
             </section>
           ) : null}
 
-          {isAdminRoute && (chrome.adminLinks || reactivationAdminPreview || reactivationReviewPreview) ? (
+          {isAdminRoute && chrome.adminLinks ? (
             <div id="admin" className="adminSectionStack" aria-label="Administrator tools">
               {isDuplicatesRoute ? (
                 <DuplicateMerge
@@ -4443,7 +4401,6 @@ export default function App() {
                 <AdminReactivation
                   instance={instance}
                   account={account ?? null}
-                  preview={reactivationAdminPreview}
                 />
               ) : null}
 

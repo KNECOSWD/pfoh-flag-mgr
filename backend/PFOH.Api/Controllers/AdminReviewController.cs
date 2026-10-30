@@ -911,6 +911,18 @@ public class AdminReviewController(
                 await pendingReviews.ReleasePendingSubmissionSpotsAsync(ct);
             }
 
+            if (isReactivation)
+            {
+                if (change.HonoreeId is not int reactivationHonoreeId ||
+                    !await ReactivationStillEligibleAsync(reactivationHonoreeId, ct))
+                {
+                    return Conflict(new
+                    {
+                        message = "This honoree is no longer inactive and unflagged, so the reactivation cannot be approved."
+                    });
+                }
+            }
+
             var honoree = await ApplyApprovedChanges(change, adminName, ct);
             if (isReactivation)
             {
@@ -1611,6 +1623,19 @@ public class AdminReviewController(
             pdfUrl,
             r.ReviewedUtc,
             r.CardPrintedUtc);
+    }
+
+    private async Task<bool> ReactivationStillEligibleAsync(int honoreeId, CancellationToken ct)
+    {
+        var honoree = await db.Honorees.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == honoreeId, ct);
+        if (honoree is null || honoree.IsActive || honoree.FlagGridId is not null)
+        {
+            return false;
+        }
+
+        return !await db.FlagGrids.AsNoTracking()
+            .AnyAsync(grid => grid.HonoreeId == honoreeId && grid.DeletedDate == null, ct);
     }
 
     private async Task<List<AdminReviewItemDto>> AttachReactivationAsync(

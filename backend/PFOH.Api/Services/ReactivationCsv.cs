@@ -168,13 +168,25 @@ public static class ReactivationCsv
         return records;
     }
 
-    private static string Cell(string? value)
+    internal static string Neutralize(string? value)
     {
         var text = value ?? string.Empty;
+        if (text.Length > 0 && text[0] is '=' or '+' or '-' or '@' or '\t' or '\r')
+        {
+            return "'" + text;
+        }
+
+        return text;
+    }
+
+    private static string Cell(string? value)
+    {
+        var text = Neutralize(value);
         if (text.Contains('"', StringComparison.Ordinal) ||
             text.Contains(',', StringComparison.Ordinal) ||
             text.Contains('\n', StringComparison.Ordinal) ||
-            text.Contains('\r', StringComparison.Ordinal))
+            text.Contains('\r', StringComparison.Ordinal) ||
+            text.Contains('\t', StringComparison.Ordinal))
         {
             return "\"" + text.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
         }

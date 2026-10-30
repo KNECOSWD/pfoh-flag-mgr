@@ -23,6 +23,15 @@ public sealed class ReactivationSubmitBody
 public sealed class ReactivationGenerateBody
 {
     public List<int>? HonoreeIds { get; set; }
+
+    public bool AllEligible { get; set; }
+}
+
+public sealed class ReactivationRevokeBody
+{
+    public List<int>? HonoreeIds { get; set; }
+
+    public bool All { get; set; }
 }
 
 public sealed record ReactivationEligibleDto(
@@ -44,3 +53,5 @@ public sealed record ReactivationGenerateResultDto(
     IReadOnlyList<ReactivationLinkRowDto> Rows);
 
 public sealed record ReactivationRevokeResultDto(bool Revoked);
+
+public sealed record ReactivationRevokeBulkResultDto(int RevokedCount);

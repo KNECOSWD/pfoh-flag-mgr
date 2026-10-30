@@ -26,7 +26,14 @@ public class AdminReactivationController(
         [FromBody] ReactivationGenerateBody? body,
         CancellationToken ct)
     {
-        var rows = await links.GenerateAsync(body?.HonoreeIds, Actor(), BaseUrl(), ct);
+        var allEligible = body?.AllEligible == true;
+        var ids = body?.HonoreeIds;
+        if (!allEligible && (ids is null || ids.Count == 0))
+        {
+            return BadRequest(new { message = "Select at least one honoree." });
+        }
+
+        var rows = await links.GenerateAsync(ids, allEligible, Actor(), BaseUrl(), ct);
         return Ok(new ReactivationGenerateResultDto(ReactivationCsv.Write(rows), rows));
     }
 
@@ -52,6 +59,22 @@ public class AdminReactivationController(
 
         var rows = await links.GenerateFromCsvAsync(text, Actor(), BaseUrl(), ct);
         return Ok(new ReactivationGenerateResultDto(ReactivationCsv.Write(rows), rows));
+    }
+
+    [HttpPost("revoke")]
+    public async Task<ActionResult<ReactivationRevokeBulkResultDto>> RevokeMany(
+        [FromBody] ReactivationRevokeBody? body,
+        CancellationToken ct)
+    {
+        var all = body?.All == true;
+        var ids = body?.HonoreeIds;
+        if (!all && (ids is null || ids.Count == 0))
+        {
+            return BadRequest(new { message = "Select at least one honoree, or revoke all active links." });
+        }
+
+        var count = await links.RevokeManyAsync(ids, all, ct);
+        return Ok(new ReactivationRevokeBulkResultDto(count));
     }
 
     [HttpPost("{honoreeId:int}/revoke")]

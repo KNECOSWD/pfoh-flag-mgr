@@ -1154,10 +1154,18 @@ export const adminReactivationApi = {
   eligible: (instance: IPublicClientApplication, account: AccountInfo) =>
     request<ReactivationEligible[]>(instance, account, "/api/admin/reactivation/eligible"),
 
-  generate: (instance: IPublicClientApplication, account: AccountInfo, honoreeIds: number[]) =>
+  generate: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    honoreeIds: number[],
+    allEligible = false
+  ) =>
     request<ReactivationGenerateResult>(instance, account, "/api/admin/reactivation/links", {
       method: "POST",
-      body: JSON.stringify({ honoreeIds: honoreeIds.length > 0 ? honoreeIds : null })
+      body: JSON.stringify({
+        honoreeIds: allEligible ? null : honoreeIds,
+        allEligible
+      })
     }),
 
   generateCsv: (instance: IPublicClientApplication, account: AccountInfo, file: File) => {
@@ -1172,6 +1180,17 @@ export const adminReactivationApi = {
   revoke: (instance: IPublicClientApplication, account: AccountInfo, honoreeId: number) =>
     request<{ revoked: boolean }>(instance, account, `/api/admin/reactivation/${honoreeId}/revoke`, {
       method: "POST"
+    }),
+
+  revokeMany: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    honoreeIds: number[],
+    all: boolean
+  ) =>
+    request<{ revokedCount: number }>(instance, account, "/api/admin/reactivation/revoke", {
+      method: "POST",
+      body: JSON.stringify({ honoreeIds: all ? null : honoreeIds, all })
     })
 };
 
