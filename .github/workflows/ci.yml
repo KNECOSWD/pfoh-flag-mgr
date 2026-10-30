@@ -128,6 +128,10 @@ jobs:
         if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-auth-redirect.mjs
 
+      - name: Check reactivation links
+        if: steps.changes.outputs.code != 'false'
+        run: node --test frontend/scripts/check-reactivation.mjs
+
       - name: Check submit photo preparation
         if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-submit-photo.mjs

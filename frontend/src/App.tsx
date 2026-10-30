@@ -84,6 +84,7 @@ import {
   dropWithdrawnSubmission,
   fieldChangeText,
   flagSpotLabel,
+  submissionKindClass,
   submissionKindLabel,
   submissionPhotoKind
 } from "./submissionDisplay.js";
@@ -103,6 +104,9 @@ import { isQuietAuthRejection, PLEASE_SIGN_IN_AGAIN } from "./tokenRequest.js";
 import dogTagIcon from "./assets/pfoh-dogtag-icon-480.png";
 import knecoLogoWhite from "./assets/kneco-logo-white-216.png";
 import { RemovalQueue } from "./RemovalQueue";
+import { AdminReactivation } from "./AdminReactivation";
+import { ReactivationPage, type ReactivationPreview } from "./ReactivationPage";
+import { reactivationTokenFromPath, signInReturnHref } from "./reactivationPath.js";
 import { showTenYearsBanner, TenYearsBanner } from "./tenYearsBanner.js";
 
 const RETURN_INTENT_KEY = "pfoh-return-intent";
@@ -234,7 +238,7 @@ const blankForm: SaveHonoreeChangeRequest = {
   submitterEmailAddress: ""
 };
 
-type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/duplicates" | "/admin/duplicates/history" | "/admin/flag-map" | "/admin/printing" | "/admin/removal-queue";
+type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/duplicates" | "/admin/duplicates/history" | "/admin/flag-map" | "/admin/printing" | "/admin/removal-queue" | "/admin/reactivation";
 
 const appRoutes: AppRoute[] = [
   "/find",
@@ -246,7 +250,8 @@ const appRoutes: AppRoute[] = [
   "/admin/duplicates/history",
   "/admin/flag-map",
   "/admin/printing",
-  "/admin/removal-queue"
+  "/admin/removal-queue",
+  "/admin/reactivation"
 ];
 
 const pageBanners: Record<AppRoute, { title: string; subtitle: string }> = {
@@ -289,7 +294,16 @@ const pageBanners: Record<AppRoute, { title: string; subtitle: string }> = {
   "/admin/flag-map": {
     title: "FLAG MANAGER",
     subtitle: "Assign open grids, move honorees, and clear spots on the field."
+  },
+  "/admin/reactivation": {
+    title: "REACTIVATION LINKS",
+    subtitle: "Generate one-time links for inactive honorees with no flag."
   }
+};
+
+const reactivationBanner = {
+  title: "REQUEST REACTIVATION",
+  subtitle: "Ask for this honoree to return to the field. An administrator reviews the request."
 };
 
 const profileBanner = {
@@ -564,6 +578,9 @@ export default function App() {
   const [activeRoute, setActiveRoute] = useState<AppRoute>(() =>
     kioskSessionOn(window.sessionStorage) ? "/flag-map" : normalizeAppRoute(window.location.pathname)
   );
+  const [reactivationToken, setReactivationToken] = useState<string | null>(() =>
+    kioskSessionOn(window.sessionStorage) ? null : reactivationTokenFromPath(window.location.pathname)
+  );
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [authPrompt, setAuthPrompt] = useState<ReturnIntent | null>(null);
   const confirmResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
@@ -630,7 +647,7 @@ export default function App() {
     [printQueue, selectedPrintIds]
   );
 
-  const isFindRoute = activeRoute === "/find";
+  const isFindRoute = activeRoute === "/find" && !reactivationToken;
   const isPublicFlagMapRoute = activeRoute === "/flag-map";
   const isMyFlagsRoute = activeRoute === "/my-flags";
   const isHonorHeroRoute = activeRoute === "/honor-a-hero";
@@ -648,10 +665,29 @@ export default function App() {
     { route: "/admin/duplicates", label: "Duplicates" },
     { route: "/admin/printing", label: "Print Center" },
     { route: "/admin/flag-map", label: "Flag Manager" },
-    { route: "/admin/removal-queue", label: "Removal Queue" }
+    { route: "/admin/removal-queue", label: "Removal Queue" },
+    { route: "/admin/reactivation", label: "Reactivation" }
   ];
   const isPrintingRoute = activeRoute === "/admin/printing";
   const isRemovalQueueRoute = activeRoute === "/admin/removal-queue";
+  const isReactivationAdminRoute = activeRoute === "/admin/reactivation";
+  const reactivationPreview = ((): ReactivationPreview | null => {
+    if (!import.meta.env.DEV || !reactivationToken) return null;
+    const value = new URLSearchParams(window.location.search).get("preview");
+    if (value === "invalid" || value === "sign-in" || value === "mismatch" || value === "ready" || value === "done") {
+      return value;
+    }
+    return null;
+  })();
+  const reactivationAdminPreview = ((): "list" | "result" | null => {
+    if (!import.meta.env.DEV || !isReactivationAdminRoute) return null;
+    const value = new URLSearchParams(window.location.search).get("preview");
+    if (value === "list" || value === "result") return value;
+    return null;
+  })();
+  const reactivationReviewPreview = import.meta.env.DEV
+    && activeRoute === "/admin/review"
+    && new URLSearchParams(window.location.search).get("preview") === "reactivation";
   const isAdminRoute = activeRoute.startsWith("/admin");
   const stickyAdmin = adminFromApi || readStickyAdmin(window.sessionStorage, account?.homeAccountId ?? "");
   const publicAdmin = isPublicPage(activeRoute)
@@ -1037,7 +1073,7 @@ export default function App() {
       await instance.loginRedirect({
         ...loginRequest,
         prompt: mode === "create" ? "create" : "login",
-        redirectStartPage: window.location.href
+        redirectStartPage: signInReturnHref(window.location.href)
       });
     } catch (err) {
       setError(publishSignInError(err));
@@ -1090,6 +1126,8 @@ export default function App() {
       }
     }
 
+    setReactivationToken(null);
+
     window.setTimeout(() => {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }, 40);
@@ -1140,6 +1178,7 @@ export default function App() {
 
       const nextRoute = normalizeAppRoute(window.location.pathname);
       setActiveRoute(nextRoute);
+      setReactivationToken(reactivationTokenFromPath(window.location.pathname));
       setMobileNavOpen(false);
 
       if (nextRoute !== "/honor-a-hero") {
@@ -1431,6 +1470,30 @@ export default function App() {
       cancelled = true;
     };
   }, [activeRoute, accountKey, adminFromApi, instance]);
+
+  useEffect(() => {
+    if (!reactivationReviewPreview) return;
+    setPendingReviews([{
+      changeRequestId: 1,
+      claimId: 1,
+      flagGridName: "",
+      honoreeName: "TEST Reactivation Honoree",
+      rank: "Sergeant",
+      serviceBranchName: "Army",
+      claimantEmail: "test-requester@example.test",
+      claimantName: "Test Requester",
+      requestStatus: "Submitted",
+      createdUtc: "2026-10-30T18:00:00Z",
+      submittedUtc: "2026-10-30T18:00:00Z",
+      requiresCardReprint: false,
+      description: "A clearly fake tribute.",
+      awards: "Example award",
+      conflictsServed: "Example conflict",
+      submissionKind: "Reactivation",
+      requesterNote: "Please put this flag back.",
+      linkUsedUtc: "2026-10-30T18:05:00Z"
+    }]);
+  }, [reactivationReviewPreview]);
 
   useEffect(() => {
     if (!kioskChrome(kioskLocked, true).loadSignedInData) return;
@@ -3189,8 +3252,8 @@ export default function App() {
           </a>
           <div className="heroContent">
             <p className="eyebrow">Plano Flags of Honor</p>
-            <h1>{(profileOpen ? profileBanner : pageBanners[activeRoute]).title}</h1>
-            <p className="heroLead">{(profileOpen ? profileBanner : pageBanners[activeRoute]).subtitle}</p>
+            <h1>{(reactivationToken ? reactivationBanner : profileOpen ? profileBanner : pageBanners[activeRoute]).title}</h1>
+            <p className="heroLead">{(reactivationToken ? reactivationBanner : profileOpen ? profileBanner : pageBanners[activeRoute]).subtitle}</p>
           </div>
         </div>
 
@@ -3907,6 +3970,18 @@ export default function App() {
             </div>
           ) : null}
 
+          {reactivationToken ? (
+            <ReactivationPage
+              token={reactivationToken}
+              instance={instance}
+              account={account ?? null}
+              preview={reactivationPreview}
+              onSignIn={() => { void signIn("login"); }}
+              onCreateAccount={() => { void signIn("create"); }}
+              onUseDifferentAccount={() => { void signOut(); }}
+            />
+          ) : null}
+
           {isFindRoute ? (
           <FindSearchFrame
             heading={publicCopy.searchHeading}
@@ -4326,10 +4401,10 @@ export default function App() {
             </section>
           ) : null}
 
-          {isAdminRoute && !kioskLocked && !isAdmin ? (
+          {isAdminRoute && !kioskLocked && !isAdmin && !reactivationAdminPreview && !reactivationReviewPreview ? (
             <section className="card guestNotice">
               <h2>Administrator access required</h2>
-              <p>Sign in with an account assigned the PFOH.Admin role to use review, duplicates, flag map, printing, and removal queue tools.</p>
+              <p>Sign in with an account assigned the PFOH.Admin role to use review, duplicates, flag map, printing, removal queue, and reactivation tools.</p>
               {!isAuthenticated ? (
                 <div className="authChoiceButtons">
                   <button type="button" onClick={() => void signIn("login")}>
@@ -4343,7 +4418,7 @@ export default function App() {
             </section>
           ) : null}
 
-          {isAdminRoute && chrome.adminLinks ? (
+          {isAdminRoute && (chrome.adminLinks || reactivationAdminPreview || reactivationReviewPreview) ? (
             <div id="admin" className="adminSectionStack" aria-label="Administrator tools">
               {isDuplicatesRoute ? (
                 <DuplicateMerge
@@ -4361,6 +4436,14 @@ export default function App() {
                   account={account ?? null}
                   onBack={() => navigateToRoute("/admin/duplicates")}
                   onCountsChanged={() => { void refreshAttentionCounts(); }}
+                />
+              ) : null}
+
+              {isReactivationAdminRoute ? (
+                <AdminReactivation
+                  instance={instance}
+                  account={account ?? null}
+                  preview={reactivationAdminPreview}
                 />
               ) : null}
 
@@ -4427,7 +4510,7 @@ export default function App() {
                         <div className="reviewPendingIdentity">
                           <div className="reviewPendingNameLine">
                             <strong>{item.honoreeName}</strong>
-                            <span className={`reviewKindBadge ${item.submissionKind === "Change" ? "isChange" : item.submissionKind === "Withdrawal" ? "isWithdrawal" : "isNew"}`}>
+                            <span className={`reviewKindBadge ${submissionKindClass(item.submissionKind)}`}>
                               {submissionKindLabel(item.submissionKind)}
                             </span>
                           </div>
@@ -4482,7 +4565,18 @@ export default function App() {
                               ? `Requested ${formatDate(item.submittedUtc)}`
                               : formatDate(item.submittedUtc)}
                           </dd>
+                          {item.submissionKind === "Reactivation" ? (
+                            <>
+                              <dt>Requester note</dt>
+                              <dd>{item.requesterNote?.trim() || "None"}</dd>
+                              <dt>Link used</dt>
+                              <dd>{item.linkUsedUtc ? formatDate(item.linkUsedUtc) : "Not recorded"}</dd>
+                            </>
+                          ) : null}
                         </dl>
+                        {item.submissionKind === "Reactivation" ? (
+                          <p className="helperText">Original record. Approving places this honoree into flag assignment. The honoree stays inactive until you approve.</p>
+                        ) : null}
                       </div>
                       <footer className="reviewPendingCardFooter">
                         {item.submissionKind === "Withdrawal" ? (

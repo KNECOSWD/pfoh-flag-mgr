@@ -346,6 +346,46 @@ export type AdminReviewItem = {
   fieldChanges?: { label: string; previous: string; proposed: string }[] | null;
   flagSpotAssigned?: boolean | null;
   flagSpotNotice?: string | null;
+  requesterNote?: string | null;
+  linkUsedUtc?: string | null;
+};
+
+export type ReactivationSummary = {
+  name: string;
+  rank?: string | null;
+  serviceBranch?: string | null;
+  years?: string | null;
+  conflictsServed?: string | null;
+  awards?: string | null;
+  description?: string | null;
+  kia: boolean;
+};
+
+export type ReactivationLinkState = {
+  status: "invalid" | "sign-in" | "email-mismatch" | "ready" | "submitted";
+  message: string;
+  honoree?: ReactivationSummary | null;
+};
+
+export type ReactivationEligible = {
+  honoreeId: number;
+  name: string;
+  requesterEmail: string;
+  activeLinkExpiresUtc?: string | null;
+};
+
+export type ReactivationLinkRow = {
+  honoreeId: string;
+  name: string;
+  requesterEmail: string;
+  link: string;
+  expiry: string;
+  eligibilityReason: string;
+};
+
+export type ReactivationGenerateResult = {
+  csv: string;
+  rows: ReactivationLinkRow[];
 };
 
 
@@ -1091,6 +1131,48 @@ export const adminApi = {
       `pfoh-flag-map-${new Date().toISOString().slice(0, 10)}.xlsx`
     );
   }
+};
+
+function reactivationPath(token: string) {
+  return `/api/reactivate/${encodeURIComponent(token)}`;
+}
+
+export const reactivationApi = {
+  inspectAnonymous: (token: string) => publicRequest<ReactivationLinkState>(reactivationPath(token)),
+
+  inspect: (instance: IPublicClientApplication, account: AccountInfo, token: string) =>
+    request<ReactivationLinkState>(instance, account, reactivationPath(token)),
+
+  submit: (instance: IPublicClientApplication, account: AccountInfo, token: string, note: string) =>
+    request<ReactivationLinkState>(instance, account, reactivationPath(token), {
+      method: "POST",
+      body: JSON.stringify({ note })
+    })
+};
+
+export const adminReactivationApi = {
+  eligible: (instance: IPublicClientApplication, account: AccountInfo) =>
+    request<ReactivationEligible[]>(instance, account, "/api/admin/reactivation/eligible"),
+
+  generate: (instance: IPublicClientApplication, account: AccountInfo, honoreeIds: number[]) =>
+    request<ReactivationGenerateResult>(instance, account, "/api/admin/reactivation/links", {
+      method: "POST",
+      body: JSON.stringify({ honoreeIds: honoreeIds.length > 0 ? honoreeIds : null })
+    }),
+
+  generateCsv: (instance: IPublicClientApplication, account: AccountInfo, file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return request<ReactivationGenerateResult>(instance, account, "/api/admin/reactivation/links/csv", {
+      method: "POST",
+      body
+    });
+  },
+
+  revoke: (instance: IPublicClientApplication, account: AccountInfo, honoreeId: number) =>
+    request<{ revoked: boolean }>(instance, account, `/api/admin/reactivation/${honoreeId}/revoke`, {
+      method: "POST"
+    })
 };
 
 export const flagMapExportFields = [

@@ -69,7 +69,8 @@ test("anonymous public call sends no token and shows no banner", async () => {
   const loadEffect = app.slice(app.indexOf("if (!kioskChrome(kioskLocked, true).loadSignedInData)"));
   assert.match(loadEffect.slice(0, 500), /isPublicPage\(activeRoute\)/);
   assert.match(app, /if \(isPublicPage\(activeRoute\)\)/);
-  assert.match(app, /redirectStartPage: window\.location\.href/);
+  assert.match(app, /redirectStartPage: signInReturnHref\(window\.location\.href\)/);
+  assert.match(readFileSync(new URL("../src/reactivationPath.js", import.meta.url), "utf8"), /return href;/);
 });
 
 test("interaction_required redirects once for every concurrent waiter and stays quiet", async () => {

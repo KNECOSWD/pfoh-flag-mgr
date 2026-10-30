@@ -29,7 +29,9 @@ public record AdminReviewItemDto(
     string SubmissionKind = "New",
     IReadOnlyList<ReviewFieldChangeDto>? FieldChanges = null,
     bool? FlagSpotAssigned = null,
-    string? FlagSpotNotice = null);
+    string? FlagSpotNotice = null,
+    string? RequesterNote = null,
+    DateTime? LinkUsedUtc = null);
 
 public record ReviewFieldChangeDto(string Label, string Previous, string Proposed);
 
