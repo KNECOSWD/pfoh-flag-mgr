@@ -181,11 +181,7 @@ public sealed class ReactivationLinkService(
             CreatedUtc = now
         });
 
-        try
-        {
-            await db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException ex) when (IsUniqueConflict(ex))
+        if (!await SaveRedeemAsync(ct))
         {
             return (Invalid(), null);
         }
@@ -231,21 +227,54 @@ public sealed class ReactivationLinkService(
         return active.Count;
     }
 
-    private static bool IsUniqueConflict(DbUpdateException ex)
+    private async Task<bool> SaveRedeemAsync(CancellationToken ct)
     {
-        for (var current = (Exception?)ex; current is not null; current = current.InnerException)
+        try
         {
-            var text = current.Message;
-            if (text.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase)
-                || text.Contains("duplicate", StringComparison.OrdinalIgnoreCase)
-                || text.Contains("2601", StringComparison.Ordinal)
-                || text.Contains("2627", StringComparison.Ordinal))
+            await db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKey(ex))
+        {
+            return false;
+        }
+        catch (DbUpdateException ex) when (IsDeadlock(ex))
+        {
+            try
             {
+                await db.SaveChangesAsync(ct);
                 return true;
+            }
+            catch (DbUpdateException retry) when (IsDuplicateKey(retry) || IsDeadlock(retry))
+            {
+                return false;
+            }
+        }
+    }
+
+    private static bool IsDuplicateKey(Exception exception) =>
+        SqlNumber(exception) is 2601 or 2627;
+
+    private static bool IsDeadlock(Exception exception) =>
+        SqlNumber(exception) is 1205;
+
+    private static int? SqlNumber(Exception exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            var type = current.GetType();
+            if (type.Name != "SqlException")
+            {
+                continue;
+            }
+
+            if (type.GetProperty("Number")?.GetValue(current) is int number)
+            {
+                return number;
             }
         }
 
-        return false;
+        return null;
     }
 
     public async Task<IReadOnlyList<ReactivationEligibleDto>> ListEligibleAsync(CancellationToken ct)

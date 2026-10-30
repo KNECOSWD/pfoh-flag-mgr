@@ -99,12 +99,12 @@ export function ReactivationPage({
       {state?.status === "sign-in" ? (
         <div className="d-flex flex-column flex-sm-row gap-2">
           <button type="button" className="btn btn-primary" onClick={onSignIn}>Sign in</button>
-          <button type="button" className="btn btn-outline-secondary" onClick={onCreateAccount}>Create account</button>
+          <button type="button" className="secondary" onClick={onCreateAccount}>Create account</button>
         </div>
       ) : null}
       {state?.status === "email-mismatch" ? (
         <div>
-          <button type="button" className="btn btn-outline-secondary" onClick={onUseDifferentAccount}>Use a different account</button>
+          <button type="button" className="secondary" onClick={onUseDifferentAccount}>Use a different account</button>
         </div>
       ) : null}
       {state?.status === "ready" && state.honoree ? (

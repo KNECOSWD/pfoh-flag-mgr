@@ -1,32 +1,4 @@
-/* The global table rule sets a 740px minimum and display:block.
-   These tables fill the admin card, and on a phone the Bootstrap
-   table-responsive wrapper scrolls instead of the page. */
-.card:has(.reactivationAdmin) {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.table-responsive.reactivationAdmin {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  overflow-x: auto;
-  contain: inline-size;
-}
-
-.reactivationAdmin > .table {
-  width: 100%;
-  min-width: 42rem;
-  display: table;
-  overflow: visible;
-}
-
-.reactivationAdmin > .table th {
-  white-space: nowrap;
-}
-
-.reactivationAdmin > .table td {
-  white-space: normal;
-  overflow-wrap: break-word;
+td.reactivationLink {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }

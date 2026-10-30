@@ -4401,6 +4401,7 @@ export default function App() {
                 <AdminReactivation
                   instance={instance}
                   account={account ?? null}
+                  confirm={requestConfirmation}
                 />
               ) : null}
 

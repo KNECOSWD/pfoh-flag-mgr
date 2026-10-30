@@ -25,10 +25,12 @@ function expiryLabel(value?: string | null) {
 
 export function AdminReactivation({
   instance,
-  account
+  account,
+  confirm
 }: {
   instance: IPublicClientApplication;
   account: AccountInfo | null;
+  confirm: (message: string, options?: { title?: string; confirmText?: string; tone?: "default" | "danger" }) => Promise<boolean>;
 }) {
   const [rows, setRows] = useState<ReactivationEligible[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
@@ -102,8 +104,10 @@ export function AdminReactivation({
 
   async function generateAll() {
     if (!account || rows.length === 0) return;
-    const confirmed = window.confirm(
-      `Generate a new link for all ${rows.length} eligible honorees? Existing links will be revoked.`
+    const people = rows.length === 1 ? "honoree" : "honorees";
+    const confirmed = await confirm(
+      `Generate a new link for all ${rows.length} eligible ${people}? Existing links will be revoked.`,
+      { title: "Generate links", confirmText: "Generate links" }
     );
     if (!confirmed) return;
 
@@ -144,8 +148,12 @@ export function AdminReactivation({
 
   async function revokeSelected() {
     if (!account || selected.length === 0) return;
-    const confirmed = window.confirm(
-      `Revoke ${selected.length} selected reactivation links? Existing links will be revoked.`
+    const label = selected.length === 1
+      ? "1 selected reactivation link"
+      : `${selected.length} selected reactivation links`;
+    const confirmed = await confirm(
+      `Revoke ${label}? Existing links will be revoked.`,
+      { title: "Revoke links", confirmText: "Revoke", tone: "danger" }
     );
     if (!confirmed) return;
     await revokeMany(selected, false);
@@ -153,8 +161,9 @@ export function AdminReactivation({
 
   async function revokeAll() {
     if (!account) return;
-    const confirmed = window.confirm(
-      "Revoke every active reactivation link? Existing links will be revoked."
+    const confirmed = await confirm(
+      "Revoke every active reactivation link? Existing links will be revoked.",
+      { title: "Revoke links", confirmText: "Revoke", tone: "danger" }
     );
     if (!confirmed) return;
     await revokeMany([], true);
@@ -169,9 +178,11 @@ export function AdminReactivation({
       await reload();
       setSelected([]);
       setMessageTone("secondary");
-      setMessage(result.revokedCount > 0
-        ? `${result.revokedCount} active links were revoked.`
-        : "There were no active links to revoke.");
+      setMessage(result.revokedCount === 0
+        ? "There were no active links to revoke."
+        : result.revokedCount === 1
+          ? "1 active link was revoked."
+          : `${result.revokedCount} active links were revoked.`);
     } catch {
       setMessageTone("danger");
       setMessage("The links could not be revoked.");
@@ -206,7 +217,7 @@ export function AdminReactivation({
           </button>
           <button
             type="button"
-            className="btn btn-outline-secondary"
+            className="secondary"
             disabled={busy || rows.length === 0}
             onClick={() => { void generateAll(); }}
           >
@@ -214,7 +225,7 @@ export function AdminReactivation({
           </button>
           <button
             type="button"
-            className="btn btn-outline-secondary"
+            className="secondary"
             disabled={busy || selected.length === 0}
             onClick={() => { void revokeSelected(); }}
           >
@@ -222,7 +233,7 @@ export function AdminReactivation({
           </button>
           <button
             type="button"
-            className="btn btn-outline-secondary"
+            className="secondary"
             disabled={busy || rows.length === 0}
             onClick={() => { void revokeAll(); }}
           >
@@ -233,7 +244,7 @@ export function AdminReactivation({
       {rows.length === 0 ? (
         <p>No inactive honorees with a requester email and no flag are waiting.</p>
       ) : (
-        <div className="table-responsive reactivationAdmin">
+        <div className="table-responsive">
           <table className="table table-sm align-middle mb-0">
             <thead>
               <tr>
@@ -272,7 +283,7 @@ export function AdminReactivation({
                   <td>
                     <button
                       type="button"
-                      className="btn btn-outline-secondary btn-sm"
+                      className="secondary"
                       disabled={busy || !row.activeLinkExpiresUtc}
                       onClick={() => { void revoke(row.honoreeId); }}
                     >
@@ -288,7 +299,7 @@ export function AdminReactivation({
       {results.length > 0 ? (
         <div className="mt-4">
           <h3 className="h5 pt-2 pb-3 mb-0">Generation result</h3>
-          <div className="table-responsive reactivationAdmin">
+          <div className="table-responsive">
             <table className="table table-sm align-middle mb-0">
               <thead>
                 <tr>
@@ -306,7 +317,7 @@ export function AdminReactivation({
                     <td>{row.honoreeId}</td>
                     <td>{row.name}</td>
                     <td>{row.requesterEmail}</td>
-                    <td>{row.link}</td>
+                    <td className="reactivationLink">{row.link}</td>
                     <td>{row.expiry}</td>
                     <td>{row.eligibilityReason}</td>
                   </tr>

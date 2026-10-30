@@ -18,6 +18,17 @@ namespace PFOH.Api.Tests;
 public sealed class ReactivationRedeemRaceInterceptor : SaveChangesInterceptor
 {
     public static int FailuresRemaining;
+    public static int ErrorNumber = 2601;
+
+    public sealed class SqlException : Exception
+    {
+        public SqlException(int number) : base("provider error")
+        {
+            Number = number;
+        }
+
+        public int Number { get; }
+    }
 
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
     {
@@ -50,8 +61,8 @@ public sealed class ReactivationRedeemRaceInterceptor : SaveChangesInterceptor
 
         FailuresRemaining--;
         throw new DbUpdateException(
-            "Unique constraint failed.",
-            new InvalidOperationException("Violation of UNIQUE KEY constraint 'UQ_HonoreeReactivationRequests_TokenId'."));
+            "The database rejected the save.",
+            new SqlException(ErrorNumber));
     }
 }
 
@@ -615,12 +626,72 @@ public class ReactivationLinkTests(ReactivationApiFactory factory) : IClassFixtu
         finally
         {
             ReactivationRedeemRaceInterceptor.FailuresRemaining = 0;
+            ReactivationRedeemRaceInterceptor.ErrorNumber = 2601;
         }
 
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
         Assert.Empty(await db.HonoreeChangeRequests.ToListAsync());
         Assert.Null((await db.HonoreeReactivationTokens.SingleAsync()).UsedUtc);
+    }
+
+    [Fact]
+    public async Task A_deadlocked_redeem_retries_once_and_does_not_return_500()
+    {
+        await ResetAsync();
+        var honoreeId = await SeedInactiveAsync(Requester, "TEST", "Reactivation Honoree");
+        var client = factory.CreateClient();
+        var token = TokenOf(await GenerateAsync(client, honoreeId));
+        ReactivationRedeemRaceInterceptor.ErrorNumber = 1205;
+        ReactivationRedeemRaceInterceptor.FailuresRemaining = 1;
+        try
+        {
+            var response = await client.SendAsync(Authed(
+                HttpMethod.Post,
+                $"/api/reactivate/{token}",
+                "requester-user",
+                Requester,
+                "Test Requester",
+                body: new { note = "Deadlock" }));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var body = await response.Content.ReadFromJsonAsync<StateDto>(Json);
+            Assert.Equal("submitted", body!.Status);
+        }
+        finally
+        {
+            ReactivationRedeemRaceInterceptor.FailuresRemaining = 0;
+            ReactivationRedeemRaceInterceptor.ErrorNumber = 2601;
+        }
+    }
+
+    [Fact]
+    public async Task A_deadlock_that_repeats_returns_the_generic_invalid_message()
+    {
+        await ResetAsync();
+        var honoreeId = await SeedInactiveAsync(Requester, "TEST", "Reactivation Honoree");
+        var client = factory.CreateClient();
+        var token = TokenOf(await GenerateAsync(client, honoreeId));
+        ReactivationRedeemRaceInterceptor.ErrorNumber = 1205;
+        ReactivationRedeemRaceInterceptor.FailuresRemaining = 2;
+        try
+        {
+            var response = await client.SendAsync(Authed(
+                HttpMethod.Post,
+                $"/api/reactivate/{token}",
+                "requester-user",
+                Requester,
+                "Test Requester",
+                body: new { note = "Deadlock" }));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var body = await response.Content.ReadFromJsonAsync<StateDto>(Json);
+            Assert.Equal("invalid", body!.Status);
+            Assert.Equal(ReactivationLinkService.InvalidMessage, body.Message);
+        }
+        finally
+        {
+            ReactivationRedeemRaceInterceptor.FailuresRemaining = 0;
+            ReactivationRedeemRaceInterceptor.ErrorNumber = 2601;
+        }
     }
 
     [Fact]
