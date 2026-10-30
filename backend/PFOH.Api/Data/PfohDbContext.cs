@@ -23,6 +23,8 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
     public DbSet<HonoreeChangeRequest> HonoreeChangeRequests => Set<HonoreeChangeRequest>();
     public DbSet<CardPrintEvent> CardPrintEvents => Set<CardPrintEvent>();
     public DbSet<FlagRemovalQueueItem> FlagRemovalQueueItems => Set<FlagRemovalQueueItem>();
+    public DbSet<HonoreeReactivationToken> HonoreeReactivationTokens => Set<HonoreeReactivationToken>();
+    public DbSet<HonoreeReactivationRequest> HonoreeReactivationRequests => Set<HonoreeReactivationRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -353,6 +355,51 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
             entity.HasOne(e => e.MergeAudit)
                 .WithMany()
                 .HasForeignKey(e => e.MergeAuditId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<HonoreeReactivationToken>(entity =>
+        {
+            entity.ToTable("HonoreeReactivationTokens", "dbo");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TokenHash).HasMaxLength(32).IsRequired();
+            entity.Property(e => e.RequesterEmail).HasMaxLength(255).IsRequired();
+            entity.Property(e => e.CreatedBy).HasMaxLength(255).IsRequired();
+            entity.HasIndex(e => e.TokenHash)
+                .HasDatabaseName("UX_HonoreeReactivationTokens_TokenHash")
+                .IsUnique();
+            entity.HasIndex(e => e.HonoreeId)
+                .HasDatabaseName("UX_HonoreeReactivationTokens_OneActive")
+                .IsUnique()
+                .HasFilter("[UsedUtc] IS NULL AND [RevokedUtc] IS NULL");
+            entity.HasOne(e => e.Honoree)
+                .WithMany()
+                .HasForeignKey(e => e.HonoreeId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<HonoreeReactivationRequest>(entity =>
+        {
+            entity.ToTable("HonoreeReactivationRequests", "dbo");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.RequesterNote).HasMaxLength(2000);
+            entity.HasIndex(e => e.ChangeRequestId)
+                .HasDatabaseName("UQ_HonoreeReactivationRequests_ChangeRequestId")
+                .IsUnique();
+            entity.HasIndex(e => e.TokenId)
+                .HasDatabaseName("UQ_HonoreeReactivationRequests_TokenId")
+                .IsUnique();
+            entity.HasOne(e => e.Honoree)
+                .WithMany()
+                .HasForeignKey(e => e.HonoreeId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(e => e.ChangeRequest)
+                .WithMany()
+                .HasForeignKey(e => e.ChangeRequestId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(e => e.Token)
+                .WithMany()
+                .HasForeignKey(e => e.TokenId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
     }

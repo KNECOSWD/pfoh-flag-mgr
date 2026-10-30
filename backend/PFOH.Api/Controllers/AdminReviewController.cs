@@ -155,6 +155,17 @@ public class AdminReviewController(
 
         try
         {
+            submitted = await AttachReactivationAsync(submitted, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Reactivation labels could not be attached to pending honoree reviews. Returning the review list without them.");
+        }
+
+        try
+        {
             return Ok(await AttachClaimantAccountsAsync(submitted, ct));
         }
         catch (Exception ex)
@@ -887,7 +898,10 @@ public class AdminReviewController(
                 });
             }
 
-            var isNewSubmission = change.HonoreeId is not > 0;
+            var isReactivation = await db.HonoreeReactivationRequests
+                .AnyAsync(row => row.ChangeRequestId == change.Id, ct);
+            var isNewSubmission = !isReactivation && change.HonoreeId is not > 0;
+            var assignFlag = isNewSubmission || isReactivation;
             bool? flagSpotAssigned = null;
             string? flagSpotNotice = null;
             string? assignedGridName = null;
@@ -897,9 +911,26 @@ public class AdminReviewController(
                 await pendingReviews.ReleasePendingSubmissionSpotsAsync(ct);
             }
 
-            var honoree = await ApplyApprovedChanges(change, adminName, ct);
+            if (isReactivation)
+            {
+                if (change.HonoreeId is not int reactivationHonoreeId ||
+                    !await ReactivationStillEligibleAsync(reactivationHonoreeId, ct))
+                {
+                    return Conflict(new
+                    {
+                        message = "This honoree is no longer inactive and unflagged, so the reactivation cannot be approved."
+                    });
+                }
+            }
 
-            if (isNewSubmission)
+            var honoree = await ApplyApprovedChanges(change, adminName, ct);
+            if (isReactivation)
+            {
+                honoree.DeletedDate = null;
+                honoree.DeletedBy = null;
+            }
+
+            if (assignFlag)
             {
                 var grid = await flagGrids.NextAvailableAsync(ct);
                 if (grid is null)
@@ -908,7 +939,7 @@ public class AdminReviewController(
                     flagSpotNotice = FlagGridAssignment.NoSpotNotice;
                     honoree.FlagGridId = null;
                     change.FlagGridId = null;
-                    if (change.FlagClaim is { HonoreeId: null })
+                    if (change.FlagClaim is not null && (change.FlagClaim.HonoreeId is null || isReactivation))
                     {
                         change.FlagClaim.FlagGridId = null;
                     }
@@ -969,7 +1000,7 @@ public class AdminReviewController(
             }
 
             var approved = ToReviewDto(change);
-            if (isNewSubmission)
+            if (assignFlag)
             {
                 approved = approved with
                 {
@@ -977,8 +1008,15 @@ public class AdminReviewController(
                     FlagGridName = assignedGridName ?? string.Empty,
                     FlagSpotAssigned = flagSpotAssigned,
                     FlagSpotNotice = flagSpotNotice,
-                    SubmissionKind = ReviewSubmissionDiff.NewSubmission
+                    SubmissionKind = isReactivation
+                        ? ReviewSubmissionDiff.Reactivation
+                        : ReviewSubmissionDiff.NewSubmission
                 };
+            }
+
+            if (isReactivation)
+            {
+                ReactivationAudit.Approved(logger, honoree.Id, change.Id, flagSpotAssigned == true);
             }
 
             return Ok(approved);
@@ -1585,6 +1623,57 @@ public class AdminReviewController(
             pdfUrl,
             r.ReviewedUtc,
             r.CardPrintedUtc);
+    }
+
+    private async Task<bool> ReactivationStillEligibleAsync(int honoreeId, CancellationToken ct)
+    {
+        var honoree = await db.Honorees.AsNoTracking()
+            .FirstOrDefaultAsync(item => item.Id == honoreeId, ct);
+        if (honoree is null || honoree.IsActive || honoree.FlagGridId is not null)
+        {
+            return false;
+        }
+
+        return !await db.FlagGrids.AsNoTracking()
+            .AnyAsync(grid => grid.HonoreeId == honoreeId && grid.DeletedDate == null, ct);
+    }
+
+    private async Task<List<AdminReviewItemDto>> AttachReactivationAsync(
+        List<AdminReviewItemDto> items,
+        CancellationToken ct)
+    {
+        var ids = items.Select(item => item.ChangeRequestId).ToList();
+        if (ids.Count == 0)
+        {
+            return items;
+        }
+
+        var rows = await db.HonoreeReactivationRequests
+            .AsNoTracking()
+            .Where(row => ids.Contains(row.ChangeRequestId))
+            .Select(row => new { row.ChangeRequestId, row.RequesterNote, row.LinkUsedUtc })
+            .ToListAsync(ct);
+        if (rows.Count == 0)
+        {
+            return items;
+        }
+
+        var byChange = rows.ToDictionary(row => row.ChangeRequestId);
+        return items.Select(item =>
+        {
+            if (!byChange.TryGetValue(item.ChangeRequestId, out var row))
+            {
+                return item;
+            }
+
+            return item with
+            {
+                SubmissionKind = ReviewSubmissionDiff.Reactivation,
+                RequesterNote = row.RequesterNote,
+                LinkUsedUtc = row.LinkUsedUtc,
+                FieldChanges = Array.Empty<ReviewFieldChangeDto>()
+            };
+        }).ToList();
     }
 
     private async Task<IReadOnlyList<AdminReviewItemDto>> AttachClaimantAccountsAsync(

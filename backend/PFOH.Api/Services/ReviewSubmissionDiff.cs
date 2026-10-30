@@ -8,6 +8,7 @@ public static class ReviewSubmissionDiff
     public const string NewSubmission = "New";
     public const string Change = "Change";
     public const string Withdrawal = "Withdrawal";
+    public const string Reactivation = "Reactivation";
 
     public static string Kind(int? honoreeId) => honoreeId is > 0 ? Change : NewSubmission;
 

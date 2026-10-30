@@ -796,6 +796,7 @@ public class PfohApiFactory : WebApplicationFactory<Program>
 
             services.AddSingleton<ReprintClaimStatusFaultInterceptor>();
             services.AddSingleton<NominatePhotoSaveFaultInterceptor>();
+            services.AddSingleton<ReactivationRedeemRaceInterceptor>();
             services.AddSingleton<ILoggerProvider, ReprintRemoveWarningLog>();
             services.AddDbContext<PfohDbContext>((sp, options) => options
                 .UseInMemoryDatabase(databaseName)
@@ -803,7 +804,8 @@ public class PfohApiFactory : WebApplicationFactory<Program>
                 .AddInterceptors(
                     sp.GetRequiredService<PublicFlagMapCacheInvalidator>(),
                     sp.GetRequiredService<ReprintClaimStatusFaultInterceptor>(),
-                    sp.GetRequiredService<NominatePhotoSaveFaultInterceptor>()));
+                    sp.GetRequiredService<NominatePhotoSaveFaultInterceptor>(),
+                    sp.GetRequiredService<ReactivationRedeemRaceInterceptor>()));
 
             services.RemoveAll<HonoreeFileStorage>();
             services.AddSingleton<HonoreeFileStorage, PendingReviewTestFileStorage>();

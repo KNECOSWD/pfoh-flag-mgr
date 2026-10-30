@@ -150,6 +150,7 @@ builder.Services.AddScoped<FlagGridAssignment>();
 builder.Services.AddScoped<PendingReviewMaintenance>();
 builder.Services.AddScoped<ReprintQueueMaintenance>();
 builder.Services.AddScoped<PublicFlagMap>();
+builder.Services.AddScoped<ReactivationLinkService>();
 builder.Services.AddSingleton<SubmitterSuggestionTokens>();
 
 builder.Services.AddRateLimiter(options =>
@@ -211,6 +212,24 @@ builder.Services.AddRateLimiter(options =>
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+    });
+    options.AddPolicy("Reactivate", httpContext =>
+    {
+        var ip = PublicFlagMapClientIp.Resolve(httpContext);
+        var permit = httpContext.RequestServices.GetRequiredService<IConfiguration>().GetValue("RateLimit:ReactivatePermit", 30);
+        if (permit < 1)
+        {
+            permit = 30;
+        }
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            "reactivate:" + ip,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = permit,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0
             });
@@ -521,6 +540,18 @@ try
         app.Logger.LogError(
             ex,
             "STARTUP CLEANUP FAILED while ensuring dbo.FlagRemovalQueueItems. {Failure}",
+            ex.ToString());
+    }
+
+    try
+    {
+        await ReactivationSchema.EnsureAsync(startupDb, CancellationToken.None);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(
+            ex,
+            "STARTUP CLEANUP FAILED while ensuring dbo.HonoreeReactivationTokens. {Failure}",
             ex.ToString());
     }
 

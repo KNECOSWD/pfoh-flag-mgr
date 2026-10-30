@@ -430,7 +430,7 @@ img {
   }
 }
 
-table {
+table:where(:not(.table)) {
   min-width: 740px;
   border-collapse: collapse;
   display: block;

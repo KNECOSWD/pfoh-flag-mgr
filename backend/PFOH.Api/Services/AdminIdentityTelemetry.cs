@@ -43,6 +43,10 @@ public sealed class AdminIdentityTelemetryInitializer : ITelemetryInitializer
         @"(/api/admin/users/)[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(/admin-role)(?:\?[^\s""']*)?",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
+    private static readonly Regex ReactivationLinkPattern = new(
+        @"(/api/reactivate/|/reactivate/)[A-Za-z0-9_-]+",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     private static readonly Regex ProfilePattern = new(
         @"(/api/profile/)[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?:\?[^\s""']*)?",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -183,7 +187,8 @@ public sealed class AdminIdentityTelemetryInitializer : ITelemetryInitializer
         var isRole = path.Contains("/api/admin/users/", StringComparison.OrdinalIgnoreCase)
             && path.Contains("/admin-role", StringComparison.OrdinalIgnoreCase);
         var isProfile = path.Contains("/api/profile/", StringComparison.OrdinalIgnoreCase);
-        if (!isSearch && !isRole && !isProfile)
+        var isReactivation = path.Contains("/reactivate/", StringComparison.OrdinalIgnoreCase);
+        if (!isSearch && !isRole && !isProfile && !isReactivation)
         {
             return null;
         }
@@ -194,7 +199,10 @@ public sealed class AdminIdentityTelemetryInitializer : ITelemetryInitializer
 
     private static bool IsSensitiveApiPath(string path)
     {
-        return IsAdminSearchPath(path) || AdminRolePattern.IsMatch(path) || ProfilePattern.IsMatch(path);
+        return IsAdminSearchPath(path)
+            || AdminRolePattern.IsMatch(path)
+            || ProfilePattern.IsMatch(path)
+            || path.Contains("/reactivate/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsAdminSearchPath(string? path)
@@ -260,7 +268,8 @@ public sealed class AdminIdentityTelemetryInitializer : ITelemetryInitializer
             return value ?? string.Empty;
         }
 
-        var text = GraphUrlPattern.Replace(value, match => ToRedactedPath(match.Value.TrimEnd('.', ',', ';', ')', ']')));
+        var text = ReactivationLinkPattern.Replace(value, "$1{token}");
+        text = GraphUrlPattern.Replace(text, match => ToRedactedPath(match.Value.TrimEnd('.', ',', ';', ')', ']')));
         text = SearchRequestPattern.Replace(text, "$1");
         text = AdminRolePattern.Replace(text, "$1" + IdToken + "$2");
         text = ProfilePattern.Replace(text, "$1" + IdToken);
