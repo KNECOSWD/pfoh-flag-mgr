@@ -298,7 +298,7 @@ public class AdminReviewController(
             return BadRequest(new { message = "Select at least one reprint queue item to remove." });
         }
 
-        var reason = request.Reason?.Trim() ?? "";
+        var reason = ReasonText.Normalize(request.Reason);
         if (reason.Length == 0)
         {
             return BadRequest(new { message = "A reason is required." });

@@ -1169,18 +1169,10 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
     }
 }
 
-public static class ReprintClaimStatusFault
-{
-    public static bool RejectCancelled { get; set; }
-}
-
-public static class NominatePhotoSaveFault
-{
-    public static bool RejectPhotoFileNameUpdate { get; set; }
-}
-
 public sealed class NominatePhotoSaveFaultInterceptor : SaveChangesInterceptor
 {
+    public bool RejectPhotoFileNameUpdate { get; set; }
+
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
     {
         ThrowIfRejected(eventData.Context);
@@ -1196,9 +1188,9 @@ public sealed class NominatePhotoSaveFaultInterceptor : SaveChangesInterceptor
         return base.SavingChangesAsync(eventData, result, cancellationToken);
     }
 
-    private static void ThrowIfRejected(DbContext? context)
+    private void ThrowIfRejected(DbContext? context)
     {
-        if (!NominatePhotoSaveFault.RejectPhotoFileNameUpdate || context is null)
+        if (!RejectPhotoFileNameUpdate || context is null)
         {
             return;
         }
@@ -1214,6 +1206,8 @@ public sealed class NominatePhotoSaveFaultInterceptor : SaveChangesInterceptor
 
 public sealed class ReprintClaimStatusFaultInterceptor : SaveChangesInterceptor
 {
+    public bool RejectCancelled { get; set; }
+
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
     {
         ThrowIfRejected(eventData.Context);
@@ -1229,9 +1223,9 @@ public sealed class ReprintClaimStatusFaultInterceptor : SaveChangesInterceptor
         return base.SavingChangesAsync(eventData, result, cancellationToken);
     }
 
-    private static void ThrowIfRejected(DbContext? context)
+    private void ThrowIfRejected(DbContext? context)
     {
-        if (!ReprintClaimStatusFault.RejectCancelled || context is null)
+        if (!RejectCancelled || context is null)
         {
             return;
         }

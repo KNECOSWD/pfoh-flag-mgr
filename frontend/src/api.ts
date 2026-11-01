@@ -4,6 +4,7 @@ import {
   InteractionRequiredAuthError
 } from "@azure/msal-browser";
 import { loginRequest } from "./authConfig";
+import { e2eToken } from "./e2eSession";
 import { isPublicApiPath } from "./publicApi.js";
 import {
   bannerForTokenError,
@@ -692,6 +693,9 @@ function honoreeChangeFormData(requestBody: SaveHonoreeChangeRequest, photo?: Fi
 }
 
 async function getToken(instance: IPublicClientApplication, account: AccountInfo) {
+  const e2e = e2eToken();
+  if (e2e) return e2e;
+
   try {
     return await sharedTokenRequest.acquire({
       silent: async () => {

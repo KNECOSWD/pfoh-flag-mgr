@@ -107,7 +107,7 @@ public sealed class FlagGridRemovalService(PfohDbContext db, HonoreePdfService p
         AdminActor actor,
         CancellationToken ct)
     {
-        var why = reason?.Trim() ?? "";
+        var why = ReasonText.Normalize(reason);
         if (why.Length == 0)
         {
             return FlagGridRemovalResult.Fail(StatusCodes.Status400BadRequest, "A reason is required.");

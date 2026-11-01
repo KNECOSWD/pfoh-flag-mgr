@@ -238,6 +238,54 @@ public class Release52Tests : IDisposable
 
         var hidden = await client.GetAsync("/api/honorees/1/pdf");
         Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+        Assert.Equal("no-store", hidden.Headers.CacheControl?.ToString());
+    }
+
+    [Fact]
+    public async Task Regenerate_pdf_is_admin_only_and_hides_storage_internals()
+    {
+        await ResetAsync();
+        await SeedOnGridAsync(1, "Ada", "Lovelace", 11, "A-12", gridHonoreeId: 1);
+        var client = factory.CreateClient();
+
+        var anonymous = await client.PostAsync("/api/honorees/1/pdf/regenerate", null);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+
+        var member = await client.SendAsync(Admin(HttpMethod.Post, "/api/honorees/1/pdf/regenerate", roles: "", oid: "member-1"));
+        Assert.Equal(HttpStatusCode.Forbidden, member.StatusCode);
+
+        var admin = await client.SendAsync(Admin(HttpMethod.Post, "/api/honorees/1/pdf/regenerate"));
+        var body = await admin.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, admin.StatusCode);
+        Assert.DoesNotContain("storageAccount", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("container", body, StringComparison.OrdinalIgnoreCase);
+        using var json = JsonDocument.Parse(body);
+        Assert.True(json.RootElement.GetProperty("uploaded").GetBoolean());
+        Assert.Equal("PDF regenerated.", json.RootElement.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task A_reason_of_only_invisible_characters_is_rejected()
+    {
+        await ResetAsync();
+        await SeedOnGridAsync(1, "Ada", "Lovelace", 11, "A-12", gridHonoreeId: 1);
+        var client = factory.CreateClient();
+        var blank = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/review/flag-positions/11/clear", new
+        {
+            reason = "\u200B\u200C\u200D\uFEFF\u2060"
+        }));
+        Assert.Equal(HttpStatusCode.BadRequest, blank.StatusCode);
+
+        var kept = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/review/flag-positions/11/clear", new
+        {
+            reason = "\u200BFamily request\uFEFF",
+            acknowledgeDuplicates = true
+        }));
+        Assert.Equal(HttpStatusCode.OK, kept.StatusCode);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var audit = Assert.Single(await db.FlagGridRemovalAudits.ToListAsync());
+        Assert.Equal("Family request", audit.Reason);
     }
 
     [Fact]
@@ -392,6 +440,7 @@ public class Release52Tests : IDisposable
         Assert.True(withdrawal.StatusCode == HttpStatusCode.OK, await withdrawal.Content.ReadAsStringAsync());
         var hidden = await client.GetAsync("/api/honorees/1/pdf");
         Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+        Assert.Equal("no-store", hidden.Headers.CacheControl?.ToString());
     }
 
     [Fact]
@@ -464,9 +513,13 @@ public class Release52Tests : IDisposable
         Assert.Equal("print", printedEvent.Source);
 
         var history = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/print/history"));
-        using var historyJson = JsonDocument.Parse(await history.Content.ReadAsStringAsync());
-        var removed = historyJson.RootElement.GetProperty("removed").EnumerateArray().Select(item => item.GetProperty("reason").GetString()).ToList();
-        Assert.Contains("Already handed to the family", removed);
+        var historyText = await history.Content.ReadAsStringAsync();
+        using var historyJson = JsonDocument.Parse(historyText);
+        var removedRows = historyJson.RootElement.GetProperty("removed").EnumerateArray().ToList();
+        Assert.Contains(removedRows, item => item.GetProperty("reason").GetString() == "Already handed to the family");
+        Assert.All(removedRows, item => Assert.EndsWith("Z", item.GetProperty("utc").GetString()));
+        Assert.Contains(historyJson.RootElement.GetProperty("printed").EnumerateArray(), item =>
+            item.GetProperty("printedUtc").GetString()!.EndsWith("Z", StringComparison.Ordinal));
     }
 
     [Fact]

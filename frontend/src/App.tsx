@@ -91,6 +91,7 @@ import {
   submissionPhotoKind
 } from "./submissionDisplay.js";
 import { loginRequest, readMappedAccountClaim } from "./authConfig";
+import { e2eAccount } from "./e2eSession";
 import {
   accountIsAdmin,
   clearStickyAdmin,
@@ -107,7 +108,7 @@ import dogTagIcon from "./assets/pfoh-dogtag-icon-480.png";
 import knecoLogoWhite from "./assets/kneco-logo-white-216.png";
 import { RemovalQueue } from "./RemovalQueue";
 import { AdminHonoreeActions } from "./adminHonoreeActions.js";
-import { RemoveFromGridDialog } from "./removeFromGridDialog.js";
+import { RemoveFromGridDialog, visibleReason } from "./removeFromGridDialog.js";
 import { AdminReactivation } from "./AdminReactivation";
 import { ReactivationPage } from "./ReactivationPage";
 import { reactivationTokenFromPath, signInReturnHref } from "./reactivationPath.js";
@@ -495,9 +496,9 @@ function compareFlagSections(left: string, right: string) {
 
 
 export default function App() {
-  const isAuthenticated = useIsAuthenticated();
+  const isAuthenticated = useIsAuthenticated() || Boolean(e2eAccount());
   const { instance, accounts } = useMsal();
-  const account = instance.getActiveAccount() ?? accounts[0];
+  const account = e2eAccount() ?? instance.getActiveAccount() ?? accounts[0];
 
   const [myClaims, setMyClaims] = useState<FlagClaim[]>([]);
   const [serviceBranches, setServiceBranches] = useState<ServiceBranch[]>([]);
@@ -2538,7 +2539,7 @@ export default function App() {
 
   async function confirmRemoveFromGrid() {
     if (!account || !removeGrid) return;
-    const reason = removeGrid.reason.trim();
+    const reason = visibleReason(removeGrid.reason);
     if (!reason) return;
     const pending = removeGrid;
     const acknowledgeDuplicates = pending.duplicates.length > 0;
@@ -3104,7 +3105,7 @@ export default function App() {
 
   async function confirmReprintRemove() {
     if (!account || !reprintRemove) return;
-    const reason = reprintRemove.reason.trim();
+    const reason = visibleReason(reprintRemove.reason);
     if (!reason) return;
 
     setSaving(true);
@@ -3498,7 +3499,7 @@ export default function App() {
               ) : null}
 
               {pdfWarning ? (
-                <div className="message warning" role="status">
+                <div className="alert alert-warning" role="status">
                   <span>{pdfWarning}</span>
                   <button
                     type="button"
@@ -3702,10 +3703,11 @@ export default function App() {
                   <p className="eyebrow">Confirm action</p>
                   <h2 id="reprint-remove-title">{reprintRemove.title}</h2>
                   <p className="helperText">{reprintRemove.message}</p>
-                  <label className="markPrintedComment" htmlFor="reprint-remove-reason">
+                  <label className="form-label" htmlFor="reprint-remove-reason">
                     Reason
                     <textarea
                       id="reprint-remove-reason"
+                      className="form-control"
                       rows={3}
                       maxLength={1000}
                       required
@@ -3715,13 +3717,13 @@ export default function App() {
                   </label>
                 </div>
                 <div className="modalActions">
-                  <button type="button" className="secondary" onClick={() => setReprintRemove(null)}>
+                  <button type="button" className="btn btn-outline-secondary" onClick={() => setReprintRemove(null)}>
                     Cancel
                   </button>
                   <button
                     type="button"
-                    className="dangerButton"
-                    disabled={saving || reprintRemove.reason.trim().length === 0}
+                    className="btn btn-danger"
+                    disabled={saving || visibleReason(reprintRemove.reason).length === 0}
                     onClick={() => void confirmReprintRemove()}
                   >
                     Remove from queue
@@ -3729,25 +3731,6 @@ export default function App() {
                 </div>
               </div>
             </div>
-          ) : null}
-
-          {removeGrid ? (
-            <RemoveFromGridDialog
-              name={removeGrid.name}
-              gridName={removeGrid.gridName}
-              reason={removeGrid.reason}
-              duplicates={removeGrid.duplicates}
-              loading={removeGrid.loading}
-              error={removeGrid.error}
-              busy={saving || flagPositionBusyId !== null}
-              onReason={(value: string) => setRemoveGrid((current) => current ? { ...current, reason: value } : current)}
-              onCancel={() => setRemoveGrid(null)}
-              onConfirm={() => void confirmRemoveFromGrid()}
-              onMerge={() => {
-                setRemoveGrid(null);
-                navigateToRoute("/admin/duplicates");
-              }}
-            />
           ) : null}
 
           <Dialog.Root
@@ -3864,6 +3847,25 @@ export default function App() {
                 </div>
               </div>
             </div>
+          ) : null}
+
+          {removeGrid ? (
+            <RemoveFromGridDialog
+              name={removeGrid.name}
+              gridName={removeGrid.gridName}
+              reason={removeGrid.reason}
+              duplicates={removeGrid.duplicates}
+              loading={removeGrid.loading}
+              error={removeGrid.error}
+              busy={saving || flagPositionBusyId !== null}
+              onReason={(value: string) => setRemoveGrid((current) => current ? { ...current, reason: value } : current)}
+              onCancel={() => setRemoveGrid(null)}
+              onConfirm={() => void confirmRemoveFromGrid()}
+              onMerge={() => {
+                setRemoveGrid(null);
+                navigateToRoute("/admin/duplicates");
+              }}
+            />
           ) : null}
 
           {assignGridHonoree ? (
@@ -4948,6 +4950,15 @@ export default function App() {
                       disabled={saving || selectedPrintIds.length === 0}
                     >
                       Mark printed
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-outline-danger"
+                      onClick={removeSelectedFromReprintQueue}
+                      disabled={saving || selectedPrintIds.length === 0}
+                    >
+                      Remove selected
                     </button>
                   </div>
                 </div>

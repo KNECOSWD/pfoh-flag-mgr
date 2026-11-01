@@ -275,7 +275,7 @@ export function RemovalQueueScreen({
     ),
     loadError ? h("p", { className: "message error", role: "alert" }, loadError) : null,
     error ? h("p", { className: "message error", role: "alert" }, error) : null,
-    notice ? h("p", { className: "message warning", role: "status" }, notice) : null,
+    notice ? h("p", { className: "alert alert-warning", role: "status" }, notice) : null,
     viewingDone
       ? h("div", { className: "rqToolbar" }, h("span", null, "Newest first · kept as history"))
       : loaded && openCount === 0
@@ -397,7 +397,7 @@ export function RemovalQueueScreen({
                       "button",
                       {
                         type: "button",
-                        className: "secondary compactButton",
+                        className: "btn btn-outline-secondary",
                         disabled: busy,
                         onClick: () => onRestore?.(item.id)
                       },

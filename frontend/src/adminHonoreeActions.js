@@ -40,7 +40,7 @@ export function AdminHonoreeActions({
         "button",
         {
           type: "button",
-          className: "secondary compactButton",
+          className: "btn btn-outline-secondary",
           onClick: (event) => {
             closeMenu(event);
             onEdit?.();
@@ -53,7 +53,7 @@ export function AdminHonoreeActions({
         "button",
         {
           type: "button",
-          className: "secondary compactButton",
+          className: "btn btn-outline-secondary",
           onClick: (event) => {
             closeMenu(event);
             onQueue?.();
@@ -66,7 +66,7 @@ export function AdminHonoreeActions({
         "button",
         {
           type: "button",
-          className: "secondary compactButton",
+          className: "btn btn-outline-secondary",
           onClick: (event) => {
             closeMenu(event);
             onClaimants?.();
@@ -79,7 +79,7 @@ export function AdminHonoreeActions({
         "button",
         {
           type: "button",
-          className: "secondary compactButton",
+          className: "btn btn-outline-secondary",
           onClick: (event) => {
             closeMenu(event);
             onAssign?.();
@@ -92,7 +92,7 @@ export function AdminHonoreeActions({
         "button",
         {
           type: "button",
-          className: "secondary compactButton",
+          className: "btn btn-outline-secondary",
           onClick: (event) => {
             closeMenu(event);
             onRegenerate?.();
@@ -105,7 +105,7 @@ export function AdminHonoreeActions({
         "button",
         {
           type: "button",
-          className: "secondary compactButton dangerSoftButton",
+          className: "btn btn-outline-danger",
           onClick: (event) => {
             closeMenu(event);
             onRemove?.();

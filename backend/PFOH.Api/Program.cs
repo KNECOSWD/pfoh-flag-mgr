@@ -15,7 +15,11 @@ using PFOH.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.Converters.Add(new UtcDateTimeJsonConverter());
+    options.JsonSerializerOptions.Converters.Add(new UtcNullableDateTimeJsonConverter());
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddResponseCompression(options =>

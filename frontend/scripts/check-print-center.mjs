@@ -127,6 +127,8 @@ test("Print Center row and merged download open the Honoree Card viewer", () => 
   assert.match(print, /aria-label="Print history"/);
   assert.match(print, /formatPrintEventTime\(event\.printedUtc\)/);
   assert.match(source, /id="mark-printed-title">Mark printed/);
+  assert.match(source, /onClick=\{removeSelectedFromReprintQueue\}/);
+  assert.match(source, />\s*Remove selected\s*</);
   assert.match(source, /maxLength=\{PRINT_EVENT_COMMENT_MAX\}/);
 });
 

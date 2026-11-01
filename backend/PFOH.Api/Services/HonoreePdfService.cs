@@ -49,6 +49,7 @@ public sealed class HonoreePdfService(
     public const string RebuildFailedMessage =
         "The card PDF could not be rebuilt. The change was saved, and the next open will try again.";
 
+    // One process only. A second app instance can still rebuild the same blob.
     private static readonly ConcurrentDictionary<int, SemaphoreSlim> Locks = new();
 
     public async Task<string?> TryRebuildAsync(int honoreeId, CancellationToken ct, bool includeInactive = false)

@@ -1,5 +1,9 @@
 import { createElement as h } from "react";
 
+export function visibleReason(value) {
+  return String(value ?? "").replace(/\p{Cf}/gu, "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").trim();
+}
+
 export function RemoveFromGridDialog({
   name,
   gridName,
@@ -15,7 +19,7 @@ export function RemoveFromGridDialog({
 }) {
   const others = duplicates ?? [];
   const hasDuplicates = others.length > 0;
-  const reasonReady = String(reason ?? "").trim().length > 0;
+  const reasonReady = visibleReason(reason).length > 0;
   return h(
     "div",
     {
@@ -40,10 +44,11 @@ export function RemoveFromGridDialog({
         ),
         h(
           "label",
-          { className: "markPrintedComment", htmlFor: "remove-grid-reason" },
+          { className: "form-label", htmlFor: "remove-grid-reason" },
           "Reason",
           h("textarea", {
             id: "remove-grid-reason",
+            className: "form-control",
             rows: 3,
             maxLength: 1000,
             required: true,
@@ -57,11 +62,11 @@ export function RemoveFromGridDialog({
         hasDuplicates
           ? h(
               "div",
-              { className: "removeGridDuplicates" },
-              h("p", null, "Other active honorees have a similar name or details on a different grid."),
+              { className: "alert alert-warning", role: "status" },
+              h("p", { className: "mb-2" }, "Other active honorees have a similar name or details on a different grid."),
               h(
                 "ul",
-                null,
+                { className: "mb-0" },
                 others.map((item) =>
                   h(
                     "li",
@@ -69,10 +74,10 @@ export function RemoveFromGridDialog({
                     h("strong", null, item.name),
                     h(
                       "span",
-                      null,
+                      { className: "d-block" },
                       [item.flagGridName, item.rank, item.serviceBranchName].filter(Boolean).join(" · ")
                     ),
-                    item.reasons ? h("small", null, item.reasons) : null
+                    item.reasons ? h("small", { className: "d-block" }, item.reasons) : null
                   )
                 )
               )
@@ -85,13 +90,13 @@ export function RemoveFromGridDialog({
         { className: "modalActions" },
         h(
           "button",
-          { type: "button", className: "secondary", onClick: onCancel, disabled: busy },
+          { type: "button", className: "btn btn-outline-secondary", onClick: onCancel, disabled: busy },
           "Cancel"
         ),
         hasDuplicates
           ? h(
               "button",
-              { type: "button", className: "secondary", onClick: onMerge, disabled: busy },
+              { type: "button", className: "btn btn-outline-secondary", onClick: onMerge, disabled: busy },
               "Merge instead"
             )
           : null,
@@ -99,7 +104,7 @@ export function RemoveFromGridDialog({
           "button",
           {
             type: "button",
-            className: "dangerButton",
+            className: "btn btn-danger",
             onClick: onConfirm,
             disabled: busy || loading || !reasonReady
           },

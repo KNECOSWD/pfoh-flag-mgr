@@ -9,7 +9,6 @@ namespace PFOH.Api.Controllers;
 
 [ApiController]
 [Route("api/honorees")]
-[AllowAnonymous]
 public class HonoreesController(
     PfohDbContext db,
     IConfiguration configuration,
@@ -18,6 +17,7 @@ public class HonoreesController(
 {
     private static readonly HttpClient Http = new();
 
+    [AllowAnonymous]
     [HttpGet("search")]
     public async Task<ActionResult<IReadOnlyList<HonoreeSearchResultDto>>> Search(
         [FromQuery] string? q,
@@ -73,6 +73,7 @@ public class HonoreesController(
             .ToList());
     }
 
+    [AllowAnonymous]
     [HttpGet("{honoreeId:int}/photo")]
     public async Task<IActionResult> GetPhoto(int honoreeId, CancellationToken ct)
     {
@@ -109,9 +110,11 @@ public class HonoreesController(
         return NotFound("Honoree photo was not found.");
     }
 
+    [AllowAnonymous]
     [HttpGet("{honoreeId:int}/pdf")]
     public async Task<IActionResult> OpenOrCreatePdf(int honoreeId, CancellationToken ct)
     {
+        Response.Headers.CacheControl = "no-store";
         var opened = await pdfs.OpenAsync(honoreeId, ct);
         if (opened.NotFound)
         {
@@ -157,8 +160,6 @@ public class HonoreesController(
             });
         }
 
-        var storageAccount = fileStorage.GetConfiguredStorageAccountName();
-        var container = fileStorage.GetPdfContainerName();
         var fileName = fileStorage.GetHonoreePdfFileName(honoree.Id);
         var warning = await pdfs.TryRebuildAsync(honoree.Id, ct);
         var uploaded = warning is null;
@@ -167,12 +168,8 @@ public class HonoreesController(
             honoreeId = honoree.Id,
             uploaded,
             fileName,
-            storageAccount,
-            container,
             generatedUtc = DateTime.UtcNow,
-            message = uploaded
-                ? $"PDF regenerated and saved to {storageAccount}/{container}/{fileName}."
-                : warning
+            message = uploaded ? "PDF regenerated." : warning
         });
     }
 
