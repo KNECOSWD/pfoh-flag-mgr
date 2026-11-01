@@ -23,9 +23,10 @@ export function removalSummary(item) {
   const detail = String(item?.sourceDetail ?? "").trim();
   const closed = Boolean(item?.doneUtc || item?.canceledUtc);
   if (item?.source === "Manual") {
+    const why = detail ? ` Reason: ${detail}` : "";
     return closed
-      ? `Removed from ${spot} in Flag Manager.`
-      : `Removed from ${spot} in Flag Manager. No new spot.`;
+      ? `Removed from ${spot} in Flag Manager.${why}`
+      : `Removed from ${spot} in Flag Manager. No new spot.${why}`;
   }
   if (item?.source === "Move" && !detail) {
     return `Moved from ${spot} to ${next}. The new card for ${next} is in Ready to print.`;
@@ -161,10 +162,12 @@ export function RemovalQueueScreen({
   loadError,
   busy,
   error,
+  notice,
   selectedIds,
   onToggle,
   onToggleAll,
   onMarkDone,
+  onRestore,
   onRefresh,
   onShowOpen,
   onShowDone,
@@ -272,6 +275,7 @@ export function RemovalQueueScreen({
     ),
     loadError ? h("p", { className: "message error", role: "alert" }, loadError) : null,
     error ? h("p", { className: "message error", role: "alert" }, error) : null,
+    notice ? h("p", { className: "message warning", role: "status" }, notice) : null,
     viewingDone
       ? h("div", { className: "rqToolbar" }, h("span", null, "Newest first · kept as history"))
       : loaded && openCount === 0
@@ -389,6 +393,16 @@ export function RemovalQueueScreen({
                 : h(
                     "div",
                     { className: "rqActions" },
+                    h(
+                      "button",
+                      {
+                        type: "button",
+                        className: "secondary compactButton",
+                        disabled: busy,
+                        onClick: () => onRestore?.(item.id)
+                      },
+                      "Restore"
+                    ),
                     h(
                       "button",
                       {

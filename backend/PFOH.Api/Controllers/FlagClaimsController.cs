@@ -21,7 +21,8 @@ public class FlagClaimsController(
     UserProfileService profiles,
     HonoreeFileStorage fileStorage,
     PendingReviewMaintenance pendingReviews,
-    ReprintQueueMaintenance reprintQueue) : ControllerBase
+    ReprintQueueMaintenance reprintQueue,
+    HonoreePdfService pdfs) : ControllerBase
 {
 
     // A flag claim represents semi-ownership by a user.
@@ -30,6 +31,8 @@ public class FlagClaimsController(
 
     // These statuses mean there is a submitted or in-progress change cycle.
     private static readonly string[] OpenChangeStatuses = ["Submitted"];
+
+    private bool CallerIsAdmin() => User.IsInRole("PFOH.Admin") || User.IsInRole("Admin");
 
     // One request per review thumbnail. Not part of the 60/min cap.
     [DisableRateLimiting]
@@ -46,7 +49,7 @@ public class FlagClaimsController(
             return NotFound("Honoree change request was not found.");
         }
 
-        var isAdmin = User.IsInRole("PFOH.Admin") || User.IsInRole("Admin");
+        var isAdmin = CallerIsAdmin();
         var isOwner = change.FlagClaim is not null &&
             string.Equals(change.FlagClaim.ExternalUserObjectId, User.GetExternalObjectId(), StringComparison.Ordinal);
 
@@ -100,7 +103,7 @@ public class FlagClaimsController(
             return NotFound("Flag claim was not found.");
         }
 
-        var isAdmin = User.IsInRole("PFOH.Admin") || User.IsInRole("Admin");
+        var isAdmin = CallerIsAdmin();
         var isOwner = string.Equals(claim.ExternalUserObjectId, User.GetExternalObjectId(), StringComparison.Ordinal);
         if (!isAdmin && !isOwner)
         {
@@ -260,7 +263,7 @@ public class FlagClaimsController(
     public async Task<ActionResult> Unclaim(int claimId, CancellationToken ct)
     {
         var userObjectId = User.GetExternalObjectId();
-        var isAdmin = User.IsInRole("PFOH.Admin");
+        var isAdmin = CallerIsAdmin();
 
         var claim = await db.FlagClaims
             .Include(c => c.HonoreeChangeRequests)
@@ -348,7 +351,7 @@ public class FlagClaimsController(
     public async Task<ActionResult> Unlink(int claimId, CancellationToken ct)
     {
         var userObjectId = User.GetExternalObjectId();
-        var isAdmin = User.IsInRole("PFOH.Admin");
+        var isAdmin = CallerIsAdmin();
 
         var claim = await db.FlagClaims
             .Include(c => c.Honoree)
@@ -562,7 +565,7 @@ public class FlagClaimsController(
         db.FlagClaims.Add(claim);
         await db.SaveChangesAsync(ct);
         await HonoreeClaimStore.SyncAsync(db, ct);
-        await RegenerateHonoreePdfAsync(honoree.Id, ct);
+        await pdfs.TryRebuildAsync(honoree.Id, ct);
 
         var imageUrl = await db.HonoreeSearchResults
             .AsNoTracking()
@@ -770,7 +773,7 @@ public class FlagClaimsController(
         }
 
         var userObjectId = User.GetExternalObjectId();
-        var isAdmin = User.IsInRole("PFOH.Admin");
+        var isAdmin = CallerIsAdmin();
 
         var claim = await db.FlagClaims
             .Include(c => c.HonoreeChangeRequests)
@@ -874,14 +877,12 @@ public class FlagClaimsController(
     [HttpPost("{claimId:int}/admin-apply-reprint")]
     public async Task<ActionResult<FlagClaimDto>> AdminApplyAndQueueReprint(int claimId, CancellationToken ct)
     {
-        var adminName = User.GetEmail();
-        if (string.IsNullOrWhiteSpace(adminName))
-        {
-            adminName = User.GetDisplayName() ?? "PFOH.Admin";
-        }
+        var actor = AdminActor.From(User);
+        var adminName = actor.Email;
+        int? changedHonoreeId = null;
 
         var strategy = db.Database.CreateExecutionStrategy();
-        return await strategy.ExecuteInTransactionAsync<ActionResult<FlagClaimDto>>(async _ =>
+        var result = await strategy.ExecuteInTransactionAsync<ActionResult<FlagClaimDto>>(async _ =>
         {
         db.ChangeTracker.Clear();
 
@@ -924,7 +925,22 @@ public class FlagClaimsController(
 
         await db.SaveChangesAsync(ct);
         await HonoreeClaimStore.SyncAsync(db, ct);
-        await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, latestDraft.Id, adminName, ct);
+        await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(
+            honoree.Id, latestDraft.Id, adminName, ct, actor.ObjectId);
+        await ReprintQueueEventSchema.EnsureAsync(db, ct);
+        ReprintQueueAudit.Add(
+            db,
+            latestDraft.Id,
+            honoree.Id,
+            ReprintQueueActions.Add,
+            actor.Email,
+            actor.ObjectId,
+            DateTime.UtcNow,
+            "Direct administrator edit queued for reprint.",
+            "apply-reprint",
+            1);
+        await db.SaveChangesAsync(ct);
+        changedHonoreeId = honoree.Id;
 
         var imageUrl = await db.HonoreeSearchResults
             .AsNoTracking()
@@ -944,6 +960,13 @@ public class FlagClaimsController(
             return status == "AdminDirectEditCompleted";
         },
         ct);
+
+        if (changedHonoreeId is int rebuiltId)
+        {
+            await pdfs.TryRebuildAsync(rebuiltId, ct);
+        }
+
+        return result;
     }
 
     private async Task<Honoree> ApplyApprovedChanges(
@@ -1031,30 +1054,6 @@ public class FlagClaimsController(
         }
 
         return honoree;
-    }
-
-    private async Task RegenerateHonoreePdfAsync(int honoreeId, CancellationToken ct)
-    {
-        var honoree = await db.Honorees
-            .AsNoTracking()
-            .Include(h => h.FlagGrid)
-            .Include(h => h.ServiceBranch)
-            .Include(h => h.Sponsor)
-            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive && h.DeletedDate == null, ct);
-
-        if (honoree is null)
-        {
-            return;
-        }
-
-        var searchResult = await db.HonoreeSearchResults
-            .AsNoTracking()
-            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive, ct);
-
-        var photoBytes = await fileStorage.DownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
-        var reportAssets = await fileStorage.LoadReportAssetsAsync(honoree, searchResult, ct);
-        var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes, reportAssets);
-        await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
     }
 
     private async Task<Sponsor?> GetOrCreateSubmitterSponsorAsync(

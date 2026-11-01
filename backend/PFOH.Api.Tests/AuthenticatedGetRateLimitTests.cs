@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using Microsoft.Extensions.DependencyInjection;
 using PFOH.Api.Data;
 using PFOH.Api.Models;
+using PFOH.Api.Services;
 using Xunit;
 
 namespace PFOH.Api.Tests;
@@ -108,9 +109,32 @@ public class RealAuthenticatedGetLimitTests : IDisposable
 
     private async Task<int> SeedQueuedCardAsync()
     {
+        var honoree = new Honoree
+        {
+            Id = 101,
+            FirstName = "Ann",
+            LastName = "Able",
+            Rank = string.Empty,
+            Description = string.Empty,
+            PhotoFileName = string.Empty,
+            Salutation = string.Empty,
+            NameUserEntry = string.Empty,
+            PhoneNumber = string.Empty,
+            EmailAddress = string.Empty,
+            Awards = string.Empty,
+            ConflictsServed = string.Empty,
+            DatesUserEntry = string.Empty,
+            IsActive = true,
+            CreatedBy = "seed",
+            ModifiedBy = "seed",
+            CreatedDate = DateTime.UtcNow,
+            ModifiedDate = DateTime.UtcNow
+        };
         factory.Files.Pdfs[101] = "%PDF-1.4 synthetic"u8.ToArray();
+        factory.Files.PdfStamps[101] = HonoreePdfStamp.Compute(honoree, null, null, null, "");
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        db.Honorees.Add(honoree);
         var card = new HonoreeChangeRequest
         {
             FlagClaimId = 101,

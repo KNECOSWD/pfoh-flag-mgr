@@ -1049,7 +1049,7 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
             "admin@example.com",
             "Admin",
             roles: "PFOH.Admin",
-            body: new { changeRequestIds = new[] { 21, 22 } }));
+            body: new { changeRequestIds = new[] { 21, 22 }, reason = "Printed another way", source = "bulk" }));
         var text = await response.Content.ReadAsStringAsync();
         Assert.True(response.StatusCode == HttpStatusCode.OK, text);
         using var json = JsonDocument.Parse(text);
@@ -1118,7 +1118,7 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
                 "admin@example.com",
                 "Admin",
                 roles: "PFOH.Admin",
-                body: new { changeRequestIds = new[] { 21 } }));
+                body: new { changeRequestIds = new[] { 21 }, reason = "Printed another way", source = "row" }));
             var text = await response.Content.ReadAsStringAsync();
             Assert.True(response.StatusCode == HttpStatusCode.OK, text);
             using var json = JsonDocument.Parse(text);

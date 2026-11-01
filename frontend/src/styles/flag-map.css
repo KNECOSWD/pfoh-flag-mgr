@@ -789,6 +789,19 @@
   touch-action: pan-y;
 }
 
+.publicFlagSuggestions.publicFlagSuggestLayer {
+  margin: 0;
+  position: fixed;
+  z-index: var(--z-drawer);
+  bottom: auto;
+  right: auto;
+  width: auto;
+  overflow: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .publicFlagDetailLayer {
   inset: 0;
   position: fixed;

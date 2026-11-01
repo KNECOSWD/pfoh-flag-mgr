@@ -17,7 +17,8 @@ namespace PFOH.Api.Controllers;
 public class AdminPrintController(
     PfohDbContext db,
     HonoreeFileStorage fileStorage,
-    ReprintQueueMaintenance reprintQueue) : ControllerBase
+    ReprintQueueMaintenance reprintQueue,
+    HonoreePdfService pdfs) : ControllerBase
 {
     [HttpPost("plan")]
     public async Task<ActionResult<PrintBatchPlanDto>> PlanBatch(
@@ -64,13 +65,21 @@ public class AdminPrintController(
         var honoreeId = change.HonoreeId!.Value;
         var honoreeName = AdminReviewController.BuildHonoreeName(change);
         var fileName = fileStorage.GetHonoreePdfFileName(honoreeId);
-        byte[]? pdf;
-
-        try
+        var honoree = await db.Honorees.AsNoTracking().FirstOrDefaultAsync(item => item.Id == honoreeId, ct);
+        if (honoree is null || !honoree.IsActive || honoree.DeletedDate != null)
         {
-            pdf = await fileStorage.DownloadPdfAsync(honoreeId, ct);
+            return NotFound(new
+            {
+                code = "honoree-inactive",
+                changeRequestId,
+                honoreeId,
+                honoreeName,
+                message = $"{honoreeName} is not an active honoree, so the card PDF is not available."
+            });
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+
+        var opened = await pdfs.OpenAsync(honoreeId, ct);
+        if (opened.StorageFailed)
         {
             return StatusCode(StatusCodes.Status502BadGateway, new
             {
@@ -78,29 +87,31 @@ public class AdminPrintController(
                 changeRequestId,
                 honoreeId,
                 honoreeName,
-                message = $"The stored card PDF {fileName} could not be read: {ex.Message}"
+                message = $"The stored card PDF {fileName} could not be read: {opened.Message}"
             });
         }
 
-        if (pdf is null || pdf.Length == 0)
+        if (opened.RebuildFailed || opened.Bytes is null || opened.Bytes.Length == 0)
         {
-            return NotFound(new
+            return Conflict(new
             {
-                code = "pdf-missing",
+                code = "pdf-outdated",
                 changeRequestId,
                 honoreeId,
                 honoreeName,
-                message = $"No stored card PDF {fileName} was found."
+                message = $"The card for {honoreeName} is out of date and could not be rebuilt. It was not printed from an older file."
             });
         }
 
-        return File(pdf, "application/pdf", fileName);
+        HonoreePdfService.ApplyFreshnessHeaders(Response, opened.Stamp);
+        return File(opened.Bytes, "application/pdf", fileName);
     }
 
     [HttpGet("history")]
     public async Task<ActionResult<IReadOnlyList<CardPrintEventDto>>> History(CancellationToken ct)
     {
         await CardPrintEventSchema.EnsureAsync(db, ct);
+        await ReprintQueueEventSchema.EnsureAsync(db, ct);
         var events = await db.CardPrintEvents
             .AsNoTracking()
             .Where(e => e.CardCount > 0)
@@ -108,7 +119,24 @@ public class AdminPrintController(
             .ThenByDescending(e => e.Id)
             .Select(e => new CardPrintEventDto(e.CardPrintBatchId, e.PrintedUtc, e.PrintedBy, e.CardCount, e.Comment))
             .ToListAsync(ct);
-        return Ok(events);
+        var removed = await db.ReprintQueueEvents
+            .AsNoTracking()
+            .Where(e => e.Action == ReprintQueueActions.Remove || e.Action == ReprintQueueActions.DedupRemove)
+            .OrderByDescending(e => e.Utc)
+            .ThenByDescending(e => e.Id)
+            .Take(200)
+            .Select(e => new ReprintRemovalHistoryDto(
+                e.Id,
+                e.ChangeRequestId,
+                e.HonoreeId,
+                e.Action,
+                e.ActorEmail,
+                e.Utc,
+                e.Reason,
+                e.Source,
+                e.BatchSize))
+            .ToListAsync(ct);
+        return Ok(new PrintHistoryDto(events, removed));
     }
 
     [HttpPost("mark-printed")]
@@ -127,11 +155,8 @@ public class AdminPrintController(
             return BadRequest($"Comments must be {CardPrintEventLimits.CommentMaxLength} characters or fewer.");
         }
 
-        var printedBy = User.GetEmail();
-        if (string.IsNullOrWhiteSpace(printedBy))
-        {
-            printedBy = User.GetDisplayName() ?? "PFOH.Admin";
-        }
+        var actor = AdminActor.From(User);
+        var printedBy = actor.Email;
 
         if (printedBy.Length > CardPrintEventLimits.PrintedByMaxLength)
         {
@@ -157,9 +182,21 @@ public class AdminPrintController(
         {
             change.CardPrintedUtc = now;
             change.CardPrintBatchId = batchId;
+            ReprintQueueAudit.Add(
+                db,
+                change.Id,
+                change.HonoreeId,
+                ReprintQueueActions.Printed,
+                actor.Email,
+                actor.ObjectId,
+                now,
+                comment,
+                "print",
+                changes.Count);
         }
 
         await CardPrintEventSchema.EnsureAsync(db, ct);
+        await ReprintQueueEventSchema.EnsureAsync(db, ct);
         db.CardPrintEvents.Add(new CardPrintEvent
         {
             CardPrintBatchId = batchId,
@@ -214,12 +251,14 @@ public class AdminPrintController(
             return NotFound(new { message = "That flagged duplicate is no longer waiting for review." });
         }
 
-        var adminName = AdminName();
+        var actor = AdminActor.From(User);
+        var adminName = actor.Email;
         await reprintQueue.RemoveOneDuplicateReprintItemAsync(
             review.DuplicateChangeRequestId,
             review.KeptChangeRequestId,
             adminName,
-            ct);
+            ct,
+            actor.ObjectId);
         review.ResolvedUtc = DateTime.UtcNow;
         review.ResolvedBy = adminName;
         await db.SaveChangesAsync(ct);

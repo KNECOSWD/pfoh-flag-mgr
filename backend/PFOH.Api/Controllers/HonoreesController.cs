@@ -13,8 +13,8 @@ namespace PFOH.Api.Controllers;
 public class HonoreesController(
     PfohDbContext db,
     IConfiguration configuration,
-    IWebHostEnvironment environment,
-    HonoreeFileStorage fileStorage) : ControllerBase
+    HonoreeFileStorage fileStorage,
+    HonoreePdfService pdfs) : ControllerBase
 {
     private static readonly HttpClient Http = new();
 
@@ -68,7 +68,9 @@ public class HonoreesController(
                 h.IsActive))
             .ToListAsync(ct);
 
-        return Ok(results);
+        return Ok(results
+            .Select(item => item with { PdfUrl = HonoreePdfService.CacheBust(item.PdfUrl) })
+            .ToList());
     }
 
     [HttpGet("{honoreeId:int}/photo")]
@@ -110,54 +112,32 @@ public class HonoreesController(
     [HttpGet("{honoreeId:int}/pdf")]
     public async Task<IActionResult> OpenOrCreatePdf(int honoreeId, CancellationToken ct)
     {
-        var storedPdf = await SafeDownloadPdfAsync(honoreeId, ct);
-        if (storedPdf is not null)
-        {
-            return File(storedPdf, "application/pdf", fileStorage.GetHonoreePdfFileName(honoreeId));
-        }
-
-        var honoree = await db.Honorees
-            .AsNoTracking()
-            .Include(h => h.FlagGrid)
-            .Include(h => h.ServiceBranch)
-            .Include(h => h.Sponsor)
-            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive && h.DeletedDate == null, ct);
-
-        if (honoree is null)
+        var opened = await pdfs.OpenAsync(honoreeId, ct);
+        if (opened.NotFound)
         {
             return NotFound("Honoree was not found.");
         }
 
-        var searchResult = await db.HonoreeSearchResults
-            .AsNoTracking()
-            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive, ct);
-
-        if (!string.IsNullOrWhiteSpace(searchResult?.PDFUrl) &&
-            await ExistingPdfIsAvailableAsync(searchResult.PDFUrl, ct))
+        if (opened.StorageFailed)
         {
-            return Redirect(searchResult.PDFUrl);
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = "The card PDF could not be read. Try again."
+            });
         }
 
-        var photoBytes = await SafeDownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
-        var reportAssets = await fileStorage.LoadReportAssetsAsync(honoree, searchResult, ct);
-        byte[] pdf;
-        try
+        if (opened.RebuildFailed || opened.Bytes is null || opened.Bytes.Length == 0)
         {
-            pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes, reportAssets);
-        }
-        catch (HonoreeCardArtworkMissingException ex)
-        {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { message = ex.Message });
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                message = "The card PDF could not be rebuilt. Try again."
+            });
         }
 
-        // Return the generated PDF even if storage upload fails. This prevents users
-        // from seeing a browser 500 when a blob setting/container is temporarily wrong.
-        await SafeUploadPdfAsync(honoree.Id, pdf, ct);
-
-        Response.Headers["Content-Disposition"] = $"inline; filename=\"{fileStorage.GetHonoreePdfFileName(honoree.Id)}\"";
-        Response.Headers["X-PFOH-PDF-Source"] = "generated";
-
-        return File(pdf, "application/pdf");
+        HonoreePdfService.ApplyFreshnessHeaders(Response, opened.Stamp);
+        Response.Headers.ContentDisposition = $"inline; filename=\"{fileStorage.GetHonoreePdfFileName(honoreeId)}\"";
+        Response.Headers["X-PFOH-PDF-Source"] = opened.Rebuilt ? "rebuilt" : "stored";
+        return File(opened.Bytes, "application/pdf");
     }
 
     [Authorize(Policy = "AdminOnly")]
@@ -166,9 +146,6 @@ public class HonoreesController(
     {
         var honoree = await db.Honorees
             .AsNoTracking()
-            .Include(h => h.FlagGrid)
-            .Include(h => h.ServiceBranch)
-            .Include(h => h.Sponsor)
             .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive && h.DeletedDate == null, ct);
 
         if (honoree is null)
@@ -180,63 +157,23 @@ public class HonoreesController(
             });
         }
 
-        var searchResult = await db.HonoreeSearchResults
-            .AsNoTracking()
-            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive, ct);
-
         var storageAccount = fileStorage.GetConfiguredStorageAccountName();
         var container = fileStorage.GetPdfContainerName();
         var fileName = fileStorage.GetHonoreePdfFileName(honoree.Id);
-        byte[] pdf;
-
-        try
+        var warning = await pdfs.TryRebuildAsync(honoree.Id, ct);
+        var uploaded = warning is null;
+        return Ok(new
         {
-            var photoBytes = await SafeDownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
-            var reportAssets = await fileStorage.LoadReportAssetsAsync(honoree, searchResult, ct);
-            pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes, reportAssets);
-        }
-        catch (Exception ex)
-        {
-            return Ok(new
-            {
-                honoreeId = honoree.Id,
-                uploaded = false,
-                fileName,
-                storageAccount,
-                container,
-                generatedUtc = DateTime.UtcNow,
-                message = $"PDF generation failed before upload: {ex.Message}"
-            });
-        }
-
-        try
-        {
-            fileName = await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
-
-            return Ok(new
-            {
-                honoreeId = honoree.Id,
-                uploaded = true,
-                fileName,
-                storageAccount,
-                container,
-                generatedUtc = DateTime.UtcNow,
-                message = $"PDF regenerated and saved to {storageAccount}/{container}/{fileName}."
-            });
-        }
-        catch (Exception ex)
-        {
-            return Ok(new
-            {
-                honoreeId = honoree.Id,
-                uploaded = false,
-                fileName,
-                storageAccount,
-                container,
-                generatedUtc = DateTime.UtcNow,
-                message = $"PDF was generated but could not be saved to {storageAccount}/{container}/{fileName}: {ex.Message}"
-            });
-        }
+            honoreeId = honoree.Id,
+            uploaded,
+            fileName,
+            storageAccount,
+            container,
+            generatedUtc = DateTime.UtcNow,
+            message = uploaded
+                ? $"PDF regenerated and saved to {storageAccount}/{container}/{fileName}."
+                : warning
+        });
     }
 
     private string? BuildPublicImageUrl(string? photoFileName, string? fallbackImageUrl)

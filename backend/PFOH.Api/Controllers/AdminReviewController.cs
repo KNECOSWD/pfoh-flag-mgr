@@ -23,11 +23,21 @@ public record AdminFlagPositionDto(
     int? HonoreeId,
     string? HonoreeName,
     string? Rank,
-    string? ServiceBranchName);
+    string? ServiceBranchName,
+    string? PdfWarning = null);
 
 public record AssignFlagPositionRequest(int HonoreeId);
 
-public record RemoveReprintQueueItemsRequest(IReadOnlyList<int> ChangeRequestIds);
+public class RemoveReprintQueueItemsRequest
+{
+    public IReadOnlyList<int>? ChangeRequestIds { get; set; }
+
+    public string? Reason { get; set; }
+
+    public string? Source { get; set; }
+}
+
+public record RemoveFromFlagGridRequest(string? Reason, bool AcknowledgeDuplicates = false);
 
 public record AdminUnassignedHonoreeDto(
     int Id,
@@ -48,7 +58,9 @@ public class AdminReviewController(
     ILogger<AdminReviewController> logger,
     PendingReviewMaintenance pendingReviews,
     FlagGridAssignment flagGrids,
-    ReprintQueueMaintenance reprintQueue) : ControllerBase
+    ReprintQueueMaintenance reprintQueue,
+    HonoreePdfService pdfs,
+    FlagGridRemovalService removals) : ControllerBase
 {
     [HttpGet("pending")]
     public async Task<ActionResult<IReadOnlyList<AdminReviewItemDto>>> GetPending(CancellationToken ct)
@@ -286,16 +298,24 @@ public class AdminReviewController(
             return BadRequest(new { message = "Select at least one reprint queue item to remove." });
         }
 
-        var adminName = User.GetEmail();
-        if (string.IsNullOrWhiteSpace(adminName))
+        var reason = request.Reason?.Trim() ?? "";
+        if (reason.Length == 0)
         {
-            adminName = User.GetDisplayName() ?? "PFOH.Admin";
+            return BadRequest(new { message = "A reason is required." });
         }
 
-        if (adminName.Length > 255)
+        if (reason.Length > ReprintQueueAudit.ReasonMaxLength)
         {
-            adminName = adminName[..255];
+            return BadRequest(new { message = $"The reason must be {ReprintQueueAudit.ReasonMaxLength} characters or fewer." });
         }
+
+        var actor = AdminActor.From(User);
+        var adminName = actor.Email;
+        var source = string.Equals(request.Source, "bulk", StringComparison.OrdinalIgnoreCase) || ids.Count > 1
+            ? "bulk"
+            : "row";
+
+        await ReprintQueueEventSchema.EnsureAsync(db, ct);
 
         var queueItems = await db.HonoreeChangeRequests
             .Include(r => r.FlagClaim)
@@ -318,9 +338,21 @@ public class AdminReviewController(
             item.RequiresCardReprint = false;
             item.ReviewedBy = adminName;
             item.ReviewedUtc = now;
+            var note = $"Removed from the reprint queue by administrator. Actor: {adminName}. At: {now:u}. Reason: {reason}";
             item.ReviewNotes = string.IsNullOrWhiteSpace(item.ReviewNotes)
-                ? "Removed from the reprint queue by administrator."
-                : $"{item.ReviewNotes}\nRemoved from the reprint queue by administrator.";
+                ? note
+                : $"{item.ReviewNotes}\n{note}";
+            ReprintQueueAudit.Add(
+                db,
+                item.Id,
+                item.HonoreeId,
+                ReprintQueueActions.Remove,
+                adminName,
+                actor.ObjectId,
+                now,
+                reason,
+                source,
+                queueItems.Count);
         }
 
         // The queue membership is saved first. The Cancelled claim-status write
@@ -602,88 +634,95 @@ public class AdminReviewController(
 
         await db.SaveChangesAsync(ct);
 
-        try
-        {
-            await RegenerateHonoreePdfAsync(honoree.Id, ct);
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(
-                StatusCodes.Status500InternalServerError,
-                new
-                {
-                    message = "The flag grid was assigned, but the card PDF could not be regenerated. The honoree was not added to the reprint queue.",
-                    detail = ex.InnerException?.Message ?? ex.Message
-                });
-        }
+        var assignWarning = await pdfs.TryRebuildAsync(honoree.Id, ct);
 
+        var assignActor = AdminActor.From(User);
         await AddHonoreeToReprintQueueAsync(
             honoree,
             flagGrid,
-            adminName,
+            assignActor.Email,
             "Automatically added to the reprint queue after flag grid assignment.",
-            ct);
+            ct,
+            assignActor.ObjectId);
 
         var position = await BuildFlagPositionAsync(flagGrid.Id, ct);
-        return position is null
-            ? NotFound(new { message = "Flag position was not found after assignment." })
-            : Ok(position);
+        if (position is null)
+        {
+            return NotFound(new { message = "Flag position was not found after assignment." });
+        }
+
+        return Ok(assignWarning is null ? position : position with { PdfWarning = assignWarning });
+    }
+
+    [HttpGet("flag-positions/{flagGridId:int}/removal-preview")]
+    public async Task<ActionResult<FlagGridRemovalPreview>> PreviewFlagPositionRemoval(int flagGridId, CancellationToken ct)
+    {
+        var result = await removals.PreviewAsync(flagGridId, null, ct);
+        return RemovalResult(result);
+    }
+
+    [HttpGet("honorees/{honoreeId:int}/removal-preview")]
+    public async Task<ActionResult<FlagGridRemovalPreview>> PreviewHonoreeRemoval(int honoreeId, CancellationToken ct)
+    {
+        var result = await removals.PreviewAsync(null, honoreeId, ct);
+        return RemovalResult(result);
     }
 
     [HttpPost("flag-positions/{flagGridId:int}/clear")]
-    public async Task<ActionResult<AdminFlagPositionDto>> ClearFlagPosition(
+    public async Task<ActionResult<FlagGridRemovalResponse>> ClearFlagPosition(
         int flagGridId,
+        [FromBody] RemoveFromFlagGridRequest? request,
         CancellationToken ct)
     {
-        var adminName = User.GetEmail();
-        if (string.IsNullOrWhiteSpace(adminName))
+        var result = await removals.RemoveAsync(
+            flagGridId,
+            null,
+            request?.Reason,
+            request?.AcknowledgeDuplicates ?? false,
+            AdminActor.From(User),
+            ct);
+        return RemovalResult(result);
+    }
+
+    [HttpPost("honorees/{honoreeId:int}/remove-from-grid")]
+    public async Task<ActionResult<FlagGridRemovalResponse>> RemoveHonoreeFromGrid(
+        int honoreeId,
+        [FromBody] RemoveFromFlagGridRequest? request,
+        CancellationToken ct)
+    {
+        var result = await removals.RemoveAsync(
+            null,
+            honoreeId,
+            request?.Reason,
+            request?.AcknowledgeDuplicates ?? false,
+            AdminActor.From(User),
+            ct);
+        return RemovalResult(result);
+    }
+
+    private ActionResult RemovalResult(FlagGridRemovalResult result)
+    {
+        if (result.Body is not null)
         {
-            adminName = User.GetDisplayName() ?? "PFOH.Admin";
+            return Ok(result.Body);
         }
 
-        var flagGrid = await db.FlagGrids
-            .FirstOrDefaultAsync(g => g.Id == flagGridId && g.DeletedDate == null, ct);
-
-        if (flagGrid is null)
+        if (result.Preview is not null && result.Status == StatusCodes.Status200OK)
         {
-            return NotFound(new { message = "Flag position was not found." });
+            return Ok(result.Preview);
         }
 
-        var honoree = await db.Honorees
-            .FirstOrDefaultAsync(h =>
-                h.FlagGridId == flagGridId &&
-                h.IsActive &&
-                h.DeletedDate == null,
-                ct);
-
-        if (honoree is null && flagGrid.HonoreeId.HasValue)
+        if (result.Status == StatusCodes.Status409Conflict)
         {
-            honoree = await db.Honorees
-                .FirstOrDefaultAsync(h =>
-                    h.Id == flagGrid.HonoreeId.Value &&
-                    h.IsActive &&
-                    h.DeletedDate == null,
-                    ct);
+            return Conflict(new
+            {
+                code = FlagGridRemovalService.DuplicateCode,
+                message = result.Error,
+                duplicates = result.Preview?.Duplicates ?? []
+            });
         }
 
-        var clearedUtc = DateTime.UtcNow;
-        FlagSpotRelease.ClearAssignment(honoree, flagGrid, adminName, clearedUtc);
-        if (honoree is not null && !await FlagRemovalQueue.HasOpenAsync(db, honoree.Id, flagGrid.Id, ct))
-        {
-            FlagRemovalQueue.Record(db, honoree, flagGrid, FlagRemovalQueue.Manual, adminName, clearedUtc);
-        }
-
-        await db.SaveChangesAsync(ct);
-
-        if (honoree is not null)
-        {
-            await RegenerateHonoreePdfAsync(honoree.Id, ct);
-        }
-
-        var position = await BuildFlagPositionAsync(flagGrid.Id, ct);
-        return position is null
-            ? NotFound(new { message = "Flag position was not found after removal." })
-            : Ok(position);
+        return StatusCode(result.Status == 0 ? StatusCodes.Status400BadRequest : result.Status, new { message = result.Error });
     }
 
     [HttpPost("honoree/{honoreeId:int}/queue-reprint")]
@@ -693,11 +732,8 @@ public class AdminReviewController(
     {
         try
         {
-            var adminName = User.GetEmail();
-            if (string.IsNullOrWhiteSpace(adminName))
-            {
-                adminName = User.GetDisplayName() ?? "PFOH.Admin";
-            }
+            var actor = AdminActor.From(User);
+            var adminName = actor.Email;
 
             var honoree = await db.Honorees
                 .Include(h => h.FlagGrid)
@@ -714,7 +750,8 @@ public class AdminReviewController(
                 return BadRequest(new { message = "This honoree is not assigned to a flag grid yet." });
             }
 
-            await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, keepChangeRequestId: null, adminName, ct);
+            await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(
+                honoree.Id, keepChangeRequestId: null, adminName, ct, actor.ObjectId);
 
             var existingQueueItem = await db.HonoreeChangeRequests
                 .AsNoTracking()
@@ -728,24 +765,12 @@ public class AdminReviewController(
                 .OrderByDescending(r => r.ReviewedUtc ?? r.SubmittedUtc ?? r.CreatedUtc)
                 .FirstOrDefaultAsync(ct);
 
+            var queueWarning = await pdfs.TryRebuildAsync(honoree.Id, ct);
+
             if (existingQueueItem is not null)
             {
-                return Ok(await ToPrintQueueDto(existingQueueItem, ct));
-            }
-
-            try
-            {
-                await RegenerateHonoreePdfAsync(honoree.Id, ct);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(
-                    StatusCodes.Status500InternalServerError,
-                    new
-                    {
-                        message = "The card PDF could not be regenerated. The honoree was not added to the reprint queue.",
-                        detail = ex.InnerException?.Message ?? ex.Message
-                    });
+                var existing = await ToPrintQueueDto(existingQueueItem, ct);
+                return Ok(queueWarning is null ? existing : existing with { PdfWarning = queueWarning });
             }
 
             // HonoreeChangeRequest.FlagClaimId is required. Create an internal/admin claim
@@ -804,8 +829,10 @@ public class AdminReviewController(
             db.FlagClaims.Add(queueClaim);
             db.HonoreeChangeRequests.Add(queueRequest);
             await db.SaveChangesAsync(ct);
+            await RecordReprintAdd(queueRequest, actor, "Added to the reprint queue by administrator.", "queue", ct);
 
-            return Ok(await ToPrintQueueDto(queueRequest, ct));
+            var queued = await ToPrintQueueDto(queueRequest, ct);
+            return Ok(queueWarning is null ? queued : queued with { PdfWarning = queueWarning });
         }
         catch (DbUpdateException ex)
         {
@@ -873,17 +900,10 @@ public class AdminReviewController(
                     change.ReviewedUtc = DateTime.UtcNow;
 
                     await db.SaveChangesAsync(ct);
-                    await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(change.HonoreeId.Value, change.Id, adminName, ct);
-
-                    try
-                    {
-                        await RegenerateHonoreePdfAsync(change.HonoreeId.Value, ct);
-                    }
-                    catch
-                    {
-                        // Do not convert an otherwise approved item into a failure just because
-                        // PDF regeneration/storage had a temporary problem.
-                    }
+                    var repeatActor = AdminActor.From(User);
+                    await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(
+                        change.HonoreeId.Value, change.Id, adminName, ct, repeatActor.ObjectId);
+                    await pdfs.TryRebuildAsync(change.HonoreeId.Value, ct);
                 }
 
                 return Ok(ToReviewDto(change));
@@ -980,23 +1000,23 @@ public class AdminReviewController(
             await db.SaveChangesAsync(ct);
             await HonoreeClaimStore.SyncAsync(db, ct);
 
+            var approveActor = AdminActor.From(User);
             if (request.RequiresCardReprint)
             {
-                await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, change.Id, adminName, ct);
+                await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(
+                    honoree.Id, change.Id, adminName, ct, approveActor.ObjectId);
+                await RecordReprintAdd(change, approveActor, "Approved and added to the reprint queue.", "approve", ct);
+            }
 
-                try
-                {
-                    await RegenerateHonoreePdfAsync(honoree.Id, ct);
-                }
-                catch
-                {
-                    // Approval should not silently fail or roll back just because the PDF could not be regenerated.
-                    // The item remains in the reprint queue so the PDF can be regenerated manually after storage/config is corrected.
-                    change.ReviewNotes = string.IsNullOrWhiteSpace(change.ReviewNotes)
-                        ? "Approved, but PDF regeneration failed. Regenerate the PDF manually before printing."
-                        : $"{change.ReviewNotes}\n\nApproved, but PDF regeneration failed. Regenerate the PDF manually before printing.";
-                    await db.SaveChangesAsync(ct);
-                }
+            var approveWarning = await pdfs.TryRebuildAsync(honoree.Id, ct);
+            if (approveWarning is not null && request.RequiresCardReprint)
+            {
+                // Approval should not silently fail or roll back just because the PDF could not be regenerated.
+                // The item remains in the reprint queue so the next open can rebuild the PDF.
+                change.ReviewNotes = string.IsNullOrWhiteSpace(change.ReviewNotes)
+                    ? "Approved, but PDF regeneration failed. Regenerate the PDF manually before printing."
+                    : $"{change.ReviewNotes}\n\nApproved, but PDF regeneration failed. Regenerate the PDF manually before printing.";
+                await db.SaveChangesAsync(ct);
             }
 
             var approved = ToReviewDto(change);
@@ -1230,7 +1250,19 @@ public class AdminReviewController(
             "Removal request approved. The card is in the removal queue.");
 
         await db.SaveChangesAsync(ct);
-        return Ok(new { message = "Removal approved. The card is in the removal queue." });
+        string? pdfWarning = null;
+        if (change.HonoreeId is int removedHonoreeId)
+        {
+            pdfWarning = await pdfs.TryRebuildAsync(removedHonoreeId, ct, includeInactive: true);
+        }
+
+        return Ok(new
+        {
+            message = "Removal approved. The card is in the removal queue.",
+            pdfWarning = pdfWarning is null
+                ? null
+                : "The removal was saved, but the card PDF could not be rebuilt."
+        });
     }
 
     [HttpPost("{id:int}/decline-removal")]
@@ -1282,6 +1314,11 @@ public class AdminReviewController(
             "Removal request declined. The honoree stays on the field.");
 
         await db.SaveChangesAsync(ct);
+        if (change.HonoreeId is int declinedHonoreeId)
+        {
+            await pdfs.TryRebuildAsync(declinedHonoreeId, ct);
+        }
+
         return Ok(new { message = "Removal declined. The honoree stays on the field." });
     }
 
@@ -1491,39 +1528,38 @@ public class AdminReviewController(
         return honoree;
     }
 
-    private async Task RegenerateHonoreePdfAsync(int honoreeId, CancellationToken ct)
+    private async Task RecordReprintAdd(
+        HonoreeChangeRequest request,
+        AdminActor actor,
+        string reason,
+        string source,
+        CancellationToken ct)
     {
-        var honoree = await db.Honorees
-            .AsNoTracking()
-            .Include(h => h.FlagGrid)
-            .Include(h => h.ServiceBranch)
-            .Include(h => h.Sponsor)
-            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive && h.DeletedDate == null, ct);
-
-        if (honoree is null)
-        {
-            return;
-        }
-
-        var searchResult = await db.HonoreeSearchResults
-            .AsNoTracking()
-            .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive, ct);
-
-        var photoBytes = await fileStorage.DownloadImageAsync(honoree.PhotoFileName, searchResult?.ImageUrl, ct);
-        var reportAssets = await fileStorage.LoadReportAssetsAsync(honoree, searchResult, ct);
-        var pdf = HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes, reportAssets);
-        await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
+        await ReprintQueueEventSchema.EnsureAsync(db, ct);
+        ReprintQueueAudit.Add(
+            db,
+            request.Id,
+            request.HonoreeId,
+            ReprintQueueActions.Add,
+            actor.Email,
+            actor.ObjectId,
+            DateTime.UtcNow,
+            reason,
+            source,
+            1);
+        await db.SaveChangesAsync(ct);
     }
-
 
     private async Task<AdminPrintQueueItemDto> AddHonoreeToReprintQueueAsync(
         Honoree honoree,
         FlagGrid flagGrid,
         string adminName,
         string reviewNotes,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? actorObjectId = null)
     {
-        await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(honoree.Id, keepChangeRequestId: null, adminName, ct);
+        await reprintQueue.DeactivateOtherActiveReprintItemsForHonoreeAsync(
+            honoree.Id, keepChangeRequestId: null, adminName, ct, actorObjectId);
 
         var existingQueueItem = await db.HonoreeChangeRequests
             .AsNoTracking()
@@ -1596,6 +1632,12 @@ public class AdminReviewController(
         db.FlagClaims.Add(queueClaim);
         db.HonoreeChangeRequests.Add(queueRequest);
         await db.SaveChangesAsync(ct);
+        await RecordReprintAdd(
+            queueRequest,
+            new AdminActor(adminName, actorObjectId),
+            reviewNotes,
+            "queue",
+            ct);
 
         return await ToPrintQueueDto(queueRequest, ct);
     }
@@ -1606,11 +1648,11 @@ public class AdminReviewController(
 
         if (r.HonoreeId.HasValue)
         {
-            pdfUrl = await db.HonoreeSearchResults
+                pdfUrl = HonoreePdfService.CacheBust(await db.HonoreeSearchResults
                 .AsNoTracking()
                 .Where(h => h.Id == r.HonoreeId.Value)
                 .Select(h => h.PDFUrl)
-                .FirstOrDefaultAsync(ct);
+                .FirstOrDefaultAsync(ct));
         }
 
         return new AdminPrintQueueItemDto(

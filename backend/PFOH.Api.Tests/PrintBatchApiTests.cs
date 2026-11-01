@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PFOH.Api.Data;
 using PFOH.Api.Models;
+using PFOH.Api.Services;
 using Xunit;
 
 namespace PFOH.Api.Tests;
@@ -51,24 +52,32 @@ public class PrintBatchApiTests(PfohApiFactory factory) : IClassFixture<PfohApiF
     }
 
     [Fact]
-    public async Task Card_pdf_returns_the_stored_pdf_or_reports_it_missing_without_generating_it()
+    public async Task Card_pdf_returns_a_fresh_file_and_refuses_an_outdated_one()
     {
         await ResetAsync();
         var ids = await SeedQueueAsync();
+        await SeedActiveHonoreeAsync(101, "Ann", "Able");
+        await SeedActiveHonoreeAsync(102, "Zane", "Zulu");
         factory.Files.Pdfs[101] = StoredPdf;
+        factory.Files.PdfStamps[101] = StampFor(101, "Ann", "Able");
+        var calls = factory.Renderer.Calls;
         var client = factory.CreateClient();
 
         var stored = await client.SendAsync(AdminRequest(HttpMethod.Get, $"/api/admin/print/cards/{ids.Ann}/pdf", admin: true));
         Assert.Equal(HttpStatusCode.OK, stored.StatusCode);
         Assert.Equal("application/pdf", stored.Content.Headers.ContentType?.MediaType);
         Assert.Equal(StoredPdf, await stored.Content.ReadAsByteArrayAsync());
+        Assert.Equal(calls, factory.Renderer.Calls);
+        Assert.Equal("no-store", stored.Headers.CacheControl?.ToString());
 
+        factory.Renderer.Fail = true;
         var missing = await client.SendAsync(AdminRequest(HttpMethod.Get, $"/api/admin/print/cards/{ids.Zane}/pdf", admin: true));
-        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, missing.StatusCode);
         var body = await missing.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("pdf-missing", body.GetProperty("code").GetString());
+        Assert.Equal("pdf-outdated", body.GetProperty("code").GetString());
         Assert.Equal(102, body.GetProperty("honoreeId").GetInt32());
         Assert.Equal("Zane Zulu", body.GetProperty("honoreeName").GetString());
+        Assert.Contains("out of date", body.GetProperty("message").GetString(), StringComparison.OrdinalIgnoreCase);
         Assert.False(factory.Files.Pdfs.ContainsKey(102));
 
         var notQueued = await client.SendAsync(AdminRequest(HttpMethod.Get, $"/api/admin/print/cards/{ids.Rejected}/pdf", admin: true));
@@ -82,6 +91,7 @@ public class PrintBatchApiTests(PfohApiFactory factory) : IClassFixture<PfohApiF
     {
         await ResetAsync();
         var ids = await SeedQueueAsync();
+        await SeedActiveHonoreeAsync(101, "Ann", "Able");
         factory.Files.UnreadablePdfs.Add(101);
         var client = factory.CreateClient();
 
@@ -221,7 +231,7 @@ public class PrintBatchApiTests(PfohApiFactory factory) : IClassFixture<PfohApiF
         var history = await client.SendAsync(AdminRequest(HttpMethod.Get, "/api/admin/print/history", admin: true));
         Assert.Equal(HttpStatusCode.OK, history.StatusCode);
         using var json = JsonDocument.Parse(await history.Content.ReadAsStringAsync());
-        var events = json.RootElement.EnumerateArray().ToList();
+        var events = json.RootElement.GetProperty("printed").EnumerateArray().ToList();
         Assert.Equal("Second", events[0].GetProperty("comment").GetString());
         Assert.Equal("First", events[1].GetProperty("comment").GetString());
         Assert.Equal([1, 1], events.Select(e => e.GetProperty("cardCount").GetInt32()).ToArray());
@@ -258,7 +268,7 @@ public class PrintBatchApiTests(PfohApiFactory factory) : IClassFixture<PfohApiF
         var history = await client.SendAsync(AdminRequest(HttpMethod.Get, "/api/admin/print/history", admin: true));
         Assert.Equal(HttpStatusCode.OK, history.StatusCode);
         using var historyJson = JsonDocument.Parse(await history.Content.ReadAsStringAsync());
-        Assert.Empty(historyJson.RootElement.EnumerateArray());
+        Assert.Empty(historyJson.RootElement.GetProperty("printed").EnumerateArray());
     }
 
     [Fact]
@@ -309,6 +319,39 @@ public class PrintBatchApiTests(PfohApiFactory factory) : IClassFixture<PfohApiF
         await db.SaveChangesAsync();
         return (ann.Id, zane.Id, rejected.Id);
     }
+
+    private async Task SeedActiveHonoreeAsync(int id, string first, string last)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        db.Honorees.Add(ActiveHonoree(id, first, last));
+        await db.SaveChangesAsync();
+    }
+
+    private static string StampFor(int id, string first, string last) =>
+        HonoreePdfStamp.Compute(ActiveHonoree(id, first, last), null, null, null, "");
+
+    private static Honoree ActiveHonoree(int id, string first, string last) => new()
+    {
+        Id = id,
+        FirstName = first,
+        LastName = last,
+        Rank = string.Empty,
+        Description = string.Empty,
+        PhotoFileName = string.Empty,
+        Salutation = string.Empty,
+        NameUserEntry = string.Empty,
+        PhoneNumber = string.Empty,
+        EmailAddress = string.Empty,
+        Awards = string.Empty,
+        ConflictsServed = string.Empty,
+        DatesUserEntry = string.Empty,
+        IsActive = true,
+        CreatedBy = "seed",
+        ModifiedBy = "seed",
+        CreatedDate = DateTime.UtcNow,
+        ModifiedDate = DateTime.UtcNow
+    };
 
     private static HttpRequestMessage AdminRequest(HttpMethod method, string url, bool admin, object? body = null)
     {

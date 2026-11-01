@@ -407,6 +407,49 @@ export type CardPrintEvent = {
   comment?: string | null;
 };
 
+export type ReprintRemovalEvent = {
+  id: number;
+  changeRequestId: number;
+  honoreeId?: number | null;
+  action: string;
+  actorEmail: string;
+  utc: string;
+  reason?: string | null;
+  source: string;
+  batchSize: number;
+};
+
+export type PrintHistory = {
+  printed: CardPrintEvent[];
+  removed: ReprintRemovalEvent[];
+};
+
+export type FlagGridRemovalDuplicate = {
+  honoreeId: number;
+  name: string;
+  flagGridName?: string | null;
+  rank?: string | null;
+  serviceBranchName?: string | null;
+  reasons?: string | null;
+};
+
+export type FlagGridRemovalPreview = {
+  honoreeId: number;
+  honoreeName: string;
+  flagGridId?: number | null;
+  flagGridName?: string | null;
+  duplicates: FlagGridRemovalDuplicate[];
+};
+
+export type FlagGridRemovalResult = {
+  flagGridId?: number | null;
+  flagGridName?: string | null;
+  honoreeId: number;
+  honoreeName: string;
+  removalQueueItemId?: number | null;
+  pdfWarning?: string | null;
+};
+
 export type RemovalQueueItem = {
   id: number;
   honoreeId?: number | null;
@@ -438,6 +481,7 @@ export type AdminPrintQueueItem = {
   pdfUrl?: string | null;
   approvedUtc?: string | null;
   cardPrintedUtc?: string | null;
+  pdfWarning?: string | null;
 };
 
 export type PrintBatchCard = {
@@ -462,6 +506,7 @@ export type AdminFlagPosition = {
   honoreeName?: string | null;
   rank?: string | null;
   serviceBranchName?: string | null;
+  pdfWarning?: string | null;
 };
 
 export type AdminUnassignedHonoree = {
@@ -475,7 +520,7 @@ export type AdminUnassignedHonoree = {
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? "";
 
 export function honoreePdfUrl(honoreeId: number) {
-  return `${apiBase}/api/honorees/${honoreeId}/pdf`;
+  return `${apiBase}/api/honorees/${honoreeId}/pdf?v=${Date.now()}`;
 }
 
 export function honoreePhotoUrl(honoreeId: number) {
@@ -954,11 +999,13 @@ export const adminApi = {
   removeFromReprintQueue: (
     instance: IPublicClientApplication,
     account: AccountInfo,
-    changeRequestIds: number[]
+    changeRequestIds: number[],
+    reason: string,
+    source: "row" | "bulk"
   ) =>
     request<{ count: number }>(instance, account, "/api/admin/review/reprint-queue/remove", {
       method: "POST",
-      body: JSON.stringify({ changeRequestIds })
+      body: JSON.stringify({ changeRequestIds, reason, source })
     }),
 
   markPrinted: (
@@ -973,7 +1020,7 @@ export const adminApi = {
     }),
 
   printHistory: (instance: IPublicClientApplication, account: AccountInfo) =>
-    request<CardPrintEvent[]>(instance, account, "/api/admin/print/history"),
+    request<PrintHistory>(instance, account, "/api/admin/print/history"),
 
   duplicateGroups: (instance: IPublicClientApplication, account: AccountInfo) =>
     request<DuplicateGroup[]>(instance, account, "/api/admin/duplicates/groups"),
@@ -1096,9 +1143,47 @@ export const adminApi = {
   clearFlagPosition: (
     instance: IPublicClientApplication,
     account: AccountInfo,
-    flagGridId: number
+    flagGridId: number,
+    reason: string,
+    acknowledgeDuplicates: boolean
   ) =>
-    request<AdminFlagPosition>(instance, account, `/api/admin/review/flag-positions/${flagGridId}/clear`, {
+    request<FlagGridRemovalResult>(instance, account, `/api/admin/review/flag-positions/${flagGridId}/clear`, {
+      method: "POST",
+      body: JSON.stringify({ reason, acknowledgeDuplicates })
+    }),
+
+  removeHonoreeFromGrid: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    honoreeId: number,
+    reason: string,
+    acknowledgeDuplicates: boolean
+  ) =>
+    request<FlagGridRemovalResult>(
+      instance,
+      account,
+      `/api/admin/review/honorees/${honoreeId}/remove-from-grid`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reason, acknowledgeDuplicates })
+      }
+    ),
+
+  removalPreview: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    target: { flagGridId?: number; honoreeId?: number }
+  ) =>
+    request<FlagGridRemovalPreview>(
+      instance,
+      account,
+      target.honoreeId
+        ? `/api/admin/review/honorees/${target.honoreeId}/removal-preview`
+        : `/api/admin/review/flag-positions/${target.flagGridId}/removal-preview`
+    ),
+
+  restoreRemoval: (instance: IPublicClientApplication, account: AccountInfo, id: number) =>
+    request<FlagGridRemovalResult>(instance, account, `/api/admin/removal-queue/${id}/restore`, {
       method: "POST"
     }),
 

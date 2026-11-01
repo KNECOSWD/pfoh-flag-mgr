@@ -23,6 +23,8 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
     public DbSet<HonoreeChangeRequest> HonoreeChangeRequests => Set<HonoreeChangeRequest>();
     public DbSet<CardPrintEvent> CardPrintEvents => Set<CardPrintEvent>();
     public DbSet<FlagRemovalQueueItem> FlagRemovalQueueItems => Set<FlagRemovalQueueItem>();
+    public DbSet<FlagGridRemovalAudit> FlagGridRemovalAudits => Set<FlagGridRemovalAudit>();
+    public DbSet<ReprintQueueEvent> ReprintQueueEvents => Set<ReprintQueueEvent>();
     public DbSet<HonoreeReactivationToken> HonoreeReactivationTokens => Set<HonoreeReactivationToken>();
     public DbSet<HonoreeReactivationRequest> HonoreeReactivationRequests => Set<HonoreeReactivationRequest>();
 
@@ -356,6 +358,34 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
                 .WithMany()
                 .HasForeignKey(e => e.MergeAuditId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<FlagGridRemovalAudit>(entity =>
+        {
+            entity.ToTable("FlagGridRemovalAudits", "dbo");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Action).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.ActorEmail).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.ActorObjectId).HasMaxLength(128);
+            entity.Property(e => e.Reason).HasMaxLength(1000).IsRequired();
+            entity.Property(e => e.BeforeState).IsRequired();
+            entity.Property(e => e.AfterState).IsRequired();
+            entity.Property(e => e.PdfWarning).HasMaxLength(500);
+            entity.HasIndex(e => new { e.HonoreeId, e.OccurredUtc });
+            entity.HasIndex(e => new { e.FlagGridId, e.OccurredUtc });
+        });
+
+        modelBuilder.Entity<ReprintQueueEvent>(entity =>
+        {
+            entity.ToTable("ReprintQueueEvents", "dbo");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Action).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.ActorEmail).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.ActorObjectId).HasMaxLength(128);
+            entity.Property(e => e.Reason).HasMaxLength(1000);
+            entity.Property(e => e.Source).HasMaxLength(20).IsRequired();
+            entity.HasIndex(e => new { e.ChangeRequestId, e.Utc });
+            entity.HasIndex(e => e.Utc);
         });
 
         modelBuilder.Entity<HonoreeReactivationToken>(entity =>

@@ -150,6 +150,16 @@ jobs:
         working-directory: frontend
         run: npx tsc --noEmit
 
+      - name: Install Playwright
+        if: steps.changes.outputs.code != 'false'
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Test flag map typeahead
+        if: steps.changes.outputs.code != 'false'
+        working-directory: frontend
+        run: npx playwright test
+
       - name: Setup .NET
         if: steps.changes.outputs.code != 'false'
         uses: actions/setup-dotnet@v4

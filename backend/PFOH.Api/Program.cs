@@ -142,6 +142,9 @@ builder.Services.AddSingleton<ITelemetryInitializer, AdminIdentityTelemetryIniti
 builder.Services.AddSingleton<IHttpContextFactory>(serviceProvider =>
     new SubmitterLookupHttpContextFactory(ActivatorUtilities.CreateInstance<DefaultHttpContextFactory>(serviceProvider)));
 builder.Services.AddSingleton<HonoreeFileStorage>();
+builder.Services.AddSingleton<IHonoreeCardRenderer, HonoreeCardRenderer>();
+builder.Services.AddScoped<HonoreePdfService>();
+builder.Services.AddScoped<FlagGridRemovalService>();
 builder.Services.AddSingleton<ProfileStoreCircuit>();
 builder.Services.AddHealthChecks()
     .AddCheck<ProfileStoreHealthCheck>("profile-store", tags: ["ready"]);
@@ -522,24 +525,26 @@ try
     try
     {
         await CardPrintEventSchema.EnsureAsync(startupDb, CancellationToken.None);
+        await ReprintQueueEventSchema.EnsureAsync(startupDb, CancellationToken.None);
     }
     catch (Exception ex)
     {
         app.Logger.LogError(
             ex,
-            "STARTUP CLEANUP FAILED while ensuring dbo.CardPrintEvents. {Failure}",
+            "STARTUP CLEANUP FAILED while ensuring dbo.CardPrintEvents or dbo.ReprintQueueEvents. {Failure}",
             ex.ToString());
     }
 
     try
     {
         await FlagRemovalQueueSchema.EnsureAsync(startupDb, CancellationToken.None);
+        await FlagGridRemovalAuditSchema.EnsureAsync(startupDb, CancellationToken.None);
     }
     catch (Exception ex)
     {
         app.Logger.LogError(
             ex,
-            "STARTUP CLEANUP FAILED while ensuring dbo.FlagRemovalQueueItems. {Failure}",
+            "STARTUP CLEANUP FAILED while ensuring dbo.FlagRemovalQueueItems or dbo.FlagGridRemovalAudits. {Failure}",
             ex.ToString());
     }
 

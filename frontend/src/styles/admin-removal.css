@@ -316,6 +316,28 @@
   }
 }
 
+.removeGridDuplicates {
+  margin-top: var(--space-xs);
+  padding: var(--space-xs);
+  border-radius: 12px;
+  background: var(--color-warning-bg);
+  color: var(--color-warning-ink);
+}
+
+.removeGridDuplicates ul {
+  margin: var(--space-2xs) 0 0;
+  padding-left: 1.1rem;
+}
+
+.removeGridDuplicates li {
+  margin: var(--space-2xs) 0;
+}
+
+.removeGridDuplicates span,
+.removeGridDuplicates small {
+  display: block;
+}
+
 .rqActions {
   gap: var(--space-2xs);
   display: flex;

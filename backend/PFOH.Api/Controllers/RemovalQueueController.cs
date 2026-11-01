@@ -35,7 +35,7 @@ public sealed record RemovalQueueItemDto(
 [ApiController]
 [Route("api/admin/removal-queue")]
 [Authorize(Policy = "AdminOnly")]
-public class RemovalQueueController(PfohDbContext db) : ControllerBase
+public class RemovalQueueController(PfohDbContext db, FlagGridRemovalService removals) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<RemovalQueueItemDto>>> List(
@@ -109,6 +109,18 @@ public class RemovalQueueController(PfohDbContext db) : ControllerBase
     [HttpPost("{id:int}/done")]
     public Task<IActionResult> MarkOne(int id, CancellationToken ct) =>
         MarkDone(new MarkRemovalDoneRequest { Ids = [id] }, ct);
+
+    [HttpPost("{id:int}/restore")]
+    public async Task<IActionResult> Restore(int id, CancellationToken ct)
+    {
+        var result = await removals.RestoreAsync(id, AdminActor.From(User), ct);
+        if (result.Body is not null)
+        {
+            return Ok(result.Body);
+        }
+
+        return StatusCode(result.Status == 0 ? StatusCodes.Status409Conflict : result.Status, new { message = result.Error });
+    }
 
     private async Task<(List<Models.FlagRemovalQueueItem> Items, ActionResult? Error)> ChooseAsync(
         string? status,

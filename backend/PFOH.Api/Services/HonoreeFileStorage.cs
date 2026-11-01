@@ -438,7 +438,28 @@ public class HonoreeFileStorage(IConfiguration configuration)
         return memory.ToArray();
     }
 
-    public virtual async Task<string> UploadPdfAsync(int honoreeId, byte[] pdf, CancellationToken ct)
+    public virtual async Task<string> UploadPdfAsync(int honoreeId, byte[] pdf, CancellationToken ct) =>
+        await SaveStoredPdfAsync(honoreeId, pdf, stamp: "", ct);
+
+    public virtual async Task<StoredPdf?> ReadStoredPdfAsync(int honoreeId, CancellationToken ct)
+    {
+        var container = await GetContainerAsync(PdfContainerName, ct);
+        var blob = container.GetBlobClient(GetHonoreePdfFileName(honoreeId));
+        if (!await blob.ExistsAsync(ct))
+        {
+            return null;
+        }
+
+        var properties = await blob.GetPropertiesAsync(cancellationToken: ct);
+        properties.Value.Metadata.TryGetValue(HonoreePdfStamp.MetadataKey, out var stamp);
+        await using var stream = await blob.OpenReadAsync(cancellationToken: ct);
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory, ct);
+        var bytes = memory.ToArray();
+        return bytes.Length == 0 ? null : new StoredPdf(bytes, stamp, properties.Value.ETag.ToString());
+    }
+
+    public virtual async Task<string> SaveStoredPdfAsync(int honoreeId, byte[] pdf, string stamp, CancellationToken ct)
     {
         var fileName = GetHonoreePdfFileName(honoreeId);
         var container = await GetContainerAsync(PdfContainerName, ct);
@@ -447,16 +468,53 @@ public class HonoreeFileStorage(IConfiguration configuration)
         // Always overwrite. The PDF is a rendered snapshot of the current honoree record.
         await blob.DeleteIfExistsAsync(cancellationToken: ct);
 
+        var metadata = new Dictionary<string, string>();
+        if (!string.IsNullOrWhiteSpace(stamp))
+        {
+            metadata[HonoreePdfStamp.MetadataKey] = stamp;
+        }
+
         await using var stream = new MemoryStream(pdf);
         await blob.UploadAsync(
             stream,
             new BlobUploadOptions
             {
-                HttpHeaders = new BlobHttpHeaders { ContentType = "application/pdf" }
+                HttpHeaders = new BlobHttpHeaders { ContentType = "application/pdf" },
+                Metadata = metadata
             },
             ct);
 
         return fileName;
+    }
+
+    public virtual async Task<string?> GetPhotoEtagAsync(string? photoFileName, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(photoFileName))
+        {
+            return "";
+        }
+
+        try
+        {
+            var container = await GetExistingContainerAsync(ImageContainerName, ct);
+            if (container is null)
+            {
+                return photoFileName;
+            }
+
+            var blob = container.GetBlobClient(photoFileName);
+            if (!await blob.ExistsAsync(ct))
+            {
+                return photoFileName;
+            }
+
+            var properties = await blob.GetPropertiesAsync(cancellationToken: ct);
+            return properties.Value.ETag.ToString();
+        }
+        catch
+        {
+            return photoFileName;
+        }
     }
 
     private async Task UploadImageBlobAsync(string fileName, IFormFile photo, CancellationToken ct)

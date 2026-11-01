@@ -9,6 +9,8 @@ import {
   AdminUnassignedHonoree,
   AdminPrintQueueItem,
   CardPrintEvent,
+  ReprintRemovalEvent,
+  FlagGridRemovalDuplicate,
   AdminReviewItem,
   ApiError,
   FlagClaim,
@@ -104,6 +106,8 @@ import { isQuietAuthRejection, PLEASE_SIGN_IN_AGAIN } from "./tokenRequest.js";
 import dogTagIcon from "./assets/pfoh-dogtag-icon-480.png";
 import knecoLogoWhite from "./assets/kneco-logo-white-216.png";
 import { RemovalQueue } from "./RemovalQueue";
+import { AdminHonoreeActions } from "./adminHonoreeActions.js";
+import { RemoveFromGridDialog } from "./removeFromGridDialog.js";
 import { AdminReactivation } from "./AdminReactivation";
 import { ReactivationPage } from "./ReactivationPage";
 import { reactivationTokenFromPath, signInReturnHref } from "./reactivationPath.js";
@@ -531,9 +535,28 @@ export default function App() {
   cardPreviewRef.current = cardPreview;
   const [printQueue, setPrintQueue] = useState<AdminPrintQueueItem[]>([]);
   const [printHistory, setPrintHistory] = useState<CardPrintEvent[]>([]);
+  const [reprintRemovals, setReprintRemovals] = useState<ReprintRemovalEvent[]>([]);
   const [printHistoryError, setPrintHistoryError] = useState("");
   const [markPrintedOpen, setMarkPrintedOpen] = useState(false);
   const [markPrintedComment, setMarkPrintedComment] = useState("");
+  const [reprintRemove, setReprintRemove] = useState<{
+    ids: number[];
+    source: "row" | "bulk";
+    title: string;
+    message: string;
+    reason: string;
+  } | null>(null);
+  const [removeGrid, setRemoveGrid] = useState<{
+    honoreeId?: number;
+    flagGridId?: number;
+    name: string;
+    gridName: string;
+    reason: string;
+    duplicates: FlagGridRemovalDuplicate[];
+    loading: boolean;
+    error: string;
+  } | null>(null);
+  const [pdfWarning, setPdfWarning] = useState("");
   const [selectedPrintIds, setSelectedPrintIds] = useState<number[]>([]);
   const [adminBusyId, setAdminBusyId] = useState<number | null>(null);
   const [adminBusyAction, setAdminBusyAction] = useState<"approve-reprint" | "approve" | "reject" | null>(null);
@@ -1386,7 +1409,9 @@ export default function App() {
     if (!account) return;
 
     try {
-      setPrintHistory(await adminApi.printHistory(instance, account));
+      const history = await adminApi.printHistory(instance, account);
+      setPrintHistory(history.printed ?? []);
+      setReprintRemovals(history.removed ?? []);
       setPrintHistoryError("");
     } catch (err) {
       setPrintHistoryError(reportableErrorMessage(err, "Print history could not be loaded."));
@@ -2475,57 +2500,89 @@ export default function App() {
     }
   }
 
-  async function clearFlagPosition(position: AdminFlagPosition) {
-    if (!account || position.isOpen) return;
-
-    const honoreeName = position.honoreeName || "this honoree";
-    const ok = await requestConfirmation(
-      `Remove ${honoreeName} from flag grid ${position.flagGridName}?`,
-      { title: "Remove from flag grid", confirmText: "Remove", tone: "danger" }
-    );
-
-    if (!ok) return;
-
-    setFlagPositionBusyId(position.flagGridId);
-    setError("");
-    setNotice(`Removing ${honoreeName} from ${position.flagGridName}...`);
-
+  async function beginRemoveFromGrid(target: {
+    honoreeId?: number;
+    flagGridId?: number;
+    name: string;
+    gridName: string;
+  }) {
+    if (!account) return;
+    setPdfWarning("");
+    setRemoveGrid({
+      ...target,
+      reason: "",
+      duplicates: [],
+      loading: true,
+      error: ""
+    });
     try {
-      await adminApi.clearFlagPosition(instance, account, position.flagGridId);
+      const preview = await adminApi.removalPreview(instance, account, target);
+      setRemoveGrid((current) => current ? {
+        ...current,
+        honoreeId: preview.honoreeId,
+        flagGridId: preview.flagGridId ?? target.flagGridId,
+        name: preview.honoreeName || target.name,
+        gridName: preview.flagGridName || target.gridName,
+        duplicates: preview.duplicates ?? [],
+        loading: false
+      } : current);
+    } catch (err) {
+      if (isQuietAuthRejection(err)) return;
+      setRemoveGrid((current) => current ? {
+        ...current,
+        loading: false,
+        error: err instanceof ApiError ? err.serverMessage || err.message : "Similar honorees could not be checked."
+      } : current);
+    }
+  }
+
+  async function confirmRemoveFromGrid() {
+    if (!account || !removeGrid) return;
+    const reason = removeGrid.reason.trim();
+    if (!reason) return;
+    const pending = removeGrid;
+    const acknowledgeDuplicates = pending.duplicates.length > 0;
+    setFlagPositionBusyId(pending.flagGridId ?? null);
+    setError("");
+    setPdfWarning("");
+    try {
+      const result = pending.honoreeId && !pending.flagGridId
+        ? await adminApi.removeHonoreeFromGrid(instance, account, pending.honoreeId, reason, acknowledgeDuplicates)
+        : pending.flagGridId
+          ? await adminApi.clearFlagPosition(instance, account, pending.flagGridId, reason, acknowledgeDuplicates)
+          : await adminApi.removeHonoreeFromGrid(instance, account, pending.honoreeId!, reason, acknowledgeDuplicates);
+      setRemoveGrid(null);
       const [positions, results, unassigned] = await Promise.all([
         adminApi.flagPositions(instance, account),
         honoreeSearchPerformed ? honoreeApi.search(honoreeSearchText, 25) : Promise.resolve(honoreeResults),
         adminApi.unassignedHonorees(instance, account)
       ]);
-
       setFlagPositions(positions);
       setUnassignedHonorees(unassigned);
       closeFlagPositionDetail();
-
       if (honoreeSearchPerformed) {
         setHonoreeResults(results);
         setClaimantsByHonoreeId({});
         await loadClaimantsForSearchResults(results);
-
-        const removedHonoree = position.honoreeId
-          ? results.find((honoree) => honoree.id === position.honoreeId)
-          : null;
-
-        if (removedHonoree) {
-          setFlagPositionHonoree(removedHonoree);
-          setShowFlagPositionManager(true);
-          setNotice(`${honoreeName} was removed from ${position.flagGridName}. Select an open position to reassign.`);
-          return;
-        }
       }
-
-      setNotice(`${honoreeName} was removed from ${position.flagGridName}.`);
+      if (result.pdfWarning) setPdfWarning(result.pdfWarning);
+      else setNotice(`${pending.name} was removed from ${pending.gridName}. The card is in the Removal Queue.`);
+      void refreshAttentionCounts();
     } catch (err) {
-      setError(reportableErrorMessage(err, "Unable to remove the honoree from this flag grid."));
-      setNotice("");
+      setError(reportableErrorMessage(err, "Unable to remove this honoree from the flag grid."));
     } finally {
       setFlagPositionBusyId(null);
     }
+  }
+
+  async function clearFlagPosition(position: AdminFlagPosition) {
+    if (!account || position.isOpen) return;
+    await beginRemoveFromGrid({
+      flagGridId: position.flagGridId,
+      honoreeId: position.honoreeId ?? undefined,
+      name: position.honoreeName || "this honoree",
+      gridName: position.flagGridName
+    });
   }
 
   function openFlagMapExport() {
@@ -3016,7 +3073,7 @@ export default function App() {
     }
   }
 
-  async function removeSelectedFromReprintQueue() {
+  function removeSelectedFromReprintQueue() {
     if (!account) return;
 
     if (selectedPrintIds.length === 0) {
@@ -3024,46 +3081,44 @@ export default function App() {
       return;
     }
 
-    const ok = await requestConfirmation(
-      "Remove the selected card reprints from the reprint queue? This does not mark them printed.",
-      { title: "Remove from reprint queue", confirmText: "Remove from queue", tone: "danger" }
-    );
-    if (!ok) return;
+    setReprintRemove({
+      ids: [...selectedPrintIds],
+      source: "bulk",
+      title: "Remove from reprint queue",
+      message: "Remove the selected card reprints from the reprint queue? This does not mark them printed.",
+      reason: ""
+    });
+  }
+
+  function removeOneFromReprintQueue(changeRequestId: number, honoreeName: string) {
+    if (!account) return;
+
+    setReprintRemove({
+      ids: [changeRequestId],
+      source: "row",
+      title: "Remove from reprint queue",
+      message: `Remove ${honoreeName || "this card"} from the reprint queue? This does not mark it printed.`,
+      reason: ""
+    });
+  }
+
+  async function confirmReprintRemove() {
+    if (!account || !reprintRemove) return;
+    const reason = reprintRemove.reason.trim();
+    if (!reason) return;
 
     setSaving(true);
     setError("");
     setNotice("");
+    const pending = reprintRemove;
+    setReprintRemove(null);
 
     try {
-      const result = await adminApi.removeFromReprintQueue(instance, account, selectedPrintIds);
+      const result = await adminApi.removeFromReprintQueue(instance, account, pending.ids, reason, pending.source);
       await loadData();
       setNotice(`${result.count} item(s) removed from the reprint queue.`);
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to remove item(s) from the reprint queue."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function removeOneFromReprintQueue(changeRequestId: number, honoreeName: string) {
-    if (!account) return;
-
-    const ok = await requestConfirmation(
-      `Remove ${honoreeName || "this card"} from the reprint queue? This does not mark it printed.`,
-      { title: "Remove from reprint queue", confirmText: "Remove from queue", tone: "danger" }
-    );
-    if (!ok) return;
-
-    setSaving(true);
-    setError("");
-    setNotice("");
-
-    try {
-      const result = await adminApi.removeFromReprintQueue(instance, account, [changeRequestId]);
-      await loadData();
-      setNotice(`${result.count} item(s) removed from the reprint queue.`);
-    } catch (err) {
-      setError(reportableErrorMessage(err, "Unable to remove this item from the reprint queue."));
     } finally {
       setSaving(false);
     }
@@ -3441,6 +3496,20 @@ export default function App() {
                   </button>
                 </div>
               ) : null}
+
+              {pdfWarning ? (
+                <div className="message warning" role="status">
+                  <span>{pdfWarning}</span>
+                  <button
+                    type="button"
+                    className="messageClose"
+                    aria-label="Dismiss warning"
+                    onClick={() => setPdfWarning("")}
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : null}
             </section>
           )}
 
@@ -3618,6 +3687,67 @@ export default function App() {
                 </div>
               </div>
             </div>
+          ) : null}
+
+          {reprintRemove ? (
+            <div
+              className="modalOverlay appConfirmOverlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="reprint-remove-title"
+              onClick={() => setReprintRemove(null)}
+            >
+              <div className="modalCard appConfirmModal" onClick={(event) => event.stopPropagation()}>
+                <div>
+                  <p className="eyebrow">Confirm action</p>
+                  <h2 id="reprint-remove-title">{reprintRemove.title}</h2>
+                  <p className="helperText">{reprintRemove.message}</p>
+                  <label className="markPrintedComment" htmlFor="reprint-remove-reason">
+                    Reason
+                    <textarea
+                      id="reprint-remove-reason"
+                      rows={3}
+                      maxLength={1000}
+                      required
+                      value={reprintRemove.reason}
+                      onChange={(event) => setReprintRemove((current) => current ? { ...current, reason: event.target.value } : current)}
+                    />
+                  </label>
+                </div>
+                <div className="modalActions">
+                  <button type="button" className="secondary" onClick={() => setReprintRemove(null)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="dangerButton"
+                    disabled={saving || reprintRemove.reason.trim().length === 0}
+                    onClick={() => void confirmReprintRemove()}
+                  >
+                    Remove from queue
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {removeGrid ? (
+            <RemoveFromGridDialog
+              name={removeGrid.name}
+              gridName={removeGrid.gridName}
+              reason={removeGrid.reason}
+              duplicates={removeGrid.duplicates}
+              loading={removeGrid.loading}
+              error={removeGrid.error}
+              busy={saving || flagPositionBusyId !== null}
+              onReason={(value: string) => setRemoveGrid((current) => current ? { ...current, reason: value } : current)}
+              onCancel={() => setRemoveGrid(null)}
+              onConfirm={() => void confirmRemoveFromGrid()}
+              onMerge={() => {
+                setRemoveGrid(null);
+                navigateToRoute("/admin/duplicates");
+              }}
+            />
           ) : null}
 
           <Dialog.Root
@@ -4094,90 +4224,28 @@ export default function App() {
                             </button>
 
                             {chrome.adminLinks ? (
-                              <details
-                                className="adminActionsMenu"
-                                onBlur={(event) => {
-                                  const nextFocus = event.relatedTarget as Node | null;
-                                  if (!nextFocus || !event.currentTarget.contains(nextFocus)) {
-                                    event.currentTarget.removeAttribute("open");
-                                  }
+                              <AdminHonoreeActions
+                                open={false}
+                                busy={saving}
+                                regenerating={regeneratingPdfHonoreeId === honoree.id}
+                                queueing={queueingReprintHonoreeId === honoree.id}
+                                claimantBusy={claimantBusyHonoreeId === honoree.id}
+                                claimantsLoaded={Boolean(claimantsByHonoreeId[honoree.id])}
+                                hasFlagGrid={Boolean(honoree.flagGrid)}
+                                removing={Boolean(removeGrid) && removeGrid?.honoreeId === honoree.id}
+                                onEdit={() => beginAdminDirectEdit(honoree)}
+                                onQueue={() => queueHonoreeReprint(honoree)}
+                                onClaimants={() => viewClaimants(honoree)}
+                                onAssign={() => { void beginFlagPositionAssignment(honoree); }}
+                                onRegenerate={() => regenerateHonoreePdf(honoree)}
+                                onRemove={() => {
+                                  void beginRemoveFromGrid({
+                                    honoreeId: honoree.id,
+                                    name: displayNameWithNickname(honoree.fullName, honoree.nickname),
+                                    gridName: honoree.flagGrid || ""
+                                  });
                                 }}
-                              >
-                                <summary>Admin actions</summary>
-                                <div className="adminActionsPanel">
-                                  <button
-                                    type="button"
-                                    className="secondary compactButton"
-                                    onClick={(event) => {
-                                      (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
-                                      beginAdminDirectEdit(honoree);
-                                    }}
-                                    disabled={saving || regeneratingPdfHonoreeId === honoree.id}
-                                  >
-                                    Edit + reprint
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="secondary compactButton"
-                                    onClick={(event) => {
-                                      (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
-                                      queueHonoreeReprint(honoree);
-                                    }}
-                                    disabled={
-                                      saving ||
-                                      queueingReprintHonoreeId === honoree.id ||
-                                      regeneratingPdfHonoreeId === honoree.id
-                                    }
-                                  >
-                                    {queueingReprintHonoreeId === honoree.id ? "Adding..." : "Add to reprint queue"}
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="secondary compactButton"
-                                    onClick={(event) => {
-                                      (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
-                                      viewClaimants(honoree);
-                                    }}
-                                    disabled={claimantBusyHonoreeId === honoree.id}
-                                  >
-                                    {claimantBusyHonoreeId === honoree.id
-                                      ? "Loading claimants..."
-                                      : claimantsByHonoreeId[honoree.id]
-                                        ? "Hide claimants"
-                                        : "View claimants"}
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="secondary compactButton"
-                                    onClick={(event) => {
-                                      (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
-                                      void beginFlagPositionAssignment(honoree);
-                                    }}
-                                    disabled={saving}
-                                  >
-                                    Assign flag grid
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="secondary compactButton"
-                                    onClick={(event) => {
-                                      (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
-                                      regenerateHonoreePdf(honoree);
-                                    }}
-                                    disabled={
-                                      saving ||
-                                      regeneratingPdfHonoreeId === honoree.id ||
-                                      queueingReprintHonoreeId === honoree.id
-                                    }
-                                  >
-                                    {regeneratingPdfHonoreeId === honoree.id ? "Generating..." : "Regenerate PDF"}
-                                  </button>
-                                </div>
-                              </details>
+                              />
                             ) : null}
                           </div>
                         </div>
@@ -4977,7 +5045,7 @@ export default function App() {
                 <p className="helperText">Times are US Central (CST or CDT).</p>
                 {printHistoryError ? (
                   <p className="message error" role="alert">{printHistoryError}</p>
-                ) : visiblePrintHistory.length === 0 ? (
+                ) : visiblePrintHistory.length === 0 && reprintRemovals.length === 0 ? (
                   <p className="compactEmptyState">No cards have been marked printed yet.</p>
                 ) : (
                   <ul className="printHistoryList">
@@ -4987,6 +5055,11 @@ export default function App() {
                         <span className="printHistoryWho">{event.printedBy}</span>
                         <span className="printHistoryCount">{event.cardCount} card{event.cardCount === 1 ? "" : "s"}</span>
                         {event.comment ? <span className="printHistoryComment">{event.comment}</span> : null}
+                      </li>
+                    ))}
+                    {reprintRemovals.map((event) => (
+                      <li key={`removed-${event.id}`}>
+                        Removed by {event.actorEmail} at {formatPrintEventTime(event.utc)}: {event.reason}
                       </li>
                     ))}
                   </ul>

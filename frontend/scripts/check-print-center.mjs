@@ -114,13 +114,16 @@ test("Print Center row and merged download open the Honoree Card viewer", () => 
   const close = source.slice(source.indexOf("function closeCardPreview"), source.indexOf("function beginCardPreview"));
   assert.match(close, /printBatchAbort\.current\?\.abort\(\)/);
 
-  const mark = source.slice(source.indexOf("function markSelectedPrinted"), source.indexOf("async function removeSelectedFromReprintQueue"));
+  const mark = source.slice(source.indexOf("function markSelectedPrinted"), source.indexOf("function removeSelectedFromReprintQueue"));
   assert.match(mark, /setMarkPrintedOpen\(true\)/);
   assert.match(mark, /adminApi\.markPrinted\(instance, account, selectedPrintIds, comment\)/);
   assert.doesNotMatch(mark, /requestConfirmation/);
-  const remove = source.slice(source.indexOf("async function removeSelectedFromReprintQueue"), source.indexOf("async function removeOneFromReprintQueue"));
-  assert.match(remove, /requestConfirmation/);
-  assert.match(remove, /Remove from reprint queue/);
+  const remove = source.slice(source.indexOf("function removeSelectedFromReprintQueue"), source.indexOf("function removeOneFromReprintQueue"));
+  assert.match(remove, /setReprintRemove/);
+  assert.match(remove, /source: "bulk"/);
+  assert.match(source, /id="reprint-remove-reason"/);
+  assert.match(source, /Remove from reprint queue/);
+  assert.match(source, /reason, pending\.source/);
   assert.match(print, /aria-label="Print history"/);
   assert.match(print, /formatPrintEventTime\(event\.printedUtc\)/);
   assert.match(source, /id="mark-printed-title">Mark printed/);
