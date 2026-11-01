@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.1.1
+
+- Regenerating an honoree card PDF requires an administrator. Search, the honoree photo, and opening an honoree PDF stay available without signing in.
+- The regenerate response no longer names the storage account or container.
+
 ## 5.1.0
 
 - Duplicate merge can send the merged card to Ready to print when that option is checked.

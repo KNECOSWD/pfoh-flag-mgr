@@ -394,8 +394,6 @@ export type RegeneratePdfResult = {
   fileName: string;
   generatedUtc: string;
   uploaded: boolean;
-  storageAccount?: string;
-  container?: string;
   message?: string;
 };
 

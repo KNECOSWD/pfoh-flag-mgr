@@ -9,7 +9,6 @@ namespace PFOH.Api.Controllers;
 
 [ApiController]
 [Route("api/honorees")]
-[AllowAnonymous]
 public class HonoreesController(
     PfohDbContext db,
     IConfiguration configuration,
@@ -18,6 +17,7 @@ public class HonoreesController(
 {
     private static readonly HttpClient Http = new();
 
+    [AllowAnonymous]
     [HttpGet("search")]
     public async Task<ActionResult<IReadOnlyList<HonoreeSearchResultDto>>> Search(
         [FromQuery] string? q,
@@ -71,6 +71,7 @@ public class HonoreesController(
         return Ok(results);
     }
 
+    [AllowAnonymous]
     [HttpGet("{honoreeId:int}/photo")]
     public async Task<IActionResult> GetPhoto(int honoreeId, CancellationToken ct)
     {
@@ -107,6 +108,7 @@ public class HonoreesController(
         return NotFound("Honoree photo was not found.");
     }
 
+    [AllowAnonymous]
     [HttpGet("{honoreeId:int}/pdf")]
     public async Task<IActionResult> OpenOrCreatePdf(int honoreeId, CancellationToken ct)
     {
@@ -184,8 +186,6 @@ public class HonoreesController(
             .AsNoTracking()
             .FirstOrDefaultAsync(h => h.Id == honoreeId && h.IsActive, ct);
 
-        var storageAccount = fileStorage.GetConfiguredStorageAccountName();
-        var container = fileStorage.GetPdfContainerName();
         var fileName = fileStorage.GetHonoreePdfFileName(honoree.Id);
         byte[] pdf;
 
@@ -197,47 +197,33 @@ public class HonoreesController(
         }
         catch (Exception ex)
         {
-            return Ok(new
-            {
-                honoreeId = honoree.Id,
-                uploaded = false,
-                fileName,
-                storageAccount,
-                container,
-                generatedUtc = DateTime.UtcNow,
-                message = $"PDF generation failed before upload: {ex.Message}"
-            });
+            return RegenerateResult(honoree.Id, uploaded: false, fileName, $"PDF generation failed before upload: {ex.Message}");
         }
 
         try
         {
             fileName = await fileStorage.UploadPdfAsync(honoree.Id, pdf, ct);
-
-            return Ok(new
-            {
-                honoreeId = honoree.Id,
-                uploaded = true,
-                fileName,
-                storageAccount,
-                container,
-                generatedUtc = DateTime.UtcNow,
-                message = $"PDF regenerated and saved to {storageAccount}/{container}/{fileName}."
-            });
+            return RegenerateResult(honoree.Id, uploaded: true, fileName, $"PDF regenerated and saved as {fileName}.");
         }
         catch (Exception ex)
         {
-            return Ok(new
-            {
-                honoreeId = honoree.Id,
-                uploaded = false,
+            return RegenerateResult(
+                honoree.Id,
+                uploaded: false,
                 fileName,
-                storageAccount,
-                container,
-                generatedUtc = DateTime.UtcNow,
-                message = $"PDF was generated but could not be saved to {storageAccount}/{container}/{fileName}: {ex.Message}"
-            });
+                $"PDF was generated but could not be saved as {fileName}: {ex.Message}");
         }
     }
+
+    private ActionResult<object> RegenerateResult(int honoreeId, bool uploaded, string fileName, string message) =>
+        Ok(new
+        {
+            honoreeId,
+            uploaded,
+            fileName,
+            generatedUtc = DateTime.UtcNow,
+            message
+        });
 
     private string? BuildPublicImageUrl(string? photoFileName, string? fallbackImageUrl)
     {
