@@ -176,6 +176,25 @@ async function installApi(page: Page) {
   await page.route("**/api/**", fulfillApi);
 }
 
+async function expectCancelDiffersFromRedDanger(page: Page, cancelName: string, dangerName: string) {
+  const colors = await page.evaluate(({ cancelName, dangerName }) => {
+    const buttons = [...document.querySelectorAll(".appConfirmModal .modalActions button")];
+    const cancel = buttons.find((button) => button.textContent?.trim() === cancelName);
+    const danger = buttons.find((button) => button.textContent?.trim() === dangerName);
+    if (!cancel || !danger) return null;
+    return {
+      cancelBg: getComputedStyle(cancel).backgroundColor,
+      dangerBg: getComputedStyle(danger).backgroundColor
+    };
+  }, { cancelName, dangerName });
+  expect(colors, `${cancelName} and ${dangerName} are both in the dialog`).not.toBeNull();
+  expect(colors!.cancelBg).not.toBe(colors!.dangerBg);
+  const [red, green, blue] = (colors!.dangerBg.match(/\d+/g) ?? []).map(Number);
+  expect(red, colors!.dangerBg).toBeGreaterThan(120);
+  expect(green, colors!.dangerBg).toBeLessThan(60);
+  expect(blue, colors!.dangerBg).toBeLessThan(80);
+}
+
 test("typing Mann shows a clickable suggestion above the map and focuses that flag", async ({ page }) => {
   await installApi(page);
   await page.goto("/flag-map");
@@ -238,6 +257,9 @@ test.describe("administrator screens", () => {
         return Boolean(hit && (hit === node || node.contains(hit)));
       });
       expect(usable, `reason box is covered at ${width}px`).toBe(true);
+      if (width === 390 || width === 1280) {
+        await expectCancelDiffersFromRedDanger(page, "Cancel", "Not a duplicate");
+      }
     }
 
     await page.screenshot({ path: "e2e-shots/remove-from-grid-dialog.png", fullPage: false });
@@ -265,5 +287,9 @@ test.describe("administrator screens", () => {
     await expect(page.locator("#reprint-remove-reason")).toBeVisible();
     await page.locator("#reprint-remove-reason").fill("Already handed to the family");
     await expect(page.getByRole("button", { name: "Remove from queue" })).toBeEnabled();
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expectCancelDiffersFromRedDanger(page, "Cancel", "Remove from queue");
+    }
   });
 });
