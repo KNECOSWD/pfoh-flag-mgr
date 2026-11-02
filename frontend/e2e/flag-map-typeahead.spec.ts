@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 
 const mann = {
   honoreeId: 42,
@@ -176,6 +176,12 @@ async function installApi(page: Page) {
   await page.route("**/api/**", fulfillApi);
 }
 
+const CRIMSON = "rgb(155, 28, 49)";
+
+async function expectOutlineDangerIsCrimson(button: Locator) {
+  await expect.poll(() => button.evaluate((node) => getComputedStyle(node).color)).toBe(CRIMSON);
+}
+
 async function expectCancelDiffersFromRedDanger(page: Page, cancelName: string, dangerName: string) {
   const colors = await page.evaluate(({ cancelName, dangerName }) => {
     const buttons = [...document.querySelectorAll(".appConfirmModal .modalActions button")];
@@ -274,6 +280,7 @@ test.describe("administrator screens", () => {
     await page.getByText("Admin actions", { exact: true }).click();
     const removeAction = page.getByRole("button", { name: "Remove from flag grid" });
     await expect(removeAction).toBeVisible();
+    await expectOutlineDangerIsCrimson(removeAction);
     await removeAction.scrollIntoViewIfNeeded();
     await page.screenshot({ path: "e2e-shots/find-admin-actions.png", fullPage: true });
 
@@ -283,7 +290,10 @@ test.describe("administrator screens", () => {
 
     await page.goto("/admin/printing");
     await page.locator("#reprint-queue tbody input[type=checkbox]").check();
-    await page.getByRole("button", { name: "Remove selected" }).click();
+    const removeSelected = page.getByRole("button", { name: "Remove selected" });
+    await expect(removeSelected).toBeEnabled();
+    await expectOutlineDangerIsCrimson(removeSelected);
+    await removeSelected.click();
     await expect(page.locator("#reprint-remove-reason")).toBeVisible();
     await page.locator("#reprint-remove-reason").fill("Already handed to the family");
     await expect(page.getByRole("button", { name: "Remove from queue" })).toBeEnabled();
