@@ -809,6 +809,8 @@ public class PfohApiFactory : WebApplicationFactory<Program>
 
             services.RemoveAll<HonoreeFileStorage>();
             services.AddSingleton<HonoreeFileStorage, PendingReviewTestFileStorage>();
+            services.RemoveAll<IHonoreeCardRenderer>();
+            services.AddSingleton<IHonoreeCardRenderer, StubHonoreeCardRenderer>();
 
             services.AddAuthentication(options =>
             {
@@ -828,6 +830,10 @@ public class PfohApiFactory : WebApplicationFactory<Program>
         Services.GetRequiredService<HonoreeFileStorage>() as PendingReviewTestFileStorage
         ?? throw new InvalidOperationException("Test file storage was not registered.");
 
+    public StubHonoreeCardRenderer Renderer =>
+        Services.GetRequiredService<IHonoreeCardRenderer>() as StubHonoreeCardRenderer
+        ?? throw new InvalidOperationException("Test card renderer was not registered.");
+
     public sealed class PendingReviewTestFileStorage(IConfiguration configuration) : HonoreeFileStorage(configuration)
     {
         public Dictionary<string, byte[]> Photos { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -838,7 +844,21 @@ public class PfohApiFactory : WebApplicationFactory<Program>
 
         public Dictionary<int, byte[]> Pdfs { get; } = new();
 
+        public Dictionary<int, string> PdfStamps { get; } = new();
+
+        public Dictionary<string, string> PhotoEtags { get; } = new(StringComparer.OrdinalIgnoreCase);
+
         public HashSet<int> UnreadablePdfs { get; } = new();
+
+        public bool FailPdfSave { get; set; }
+
+        public TimeSpan SaveDelay { get; set; }
+
+        private int maxConcurrentSaves;
+
+        private int activeSaves;
+
+        public int MaxConcurrentSaves => maxConcurrentSaves;
 
         public override Task<byte[]?> DownloadPdfAsync(int honoreeId, CancellationToken ct)
         {
@@ -850,19 +870,97 @@ public class PfohApiFactory : WebApplicationFactory<Program>
             return Task.FromResult(Pdfs.TryGetValue(honoreeId, out var pdf) ? pdf : null);
         }
 
+        public override Task<StoredPdf?> ReadStoredPdfAsync(int honoreeId, CancellationToken ct)
+        {
+            if (UnreadablePdfs.Contains(honoreeId))
+            {
+                throw new IOException("Synthetic storage read failure.");
+            }
+
+            if (!Pdfs.TryGetValue(honoreeId, out var pdf) || pdf.Length == 0)
+            {
+                return Task.FromResult<StoredPdf?>(null);
+            }
+
+            PdfStamps.TryGetValue(honoreeId, out var stamp);
+            return Task.FromResult<StoredPdf?>(new StoredPdf(pdf, stamp, stamp));
+        }
+
+        public override async Task<string> SaveStoredPdfAsync(int honoreeId, byte[] pdf, string stamp, CancellationToken ct)
+        {
+            if (FailPdfSave)
+            {
+                throw new IOException("Synthetic PDF save failure.");
+            }
+
+            var now = Interlocked.Increment(ref activeSaves);
+            int observed;
+            do
+            {
+                observed = maxConcurrentSaves;
+                if (now <= observed)
+                {
+                    break;
+                }
+            }
+            while (Interlocked.CompareExchange(ref maxConcurrentSaves, now, observed) != observed);
+
+            try
+            {
+                if (SaveDelay > TimeSpan.Zero)
+                {
+                    await Task.Delay(SaveDelay, ct);
+                }
+
+                Pdfs[honoreeId] = pdf;
+                PdfStamps[honoreeId] = stamp;
+                return GetHonoreePdfFileName(honoreeId);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref activeSaves);
+            }
+        }
+
         public override Task<string> UploadPdfAsync(int honoreeId, byte[] pdf, CancellationToken ct)
         {
             Pdfs[honoreeId] = pdf;
             return Task.FromResult(GetHonoreePdfFileName(honoreeId));
         }
 
+        public override Task<string?> GetPhotoEtagAsync(string? photoFileName, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(photoFileName))
+            {
+                return Task.FromResult<string?>("");
+            }
+
+            if (PhotoEtags.TryGetValue(photoFileName, out var etag))
+            {
+                return Task.FromResult<string?>(etag);
+            }
+
+            if (Photos.TryGetValue(photoFileName, out var bytes))
+            {
+                return Task.FromResult<string?>(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)));
+            }
+
+            return Task.FromResult<string?>(photoFileName);
+        }
+
         public void Reset()
         {
             Pdfs.Clear();
+            PdfStamps.Clear();
+            PhotoEtags.Clear();
             UnreadablePdfs.Clear();
             Photos.Clear();
             DeletedPendingPhotos.Clear();
             DownloadedImages.Clear();
+            FailPdfSave = false;
+            SaveDelay = TimeSpan.Zero;
+            maxConcurrentSaves = 0;
+            activeSaves = 0;
         }
 
         public override async Task<string?> UploadPendingImageAsync(IFormFile? photo, int changeRequestId, CancellationToken ct)
@@ -1071,18 +1169,10 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
     }
 }
 
-public static class ReprintClaimStatusFault
-{
-    public static bool RejectCancelled { get; set; }
-}
-
-public static class NominatePhotoSaveFault
-{
-    public static bool RejectPhotoFileNameUpdate { get; set; }
-}
-
 public sealed class NominatePhotoSaveFaultInterceptor : SaveChangesInterceptor
 {
+    public bool RejectPhotoFileNameUpdate { get; set; }
+
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
     {
         ThrowIfRejected(eventData.Context);
@@ -1098,9 +1188,9 @@ public sealed class NominatePhotoSaveFaultInterceptor : SaveChangesInterceptor
         return base.SavingChangesAsync(eventData, result, cancellationToken);
     }
 
-    private static void ThrowIfRejected(DbContext? context)
+    private void ThrowIfRejected(DbContext? context)
     {
-        if (!NominatePhotoSaveFault.RejectPhotoFileNameUpdate || context is null)
+        if (!RejectPhotoFileNameUpdate || context is null)
         {
             return;
         }
@@ -1116,6 +1206,8 @@ public sealed class NominatePhotoSaveFaultInterceptor : SaveChangesInterceptor
 
 public sealed class ReprintClaimStatusFaultInterceptor : SaveChangesInterceptor
 {
+    public bool RejectCancelled { get; set; }
+
     public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
     {
         ThrowIfRejected(eventData.Context);
@@ -1131,9 +1223,9 @@ public sealed class ReprintClaimStatusFaultInterceptor : SaveChangesInterceptor
         return base.SavingChangesAsync(eventData, result, cancellationToken);
     }
 
-    private static void ThrowIfRejected(DbContext? context)
+    private void ThrowIfRejected(DbContext? context)
     {
-        if (!ReprintClaimStatusFault.RejectCancelled || context is null)
+        if (!RejectCancelled || context is null)
         {
             return;
         }

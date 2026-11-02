@@ -75,7 +75,8 @@ public class ReprintQueueMaintenance(PfohDbContext db)
         int honoreeId,
         int? keepChangeRequestId,
         string adminName,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? actorObjectId = null)
     {
         var activeItems = await db.HonoreeChangeRequests
             .Include(request => request.FlagClaim)
@@ -100,9 +101,25 @@ public class ReprintQueueMaintenance(PfohDbContext db)
         keepItem ??= activeItems[0];
 
         var now = DateTime.UtcNow;
-        foreach (var duplicate in activeItems.Where(request => request.Id != keepItem.Id))
+        var duplicates = activeItems.Where(request => request.Id != keepItem.Id).ToList();
+        if (duplicates.Count > 0)
+        {
+            await ReprintQueueEventSchema.EnsureAsync(db, ct);
+        }
+        foreach (var duplicate in duplicates)
         {
             ApplyDuplicateRemoval(duplicate, keepItem.Id, adminName, now);
+            ReprintQueueAudit.Add(
+                db,
+                duplicate.Id,
+                duplicate.HonoreeId,
+                ReprintQueueActions.DedupRemove,
+                adminName,
+                actorObjectId,
+                now,
+                $"Removed duplicate reprint queue item. Active queue item #{keepItem.Id} remains for this honoree.",
+                "dedup",
+                duplicates.Count);
         }
 
         await db.SaveChangesAsync(ct);
@@ -112,7 +129,8 @@ public class ReprintQueueMaintenance(PfohDbContext db)
         int duplicateChangeRequestId,
         int keepChangeRequestId,
         string adminName,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? actorObjectId = null)
     {
         if (duplicateChangeRequestId == keepChangeRequestId)
         {
@@ -130,7 +148,20 @@ public class ReprintQueueMaintenance(PfohDbContext db)
             return;
         }
 
-        ApplyDuplicateRemoval(duplicate, keepChangeRequestId, adminName, DateTime.UtcNow);
+        await ReprintQueueEventSchema.EnsureAsync(db, ct);
+        var now = DateTime.UtcNow;
+        ApplyDuplicateRemoval(duplicate, keepChangeRequestId, adminName, now);
+        ReprintQueueAudit.Add(
+            db,
+            duplicate.Id,
+            duplicate.HonoreeId,
+            ReprintQueueActions.DedupRemove,
+            adminName,
+            actorObjectId,
+            now,
+            $"Removed duplicate reprint queue item. Active queue item #{keepChangeRequestId} remains for this honoree.",
+            "dedup",
+            1);
         await db.SaveChangesAsync(ct);
     }
 

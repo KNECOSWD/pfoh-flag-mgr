@@ -1,5 +1,13 @@
 # Changelog
 
+## 5.2.0
+
+- Administrators can remove an honoree from a flag grid from Search or Flag Manager. The confirm dialog requires a reason, warns when another active honoree looks similar, and offers Merge instead. The spot is freed, the honoree is marked inactive, open claims go to Unclaimed, pending edits are cancelled, and unprinted reprints are cleared. The Removal Queue row records who did it and why, and Restore puts the honoree back on that spot when it is still open.
+- Removing a card from the reprint queue asks for a reason. The print history shows who removed it, when, and why.
+- A honoree card PDF is rebuilt when the honoree's data, photo, or file changes, and again when the PDF is opened if the stored file is out of date. An inactive honoree returns no PDF. A failed rebuild leaves the saved change in place.
+- Public Flag Map suggestions stay above the map so they can be clicked.
+- An account with the Admin role can use the same administrator actions as PFOH.Admin.
+
 ## 5.1.0
 
 - Duplicate merge can send the merged card to Ready to print when that option is checked.

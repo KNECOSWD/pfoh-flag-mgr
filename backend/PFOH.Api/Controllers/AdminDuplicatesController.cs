@@ -18,7 +18,8 @@ namespace PFOH.Api.Controllers;
 public class AdminDuplicatesController(
     PfohDbContext db,
     IWebHostEnvironment environment,
-    HonoreeFileStorage fileStorage) : ControllerBase
+    HonoreeFileStorage fileStorage,
+    HonoreePdfService pdfs) : ControllerBase
 {
     [HttpGet("groups")]
     public async Task<ActionResult<IReadOnlyList<DuplicateGroupDto>>> Groups(CancellationToken ct)
@@ -48,7 +49,7 @@ public class AdminDuplicatesController(
         var strategy = db.Database.CreateExecutionStrategy();
         try
         {
-            return await strategy.ExecuteInTransactionAsync<ActionResult<DuplicateMergeResultDto>>(
+            var merged = await strategy.ExecuteInTransactionAsync<ActionResult<DuplicateMergeResultDto>>(
                 async _ =>
                 {
                     // Survivor and the other rows were loaded before this delegate.
@@ -102,6 +103,16 @@ public class AdminDuplicatesController(
                         ct);
                 },
                 ct);
+            if (merged.Value is { } saved)
+            {
+                await pdfs.TryRebuildAsync(saved.SurvivorId, ct);
+                foreach (var absorbedId in saved.DeactivatedIds)
+                {
+                    await pdfs.TryRebuildAsync(absorbedId, ct, includeInactive: true);
+                }
+            }
+
+            return merged;
         }
         catch (MergeRecordCountException)
         {
@@ -359,7 +370,7 @@ public class AdminDuplicatesController(
         }
 
         var strategy = db.Database.CreateExecutionStrategy();
-        return await strategy.ExecuteInTransactionAsync<IActionResult>(
+        var undone = await strategy.ExecuteInTransactionAsync<IActionResult>(
             async _ =>
             {
                 db.ChangeTracker.Clear();
@@ -386,6 +397,49 @@ public class AdminDuplicatesController(
                 return undone != null;
             },
             ct);
+
+        if (undone is OkObjectResult)
+        {
+            var audit = await db.HonoreeMergeAudits.AsNoTracking().FirstOrDefaultAsync(row => row.Id == id, ct);
+            if (audit is not null)
+            {
+                await pdfs.TryRebuildAsync(audit.SurvivorId, ct);
+                foreach (var absorbedId in ReadIdList(audit.AbsorbedHonoreeIds))
+                {
+                    await pdfs.TryRebuildAsync(absorbedId, ct);
+                }
+            }
+        }
+
+        return undone;
+    }
+
+    private static IEnumerable<int> ReadIdList(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            yield break;
+        }
+
+        int[]? ids;
+        try
+        {
+            ids = System.Text.Json.JsonSerializer.Deserialize<int[]>(json);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            yield break;
+        }
+
+        if (ids is null)
+        {
+            yield break;
+        }
+
+        foreach (var absorbedId in ids)
+        {
+            yield return absorbedId;
+        }
     }
 
     [HttpPost("not-duplicates")]

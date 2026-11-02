@@ -1069,7 +1069,7 @@ input[type="tel"] {
   margin-top: var(--space-sm);
 }
 
-.appConfirmModal .modalActions button:not(.secondary):not(.dangerButton) {
+.appConfirmModal .modalActions button:not(.secondary):not(.dangerButton):not(.btn) {
   background: var(--color-navy);
   color: var(--color-surface);
 }

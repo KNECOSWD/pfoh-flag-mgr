@@ -125,7 +125,8 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         factory.Files.Reset();
         var photo = new byte[] { 1, 2, 3, 4 };
         var client = factory.CreateClient();
-        NominatePhotoSaveFault.RejectPhotoFileNameUpdate = true;
+        var photoFault = factory.Services.GetRequiredService<NominatePhotoSaveFaultInterceptor>();
+        photoFault.RejectPhotoFileNameUpdate = true;
         try
         {
             var nominate = await client.SendAsync(Authed(
@@ -139,7 +140,7 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         }
         finally
         {
-            NominatePhotoSaveFault.RejectPhotoFileNameUpdate = false;
+            photoFault.RejectPhotoFileNameUpdate = false;
         }
 
         Assert.Empty(factory.Files.Photos);
@@ -1049,7 +1050,7 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
             "admin@example.com",
             "Admin",
             roles: "PFOH.Admin",
-            body: new { changeRequestIds = new[] { 21, 22 } }));
+            body: new { changeRequestIds = new[] { 21, 22 }, reason = "Printed another way", source = "bulk" }));
         var text = await response.Content.ReadAsStringAsync();
         Assert.True(response.StatusCode == HttpStatusCode.OK, text);
         using var json = JsonDocument.Parse(text);
@@ -1107,7 +1108,8 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         }
 
         ReprintRemoveWarningLog.Lines.Clear();
-        ReprintClaimStatusFault.RejectCancelled = true;
+        var claimFault = factory.Services.GetRequiredService<ReprintClaimStatusFaultInterceptor>();
+        claimFault.RejectCancelled = true;
         try
         {
             var client = factory.CreateClient();
@@ -1118,7 +1120,7 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
                 "admin@example.com",
                 "Admin",
                 roles: "PFOH.Admin",
-                body: new { changeRequestIds = new[] { 21 } }));
+                body: new { changeRequestIds = new[] { 21 }, reason = "Printed another way", source = "row" }));
             var text = await response.Content.ReadAsStringAsync();
             Assert.True(response.StatusCode == HttpStatusCode.OK, text);
             using var json = JsonDocument.Parse(text);
@@ -1126,7 +1128,7 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         }
         finally
         {
-            ReprintClaimStatusFault.RejectCancelled = false;
+            claimFault.RejectCancelled = false;
         }
 
         await using var check = factory.Services.CreateAsyncScope();

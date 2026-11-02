@@ -113,6 +113,21 @@
   --bs-btn-disabled-border-color: var(--color-crimson);
 }
 
+.btn-outline-danger {
+  --bs-btn-color: var(--color-crimson);
+  --bs-btn-border-color: var(--color-crimson);
+  --bs-btn-hover-color: var(--color-on-navy);
+  --bs-btn-hover-bg: var(--color-crimson);
+  --bs-btn-hover-border-color: var(--color-crimson);
+  --bs-btn-focus-shadow-rgb: 155, 28, 49;
+  --bs-btn-active-color: var(--color-on-navy);
+  --bs-btn-active-bg: var(--color-crimson);
+  --bs-btn-active-border-color: var(--color-crimson);
+  --bs-btn-disabled-color: var(--color-crimson);
+  --bs-btn-disabled-bg: transparent;
+  --bs-btn-disabled-border-color: var(--color-crimson);
+}
+
 .form-control,
 .form-select {
   min-height: var(--size-touch);

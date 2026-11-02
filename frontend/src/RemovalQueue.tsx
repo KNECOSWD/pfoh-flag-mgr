@@ -23,6 +23,7 @@ export function RemovalQueue({
   const [loadError, setLoadError] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   async function load() {
     if (!account) return;
@@ -72,6 +73,24 @@ export function RemovalQueue({
     }
   }
 
+  async function restore(id: number) {
+    if (!account) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await adminApi.restoreRemoval(instance, account, id);
+      await load();
+      onChanged?.();
+      if (result.pdfWarning) setNotice(result.pdfWarning);
+    } catch (err) {
+      if (isQuietAuthRejection(err)) return;
+      setError(err instanceof ApiError ? err.serverMessage || err.message : "The honoree could not be restored.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function markDone(ids: number[]) {
     if (!account || ids.length === 0) return;
     setBusy(true);
@@ -99,12 +118,14 @@ export function RemovalQueue({
       loadError={loadError}
       busy={busy}
       error={error}
+      notice={notice}
       selectedIds={selectedIds}
       onToggle={(id: number) => setSelectedIds((current) => toggleRemovalSelection(current, id))}
       onToggleAll={() =>
         setSelectedIds((current) => toggleSelectAllRemovalItems(openItems.map((item) => item.id), current))
       }
       onMarkDone={(ids: number[]) => void markDone(ids)}
+      onRestore={(id: number) => void restore(id)}
       onRefresh={() => void load()}
       onShowOpen={() => setStatus("open")}
       onShowDone={() => setStatus("done")}

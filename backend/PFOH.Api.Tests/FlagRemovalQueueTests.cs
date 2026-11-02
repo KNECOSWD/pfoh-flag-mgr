@@ -24,7 +24,7 @@ public class FlagRemovalQueueTests : IDisposable
         await SeedGridAsync(13, "D-03");
         var client = factory.CreateClient();
 
-        var cleared = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/review/flag-positions/11/clear"));
+        var cleared = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/review/flag-positions/11/clear", new { reason = "Card was pulled", acknowledgeDuplicates = true }));
         await AssertSavedAsync(cleared);
 
         await using (var scope = factory.Services.CreateAsyncScope())
@@ -38,10 +38,22 @@ public class FlagRemovalQueueTests : IDisposable
             Assert.Null(item.DoneUtc);
             Assert.Null(item.NewFlagGridId);
             Assert.Null(await db.FlagGrids.Where(grid => grid.Id == 11).Select(grid => grid.HonoreeId).SingleAsync());
+            var removed = await db.Honorees.SingleAsync(honoree => honoree.Id == 1);
+            Assert.False(removed.IsActive);
+            Assert.Null(removed.FlagGridId);
         }
 
-        var clearMove = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/review/flag-positions/12/clear"));
+        var clearMove = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/review/flag-positions/12/clear", new { reason = "Moving the card", acknowledgeDuplicates = true }));
         await AssertSavedAsync(clearMove);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var moving = await db.Honorees.SingleAsync(honoree => honoree.Id == 2);
+            moving.IsActive = true;
+            moving.DeletedDate = null;
+            moving.DeletedBy = null;
+            await db.SaveChangesAsync();
+        }
         var assignMove = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/review/flag-positions/13/assign", new { honoreeId = 2 }));
         await AssertSavedAsync(assignMove);
 
@@ -56,7 +68,7 @@ public class FlagRemovalQueueTests : IDisposable
             Assert.Equal("C-07", move.FlagGridName);
             Assert.Equal(13, move.NewFlagGridId);
             Assert.Equal("D-03", move.NewFlagGridName);
-            Assert.Null(move.SourceDetail);
+            Assert.Equal("Moving the card", move.SourceDetail);
             Assert.Equal(2, await db.FlagGrids.Where(grid => grid.Id == 13).Select(grid => grid.HonoreeId).SingleAsync());
         }
     }
@@ -78,9 +90,16 @@ public class FlagRemovalQueueTests : IDisposable
             Assert.Empty(await db.FlagRemovalQueueItems.ToListAsync());
         }
 
-        var cleared = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/review/flag-positions/11/clear"));
+        var cleared = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/review/flag-positions/11/clear", new { reason = "Put the card back", acknowledgeDuplicates = true }));
         await AssertSavedAsync(cleared);
-        var same = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/review/flag-positions/11/assign", new { honoreeId = 1 }));
+        int queueId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            queueId = await db.FlagRemovalQueueItems.Select(item => item.Id).SingleAsync();
+        }
+
+        var same = await client.SendAsync(Admin(HttpMethod.Post, $"/api/admin/removal-queue/{queueId}/restore"));
         await AssertSavedAsync(same);
 
         var count = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/removal-queue/count"));
@@ -91,7 +110,7 @@ public class FlagRemovalQueueTests : IDisposable
         var done = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/removal-queue?status=done"));
         var rows = await done.Content.ReadFromJsonAsync<List<QueueRow>>();
         var canceled = Assert.Single(rows!);
-        Assert.Equal(FlagRemovalQueue.SameSpotReason, canceled.CancelReason);
+        Assert.Equal(FlagGridRemovalService.RestoreCancelReason, canceled.CancelReason);
         Assert.Equal("A-12", canceled.FlagGridName);
     }
 
@@ -371,8 +390,8 @@ public class FlagRemovalQueueTests : IDisposable
         await SeedHonoreeAsync(1, "Example", "Honoree A", 11, "A-12");
         await SeedHonoreeAsync(2, "Example", "Honoree B", 12, "B-04");
         var client = factory.CreateClient();
-        await AssertSavedAsync(await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/review/flag-positions/11/clear")));
-        await AssertSavedAsync(await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/review/flag-positions/12/clear")));
+        await AssertSavedAsync(await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/review/flag-positions/11/clear", new { reason = "Pull the first card", acknowledgeDuplicates = true })));
+        await AssertSavedAsync(await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/review/flag-positions/12/clear", new { reason = "Pull the second card", acknowledgeDuplicates = true })));
 
         List<int> ids;
         await using (var scope = factory.Services.CreateAsyncScope())

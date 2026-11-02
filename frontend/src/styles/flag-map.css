@@ -774,16 +774,12 @@
 }
 
 .publicFlagSuggestions {
-  margin: var(--space-3xs) 0 0;
   padding: var(--space-3xs);
   border: 1px solid rgba(212, 175, 55, 0.45);
   background: var(--color-surface);
   overflow: auto;
   border-radius: 16px;
   list-style: none;
-  position: absolute;
-  z-index: 5;
-  width: 100%;
   max-height: 320px;
   box-shadow: 0 18px 40px rgba(7, 21, 38, 0.18);
   touch-action: pan-y;

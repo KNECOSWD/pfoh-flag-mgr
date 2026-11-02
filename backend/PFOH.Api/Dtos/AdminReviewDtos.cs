@@ -44,7 +44,8 @@ public record AdminPrintQueueItemDto(
     string? ServiceBranchName,
     string? PdfUrl,
     DateTime? ApprovedUtc,
-    DateTime? CardPrintedUtc);
+    DateTime? CardPrintedUtc,
+    string? PdfWarning = null);
 
 public class ApproveChangeRequest
 {
@@ -81,6 +82,21 @@ public sealed record CardPrintEventDto(
     string PrintedBy,
     int CardCount,
     string? Comment);
+
+public sealed record ReprintRemovalHistoryDto(
+    int Id,
+    int ChangeRequestId,
+    int? HonoreeId,
+    string Action,
+    string ActorEmail,
+    DateTime Utc,
+    string? Reason,
+    string Source,
+    int BatchSize);
+
+public sealed record PrintHistoryDto(
+    IReadOnlyList<CardPrintEventDto> Printed,
+    IReadOnlyList<ReprintRemovalHistoryDto> Removed);
 
 public sealed record PrintBatchCardDto(int ChangeRequestId, int HonoreeId, string HonoreeName);
 

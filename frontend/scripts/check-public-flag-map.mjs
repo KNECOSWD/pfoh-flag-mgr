@@ -218,7 +218,10 @@ test("zoomed-out zones use real ranges and spots stay inside their box", () => {
   assert.match(chrome, /overflow:\s*visible/);
   assert.match(chrome, /z-index:\s*(?:30|var\(--z-drawer\))/);
   assert.match(css, /\.publicFlagChrome\s*\{[^}]*z-index:\s*(?:30|var\(--z-drawer\))/);
-  assert.match(css, /\.publicFlagSuggestions\s*\{[^}]*z-index:\s*5/);
+  const suggestions = ruleBlock(css, ".publicFlagSuggestions");
+  assert.doesNotMatch(suggestions, /position:|z-index:/);
+  assert.match(ruleBlock(css, ".publicFlagSuggestLayer"), /position:\s*fixed/);
+  assert.match(ruleBlock(css, ".publicFlagSuggestLayer"), /z-index:\s*var\(--z-drawer\)/);
   assert.match(css, /\.publicFlagStage\s*\{[^}]*z-index:\s*1/);
   assert.doesNotMatch(css, /\.publicFlagDot/);
   const spot = { width: SPOT_SIZE.width, height: SPOT_SIZE.height, flagGridName: "AA-11" };
