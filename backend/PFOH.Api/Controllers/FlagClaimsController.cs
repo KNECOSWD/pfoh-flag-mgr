@@ -599,9 +599,6 @@ public class FlagClaimsController(
         CancellationToken ct)
     {
         request ??= new DuplicateCheckRequest();
-        var email = string.IsNullOrWhiteSpace(request.SubmitterEmailAddress)
-            ? User.GetEmail()
-            : request.SubmitterEmailAddress;
         var matches = await submissions.FindAsync(
             new SubmissionProbe(
                 request.FirstName,
@@ -611,10 +608,11 @@ public class FlagClaimsController(
                 request.Nickname,
                 request.Rank,
                 request.ServiceBranchId,
-                email),
+                User.GetEmail()),
             request.ExcludeHonoreeId,
             request.ExcludeChangeRequestId,
             CallerIsAdmin(),
+            User.GetExternalObjectId(),
             ct);
         return Ok(new DuplicateCheckResponse(submissions.Enabled, matches));
     }
@@ -644,14 +642,16 @@ public class FlagClaimsController(
         var replay = await submissions.FindByIdempotencyKeyAsync(clientRequestId, ct);
         if (replay is not null)
         {
-            return Ok(await WithReceiptAsync(replay, ct));
+            return await ReplayForCallerAsync(replay, userObjectId, ct);
         }
 
-        var duplicateAction = request.DuplicateAction?.Trim().ToLowerInvariant();
+        var duplicateAction = submissions.Enabled
+            ? request.DuplicateAction?.Trim().ToLowerInvariant()
+            : null;
         if (submissions.Enabled && duplicateAction is not ("submit-new" or "update"))
         {
             var recent = await submissions.FindRecentIdenticalAsync(
-                request.SubmitterEmailAddress ?? email,
+                userObjectId,
                 request.FirstName,
                 request.LastName,
                 request.ServiceBranchId,
@@ -669,17 +669,39 @@ public class FlagClaimsController(
 
         if (submissions.Enabled && duplicateAction != "submit-new")
         {
-            var matches = await submissions.FindAsync(ProbeFrom(request, email), null, null, CallerIsAdmin(), ct);
+            var matches = await submissions.FindAsync(
+                ProbeFrom(request, email),
+                null,
+                null,
+                CallerIsAdmin(),
+                userObjectId,
+                ct);
             if (matches.Count > 0)
             {
+                var raced = await ReplayIfKeyExistsAsync(clientRequestId, userObjectId, ct);
+                if (raced is not null)
+                {
+                    return raced;
+                }
+
                 return Conflict(new { code = "similar-entry", matches });
             }
         }
 
         var strategy = db.Database.CreateExecutionStrategy();
-        var created = await strategy.ExecuteInTransactionAsync<(int ChangeId, ActionResult<FlagClaimDto>? Error)>(async _ =>
+        (int ChangeId, ActionResult<FlagClaimDto>? Error) created;
+        try
+        {
+        created = await strategy.ExecuteInTransactionAsync<(int ChangeId, ActionResult<FlagClaimDto>? Error)>(async _ =>
         {
         db.ChangeTracker.Clear();
+        var already = await db.FlagClaims
+            .AsNoTracking()
+            .AnyAsync(row => row.ClientRequestId == clientRequestId, ct);
+        if (already)
+        {
+            return (-1, null);
+        }
 
         var submitter = await GetOrCreateSubmitterSponsorAsync(email, name, ct);
         if (submitter is null)
@@ -734,6 +756,29 @@ public class FlagClaimsController(
                 ct);
         },
         ct);
+        }
+        catch (DbUpdateException ex) when (UserProfileService.IsUniqueViolation(ex))
+        {
+            db.ChangeTracker.Clear();
+            var raced = await ReplayIfKeyExistsAsync(clientRequestId, userObjectId, ct);
+            if (raced is not null)
+            {
+                return raced;
+            }
+
+            throw;
+        }
+
+        if (created.ChangeId < 0)
+        {
+            var raced = await ReplayIfKeyExistsAsync(clientRequestId, userObjectId, ct);
+            if (raced is not null)
+            {
+                return raced;
+            }
+
+            return Conflict(new { code = "idempotency-key-in-use" });
+        }
 
         if (created.Error is not null)
         {
@@ -774,7 +819,7 @@ public class FlagClaimsController(
         var savedChange = saved.HonoreeChangeRequests.First(row => row.Id == created.ChangeId);
         if (duplicateAction == "submit-new")
         {
-            await submissions.SupersedeSameDayAsync(savedChange, savedChange.SubmitterEmailAddress, userObjectId, ct);
+            await submissions.SupersedeSameDayAsync(savedChange, email, userObjectId, ct);
         }
 
         return Ok(await FinishSubmissionAsync(saved, savedChange, ct));
@@ -950,7 +995,7 @@ public class FlagClaimsController(
         var adminName = actor.Email;
         int? changedHonoreeId = null;
 
-        if (Request.Headers.ContainsKey("X-Duplicate-Check"))
+        if (submissions.Enabled && Request.Headers.ContainsKey("X-Duplicate-Check"))
         {
             var draft = await db.HonoreeChangeRequests
                 .AsNoTracking()
@@ -976,6 +1021,7 @@ public class FlagClaimsController(
                     draft.HonoreeId,
                     draft.Id,
                     true,
+                    actor.ObjectId,
                     ct);
                 if (matches.Count > 0)
                 {
@@ -1380,13 +1426,18 @@ public class FlagClaimsController(
             return ValidationProblem(ModelState);
         }
 
+        if (!submissions.Enabled)
+        {
+            return NotFound("That pending submission was not found.");
+        }
+
         var key = ReadIdempotencyKey();
         if (key is Guid existingKey)
         {
             var replay = await submissions.FindByIdempotencyKeyAsync(existingKey, ct);
             if (replay is not null)
             {
-                return Ok(await WithReceiptAsync(replay, ct));
+                return await ReplayForCallerAsync(replay, User.GetExternalObjectId(), ct);
             }
         }
 
@@ -1398,21 +1449,18 @@ public class FlagClaimsController(
             return NotFound("That pending submission was not found.");
         }
 
-        var email = User.GetEmail();
-        var sameEmail = SubmissionGuardService.EmailsEqual(
-            request.SubmitterEmailAddress ?? email,
-            string.IsNullOrWhiteSpace(change.SubmitterEmailAddress)
-                ? change.FlagClaim?.ExternalUserEmail
-                : change.SubmitterEmailAddress);
-        if (!CallerIsAdmin() && !sameEmail)
+        var callerId = User.GetExternalObjectId();
+        var owns = !string.IsNullOrWhiteSpace(callerId)
+            && string.Equals(change.FlagClaim?.ExternalUserObjectId, callerId, StringComparison.Ordinal);
+        if (!CallerIsAdmin() && !owns)
         {
-            return Conflict(new { message = "This pending entry was submitted from a different email. Send a correction request instead." });
+            return StatusCode(StatusCodes.Status403Forbidden);
         }
 
         var keepEmail = change.SubmitterEmailAddress;
         var keepPhone = change.SubmitterPhoneNumber;
         ApplyRequest(change, request);
-        if (!sameEmail)
+        if (!owns)
         {
             change.SubmitterEmailAddress = keepEmail;
             change.SubmitterPhoneNumber = keepPhone;
@@ -1442,6 +1490,20 @@ public class FlagClaimsController(
         Guid clientRequestId,
         CancellationToken ct)
     {
+        if (submissions.TryReadMatchToken(request.MatchToken, out var tokenKind, out var tokenId))
+        {
+            request.MatchKind = tokenKind;
+            if (tokenKind == "Approved")
+            {
+                request.MatchHonoreeId = tokenId;
+            }
+
+            if (tokenKind == "Pending")
+            {
+                request.MatchChangeRequestId = tokenId;
+            }
+        }
+
         var kind = request.MatchKind?.Trim();
         if (string.Equals(kind, "Approved", StringComparison.OrdinalIgnoreCase) && request.MatchHonoreeId is int honoreeId)
         {
@@ -1463,18 +1525,15 @@ public class FlagClaimsController(
                 return NotFound("That pending submission was not found.");
             }
 
-            var sameEmail = SubmissionGuardService.EmailsEqual(
-                request.SubmitterEmailAddress ?? email,
-                string.IsNullOrWhiteSpace(pending.SubmitterEmailAddress)
-                    ? pending.FlagClaim?.ExternalUserEmail
-                    : pending.SubmitterEmailAddress);
-            if (CallerIsAdmin() || (sameEmail && pending.HonoreeId is not > 0))
+            var owns = !string.IsNullOrWhiteSpace(userObjectId)
+                && string.Equals(pending.FlagClaim?.ExternalUserObjectId, userObjectId, StringComparison.Ordinal);
+            if (pending.HonoreeId is > 0 && CallerIsAdmin())
             {
-                if (pending.HonoreeId is > 0 && CallerIsAdmin())
-                {
-                    return await AdminApplyFields(pending.HonoreeId.Value, request, ct);
-                }
+                return await AdminApplyFields(pending.HonoreeId.Value, request, ct);
+            }
 
+            if ((CallerIsAdmin() || owns) && pending.HonoreeId is not > 0)
+            {
                 return await ApplyPending(changeId, request, ct);
             }
 
@@ -1542,7 +1601,22 @@ public class FlagClaimsController(
 
         claim.HonoreeChangeRequests.Add(change);
         db.FlagClaims.Add(claim);
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (UserProfileService.IsUniqueViolation(ex))
+        {
+            db.ChangeTracker.Clear();
+            var raced = await ReplayIfKeyExistsAsync(clientRequestId, userObjectId, ct);
+            if (raced is not null)
+            {
+                return raced;
+            }
+
+            throw;
+        }
+
         await AttachPendingPhotoAsync(change.Id, request.Photo, ct);
         var saved = await db.FlagClaims
             .Include(row => row.FlagGrid)
@@ -1584,6 +1658,34 @@ public class FlagClaimsController(
         return Guid.TryParse(values.ToString(), out var key) ? key : null;
     }
 
+    private async Task<ActionResult<FlagClaimDto>?> ReplayIfKeyExistsAsync(
+        Guid key,
+        string userObjectId,
+        CancellationToken ct)
+    {
+        var raced = await submissions.FindByIdempotencyKeyAsync(key, ct);
+        if (raced is null)
+        {
+            return null;
+        }
+
+        return await ReplayForCallerAsync(raced, userObjectId, ct);
+    }
+
+    private async Task<ActionResult<FlagClaimDto>> ReplayForCallerAsync(
+        FlagClaim replay,
+        string userObjectId,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(userObjectId)
+            || !string.Equals(replay.ExternalUserObjectId, userObjectId, StringComparison.Ordinal))
+        {
+            return Conflict(new { code = "idempotency-key-in-use" });
+        }
+
+        return Ok(await WithReceiptAsync(replay, ct));
+    }
+
     private static SubmissionProbe ProbeFrom(NominateHonoreeRequest request, string email) =>
         new(
             request.FirstName,
@@ -1593,7 +1695,7 @@ public class FlagClaimsController(
             request.Nickname,
             request.Rank,
             request.ServiceBranchId,
-            request.SubmitterEmailAddress ?? email);
+            email);
 
     private async Task AttachPendingPhotoAsync(int changeId, IFormFile? photo, CancellationToken ct)
     {

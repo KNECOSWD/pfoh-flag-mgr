@@ -9,7 +9,7 @@ namespace PFOH.Api.Tests;
 
 /// <summary>
 /// Runs the ClientRequestId startup batches against SQL Server.
-/// Skipped unless PFOH_SQLSERVER is a connection string. CI does not set it.
+/// Skipped unless PFOH_SQLSERVER is a connection string. CI sets that when the SQL Server service is up.
 /// </summary>
 public class ClientRequestIdSchemaSqlServerTests
 {

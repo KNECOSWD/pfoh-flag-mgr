@@ -15,6 +15,7 @@ public static class SubmissionGuardSchema
     private static bool ready;
 
     internal const string CreateSql = """
+        SET LOCK_TIMEOUT 5000;
         IF OBJECT_ID(N'[dbo].[SubmissionReceipts]', N'U') IS NULL
         BEGIN
             CREATE TABLE [dbo].[SubmissionReceipts] (
@@ -53,12 +54,14 @@ public static class SubmissionGuardSchema
         """;
 
     internal const string AddPublicCodeSql = """
+        SET LOCK_TIMEOUT 5000;
         IF OBJECT_ID(N'[dbo].[SubmissionReceipts]', N'U') IS NOT NULL
            AND COL_LENGTH(N'dbo.SubmissionReceipts', N'PublicCode') IS NULL
             ALTER TABLE [dbo].[SubmissionReceipts] ADD [PublicCode] nvarchar(16) NULL;
         """;
 
     internal const string AddPublicCodeIndexSql = """
+        SET LOCK_TIMEOUT 5000;
         IF OBJECT_ID(N'[dbo].[SubmissionReceipts]', N'U') IS NOT NULL
            AND NOT EXISTS (
                 SELECT 1

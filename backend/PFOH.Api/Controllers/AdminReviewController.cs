@@ -64,8 +64,11 @@ public class AdminReviewController(
     SubmissionGuardService submissions) : ControllerBase
 {
     [HttpGet("superseded")]
-    public async Task<ActionResult<IReadOnlyList<SupersededSubmissionDto>>> GetSuperseded(CancellationToken ct) =>
-        Ok(await submissions.ListSupersededAsync(ct));
+    public async Task<ActionResult<SupersededSubmissionPage>> GetSuperseded(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default) =>
+        Ok(await submissions.ListSupersededAsync(page, pageSize, ct));
 
     [HttpPost("{changeRequestId:int}/restore")]
     public async Task<IActionResult> RestoreSuperseded(int changeRequestId, CancellationToken ct)

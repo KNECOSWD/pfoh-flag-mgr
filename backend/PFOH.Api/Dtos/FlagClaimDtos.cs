@@ -108,4 +108,7 @@ public class NominateHonoreeRequest : SaveHonoreeChangeRequest
     public int? MatchHonoreeId { get; set; }
 
     public int? MatchChangeRequestId { get; set; }
+
+    [MaxLength(2000)]
+    public string? MatchToken { get; set; }
 }

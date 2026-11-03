@@ -3,7 +3,13 @@
 -- Does not update or delete existing rows.
 -- The owner applies this to production. The app does not run it against production by itself
 -- beyond the same statements in SubmissionGuardSchema.EnsureAsync at startup.
+-- Each batch sets LOCK_TIMEOUT so a blocked lock fails in 5 seconds instead of waiting.
+-- Run it in a quiet window. If a statement times out, run the script again. It is idempotent.
+-- After a rollback to 5.2.0, a pending correction (no honoree id, and CorrectsChangeRequestId
+-- dropped with this script) shows as New. Approving that row on 5.2.0 would create a duplicate
+-- honoree. Reject or resolve corrections before rolling back.
 
+SET LOCK_TIMEOUT 5000;
 IF OBJECT_ID(N'[dbo].[SubmissionReceipts]', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[SubmissionReceipts] (
@@ -39,9 +45,11 @@ BEGIN
 END
 IF COL_LENGTH(N'dbo.HonoreeChangeRequests', N'CorrectsChangeRequestId') IS NULL
     ALTER TABLE [dbo].[HonoreeChangeRequests] ADD [CorrectsChangeRequestId] int NULL;
+SET LOCK_TIMEOUT 5000;
 IF OBJECT_ID(N'[dbo].[SubmissionReceipts]', N'U') IS NOT NULL
    AND COL_LENGTH(N'dbo.SubmissionReceipts', N'PublicCode') IS NULL
     ALTER TABLE [dbo].[SubmissionReceipts] ADD [PublicCode] nvarchar(16) NULL;
+SET LOCK_TIMEOUT 5000;
 IF OBJECT_ID(N'[dbo].[SubmissionReceipts]', N'U') IS NOT NULL
    AND NOT EXISTS (
         SELECT 1

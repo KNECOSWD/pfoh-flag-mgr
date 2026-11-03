@@ -311,6 +311,7 @@ export type SubmissionMatch = {
   likelihood?: string;
   reason?: string;
   canUpdateDirectly?: boolean;
+  matchToken?: string | null;
 };
 
 export type SubmissionReceipt = {
@@ -330,6 +331,17 @@ export type SupersededSubmission = {
   rank?: string | null;
   branch?: string | null;
   submittedUtc?: string | null;
+  submittedCentral?: string | null;
+  submitterEmail?: string | null;
+  keeperChangeRequestId?: number | null;
+  keeperName?: string | null;
+};
+
+export type SupersededSubmissionPage = {
+  items: SupersededSubmission[];
+  page: number;
+  pageSize: number;
+  total: number;
 };
 
 export type SaveHonoreeChangeRequest = {
@@ -905,6 +917,7 @@ export const flagClaimApi = {
       matchKind?: string;
       matchHonoreeId?: number | null;
       matchChangeRequestId?: number | null;
+      matchToken?: string | null;
     } = {}
   ) => {
     const body = honoreeChangeFormData(requestBody, photo);
@@ -912,6 +925,7 @@ export const flagClaimApi = {
     if (options.matchKind) body.append("MatchKind", options.matchKind);
     if (options.matchHonoreeId) body.append("MatchHonoreeId", String(options.matchHonoreeId));
     if (options.matchChangeRequestId) body.append("MatchChangeRequestId", String(options.matchChangeRequestId));
+    if (options.matchToken) body.append("MatchToken", options.matchToken);
     return request<FlagClaim>(instance, account, "/api/flag-claims/nominate", {
       method: "POST",
       body,
@@ -1017,8 +1031,8 @@ export const lookupApi = {
 };
 
 export const adminApi = {
-  superseded: (instance: IPublicClientApplication, account: AccountInfo) =>
-    request<SupersededSubmission[]>(instance, account, "/api/admin/review/superseded"),
+  superseded: (instance: IPublicClientApplication, account: AccountInfo, page = 1) =>
+    request<SupersededSubmissionPage>(instance, account, `/api/admin/review/superseded?page=${page}`),
 
   restoreSuperseded: (instance: IPublicClientApplication, account: AccountInfo, changeRequestId: number) =>
     request<{ message: string }>(instance, account, `/api/admin/review/${changeRequestId}/restore`, {

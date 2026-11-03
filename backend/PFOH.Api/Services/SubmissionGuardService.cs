@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
@@ -43,8 +44,11 @@ public sealed record SubmissionProbe(
 /// </summary>
 public sealed class SubmissionGuardService(
     PfohDbContext db,
-    IConfiguration configuration)
+    IConfiguration configuration,
+    IDataProtectionProvider dataProtection)
 {
+    private readonly IDataProtector matchTokens = dataProtection.CreateProtector("PFOH.SubmissionMatch.v1");
+
     public bool Enabled => SubmissionDuplicates.Enabled(configuration);
 
     public async Task<IReadOnlyList<SubmissionMatchDto>> FindAsync(
@@ -52,6 +56,7 @@ public sealed class SubmissionGuardService(
         int? excludeHonoreeId,
         int? excludeChangeRequestId,
         bool callerIsAdmin,
+        string? callerObjectId,
         CancellationToken ct)
     {
         if (!Enabled || string.IsNullOrWhiteSpace(probe.FirstName) || string.IsNullOrWhiteSpace(probe.LastName))
@@ -178,24 +183,27 @@ public sealed class SubmissionGuardService(
                     location,
                     hit.Likelihood,
                     hit.Reason,
-                    callerIsAdmin));
+                    callerIsAdmin,
+                    ProtectApproved(honoree.Id)));
             }
             else if (id < 0 && pendingById.TryGetValue(-id, out var request))
             {
-                var pendingEmail = NormalizeEmail(string.IsNullOrWhiteSpace(request.SubmitterEmailAddress)
-                    ? request.FlagClaim?.ExternalUserEmail
-                    : request.SubmitterEmailAddress);
+                var ownerId = request.FlagClaim?.ExternalUserObjectId;
+                var owns = !string.IsNullOrWhiteSpace(callerObjectId)
+                    && string.Equals(ownerId, callerObjectId, StringComparison.Ordinal);
+                var revealId = callerIsAdmin || owns;
                 matches.Add(new SubmissionMatchDto(
                     "Pending",
                     null,
-                    request.Id,
+                    revealId ? request.Id : null,
                     DisplayName(request.FirstName, request.MiddleName, request.LastName, request.Suffix, request.Nickname),
                     BlankToNull(request.Rank),
                     BlankToNull(request.ServiceBranch?.ServiceBranchName),
                     null,
                     hit.Likelihood,
                     hit.Reason,
-                    callerIsAdmin || EmailsEqual(probeEmail, pendingEmail)));
+                    owns && request.HonoreeId is not > 0 || callerIsAdmin,
+                    ProtectPending(request.Id)));
             }
         }
 
@@ -215,14 +223,13 @@ public sealed class SubmissionGuardService(
             .FirstOrDefaultAsync(claim => claim.ClientRequestId == key, ct);
 
     public async Task<FlagClaim?> FindRecentIdenticalAsync(
-        string? email,
+        string? callerObjectId,
         string firstName,
         string lastName,
         int? serviceBranchId,
         CancellationToken ct)
     {
-        var normalized = NormalizeEmail(email);
-        if (string.IsNullOrEmpty(normalized))
+        if (string.IsNullOrWhiteSpace(callerObjectId))
         {
             return null;
         }
@@ -232,7 +239,9 @@ public sealed class SubmissionGuardService(
             .Include(claim => claim.FlagGrid)
             .Include(claim => claim.Honoree)
             .Include(claim => claim.HonoreeChangeRequests)
-            .Where(claim => claim.CreatedUtc >= cutoff && claim.HonoreeChangeRequests.Any(request => request.RequestStatus == "Submitted"))
+            .Where(claim => claim.ExternalUserObjectId == callerObjectId
+                && claim.CreatedUtc >= cutoff
+                && claim.HonoreeChangeRequests.Any(request => request.RequestStatus == "Submitted"))
             .ToListAsync(ct);
 
         return recent.FirstOrDefault(claim =>
@@ -245,8 +254,7 @@ public sealed class SubmissionGuardService(
                 return false;
             }
 
-            return EmailsEqual(normalized, NormalizeEmail(change.SubmitterEmailAddress) ?? NormalizeEmail(claim.ExternalUserEmail))
-                && string.Equals(change.FirstName.Trim(), firstName.Trim(), StringComparison.OrdinalIgnoreCase)
+            return string.Equals(change.FirstName.Trim(), firstName.Trim(), StringComparison.OrdinalIgnoreCase)
                 && string.Equals(change.LastName.Trim(), lastName.Trim(), StringComparison.OrdinalIgnoreCase)
                 && change.ServiceBranchId == serviceBranchId;
         });
@@ -254,12 +262,12 @@ public sealed class SubmissionGuardService(
 
     public async Task SupersedeSameDayAsync(
         HonoreeChangeRequest keeper,
-        string? submitterEmail,
+        string? actorEmail,
         string? actorObjectId,
         CancellationToken ct)
     {
-        var email = NormalizeEmail(submitterEmail);
-        if (string.IsNullOrEmpty(email))
+        var actor = actorObjectId?.Trim();
+        if (string.IsNullOrEmpty(actor))
         {
             return;
         }
@@ -268,28 +276,28 @@ public sealed class SubmissionGuardService(
         var keeperDay = CentralTime.DateOf(keeperInstant);
         var pending = await db.HonoreeChangeRequests
             .Include(request => request.FlagClaim)
+            .Include(request => request.ServiceBranch)
             .Where(request => request.RequestStatus == "Submitted" && request.Id != keeper.Id)
             .ToListAsync(ct);
 
         var older = pending.Where(request =>
             request.HonoreeId is not > 0
             && request.CorrectsChangeRequestId is not > 0
-            && EmailsEqual(email, NormalizeEmail(string.IsNullOrWhiteSpace(request.SubmitterEmailAddress)
-                ? request.FlagClaim?.ExternalUserEmail
-                : request.SubmitterEmailAddress))
+            && string.Equals(request.FlagClaim?.ExternalUserObjectId, actor, StringComparison.Ordinal)
             && CentralTime.DateOf(request.SubmittedUtc ?? request.CreatedUtc) == keeperDay
             && (request.SubmittedUtc ?? request.CreatedUtc) <= keeperInstant).ToList();
-
+        older = await SameHonoreeAsAsync(keeper, older, ct);
         if (older.Count == 0)
         {
             return;
         }
 
         var now = DateTime.UtcNow;
+        var auditEmail = string.IsNullOrWhiteSpace(actorEmail) ? "signed-in user" : actorEmail.Trim();
         foreach (var request in older)
         {
             request.RequestStatus = PendingReviewMaintenance.Superseded;
-            var note = $"Superseded by a newer submission from the same email on this day. Change request {keeper.Id} remains in review.";
+            var note = $"Superseded by a newer submission from the same account for this honoree on this day. Change request {keeper.Id} remains in review.";
             request.ReviewNotes = string.IsNullOrWhiteSpace(request.ReviewNotes)
                 ? note
                 : request.ReviewNotes.Contains(note, StringComparison.Ordinal)
@@ -300,8 +308,8 @@ public sealed class SubmissionGuardService(
                 Action = SubmissionAuditEvent.Superseded,
                 ChangeRequestId = request.Id,
                 KeeperChangeRequestId = keeper.Id,
-                ActorEmail = email,
-                ActorObjectId = actorObjectId,
+                ActorEmail = auditEmail,
+                ActorObjectId = actor,
                 CreatedUtc = now,
                 Note = note
             });
@@ -310,31 +318,119 @@ public sealed class SubmissionGuardService(
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task<SubmissionReceipt> EnsureReceiptAsync(int changeRequestId, CancellationToken ct)
+    private async Task<List<HonoreeChangeRequest>> SameHonoreeAsAsync(
+        HonoreeChangeRequest keeper,
+        List<HonoreeChangeRequest> older,
+        CancellationToken ct)
     {
-        var existing = await db.SubmissionReceipts
-            .FirstOrDefaultAsync(receipt => receipt.ChangeRequestId == changeRequestId, ct);
-        if (existing is not null)
+        if (older.Count == 0)
         {
-            if (string.IsNullOrWhiteSpace(existing.PublicCode))
-            {
-                existing.PublicCode = await NextPublicCodeAsync(ct);
-                await db.SaveChangesAsync(ct);
-            }
-
-            return existing;
+            return older;
         }
 
-        var receipt = new SubmissionReceipt
+        var keeperBranch = keeper.ServiceBranch?.ServiceBranchName;
+        if (keeperBranch is null && keeper.ServiceBranchId is int branchId)
         {
-            ChangeRequestId = changeRequestId,
-            PublicToken = Guid.NewGuid(),
-            PublicCode = await NextPublicCodeAsync(ct),
-            CreatedUtc = DateTime.UtcNow
+            keeperBranch = await db.ServiceBranches
+                .AsNoTracking()
+                .Where(branch => branch.Id == branchId)
+                .Select(branch => branch.ServiceBranchName)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        var candidates = new List<DuplicateCandidate>
+        {
+            new(
+                SubmissionDuplicates.ProbeId,
+                DisplayName(keeper.FirstName, keeper.MiddleName, keeper.LastName, keeper.Suffix, keeper.Nickname),
+                keeperBranch,
+                null,
+                null,
+                null,
+                true,
+                null)
         };
-        db.SubmissionReceipts.Add(receipt);
-        await db.SaveChangesAsync(ct);
-        return receipt;
+        foreach (var request in older)
+        {
+            candidates.Add(new DuplicateCandidate(
+                request.Id,
+                DisplayName(request.FirstName, request.MiddleName, request.LastName, request.Suffix, request.Nickname),
+                request.ServiceBranch?.ServiceBranchName,
+                null,
+                null,
+                null,
+                true,
+                null));
+        }
+
+        var same = new HashSet<int>();
+        foreach (var group in HonoreeDuplicateMatcher.Match(candidates))
+        {
+            foreach (var pair in group.Pairs)
+            {
+                if (pair.LeftId != SubmissionDuplicates.ProbeId && pair.RightId != SubmissionDuplicates.ProbeId)
+                {
+                    continue;
+                }
+
+                var other = pair.LeftId == SubmissionDuplicates.ProbeId ? pair.RightId : pair.LeftId;
+                if (HonoreeDuplicateMatcher.LikelihoodOf(pair.ReasonCodes) != "Low")
+                {
+                    same.Add(other);
+                }
+            }
+        }
+
+        return older.Where(request => same.Contains(request.Id)).ToList();
+    }
+
+    public async Task<SubmissionReceipt> EnsureReceiptAsync(int changeRequestId, CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            var existing = await db.SubmissionReceipts
+                .FirstOrDefaultAsync(receipt => receipt.ChangeRequestId == changeRequestId, ct);
+            if (existing is not null)
+            {
+                if (string.IsNullOrWhiteSpace(existing.PublicCode))
+                {
+                    existing.PublicCode = await NextPublicCodeAsync(ct);
+                    try
+                    {
+                        await db.SaveChangesAsync(ct);
+                    }
+                    catch (DbUpdateException ex) when (UserProfileService.IsUniqueViolation(ex))
+                    {
+                        db.ChangeTracker.Clear();
+                        continue;
+                    }
+                }
+
+                return existing;
+            }
+
+            var receipt = new SubmissionReceipt
+            {
+                ChangeRequestId = changeRequestId,
+                PublicToken = Guid.NewGuid(),
+                PublicCode = await NextPublicCodeAsync(ct),
+                CreatedUtc = DateTime.UtcNow
+            };
+            db.SubmissionReceipts.Add(receipt);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                return receipt;
+            }
+            catch (DbUpdateException ex) when (UserProfileService.IsUniqueViolation(ex))
+            {
+                db.ChangeTracker.Clear();
+            }
+        }
+
+        var saved = await db.SubmissionReceipts
+            .FirstAsync(receipt => receipt.ChangeRequestId == changeRequestId, ct);
+        return saved;
     }
 
     public static string CreatePublicCode()
@@ -364,23 +460,105 @@ public sealed class SubmissionGuardService(
         throw new InvalidOperationException("A submission reference could not be reserved.");
     }
 
-    public async Task<IReadOnlyList<SupersededSubmissionDto>> ListSupersededAsync(CancellationToken ct)
+    public async Task<SupersededSubmissionPage> ListSupersededAsync(int page, int pageSize, CancellationToken ct)
     {
-        var rows = await db.HonoreeChangeRequests
+        page = page < 1 ? 1 : page;
+        pageSize = pageSize is < 1 or > 50 ? 25 : pageSize;
+        var audited = db.SubmissionAuditEvents
+            .AsNoTracking()
+            .Where(evt => evt.Action == SubmissionAuditEvent.Superseded);
+        var query = db.HonoreeChangeRequests
             .AsNoTracking()
             .Include(request => request.ServiceBranch)
-            .Where(request => request.RequestStatus == PendingReviewMaintenance.Superseded)
+            .Where(request => request.RequestStatus == PendingReviewMaintenance.Superseded
+                && audited.Any(evt => evt.ChangeRequestId == request.Id));
+        var total = await query.CountAsync(ct);
+        var rows = await query
             .OrderByDescending(request => request.SubmittedUtc ?? request.CreatedUtc)
-            .Take(50)
+            .ThenByDescending(request => request.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(ct);
+        var ids = rows.Select(request => request.Id).ToList();
+        var events = await db.SubmissionAuditEvents
+            .AsNoTracking()
+            .Where(evt => ids.Contains(evt.ChangeRequestId) && evt.Action == SubmissionAuditEvent.Superseded)
+            .ToListAsync(ct);
+        var latest = events
+            .GroupBy(evt => evt.ChangeRequestId)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(evt => evt.Id).First());
+        var keeperIds = latest.Values
+            .Select(evt => evt.KeeperChangeRequestId)
+            .Where(id => id is > 0)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+        var keepers = await db.HonoreeChangeRequests
+            .AsNoTracking()
+            .Where(request => keeperIds.Contains(request.Id))
+            .ToDictionaryAsync(request => request.Id, ct);
 
-        return rows.Select(request => new SupersededSubmissionDto(
-            request.Id,
-            DisplayName(request.FirstName, request.MiddleName, request.LastName, request.Suffix, request.Nickname),
-            BlankToNull(request.Rank),
-            BlankToNull(request.ServiceBranch?.ServiceBranchName),
-            request.SubmittedUtc ?? request.CreatedUtc)).ToList();
+        var items = rows.Select(request =>
+        {
+            latest.TryGetValue(request.Id, out var audit);
+            HonoreeChangeRequest? keeper = null;
+            if (audit?.KeeperChangeRequestId is int keeperId)
+            {
+                keepers.TryGetValue(keeperId, out keeper);
+            }
+
+            var submitted = request.SubmittedUtc ?? request.CreatedUtc;
+            return new SupersededSubmissionDto(
+                request.Id,
+                DisplayName(request.FirstName, request.MiddleName, request.LastName, request.Suffix, request.Nickname),
+                BlankToNull(request.Rank),
+                BlankToNull(request.ServiceBranch?.ServiceBranchName),
+                submitted,
+                CentralTime.Format(submitted),
+                BlankToNull(request.SubmitterEmailAddress),
+                audit?.KeeperChangeRequestId,
+                keeper is null
+                    ? null
+                    : DisplayName(keeper.FirstName, keeper.MiddleName, keeper.LastName, keeper.Suffix, keeper.Nickname));
+        }).ToList();
+        return new SupersededSubmissionPage(items, page, pageSize, total);
     }
+
+    public bool TryReadMatchToken(string? token, out string kind, out int id)
+    {
+        kind = string.Empty;
+        id = 0;
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return false;
+        }
+
+        try
+        {
+            var raw = matchTokens.Unprotect(token);
+            var split = raw.Split(':', 2);
+            if (split.Length != 2 || !int.TryParse(split[1], out id) || id <= 0)
+            {
+                return false;
+            }
+
+            kind = split[0] switch
+            {
+                "p" => "Pending",
+                "a" => "Approved",
+                _ => string.Empty
+            };
+            return kind.Length > 0;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private string ProtectPending(int id) => matchTokens.Protect($"p:{id}");
+
+    private string ProtectApproved(int id) => matchTokens.Protect($"a:{id}");
 
     public async Task<bool> RestoreAsync(
         int changeRequestId,
@@ -471,7 +649,7 @@ public sealed class SubmissionGuardService(
         "Saved" => "The record was updated. An administrator can print a new card from the print queue.",
         "Approved" => "This submission has been approved.",
         "Needs revision" => "An administrator asked for a revision. Sign in and open My submissions to update it.",
-        "Superseded" => "A newer submission from the same email replaced this one on the same day. An administrator can restore it.",
+        "Superseded" => "A newer submission from the same account replaced this one on the same day. An administrator can restore it.",
         _ => "An administrator reviews this submission. It appears on the field only after that approval."
     };
 
@@ -527,9 +705,19 @@ public static class CentralTime
 {
     private static readonly TimeZoneInfo Zone = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");
 
-    public static DateOnly DateOf(DateTime utc)
+    public static DateOnly DateOf(DateTime utc) =>
+        DateOnly.FromDateTime(Local(utc));
+
+    public static string Format(DateTime utc)
+    {
+        var local = Local(utc);
+        var label = Zone.IsDaylightSavingTime(local) ? "CDT" : "CST";
+        return $"{local:MMM d, yyyy h:mm tt} {label}";
+    }
+
+    private static DateTime Local(DateTime utc)
     {
         var specified = DateTime.SpecifyKind(utc, DateTimeKind.Utc);
-        return DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(specified, Zone));
+        return TimeZoneInfo.ConvertTimeFromUtc(specified, Zone);
     }
 }

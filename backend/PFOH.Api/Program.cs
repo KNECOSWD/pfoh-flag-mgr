@@ -397,9 +397,17 @@ app.UseResponseCompression();
 app.UseHttpsRedirection();
 app.Use(async (context, next) =>
 {
+    var path = context.Request.Path.Value ?? string.Empty;
+    var submissionPage = IsSubmissionReceiptPage(path);
     context.Response.OnStarting(() =>
     {
-        var path = context.Request.Path.Value ?? string.Empty;
+        if (submissionPage)
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            context.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
+            return Task.CompletedTask;
+        }
+
         var html = path.Equals("/", StringComparison.OrdinalIgnoreCase)
             || path.Equals("/flag-map", StringComparison.OrdinalIgnoreCase)
             || path.EndsWith(".html", StringComparison.OrdinalIgnoreCase);
@@ -494,9 +502,6 @@ try
         ?? throw new InvalidOperationException("Missing DefaultConnection connection string.");
     await using var startupOwned = sqlServer ? StartupDatabase.Create(startupConnection) : null;
     var startupDb = startupOwned ?? configured;
-    var startupMaintenance = startupOwned is null
-        ? scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>()
-        : new PendingReviewMaintenance(startupDb, scope.ServiceProvider.GetRequiredService<HonoreeFileStorage>());
     try
     {
         await PendingSubmissionGridSchema.EnsureAsync(startupDb, CancellationToken.None);
@@ -605,23 +610,12 @@ try
         UserProfileService.LogStartupIndexFailure(app.Logger, ex);
     }
 
-    try
-    {
-        await startupMaintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(
-            ex,
-            "STARTUP CLEANUP FAILED while superseding duplicate pending requests and releasing pending spots. The site will keep running. {Failure}",
-            ex.ToString());
-    }
 }
 catch (Exception ex)
 {
     app.Logger.LogError(
         ex,
-        "STARTUP CLEANUP FAILED before pending submission cleanup could start. The site will keep running. {Failure}",
+        "STARTUP CLEANUP FAILED before schema setup could finish. The site will keep running. {Failure}",
         ex.ToString());
 }
 
@@ -632,6 +626,18 @@ if (localSeed)
 }
 
 app.Run();
+
+static bool IsSubmissionReceiptPage(string path)
+{
+    const string prefix = "/submission/";
+    if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    var token = path[prefix.Length..].TrimEnd('/');
+    return Guid.TryParseExact(token, "D", out _);
+}
 
 static class UnknownApi
 {

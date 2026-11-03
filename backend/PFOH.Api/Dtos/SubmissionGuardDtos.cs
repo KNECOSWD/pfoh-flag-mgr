@@ -10,7 +10,8 @@ public sealed record SubmissionMatchDto(
     string? FlagLocation,
     string Likelihood,
     string Reason,
-    bool CanUpdateDirectly);
+    bool CanUpdateDirectly,
+    string? MatchToken);
 
 public sealed record DuplicateCheckResponse(
     bool Enabled,
@@ -45,4 +46,14 @@ public sealed record SupersededSubmissionDto(
     string HonoreeName,
     string? Rank,
     string? Branch,
-    DateTime? SubmittedUtc);
+    DateTime? SubmittedUtc,
+    string SubmittedCentral,
+    string? SubmitterEmail,
+    int? KeeperChangeRequestId,
+    string? KeeperName);
+
+public sealed record SupersededSubmissionPage(
+    IReadOnlyList<SupersededSubmissionDto> Items,
+    int Page,
+    int PageSize,
+    int Total);

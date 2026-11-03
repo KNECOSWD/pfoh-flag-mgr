@@ -131,6 +131,7 @@ public static class LocalSeedData
         };
         db.Honorees.Add(ada);
         db.FlagClaims.Add(Pending("Ben", "Brooks", "Petty Officer", 2, "other-family@example.test", "Submitted", now, "other-owner"));
+        db.FlagClaims.Add(Pending("Ada", "Mann", "Captain", 1, "pending-ada@example.test", "Submitted", now, "ada-pending-owner"));
         db.FlagClaims.Add(Pending("Quinn", "Hale", "Sergeant", 1, "queue@example.test", "Submitted", now, "queue-owner"));
         db.FlagClaims.Add(Pending("Drew", "Older", "Corporal", 1, "family@example.test", "Superseded", now.AddMinutes(-30), "family-owner"));
         await db.SaveChangesAsync(ct);

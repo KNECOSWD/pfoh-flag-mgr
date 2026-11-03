@@ -114,7 +114,7 @@ import { ReactivationPage } from "./ReactivationPage";
 import { reactivationTokenFromPath, signInReturnHref } from "./reactivationPath.js";
 import { PendingSubmissionPage } from "./PendingSubmissionPage";
 import { SubmissionDuplicatePrompt, type SubmissionMatchView } from "./SubmissionDuplicatePrompt";
-import { proceedLabel } from "./submissionDuplicate.js";
+import { submissionHero } from "./submissionDuplicate.js";
 import { submissionTokenFromPath } from "./submissionPath.js";
 import type { SubmissionMatch, SupersededSubmission } from "./api";
 import { showTenYearsBanner, TenYearsBanner } from "./tenYearsBanner.js";
@@ -314,11 +314,6 @@ const pageBanners: Record<AppRoute, { title: string; subtitle: string }> = {
 const reactivationBanner = {
   title: "REQUEST REACTIVATION",
   subtitle: "Ask for this honoree to return to the field. An administrator reviews the request."
-};
-
-const submissionBanner = {
-  title: "SUBMISSION RECEIVED",
-  subtitle: "Your reference number is on this page. An administrator reviews it next."
 };
 
 const profileBanner = {
@@ -618,9 +613,18 @@ export default function App() {
   const [submissionToken, setSubmissionToken] = useState<string | null>(() =>
     kioskSessionOn(window.sessionStorage) ? null : submissionTokenFromPath(window.location.pathname)
   );
+  const [submissionLookup, setSubmissionLookup] = useState<"loading" | "found" | "missing">("loading");
+  const [lookupToken, setLookupToken] = useState(submissionToken);
+  if (lookupToken !== submissionToken) {
+    setLookupToken(submissionToken);
+    setSubmissionLookup("loading");
+  }
   const [similarMatches, setSimilarMatches] = useState<SubmissionMatch[] | null>(null);
   const [duplicateMode, setDuplicateMode] = useState<"nominate" | "admin-edit">("nominate");
   const [supersededSubmissions, setSupersededSubmissions] = useState<SupersededSubmission[]>([]);
+  const [supersededPage, setSupersededPage] = useState(1);
+  const [supersededPageSize, setSupersededPageSize] = useState(25);
+  const [supersededTotal, setSupersededTotal] = useState(0);
   const submitLockRef = useRef(false);
   const idempotencyKeyRef = useRef("");
   const duplicateChoiceRef = useRef<{ action: "submit-new" | "update" | "proceed"; match?: SubmissionMatch } | null>(null);
@@ -1429,12 +1433,17 @@ export default function App() {
     void loadSuperseded();
   }
 
-  async function loadSuperseded() {
+  async function loadSuperseded(page = supersededPage) {
     if (!account) return;
     try {
-      setSupersededSubmissions(await adminApi.superseded(instance, account));
+      const result = await adminApi.superseded(instance, account, page);
+      setSupersededSubmissions(result.items);
+      setSupersededPage(result.page);
+      setSupersededPageSize(result.pageSize);
+      setSupersededTotal(result.total);
     } catch {
       setSupersededSubmissions([]);
+      setSupersededTotal(0);
     }
   }
 
@@ -1779,15 +1788,6 @@ export default function App() {
     window.setTimeout(() => {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }, 40);
-  }
-
-  function cancelDuplicatePrompt() {
-    duplicateChoiceRef.current = null;
-    idempotencyKeyRef.current = "";
-    setSimilarMatches(null);
-    submitLockRef.current = false;
-    setSaving(false);
-    setSubmitPhase("");
   }
 
   function chooseDuplicate(action: "submit-new" | "update" | "proceed", match?: SubmissionMatch) {
@@ -2294,7 +2294,8 @@ export default function App() {
           duplicateAction: choice?.action === "update" ? "update" : choice?.action === "submit-new" ? "submit-new" : undefined,
           matchKind: choice?.match?.kind,
           matchHonoreeId: choice?.match?.honoreeId,
-          matchChangeRequestId: choice?.match?.changeRequestId
+          matchChangeRequestId: choice?.match?.changeRequestId,
+          matchToken: choice?.match?.matchToken
         }),
         75000,
         "Uploading the submission took too long."
@@ -3415,8 +3416,8 @@ export default function App() {
           </a>
           <div className="heroContent">
             <p className="eyebrow">Plano Flags of Honor</p>
-            <h1>{(submissionToken ? submissionBanner : reactivationToken ? reactivationBanner : profileOpen ? profileBanner : pageBanners[activeRoute]).title}</h1>
-            <p className="heroLead">{(submissionToken ? submissionBanner : reactivationToken ? reactivationBanner : profileOpen ? profileBanner : pageBanners[activeRoute]).subtitle}</p>
+            <h1>{(submissionToken ? submissionHero(submissionLookup) : reactivationToken ? reactivationBanner : profileOpen ? profileBanner : pageBanners[activeRoute]).title}</h1>
+            <p className="heroLead">{(submissionToken ? submissionHero(submissionLookup) : reactivationToken ? reactivationBanner : profileOpen ? profileBanner : pageBanners[activeRoute]).subtitle}</p>
           </div>
         </div>
 
@@ -4209,7 +4210,9 @@ export default function App() {
             </div>
           ) : null}
 
-          {submissionToken ? <PendingSubmissionPage token={submissionToken} /> : null}
+          {submissionToken ? (
+            <PendingSubmissionPage token={submissionToken} onResolved={setSubmissionLookup} />
+          ) : null}
 
           {reactivationToken ? (
             <ReactivationPage
@@ -4829,7 +4832,7 @@ export default function App() {
 
               <section className="mt-4" aria-label="Superseded submissions">
                 <h3 className="h5">Superseded submissions</h3>
-                <p className="helperText">These copies were replaced by a later submission the same day. They stay out of the approval queue. Restore puts one back in the queue.</p>
+                <p className="helperText">These submissions were replaced by a later one for the same honoree from the same account on the same day. They stay out of the approval queue. Restore puts one back.</p>
                 {supersededSubmissions.length === 0 ? (
                   <p className="compactEmptyState">No superseded submissions.</p>
                 ) : (
@@ -4840,6 +4843,14 @@ export default function App() {
                           <strong>{item.honoreeName}</strong>
                           <span className="badge text-bg-secondary ms-2">Superseded</span>
                           <span className="d-block">{[item.rank, item.branch].filter(Boolean).join(", ")}</span>
+                          {item.submittedCentral ? <span className="d-block">Submitted {item.submittedCentral}</span> : null}
+                          {item.submitterEmail ? <span className="d-block">{item.submitterEmail}</span> : null}
+                          {item.keeperChangeRequestId ? (
+                            <span className="d-block">
+                              Replaced by submission {item.keeperChangeRequestId}
+                              {item.keeperName ? `, ${item.keeperName}` : ""}
+                            </span>
+                          ) : null}
                         </span>
                         <button
                           type="button"
@@ -4853,6 +4864,20 @@ export default function App() {
                     ))}
                   </ul>
                 )}
+                {supersededTotal > supersededSubmissions.length || supersededPage > 1 ? (
+                  <div className="d-flex flex-wrap gap-2 mt-3">
+                    {supersededPage > 1 ? (
+                      <button type="button" className="btn btn-outline-primary" onClick={() => void loadSuperseded(supersededPage - 1)}>
+                        Previous
+                      </button>
+                    ) : null}
+                    {supersededPage * supersededPageSize < supersededTotal ? (
+                      <button type="button" className="btn btn-outline-primary" onClick={() => void loadSuperseded(supersededPage + 1)}>
+                        Next
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
               </section>
 
               </section>
@@ -5567,21 +5592,17 @@ export default function App() {
                 {similarMatches && similarMatches.length > 0 ? (
                   <SubmissionDuplicatePrompt
                     matches={similarMatches as SubmissionMatchView[]}
-                    proceedText={proceedLabel(duplicateMode)}
-                    isAdmin={isAdmin}
-                    onUpdate={(match) => chooseDuplicate("update", match)}
-                    onProceed={() => chooseDuplicate(duplicateMode === "admin-edit" ? "proceed" : "submit-new")}
-                    onCancel={cancelDuplicatePrompt}
+                    onYes={(match) => chooseDuplicate("update", match)}
+                    onNo={() => chooseDuplicate(duplicateMode === "admin-edit" ? "proceed" : "submit-new")}
                   />
-                ) : null}
-
+                ) : (
                 <div className="actions col-12 d-flex flex-wrap gap-2">
                   {!isNominating ? (
-                    <button type="button" className="btn btn-outline-primary" disabled={saving || similarMatches !== null} onClick={saveDraft}>
+                    <button type="button" className="btn btn-outline-primary" disabled={saving} onClick={saveDraft}>
                       {saving ? "Saving..." : "Save draft"}
                     </button>
                   ) : null}
-                  <button className="btn btn-primary" type="submit" disabled={saving || similarMatches !== null}>
+                  <button className="btn btn-primary" type="submit" disabled={saving}>
                     {saving
                       ? submitPhase || "Submitting..."
                       : selectedClaim?.claimStatus === "AdminDirectEdit"
@@ -5589,6 +5610,7 @@ export default function App() {
                         : "Submit for review"}
                   </button>
                 </div>
+                )}
               </form>
             </section>
           ) : null}

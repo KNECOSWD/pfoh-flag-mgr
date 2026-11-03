@@ -21,6 +21,14 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_SA_PASSWORD: "PfohCi_Sql#2026"
+        ports:
+          - 1433:1433
 
     steps:
       - name: Checkout code
@@ -174,8 +182,26 @@ jobs:
         if: steps.changes.outputs.code != 'false'
         run: sudo apt-get update && sudo apt-get install -y fonts-dejavu-core
 
+      - name: Wait for SQL Server
+        if: steps.changes.outputs.code != 'false'
+        run: |
+          for i in $(seq 1 40); do
+            cid=$(docker ps -q --filter ancestor=mcr.microsoft.com/mssql/server:2022-latest | head -n 1)
+            if [ -n "$cid" ] && docker exec "$cid" /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'PfohCi_Sql#2026' -C -Q "SELECT 1"; then
+              exit 0
+            fi
+            if [ -n "$cid" ] && docker exec "$cid" /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'PfohCi_Sql#2026' -Q "SELECT 1"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          docker ps
+          exit 1
+
       - name: Test API
         if: steps.changes.outputs.code != 'false'
+        env:
+          PFOH_SQLSERVER: "Server=localhost,1433;User ID=sa;Password=PfohCi_Sql#2026;TrustServerCertificate=True;Encrypt=False"
         run: dotnet test backend/PFOH.Api.Tests/PFOH.Api.Tests.csproj --configuration Release
 
       - name: Test snapshot job

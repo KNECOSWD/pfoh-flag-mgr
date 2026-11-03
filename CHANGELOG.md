@@ -2,12 +2,12 @@
 
 ## 5.3.0
 
-- Submitting an honoree checks the existing duplicate matcher against pending and approved records. When a likely match is on file, the form shows that entry and asks whether to update it or submit a new one.
-- A public submitter cannot edit an approved honoree directly. Choosing update sends a correction to the administrator review queue. A pending entry from the same submitter email can be updated in place. A pending entry from a different email is also a correction request. The match preview shows only the public name, branch, rank, and flag location.
-- Choosing submit as a new entry marks earlier unapproved submissions from that same email on the same America/Chicago day as Superseded. Approved records are left alone. Superseded rows stay out of the approval queue, and an administrator can restore one. Both actions are audited. Nothing is deleted.
+- Submitting an honoree checks the existing duplicate matcher against pending and approved records. When a likely match is on file, the form asks "Is this the same person?" Yes continues on the update path. No closes the card and submits this one. With two or more matches, each card has its own Yes, and one "No, none of these" ends the prompt.
+- A public submitter cannot edit an approved honoree directly. Yes on an approved match, or on a pending match owned by a different signed-in account, sends a correction to the administrator review queue. Yes on a pending match owned by the signed-in account updates that entry. Ownership is the account id, not the email typed on the form. The match preview shows only the public name, branch, rank, and flag location.
+- No, for a new submission, marks earlier unapproved submissions from that same account, on the same America/Chicago day, for the same honoree as Superseded. Approved records are left alone. Superseded rows stay out of the approval queue, and an administrator can restore one. Both actions are audited. Nothing is deleted. The app does not supersede rows when it starts.
 - After a successful submit, the site opens a pending review page. That page is the confirmation. It shows what was submitted, the status, a short reference number, and what happens next. The page address is an unguessable token. The short reference does not open the page. No email is sent. The Submit button stays disabled after the first click, and the server treats a repeated idempotency key as the same submission.
 - Administrators see the same match prompt on the public form and on an administrator edit. An administrator can update an approved record directly.
-- The check is on by default. Set SubmissionDuplicates__Enabled to false and restart the app to turn it off without a new build.
+- The check is on by default. Set SubmissionDuplicates__Enabled to false and restart the app to turn it off without a new build. While it is off, a submission is stored as a new entry: no similar-entry response, no in-place update, no correction routing, and no same-day supersede. The pending review page still opens after a successful submit.
 - The database change is additive: dbo.SubmissionReceipts, dbo.SubmissionAuditEvents, and a nullable CorrectsChangeRequestId column. The script is backend/PFOH.Api/Data/Scripts/20261103180000_AddSubmissionGuard.sql.
 
 ## 5.2.0
