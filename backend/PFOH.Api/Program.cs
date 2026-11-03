@@ -177,7 +177,6 @@ builder.Services.AddScoped<ReprintQueueMaintenance>();
 builder.Services.AddScoped<PublicFlagMap>();
 builder.Services.AddScoped<ReactivationLinkService>();
 builder.Services.AddScoped<SubmissionGuardService>();
-builder.Services.AddSingleton<ISubmissionMailer, LoggingSubmissionMailer>();
 builder.Services.AddSingleton<SubmitterSuggestionTokens>();
 
 builder.Services.AddRateLimiter(options =>

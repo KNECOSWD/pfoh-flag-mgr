@@ -12,6 +12,12 @@ public class SubmissionReceipt
 
     public Guid PublicToken { get; set; }
 
+    /// <summary>
+    /// Short code shown to the submitter, such as PFOH-7K3Q9X.
+    /// It does not open the page. Only <see cref="PublicToken"/> does.
+    /// </summary>
+    public string PublicCode { get; set; } = string.Empty;
+
     public DateTime CreatedUtc { get; set; }
 
     public HonoreeChangeRequest? ChangeRequest { get; set; }

@@ -446,6 +446,11 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
             entity.HasIndex(e => e.PublicToken)
                 .HasDatabaseName("UX_SubmissionReceipts_PublicToken")
                 .IsUnique();
+            entity.Property(e => e.PublicCode).HasMaxLength(16).IsRequired();
+            entity.HasIndex(e => e.PublicCode)
+                .HasDatabaseName("UX_SubmissionReceipts_PublicCode")
+                .IsUnique()
+                .HasFilter("[PublicCode] IS NOT NULL");
             entity.HasOne(e => e.ChangeRequest)
                 .WithMany()
                 .HasForeignKey(e => e.ChangeRequestId)

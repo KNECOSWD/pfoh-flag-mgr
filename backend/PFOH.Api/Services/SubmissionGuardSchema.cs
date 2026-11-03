@@ -21,6 +21,7 @@ public static class SubmissionGuardSchema
                 [Id] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_SubmissionReceipts] PRIMARY KEY,
                 [ChangeRequestId] int NOT NULL,
                 [PublicToken] uniqueidentifier NOT NULL,
+                [PublicCode] nvarchar(16) NOT NULL,
                 [CreatedUtc] datetime2 NOT NULL,
                 CONSTRAINT [FK_SubmissionReceipts_HonoreeChangeRequests_ChangeRequestId]
                     FOREIGN KEY ([ChangeRequestId]) REFERENCES [dbo].[HonoreeChangeRequests] ([Id])
@@ -29,6 +30,8 @@ public static class SubmissionGuardSchema
                 ON [dbo].[SubmissionReceipts] ([ChangeRequestId]);
             CREATE UNIQUE INDEX [UX_SubmissionReceipts_PublicToken]
                 ON [dbo].[SubmissionReceipts] ([PublicToken]);
+            CREATE UNIQUE INDEX [UX_SubmissionReceipts_PublicCode]
+                ON [dbo].[SubmissionReceipts] ([PublicCode]);
         END
         IF OBJECT_ID(N'[dbo].[SubmissionAuditEvents]', N'U') IS NULL
         BEGIN
@@ -47,6 +50,22 @@ public static class SubmissionGuardSchema
         END
         IF COL_LENGTH(N'dbo.HonoreeChangeRequests', N'CorrectsChangeRequestId') IS NULL
             ALTER TABLE [dbo].[HonoreeChangeRequests] ADD [CorrectsChangeRequestId] int NULL;
+        """;
+
+    internal const string AddPublicCodeSql = """
+        IF OBJECT_ID(N'[dbo].[SubmissionReceipts]', N'U') IS NOT NULL
+           AND COL_LENGTH(N'dbo.SubmissionReceipts', N'PublicCode') IS NULL
+            ALTER TABLE [dbo].[SubmissionReceipts] ADD [PublicCode] nvarchar(16) NULL;
+        """;
+
+    internal const string AddPublicCodeIndexSql = """
+        IF OBJECT_ID(N'[dbo].[SubmissionReceipts]', N'U') IS NOT NULL
+           AND NOT EXISTS (
+                SELECT 1
+                FROM sys.indexes
+                WHERE name = N'UX_SubmissionReceipts_PublicCode'
+                  AND object_id = OBJECT_ID(N'[dbo].[SubmissionReceipts]'))
+            EXEC(N'CREATE UNIQUE INDEX [UX_SubmissionReceipts_PublicCode] ON [dbo].[SubmissionReceipts]([PublicCode]) WHERE [PublicCode] IS NOT NULL');
         """;
 
     internal const string DropSql = """
@@ -80,6 +99,8 @@ public static class SubmissionGuardSchema
             }
 
             await db.Database.ExecuteSqlRawAsync(CreateSql, ct);
+            await db.Database.ExecuteSqlRawAsync(AddPublicCodeSql, ct);
+            await db.Database.ExecuteSqlRawAsync(AddPublicCodeIndexSql, ct);
             ready = true;
         }
         finally

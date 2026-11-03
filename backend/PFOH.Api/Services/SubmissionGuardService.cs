@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using PFOH.Api.Data;
 using PFOH.Api.Dtos;
@@ -42,9 +43,7 @@ public sealed record SubmissionProbe(
 /// </summary>
 public sealed class SubmissionGuardService(
     PfohDbContext db,
-    IConfiguration configuration,
-    ISubmissionMailer mailer,
-    ILogger<SubmissionGuardService> logger)
+    IConfiguration configuration)
 {
     public bool Enabled => SubmissionDuplicates.Enabled(configuration);
 
@@ -317,6 +316,12 @@ public sealed class SubmissionGuardService(
             .FirstOrDefaultAsync(receipt => receipt.ChangeRequestId == changeRequestId, ct);
         if (existing is not null)
         {
+            if (string.IsNullOrWhiteSpace(existing.PublicCode))
+            {
+                existing.PublicCode = await NextPublicCodeAsync(ct);
+                await db.SaveChangesAsync(ct);
+            }
+
             return existing;
         }
 
@@ -324,6 +329,7 @@ public sealed class SubmissionGuardService(
         {
             ChangeRequestId = changeRequestId,
             PublicToken = Guid.NewGuid(),
+            PublicCode = await NextPublicCodeAsync(ct),
             CreatedUtc = DateTime.UtcNow
         };
         db.SubmissionReceipts.Add(receipt);
@@ -331,49 +337,31 @@ public sealed class SubmissionGuardService(
         return receipt;
     }
 
-    public async Task SendConfirmationAsync(
-        HonoreeChangeRequest change,
-        SubmissionReceipt receipt,
-        string status,
-        string nextSteps,
-        HttpRequest request,
-        CancellationToken ct)
+    public static string CreatePublicCode()
     {
-        var email = NormalizeEmail(change.SubmitterEmailAddress);
-        if (string.IsNullOrEmpty(email))
+        const string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        return "PFOH-" + string.Create(6, alphabet, static (chars, symbols) =>
         {
-            return;
+            for (var i = 0; i < chars.Length; i++)
+            {
+                chars[i] = symbols[RandomNumberGenerator.GetInt32(symbols.Length)];
+            }
+        });
+    }
+
+    private async Task<string> NextPublicCodeAsync(CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            var code = CreatePublicCode();
+            var taken = await db.SubmissionReceipts.AnyAsync(row => row.PublicCode == code, ct);
+            if (!taken)
+            {
+                return code;
+            }
         }
 
-        var name = DisplayName(change.FirstName, change.MiddleName, change.LastName, change.Suffix, change.Nickname);
-        var reference = receipt.PublicToken.ToString("D");
-        var url = $"{ReactivationLinkService.PublicBaseUrl(configuration, request)}/submission/{reference}";
-        var body = $"""
-            We received your submission for {name}.
-
-            Status: {status}
-            Reference: {reference}
-
-            {nextSteps}
-
-            You can view this submission at {url}
-
-            Plano Flags of Honor
-            """;
-        try
-        {
-            await mailer.SendConfirmationAsync(
-                new SubmissionConfirmation(
-                    email,
-                    "We received your Plano Flags of Honor submission",
-                    body,
-                    reference),
-                ct);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Submission confirmation was not recorded for reference {Reference}.", reference);
-        }
+        throw new InvalidOperationException("A submission reference could not be reserved.");
     }
 
     public async Task<IReadOnlyList<SupersededSubmissionDto>> ListSupersededAsync(CancellationToken ct)
@@ -451,7 +439,7 @@ public sealed class SubmissionGuardService(
 
         var status = StatusLabel(change.RequestStatus, change.RequiresCardReprint);
         return new SubmissionReceiptDto(
-            receipt.PublicToken.ToString("D"),
+            receipt.PublicCode,
             status,
             DisplayName(change.FirstName, change.MiddleName, change.LastName, change.Suffix, change.Nickname),
             BlankToNull(change.Rank),

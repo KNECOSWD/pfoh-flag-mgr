@@ -20,6 +20,8 @@ public partial class AddSubmissionGuard : Migration
     protected override void Up(MigrationBuilder migrationBuilder)
     {
         migrationBuilder.Sql(SubmissionGuardSchema.CreateSql);
+        migrationBuilder.Sql(SubmissionGuardSchema.AddPublicCodeSql);
+        migrationBuilder.Sql(SubmissionGuardSchema.AddPublicCodeIndexSql);
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)

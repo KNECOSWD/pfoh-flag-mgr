@@ -1,4 +1,4 @@
-import { matchKindLabel, similarEntryHelp, similarEntryLead, updateChoiceHelp } from "./submissionDuplicate.js";
+import { matchKindLabel, matchReasonSentence, similarEntryHelp, similarEntryLead, updateChoiceHelp } from "./submissionDuplicate.js";
 
 export type SubmissionMatchView = {
   kind: "Approved" | "Pending" | string;
@@ -47,7 +47,7 @@ export function SubmissionDuplicatePrompt({
             </div>
             {details ? <p className="mb-1">{details}</p> : null}
             {match.flagLocation ? <p className="mb-1">Flag location: {match.flagLocation}</p> : null}
-            {match.reason ? <p className="mb-2">{match.reason}</p> : null}
+            {match.reason ? <p className="mb-2">{matchReasonSentence(match.reason)}</p> : null}
             <p className="mb-3">
               {updateChoiceHelp({
                 kind: match.kind,

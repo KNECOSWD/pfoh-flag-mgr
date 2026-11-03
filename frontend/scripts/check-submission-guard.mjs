@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   matchKindLabel,
   proceedLabel,
+  matchReasonSentence,
   similarEntryHelp,
   similarEntryLead,
   submissionReference,
@@ -25,7 +26,9 @@ test("the similar-entry prompt names the match and stays friendly", () => {
   assert.match(updateChoiceHelp({ kind: "Approved", canUpdateDirectly: true, isAdmin: true }), /administrator/i);
   assert.equal(proceedLabel("nominate"), "Submit as a new entry");
   assert.equal(proceedLabel("admin-edit"), "Save this record anyway");
-  assert.equal(submissionReference(token), token);
+  assert.equal(matchReasonSentence("same full name and same service branch"), "Matched on: same full name and same service branch.");
+  assert.equal(submissionReference("PFOH-7K3Q9X"), "PFOH-7K3Q9X");
+  assert.notEqual(submissionReference("PFOH-7K3Q9X"), token);
 });
 
 test("the pending review page is a guid path, not a sequential id", () => {
@@ -58,6 +61,9 @@ test("the form, page, and queue use the guard without an em dash", () => {
   assert.match(app, /Superseded submissions/);
   assert.match(prompt, /Update this entry/);
   assert.match(prompt, /badge text-bg-primary/);
+  assert.match(prompt, /matchReasonSentence/);
+  assert.match(app, /!submissionToken && activeRoute === item\.route/);
+  assert.match(app, /!submissionToken && activeRoute === "\/honor-a-hero"/);
   assert.match(page, /What happens next/);
   assert.match(page, /Reference/);
   assert.match(api, /\/api\/flag-claims\/duplicate-check/);

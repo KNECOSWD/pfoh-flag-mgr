@@ -1366,7 +1366,7 @@ public class FlagClaimsController(
             .Include(row => row.HonoreeChangeRequests)
             .FirstAsync(row => row.Id == claim.Id, ct);
         var savedChange = saved.HonoreeChangeRequests.OrderByDescending(row => row.Id).First();
-        return Ok(await FinishSubmissionAsync(saved, savedChange, ct, savedByAdmin: true));
+        return Ok(await FinishSubmissionAsync(saved, savedChange, ct));
     }
 
     [HttpPost("pending/{changeRequestId:int}/apply")]
@@ -1556,18 +1556,9 @@ public class FlagClaimsController(
     private async Task<FlagClaimDto> FinishSubmissionAsync(
         FlagClaim claim,
         HonoreeChangeRequest change,
-        CancellationToken ct,
-        bool savedByAdmin = false)
+        CancellationToken ct)
     {
         var receipt = await submissions.EnsureReceiptAsync(change.Id, ct);
-        var status = SubmissionGuardService.StatusLabel(change.RequestStatus, savedByAdmin);
-        await submissions.SendConfirmationAsync(
-            change,
-            receipt,
-            status,
-            SubmissionGuardService.NextStepsFor(status),
-            Request,
-            ct);
         return ToDto(claim, null) with { ReceiptToken = receipt.PublicToken };
     }
 

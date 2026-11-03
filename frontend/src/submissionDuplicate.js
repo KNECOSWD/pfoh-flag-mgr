@@ -37,8 +37,18 @@ export function proceedLabel(mode) {
 }
 
 /**
- * @param {string | null | undefined} token
+ * Shown on the pending review page. This is not the address token.
+ * @param {string | null | undefined} code
  */
-export function submissionReference(token) {
-  return String(token || "").trim().toLowerCase();
+export function submissionReference(code) {
+  return String(code || "").trim();
+}
+
+/**
+ * @param {string | null | undefined} reason
+ */
+export function matchReasonSentence(reason) {
+  const text = String(reason || "").trim().replace(/\.+$/, "");
+  if (!text) return "";
+  return `Matched on: ${text}.`;
 }

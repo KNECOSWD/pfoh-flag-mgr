@@ -58,8 +58,6 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         await ResetAsync();
         var honoreeId = await SeedApprovedAsync("Ada", "Mann", "Captain", "Army", "AA-10", "secret-approved@example.test", "2145550199");
         var client = factory.CreateClient();
-        factory.Mail.Sent.Clear();
-
         var response = await client.SendAsync(Authed(
             HttpMethod.Post,
             "/api/flag-claims/nominate",
@@ -83,8 +81,6 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         Assert.Null(correction.FlagClaim!.HonoreeId);
         var pending = await PendingIdsAsync(client);
         Assert.Contains(correction.Id, pending);
-        Assert.Single(factory.Mail.Sent);
-        Assert.DoesNotContain("secret-approved@example.test", factory.Mail.Sent[0].Body, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -230,7 +226,6 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         await ResetAsync();
         await SeedApprovedAsync("Hidden", "Person", "Major", "Army", "BB-2", "hidden@example.test", "2145550177");
         var client = factory.CreateClient();
-        factory.Mail.Sent.Clear();
         var key = Guid.NewGuid();
         var created = await client.SendAsync(Authed(
             HttpMethod.Post,
@@ -251,7 +246,12 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         var body = await page.Content.ReadAsStringAsync();
         Assert.Contains("Cara", body, StringComparison.Ordinal);
         Assert.Contains("Pending review", body, StringComparison.Ordinal);
-        Assert.Contains(payload.ReceiptToken!.Value.ToString(), body, StringComparison.OrdinalIgnoreCase);
+        var shown = JsonSerializer.Deserialize<ReceiptPageDto>(body, Json);
+        Assert.NotNull(shown);
+        Assert.Matches("^PFOH-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$", shown.Reference);
+        Assert.DoesNotContain(payload.ReceiptToken!.Value.ToString(), body, StringComparison.OrdinalIgnoreCase);
+        var byCode = await client.GetAsync($"/api/submissions/{shown.Reference}");
+        Assert.Equal(HttpStatusCode.NotFound, byCode.StatusCode);
         Assert.DoesNotContain("Hidden", body, StringComparison.Ordinal);
         Assert.DoesNotContain("hidden@example.test", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("family@example.test", body, StringComparison.OrdinalIgnoreCase);
@@ -276,9 +276,7 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
         Assert.Single(await db.HonoreeChangeRequests.ToListAsync());
-        Assert.Single(factory.Mail.Sent);
-        Assert.DoesNotContain("—", factory.Mail.Sent[0].Body, StringComparison.Ordinal);
-        Assert.DoesNotContain("—", factory.Mail.Sent[0].Subject, StringComparison.Ordinal);
+        Assert.Equal(shown.Reference, (await db.SubmissionReceipts.SingleAsync()).PublicCode);
     }
 
     [Fact]
@@ -310,15 +308,30 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
     }
 
     [Fact]
-    public void Confirmation_mailer_does_not_reference_a_network_client()
+    public void Migration_script_is_safe_on_the_live_schema_and_submit_does_not_send_mail()
     {
-        var source = File.ReadAllText(SourcePath("backend/PFOH.Api/Services/LoggingSubmissionMailer.cs"));
-        Assert.DoesNotContain("SmtpClient", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("MailMessage", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("SendMail", source, StringComparison.Ordinal);
         var script = File.ReadAllText(SourcePath("backend/PFOH.Api/Data/Scripts/20261103180000_AddSubmissionGuard.sql"));
+        var apply = script.Split("-- Rollback", 2)[0];
+        var executable = string.Join(
+            '\n',
+            apply.Split('\n').Where(line => !line.TrimStart().StartsWith("--", StringComparison.Ordinal)));
         Assert.Contains(SubmissionGuardSchema.CreateSql.Trim(), script, StringComparison.Ordinal);
+        Assert.Contains(SubmissionGuardSchema.AddPublicCodeSql.Trim(), script, StringComparison.Ordinal);
+        Assert.Contains(SubmissionGuardSchema.AddPublicCodeIndexSql.Trim(), script, StringComparison.Ordinal);
+        Assert.DoesNotContain("UPDATE ", executable, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("DELETE ", executable, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ALTER TABLE [dbo].[Honorees]", apply, StringComparison.Ordinal);
+        Assert.DoesNotContain("ALTER TABLE [dbo].[FlagClaims]", apply, StringComparison.Ordinal);
+        Assert.Contains("IF OBJECT_ID", apply, StringComparison.Ordinal);
+        Assert.Contains("COL_LENGTH", apply, StringComparison.Ordinal);
         Assert.Contains("DROP TABLE [dbo].[SubmissionReceipts]", script, StringComparison.Ordinal);
+
+        var api = File.ReadAllText(SourcePath("backend/PFOH.Api/Program.cs"));
+        var submit = File.ReadAllText(SourcePath("backend/PFOH.Api/Controllers/FlagClaimsController.cs"));
+        Assert.DoesNotContain("ISubmissionMailer", api, StringComparison.Ordinal);
+        Assert.DoesNotContain("SendConfirmation", submit, StringComparison.Ordinal);
+        Assert.False(File.Exists(SourcePath("backend/PFOH.Api/Services/ISubmissionMailer.cs")));
+        Assert.False(File.Exists(SourcePath("backend/PFOH.Api/Services/LoggingSubmissionMailer.cs")));
     }
 
     private async Task<int> SeedApprovedAsync(
@@ -417,7 +430,6 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
 
     private async Task ResetAsync()
     {
-        factory.Mail.Sent.Clear();
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
         db.Database.EnsureCreated();
@@ -637,18 +649,9 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
 
     private sealed record PendingIdDto(int ChangeRequestId);
 
+    private sealed record ReceiptPageDto(string Reference);
+
     private sealed record SupersededDto(int ChangeRequestId, string HonoreeName);
-}
-
-public sealed class RecordingSubmissionMailer : ISubmissionMailer
-{
-    public List<SubmissionConfirmation> Sent { get; } = new();
-
-    public Task SendConfirmationAsync(SubmissionConfirmation message, CancellationToken ct)
-    {
-        Sent.Add(message);
-        return Task.CompletedTask;
-    }
 }
 
 public sealed class SubmissionGuardOffFactory : PfohApiFactory

@@ -3447,10 +3447,10 @@ export default function App() {
 
           <nav id="hero-navigation" className="heroNav desktopHeroNav navbar-nav flex-row flex-wrap" aria-label="Main navigation">
             {siteNav.filter((item) => item.show).map((item) => (
-              <a key={item.route} className={activeRoute === item.route ? "nav-link isActive" : "nav-link"} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
+              <a key={item.route} className={!submissionToken && activeRoute === item.route ? "nav-link isActive" : "nav-link"} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
             ))}
             <a
-              className={activeRoute === "/honor-a-hero" ? "nav-link isActive" : "nav-link"}
+              className={!submissionToken && activeRoute === "/honor-a-hero" ? "nav-link isActive" : "nav-link"}
               href="/honor-a-hero"
               onClick={(event) => handleRouteLink(event, "/honor-a-hero")}
             >
@@ -3492,10 +3492,10 @@ export default function App() {
 
                 <nav className="mobileDrawerNav" aria-label="Mobile navigation">
                   {siteNav.filter((item) => item.show).map((item) => (
-                    <a key={item.route} className={activeRoute === item.route ? "isActive" : ""} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
+                    <a key={item.route} className={!submissionToken && activeRoute === item.route ? "isActive" : ""} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
                   ))}
                   <a
-                    className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
+                    className={!submissionToken && activeRoute === "/honor-a-hero" ? "isActive" : ""}
                     href="/honor-a-hero"
                     onClick={(event) => handleRouteLink(event, "/honor-a-hero")}
                   >
