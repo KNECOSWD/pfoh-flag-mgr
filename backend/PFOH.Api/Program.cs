@@ -2,11 +2,13 @@ using System.IO.Compression;
 using System.Threading.RateLimiting;
 using Microsoft.ApplicationInsights.DependencyCollector;
 using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Identity.Web;
@@ -39,6 +41,15 @@ builder.Services.AddResponseCompression(options =>
 builder.Services.Configure<BrotliCompressionProviderOptions>(options => options.Level = CompressionLevel.Optimal);
 builder.Services.Configure<GzipCompressionProviderOptions>(options => options.Level = CompressionLevel.Optimal);
 
+var localSeed = builder.Environment.IsDevelopment()
+    && string.Equals(builder.Configuration["PFOH_LOCAL_SEED"], "1", StringComparison.Ordinal);
+
+if (localSeed)
+{
+    builder.Services.AddAuthentication(LocalSeedAuthHandler.SchemeName)
+        .AddScheme<AuthenticationSchemeOptions, LocalSeedAuthHandler>(LocalSeedAuthHandler.SchemeName, _ => { });
+}
+else
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddMicrosoftIdentityWebApi(
@@ -98,6 +109,13 @@ builder.Services.AddSingleton<PublicFlagMapCacheInvalidator>();
 builder.Services.AddSingleton<PublicLogoCache>();
 builder.Services.AddDbContext<PfohDbContext>((sp, options) =>
 {
+    if (localSeed)
+    {
+        options.UseInMemoryDatabase("pfoh-local-seed");
+        options.ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning));
+        return;
+    }
+
     var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
         ?? throw new InvalidOperationException("Missing DefaultConnection connection string.");
     options.UseSqlServer(connectionString, sqlServerOptionsAction: sql =>
@@ -158,6 +176,8 @@ builder.Services.AddScoped<PendingReviewMaintenance>();
 builder.Services.AddScoped<ReprintQueueMaintenance>();
 builder.Services.AddScoped<PublicFlagMap>();
 builder.Services.AddScoped<ReactivationLinkService>();
+builder.Services.AddScoped<SubmissionGuardService>();
+builder.Services.AddSingleton<ISubmissionMailer, LoggingSubmissionMailer>();
 builder.Services.AddSingleton<SubmitterSuggestionTokens>();
 
 builder.Services.AddRateLimiter(options =>
@@ -219,6 +239,18 @@ builder.Services.AddRateLimiter(options =>
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+    });
+    options.AddPolicy("SubmissionReceipt", httpContext =>
+    {
+        var ip = PublicFlagMapClientIp.Resolve(httpContext);
+        return RateLimitPartition.GetFixedWindowLimiter(
+            ip,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0
             });
@@ -555,12 +587,13 @@ try
     try
     {
         await ReactivationSchema.EnsureAsync(startupDb, CancellationToken.None);
+        await SubmissionGuardSchema.EnsureAsync(startupDb, CancellationToken.None);
     }
     catch (Exception ex)
     {
         app.Logger.LogError(
             ex,
-            "STARTUP CLEANUP FAILED while ensuring dbo.HonoreeReactivationTokens. {Failure}",
+            "STARTUP CLEANUP FAILED while ensuring reactivation or submission guard tables. {Failure}",
             ex.ToString());
     }
 
@@ -591,6 +624,12 @@ catch (Exception ex)
         ex,
         "STARTUP CLEANUP FAILED before pending submission cleanup could start. The site will keep running. {Failure}",
         ex.ToString());
+}
+
+if (localSeed)
+{
+    await using var seedScope = app.Services.CreateAsyncScope();
+    await LocalSeedData.SeedAsync(seedScope.ServiceProvider.GetRequiredService<PfohDbContext>());
 }
 
 app.Run();

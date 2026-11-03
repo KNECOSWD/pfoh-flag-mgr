@@ -30,6 +30,12 @@ public class HonoreeChangeRequest
     public string? SubmitterPhoneNumber { get; set; }
     public string? SubmitterEmailAddress { get; set; }
 
+    /// <summary>
+    /// Set when this row is a correction of someone else's pending submission.
+    /// Null on ordinary submissions. The pending row itself is not edited.
+    /// </summary>
+    public int? CorrectsChangeRequestId { get; set; }
+
     // Draft, Submitted, Approved, Rejected, Withdrawn, Superseded, Withdrawal, Removed.
     public string RequestStatus { get; set; } = "Draft";
 

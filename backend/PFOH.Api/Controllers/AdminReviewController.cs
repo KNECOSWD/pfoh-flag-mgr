@@ -60,8 +60,26 @@ public class AdminReviewController(
     FlagGridAssignment flagGrids,
     ReprintQueueMaintenance reprintQueue,
     HonoreePdfService pdfs,
-    FlagGridRemovalService removals) : ControllerBase
+    FlagGridRemovalService removals,
+    SubmissionGuardService submissions) : ControllerBase
 {
+    [HttpGet("superseded")]
+    public async Task<ActionResult<IReadOnlyList<SupersededSubmissionDto>>> GetSuperseded(CancellationToken ct) =>
+        Ok(await submissions.ListSupersededAsync(ct));
+
+    [HttpPost("{changeRequestId:int}/restore")]
+    public async Task<IActionResult> RestoreSuperseded(int changeRequestId, CancellationToken ct)
+    {
+        var actor = AdminActor.From(User);
+        var restored = await submissions.RestoreAsync(changeRequestId, actor.Email, actor.ObjectId, ct);
+        if (!restored)
+        {
+            return NotFound("That superseded submission was not found.");
+        }
+
+        return Ok(new { message = "Restored to the approval queue." });
+    }
+
     [HttpGet("pending")]
     public async Task<ActionResult<IReadOnlyList<AdminReviewItemDto>>> GetPending(CancellationToken ct)
     {
@@ -99,7 +117,8 @@ public class AdminReviewController(
                 ConflictsServed = r.ConflictsServed,
                 StartYear = r.StartYear,
                 EndYear = r.EndYear,
-                Kia = r.KIA
+                Kia = r.KIA,
+                CorrectsChangeRequestId = r.CorrectsChangeRequestId
             })
             .ToListAsync(ct);
 
@@ -916,6 +935,52 @@ public class AdminReviewController(
                     message = "Only submitted change requests can be approved.",
                     currentStatus = change.RequestStatus
                 });
+            }
+
+            if (change.CorrectsChangeRequestId is int correctsId && change.HonoreeId is not > 0)
+            {
+                var target = await db.HonoreeChangeRequests
+                    .FirstOrDefaultAsync(row => row.Id == correctsId, ct);
+                if (target is { RequestStatus: "Submitted", HonoreeId: null or <= 0 })
+                {
+                    target.FirstName = change.FirstName;
+                    target.MiddleName = change.MiddleName;
+                    target.LastName = change.LastName;
+                    target.Suffix = change.Suffix;
+                    target.Nickname = change.Nickname;
+                    target.Rank = change.Rank;
+                    target.ServiceBranchId = change.ServiceBranchId;
+                    target.ServiceBranchCategoryId = change.ServiceBranchCategoryId;
+                    target.StartYear = change.StartYear;
+                    target.EndYear = change.EndYear;
+                    target.DatesUserEntry = change.DatesUserEntry;
+                    target.ConflictsServed = change.ConflictsServed;
+                    target.Awards = change.Awards;
+                    target.Description = change.Description;
+                    target.KIA = change.KIA;
+                    change.RequestStatus = "Approved";
+                    change.ReviewedUtc = DateTime.UtcNow;
+                    change.ReviewedBy = adminName;
+                    change.ReviewNotes = string.IsNullOrWhiteSpace(request.ReviewNotes)
+                        ? "Applied as a correction to the pending submission."
+                        : request.ReviewNotes;
+                    change.RequiresCardReprint = false;
+                    await db.SaveChangesAsync(ct);
+                    return Ok(ToReviewDto(change));
+                }
+
+                if (target is { HonoreeId: > 0 })
+                {
+                    change.HonoreeId = target.HonoreeId;
+                    change.FlagGridId ??= target.FlagGridId;
+                }
+                else
+                {
+                    return Conflict(new
+                    {
+                        message = "The pending submission is no longer waiting for review. Reject this correction, or ask the submitter to send a new one."
+                    });
+                }
             }
 
             var isReactivation = await db.HonoreeReactivationRequests
@@ -1811,7 +1876,8 @@ public class AdminReviewController(
             PhotoFileName = r.PhotoFileName,
             Description = r.Description,
             Awards = r.Awards,
-            ConflictsServed = r.ConflictsServed
+            ConflictsServed = r.ConflictsServed,
+            CorrectsChangeRequestId = r.CorrectsChangeRequestId
         });
 
     private static AdminReviewItemDto ToReviewDto(PendingReviewSource r)
@@ -1838,7 +1904,10 @@ public class AdminReviewController(
             r.Description,
             r.Awards,
             r.ConflictsServed,
-            SubmissionKind: ReviewSubmissionDiff.Kind(r.RequestStatus, r.HonoreeId));
+            SubmissionKind: ReviewSubmissionDiff.Kind(
+                r.RequestStatus,
+                r.HonoreeId,
+                r.CorrectsChangeRequestId is > 0 && r.HonoreeId is not > 0));
     }
 
     private static AdminReviewItemDto DegradedReviewDto(PendingReviewSource r)
@@ -1865,7 +1934,10 @@ public class AdminReviewController(
             null,
             null,
             null,
-            SubmissionKind: ReviewSubmissionDiff.Kind(r.RequestStatus, r.HonoreeId));
+            SubmissionKind: ReviewSubmissionDiff.Kind(
+                r.RequestStatus,
+                r.HonoreeId,
+                r.CorrectsChangeRequestId is > 0 && r.HonoreeId is not > 0));
     }
 
     private static ReviewSnapshot PendingSnapshot(PendingReviewSource request) => new(
@@ -1929,6 +2001,7 @@ public class AdminReviewController(
         public int? StartYear { get; set; }
         public int? EndYear { get; set; }
         public bool Kia { get; set; }
+        public int? CorrectsChangeRequestId { get; set; }
     }
 
     private async Task<IReadOnlyList<AdminFlagPositionDto>> BuildFlagPositionsAsync(CancellationToken ct)

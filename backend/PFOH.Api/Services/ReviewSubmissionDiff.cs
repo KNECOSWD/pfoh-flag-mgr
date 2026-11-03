@@ -9,13 +9,21 @@ public static class ReviewSubmissionDiff
     public const string Change = "Change";
     public const string Withdrawal = "Withdrawal";
     public const string Reactivation = "Reactivation";
+    public const string Correction = "Correction";
 
     public static string Kind(int? honoreeId) => honoreeId is > 0 ? Change : NewSubmission;
 
-    public static string Kind(string? requestStatus, int? honoreeId) =>
-        string.Equals(requestStatus, PendingReviewMaintenance.Withdrawal, StringComparison.OrdinalIgnoreCase)
+    public static string Kind(string? requestStatus, int? honoreeId, bool pendingCorrection = false)
+    {
+        if (pendingCorrection)
+        {
+            return Correction;
+        }
+
+        return string.Equals(requestStatus, PendingReviewMaintenance.Withdrawal, StringComparison.OrdinalIgnoreCase)
             ? Withdrawal
             : Kind(honoreeId);
+    }
 
     public static ReviewSnapshot FromHonoree(Honoree honoree) => new(
         honoree.Id,

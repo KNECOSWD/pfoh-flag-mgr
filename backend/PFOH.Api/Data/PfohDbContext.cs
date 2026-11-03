@@ -27,6 +27,8 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
     public DbSet<ReprintQueueEvent> ReprintQueueEvents => Set<ReprintQueueEvent>();
     public DbSet<HonoreeReactivationToken> HonoreeReactivationTokens => Set<HonoreeReactivationToken>();
     public DbSet<HonoreeReactivationRequest> HonoreeReactivationRequests => Set<HonoreeReactivationRequest>();
+    public DbSet<SubmissionReceipt> SubmissionReceipts => Set<SubmissionReceipt>();
+    public DbSet<SubmissionAuditEvent> SubmissionAuditEvents => Set<SubmissionAuditEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -228,6 +230,7 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
             entity.Property(e => e.SubmitterPhoneNumber).HasMaxLength(50);
             entity.Property(e => e.SubmitterEmailAddress).HasMaxLength(255);
             entity.Property(e => e.RequestStatus).HasMaxLength(30).IsRequired();
+            entity.Property(e => e.CorrectsChangeRequestId);
             entity.Property(e => e.ReviewedBy).HasMaxLength(255);
 
             entity.HasIndex(e => e.FlagClaimId);
@@ -431,6 +434,33 @@ public class PfohDbContext(DbContextOptions<PfohDbContext> options) : DbContext(
                 .WithMany()
                 .HasForeignKey(e => e.TokenId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<SubmissionReceipt>(entity =>
+        {
+            entity.ToTable("SubmissionReceipts", "dbo");
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ChangeRequestId)
+                .HasDatabaseName("UX_SubmissionReceipts_ChangeRequestId")
+                .IsUnique();
+            entity.HasIndex(e => e.PublicToken)
+                .HasDatabaseName("UX_SubmissionReceipts_PublicToken")
+                .IsUnique();
+            entity.HasOne(e => e.ChangeRequest)
+                .WithMany()
+                .HasForeignKey(e => e.ChangeRequestId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<SubmissionAuditEvent>(entity =>
+        {
+            entity.ToTable("SubmissionAuditEvents", "dbo");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Action).HasMaxLength(32).IsRequired();
+            entity.Property(e => e.ActorEmail).HasMaxLength(256).IsRequired();
+            entity.Property(e => e.ActorObjectId).HasMaxLength(128);
+            entity.Property(e => e.Note).HasMaxLength(500);
+            entity.HasIndex(e => new { e.ChangeRequestId, e.CreatedUtc });
         });
     }
 }

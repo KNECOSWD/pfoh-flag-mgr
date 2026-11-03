@@ -811,6 +811,9 @@ public class PfohApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<HonoreeFileStorage, PendingReviewTestFileStorage>();
             services.RemoveAll<IHonoreeCardRenderer>();
             services.AddSingleton<IHonoreeCardRenderer, StubHonoreeCardRenderer>();
+            services.AddSingleton<RecordingSubmissionMailer>();
+            services.RemoveAll<ISubmissionMailer>();
+            services.AddSingleton<ISubmissionMailer>(sp => sp.GetRequiredService<RecordingSubmissionMailer>());
 
             services.AddAuthentication(options =>
             {
@@ -825,6 +828,9 @@ public class PfohApiFactory : WebApplicationFactory<Program>
             });
         });
     }
+
+    public RecordingSubmissionMailer Mail =>
+        Services.GetRequiredService<RecordingSubmissionMailer>();
 
     public PendingReviewTestFileStorage Files =>
         Services.GetRequiredService<HonoreeFileStorage>() as PendingReviewTestFileStorage
