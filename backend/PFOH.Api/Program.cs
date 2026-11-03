@@ -404,7 +404,6 @@ app.Use(async (context, next) =>
         if (submissionPage)
         {
             context.Response.Headers.CacheControl = "no-store";
-            context.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
             return Task.CompletedTask;
         }
 
@@ -446,6 +445,11 @@ app.Use(async (context, next) =>
 {
     var path = context.Request.Path.Value ?? string.Empty;
     if (path.StartsWith("/api/public/flag-map", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
+    }
+
+    if (IsSubmissionReceiptPage(path))
     {
         context.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
     }
