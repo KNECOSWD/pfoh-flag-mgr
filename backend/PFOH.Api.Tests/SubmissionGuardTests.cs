@@ -201,17 +201,68 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
     }
 
     [Fact]
-    public async Task Submit_as_new_supersedes_only_unapproved_same_account_same_day_same_honoree_rows()
+    public async Task No_does_not_supersede_a_different_person_shown_in_the_prompt()
     {
         await ResetAsync();
         var (sameDay, previousDay) = ChicagoSamples();
-        var honoreeId = await SeedApprovedAsync("Ada", "Mann", "Captain", "Army", "AA-10", "secret-approved@example.test", "2145550199");
-        var sameDayId = await SeedPendingAsync("Ada", "Mann", "Captain", 1, "family@example.test", "2145550101", sameDay, owner: "family-user");
-        var yesterdayId = await SeedPendingAsync("Ada", "Mann", "Captain", 1, "family@example.test", "2145550102", previousDay, owner: "family-user");
-        var otherAccountId = await SeedPendingAsync("Ada", "Mann", "Captain", 1, "other@example.test", "2145550103", sameDay, owner: "other-user");
-        var unrelatedId = await SeedPendingAsync("Quinn", "Hale", "Sergeant", 1, "family@example.test", "2145550104", sameDay, owner: "family-user");
-        var otherBranchId = await SeedPendingAsync("Ada", "Mann", "Captain", 2, "family@example.test", "2145550105", sameDay, owner: "family-user");
+        var alanId = await SeedPendingAsync(
+            "Example", "Spacedtwin", "Captain", 1, "family@example.test", "2145550101", sameDay,
+            owner: "family-user", middle: "Alan");
+        var seniorId = await SeedPendingAsync(
+            "Example", "Spacedsuffix", "Captain", 1, "family@example.test", "2145550102", sameDay,
+            owner: "family-user", suffix: "Sr.");
+        var yesterdayId = await SeedPendingAsync(
+            "Example", "Spacedtwin", "Captain", 1, "family@example.test", "2145550103", previousDay,
+            owner: "family-user", middle: "Bruce");
         var client = factory.CreateClient();
+
+        var bruce = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/flag-claims/nominate",
+            "family-user",
+            "family@example.test",
+            "Family Member",
+            body: Nomination("Example", "Spacedtwin", 1, "family@example.test", "Captain", "submit-new", null, null, null, middle: "Bruce"),
+            idempotencyKey: Guid.NewGuid()));
+        Assert.Equal(HttpStatusCode.OK, bruce.StatusCode);
+
+        var junior = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/flag-claims/nominate",
+            "family-user",
+            "family@example.test",
+            "Family Member",
+            body: Nomination("Example", "Spacedsuffix", 1, "family@example.test", "Captain", "submit-new", null, null, null, suffix: "Jr."),
+            idempotencyKey: Guid.NewGuid()));
+        Assert.Equal(HttpStatusCode.OK, junior.StatusCode);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.Equal("Submitted", (await db.HonoreeChangeRequests.SingleAsync(row => row.Id == alanId)).RequestStatus);
+        Assert.Equal("Submitted", (await db.HonoreeChangeRequests.SingleAsync(row => row.Id == seniorId)).RequestStatus);
+        Assert.Equal("Submitted", (await db.HonoreeChangeRequests.SingleAsync(row => row.Id == yesterdayId)).RequestStatus);
+        Assert.Empty(await db.SubmissionAuditEvents.ToListAsync());
+        Assert.Equal(5, await db.HonoreeChangeRequests.CountAsync());
+    }
+
+    [Fact]
+    public async Task No_supersedes_only_an_exact_copy_the_prompt_did_not_show()
+    {
+        await ResetAsync();
+        var (sameDay, _) = ChicagoSamples();
+        var seeded = new List<int>();
+        for (var i = 0; i < 9; i++)
+        {
+            seeded.Add(await SeedPendingAsync(
+                "Ada", "Mann", "Captain", 1, "family@example.test", "2145550101", sameDay,
+                owner: "family-user", photo: $"pending/ada-{i}.jpg"));
+        }
+
+        var client = factory.CreateClient();
+        var check = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test", oid: "family-user");
+        Assert.Equal(8, check.Matches.Count);
+        var shown = check.Matches.Select(match => match.ChangeRequestId!.Value).ToHashSet();
+        var hiddenId = Assert.Single(seeded, id => !shown.Contains(id));
 
         var response = await client.SendAsync(Authed(
             HttpMethod.Post,
@@ -226,29 +277,19 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
         var rows = await db.HonoreeChangeRequests.ToDictionaryAsync(row => row.Id);
-        Assert.Equal("Superseded", rows[sameDayId].RequestStatus);
-        Assert.Equal("Submitted", rows[yesterdayId].RequestStatus);
-        Assert.Equal("Submitted", rows[otherAccountId].RequestStatus);
-        Assert.Equal("Submitted", rows[unrelatedId].RequestStatus);
-        Assert.Equal("Submitted", rows[otherBranchId].RequestStatus);
-        var honoree = await db.Honorees.SingleAsync(row => row.Id == honoreeId);
-        Assert.Equal("Captain", honoree.Rank);
-        Assert.True(honoree.IsActive);
-        Assert.Null(honoree.DeletedDate);
+        Assert.Equal("Superseded", rows[hiddenId].RequestStatus);
+        Assert.Equal($"pending/ada-{seeded.IndexOf(hiddenId)}.jpg", rows[hiddenId].PhotoFileName);
+        foreach (var id in shown)
+        {
+            Assert.Equal("Submitted", rows[id].RequestStatus);
+        }
+
         var audit = Assert.Single(await db.SubmissionAuditEvents.ToListAsync());
-        Assert.Equal(SubmissionAuditEvent.Superseded, audit.Action);
-        Assert.Equal(sameDayId, audit.ChangeRequestId);
+        Assert.Equal(hiddenId, audit.ChangeRequestId);
         Assert.Equal("family@example.test", audit.ActorEmail);
         Assert.Equal("family-user", audit.ActorObjectId);
-        var seeded = new[] { sameDayId, yesterdayId, otherAccountId, unrelatedId, otherBranchId };
         var keeperId = rows.Keys.Single(id => !seeded.Contains(id));
         Assert.Equal(keeperId, audit.KeeperChangeRequestId);
-
-        var pending = await PendingIdsAsync(client);
-        Assert.DoesNotContain(sameDayId, pending);
-        Assert.Contains(yesterdayId, pending);
-        Assert.Contains(otherAccountId, pending);
-        Assert.Contains(unrelatedId, pending);
 
         var superseded = await client.SendAsync(Authed(
             HttpMethod.Get,
@@ -257,28 +298,182 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
             "admin@example.test",
             "Admin",
             roles: "PFOH.Admin"));
-        Assert.Equal(HttpStatusCode.OK, superseded.StatusCode);
-        var hidden = await superseded.Content.ReadFromJsonAsync<SupersededPage>(Json);
-        var listed = Assert.Single(hidden!.Items);
-        Assert.Equal(sameDayId, listed.ChangeRequestId);
-        Assert.Equal("family@example.test", listed.SubmitterEmail);
-        Assert.Equal(keeperId, listed.KeeperChangeRequestId);
+        var page = await superseded.Content.ReadFromJsonAsync<SupersededPage>(Json);
+        var listed = Assert.Single(page!.Items);
+        Assert.Equal(hiddenId, listed.ChangeRequestId);
         Assert.Matches(" (CST|CDT)$", listed.SubmittedCentral);
-        Assert.Equal(1, hidden.Total);
 
         var restore = await client.SendAsync(Authed(
             HttpMethod.Post,
-            $"/api/admin/review/{sameDayId}/restore",
+            $"/api/admin/review/{hiddenId}/restore",
             "admin-user",
             "admin@example.test",
             "Admin",
             roles: "PFOH.Admin"));
         Assert.Equal(HttpStatusCode.OK, restore.StatusCode);
         db.ChangeTracker.Clear();
-        Assert.Equal("Submitted", (await db.HonoreeChangeRequests.SingleAsync(row => row.Id == sameDayId)).RequestStatus);
-        var actions = await db.SubmissionAuditEvents.OrderBy(row => row.Id).Select(row => row.Action).ToListAsync();
-        Assert.Equal([SubmissionAuditEvent.Superseded, SubmissionAuditEvent.Restored], actions);
-        Assert.Contains(sameDayId, await PendingIdsAsync(client));
+        Assert.Equal("Submitted", (await db.HonoreeChangeRequests.SingleAsync(row => row.Id == hiddenId)).RequestStatus);
+    }
+
+    [Fact]
+    public async Task A_different_person_within_20_seconds_is_not_given_the_first_receipt()
+    {
+        await ResetAsync();
+        var client = factory.CreateClient();
+        var first = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/flag-claims/nominate",
+            "family-user",
+            "family@example.test",
+            "Family Member",
+            body: Nomination("Example", "Quickpair", 1, "family@example.test", "Sergeant", null, null, null, null, middle: "Carl"),
+            idempotencyKey: Guid.NewGuid()));
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var firstBody = await first.Content.ReadFromJsonAsync<CreatedDto>(Json);
+        Assert.NotNull(firstBody?.ReceiptToken);
+
+        var sameAgain = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/flag-claims/nominate",
+            "family-user",
+            "family@example.test",
+            "Family Member",
+            body: Nomination("Example", "Quickpair", 1, "family@example.test", "Sergeant", null, null, null, null, middle: "Carl"),
+            idempotencyKey: Guid.NewGuid()));
+        Assert.Equal(HttpStatusCode.OK, sameAgain.StatusCode);
+        var replay = await sameAgain.Content.ReadFromJsonAsync<CreatedDto>(Json);
+        Assert.Equal(firstBody.ReceiptToken, replay!.ReceiptToken);
+
+        var differentMiddle = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/flag-claims/nominate",
+            "family-user",
+            "family@example.test",
+            "Family Member",
+            body: Nomination("Example", "Quickpair", 1, "family@example.test", "Major", null, null, null, null, middle: "Dean"),
+            idempotencyKey: Guid.NewGuid()));
+        var differentBody = await differentMiddle.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(firstBody.ReceiptToken!.Value.ToString(), differentBody, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEqual(HttpStatusCode.OK, differentMiddle.StatusCode);
+
+        var dean = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/flag-claims/nominate",
+            "family-user",
+            "family@example.test",
+            "Family Member",
+            body: Nomination("Example", "Quickpair", 1, "family@example.test", "Major", "submit-new", null, null, null, middle: "Dean"),
+            idempotencyKey: Guid.NewGuid()));
+        Assert.Equal(HttpStatusCode.OK, dean.StatusCode);
+        var deanBody = await dean.Content.ReadFromJsonAsync<CreatedDto>(Json);
+        Assert.NotEqual(firstBody.ReceiptToken, deanBody!.ReceiptToken);
+
+        var junior = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/flag-claims/nominate",
+            "family-user",
+            "family@example.test",
+            "Family Member",
+            body: Nomination("Example", "Quicksuffix", 1, "family@example.test", "Sergeant", null, null, null, null, suffix: "Jr."),
+            idempotencyKey: Guid.NewGuid()));
+        Assert.Equal(HttpStatusCode.OK, junior.StatusCode);
+        var juniorBody = await junior.Content.ReadFromJsonAsync<CreatedDto>(Json);
+
+        var seniorPrompt = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/flag-claims/nominate",
+            "family-user",
+            "family@example.test",
+            "Family Member",
+            body: Nomination("Example", "Quicksuffix", 1, "family@example.test", "Sergeant", null, null, null, null, suffix: "Sr."),
+            idempotencyKey: Guid.NewGuid()));
+        var seniorPromptBody = await seniorPrompt.Content.ReadAsStringAsync();
+        Assert.DoesNotContain(juniorBody!.ReceiptToken!.Value.ToString(), seniorPromptBody, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEqual(HttpStatusCode.OK, seniorPrompt.StatusCode);
+
+        var senior = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/flag-claims/nominate",
+            "family-user",
+            "family@example.test",
+            "Family Member",
+            body: Nomination("Example", "Quicksuffix", 1, "family@example.test", "Sergeant", "submit-new", null, null, null, suffix: "Sr."),
+            idempotencyKey: Guid.NewGuid()));
+        Assert.Equal(HttpStatusCode.OK, senior.StatusCode);
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var rows = await db.HonoreeChangeRequests.ToListAsync();
+        Assert.Contains(rows, row => row.MiddleName == "Carl" && row.Rank == "Sergeant" && row.RequestStatus == "Submitted");
+        Assert.Contains(rows, row => row.MiddleName == "Dean" && row.Rank == "Major" && row.RequestStatus == "Submitted");
+        Assert.Contains(rows, row => row.Suffix == "Jr." && row.RequestStatus == "Submitted");
+        Assert.Contains(rows, row => row.Suffix == "Sr." && row.RequestStatus == "Submitted");
+        Assert.Equal(2, rows.Count(row => row.LastName == "Quickpair"));
+    }
+
+    [Fact]
+    public async Task A_stranger_correction_stays_when_the_claimant_submits()
+    {
+        await ResetAsync();
+        var honoreeId = await SeedApprovedAsync("Ada", "Claimed", "Captain", "Army", "AA-10", "secret@example.test", "2145550199");
+        var aliceId = await SeedPendingAsync(
+            "Ada", "Claimed", "Captain", 1, "alice@example.test", "2145550111", DateTime.UtcNow,
+            owner: "alice", photo: "pending/alice.jpg", honoreeId: honoreeId);
+        var bobId = await SeedPendingAsync(
+            "Ada", "Claimed", "General", 1, "bob@example.test", "2145550122", DateTime.UtcNow.AddMinutes(1),
+            owner: "bob", photo: "pending/bob.jpg", honoreeId: honoreeId, correctsChangeRequestId: aliceId);
+        factory.Files.Photos["pending/alice.jpg"] = [1];
+        factory.Files.Photos["pending/bob.jpg"] = [2];
+
+        var client = factory.CreateClient();
+        var before = await PendingIdsAsync(client);
+        Assert.Contains(aliceId, before);
+        Assert.Contains(bobId, before);
+
+        int aliceClaimId;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var alice = await db.HonoreeChangeRequests.Include(row => row.FlagClaim).SingleAsync(row => row.Id == aliceId);
+            aliceClaimId = alice.FlagClaimId;
+            db.HonoreeChangeRequests.Add(new HonoreeChangeRequest
+            {
+                FlagClaimId = aliceClaimId,
+                HonoreeId = honoreeId,
+                FirstName = "Ada",
+                LastName = "Claimed",
+                Rank = "Major",
+                ServiceBranchId = 1,
+                ServiceBranchCategoryId = 1,
+                Description = "A later draft from the claimant.",
+                RequestStatus = "Draft",
+                SubmitterEmailAddress = "alice@example.test",
+                SubmitterPhoneNumber = "2145550111",
+                CreatedUtc = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var submit = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            $"/api/flag-claims/{aliceClaimId}/submit",
+            "alice",
+            "alice@example.test",
+            "Alice"));
+        Assert.Equal(HttpStatusCode.OK, submit.StatusCode);
+
+        await using var read = factory.Services.CreateAsyncScope();
+        var saved = read.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var bob = await saved.HonoreeChangeRequests.SingleAsync(row => row.Id == bobId);
+        Assert.Equal("Submitted", bob.RequestStatus);
+        Assert.Equal("pending/bob.jpg", bob.PhotoFileName);
+        Assert.DoesNotContain("pending/bob.jpg", factory.Files.DeletedPendingPhotos);
+        Assert.Empty(await saved.SubmissionAuditEvents.Where(row => row.ChangeRequestId == bobId).ToListAsync());
+
+        var after = await PendingIdsAsync(client);
+        Assert.Contains(bobId, after);
+        Assert.DoesNotContain(aliceId, after);
+        Assert.Contains(after, id => id != bobId && id != aliceId);
     }
 
     [Fact]
@@ -511,7 +706,12 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         string email,
         string phone,
         DateTime submittedUtc,
-        string owner = "original-owner")
+        string owner = "original-owner",
+        string? middle = null,
+        string? suffix = null,
+        string? photo = null,
+        int? honoreeId = null,
+        int? correctsChangeRequestId = null)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
@@ -522,14 +722,20 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
             ExternalUserName = "Original Submitter",
             ClaimStatus = "Submitted",
             CreatedUtc = submittedUtc,
-            SubmittedUtc = submittedUtc
+            SubmittedUtc = submittedUtc,
+            HonoreeId = honoreeId
         };
         var change = new HonoreeChangeRequest
         {
             FirstName = first,
+            MiddleName = middle,
             LastName = last,
+            Suffix = suffix,
             Rank = rank,
             ServiceBranchId = branchId,
+            HonoreeId = honoreeId,
+            CorrectsChangeRequestId = correctsChangeRequestId,
+            PhotoFileName = photo,
             ServiceBranchCategoryId = 1,
             Description = "Pending tribute",
             RequestStatus = "Submitted",
@@ -669,7 +875,9 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         string? action,
         string? matchKind,
         int? honoreeId,
-        int? changeRequestId)
+        int? changeRequestId,
+        string? middle = null,
+        string? suffix = null)
     {
         var content = new MultipartFormDataContent
         {
@@ -683,6 +891,16 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
             { new StringContent(email), "SubmitterEmailAddress" },
             { new StringContent("false"), "Kia" }
         };
+        if (!string.IsNullOrEmpty(middle))
+        {
+            content.Add(new StringContent(middle), "MiddleName");
+        }
+
+        if (!string.IsNullOrEmpty(suffix))
+        {
+            content.Add(new StringContent(suffix), "Suffix");
+        }
+
         if (action is not null)
         {
             content.Add(new StringContent(action), "DuplicateAction");

@@ -107,6 +107,7 @@ public class AdminReviewController(
                 Rank = r.Rank,
                 ServiceBranchName = r.ServiceBranch == null ? null : r.ServiceBranch.ServiceBranchName ?? "",
                 ClaimantEmail = r.FlagClaim == null ? null : r.FlagClaim.ExternalUserEmail ?? "",
+                ClaimantObjectId = r.FlagClaim == null ? null : r.FlagClaim.ExternalUserObjectId,
                 ClaimantName = r.FlagClaim == null ? null : r.FlagClaim.ExternalUserName,
                 RequestStatus = r.RequestStatus ?? "",
                 CreatedUtc = r.CreatedUtc,
@@ -135,7 +136,8 @@ public class AdminReviewController(
                 request.FlagGridId,
                 request.HonoreeId,
                 request.SubmittedUtc,
-                request.CreatedUtc ?? DateTime.UtcNow))
+                request.CreatedUtc ?? DateTime.UtcNow,
+                request.ClaimantObjectId))
             .Concat(withdrawalRequests)
             .ToList();
 
@@ -1990,6 +1992,7 @@ public class AdminReviewController(
         public string? Rank { get; set; }
         public string? ServiceBranchName { get; set; }
         public string? ClaimantEmail { get; set; }
+        public string? ClaimantObjectId { get; set; }
         public string? ClaimantName { get; set; }
         public string? RequestStatus { get; set; }
         public DateTime? CreatedUtc { get; set; }

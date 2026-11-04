@@ -165,7 +165,7 @@ public sealed class SubmissionGuardService(
             }
         }
 
-        var matches = new List<SubmissionMatchDto>();
+        var matches = new List<(int SortId, SubmissionMatchDto Match)>();
         foreach (var (id, hit) in best)
         {
             if (id > 0 && approvedById.TryGetValue(id, out var honoree))
@@ -173,7 +173,7 @@ public sealed class SubmissionGuardService(
                 var location = string.IsNullOrWhiteSpace(honoree.FlagGrid?.FlagGridName)
                     ? null
                     : honoree.FlagGrid!.FlagGridName;
-                matches.Add(new SubmissionMatchDto(
+                matches.Add((id, new SubmissionMatchDto(
                     "Approved",
                     honoree.Id,
                     null,
@@ -184,7 +184,7 @@ public sealed class SubmissionGuardService(
                     hit.Likelihood,
                     hit.Reason,
                     callerIsAdmin,
-                    ProtectApproved(honoree.Id)));
+                    ProtectApproved(honoree.Id))));
             }
             else if (id < 0 && pendingById.TryGetValue(-id, out var request))
             {
@@ -192,7 +192,7 @@ public sealed class SubmissionGuardService(
                 var owns = !string.IsNullOrWhiteSpace(callerObjectId)
                     && string.Equals(ownerId, callerObjectId, StringComparison.Ordinal);
                 var revealId = callerIsAdmin || owns;
-                matches.Add(new SubmissionMatchDto(
+                matches.Add((request.Id, new SubmissionMatchDto(
                     "Pending",
                     null,
                     revealId ? request.Id : null,
@@ -203,16 +203,24 @@ public sealed class SubmissionGuardService(
                     hit.Likelihood,
                     hit.Reason,
                     owns && request.HonoreeId is not > 0 || callerIsAdmin,
-                    ProtectPending(request.Id)));
+                    ProtectPending(request.Id))));
             }
         }
 
         matches.Sort((left, right) =>
         {
-            var rank = Rank(left.Likelihood).CompareTo(Rank(right.Likelihood));
-            return rank != 0 ? rank : string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
+            var rank = Rank(left.Match.Likelihood).CompareTo(Rank(right.Match.Likelihood));
+            if (rank != 0)
+            {
+                return rank;
+            }
+
+            var name = string.Compare(left.Match.Name, right.Match.Name, StringComparison.OrdinalIgnoreCase);
+            return name != 0 ? name : left.SortId.CompareTo(right.SortId);
         });
-        return matches.Count <= 8 ? matches : matches.Take(8).ToList();
+        return matches.Count <= 8
+            ? matches.Select(item => item.Match).ToList()
+            : matches.Take(8).Select(item => item.Match).ToList();
     }
 
     public async Task<FlagClaim?> FindByIdempotencyKeyAsync(Guid key, CancellationToken ct) =>
@@ -224,8 +232,12 @@ public sealed class SubmissionGuardService(
 
     public async Task<FlagClaim?> FindRecentIdenticalAsync(
         string? callerObjectId,
-        string firstName,
-        string lastName,
+        string? firstName,
+        string? middleName,
+        string? lastName,
+        string? suffix,
+        string? nickname,
+        string? rank,
         int? serviceBranchId,
         CancellationToken ct)
     {
@@ -249,14 +261,8 @@ public sealed class SubmissionGuardService(
             var change = claim.HonoreeChangeRequests
                 .OrderByDescending(request => request.Id)
                 .FirstOrDefault(request => request.RequestStatus == "Submitted");
-            if (change is null)
-            {
-                return false;
-            }
-
-            return string.Equals(change.FirstName.Trim(), firstName.Trim(), StringComparison.OrdinalIgnoreCase)
-                && string.Equals(change.LastName.Trim(), lastName.Trim(), StringComparison.OrdinalIgnoreCase)
-                && change.ServiceBranchId == serviceBranchId;
+            return change is not null
+                && SameNormalizedIdentity(firstName, middleName, lastName, suffix, nickname, rank, serviceBranchId, change);
         });
     }
 
@@ -285,8 +291,41 @@ public sealed class SubmissionGuardService(
             && request.CorrectsChangeRequestId is not > 0
             && string.Equals(request.FlagClaim?.ExternalUserObjectId, actor, StringComparison.Ordinal)
             && CentralTime.DateOf(request.SubmittedUtc ?? request.CreatedUtc) == keeperDay
-            && (request.SubmittedUtc ?? request.CreatedUtc) <= keeperInstant).ToList();
-        older = await SameHonoreeAsAsync(keeper, older, ct);
+            && (request.SubmittedUtc ?? request.CreatedUtc) <= keeperInstant
+            && SameNormalizedIdentity(
+                keeper.FirstName,
+                keeper.MiddleName,
+                keeper.LastName,
+                keeper.Suffix,
+                keeper.Nickname,
+                keeper.Rank,
+                keeper.ServiceBranchId,
+                request)).ToList();
+
+        // "No" means the cards just shown are different people. Drop every row
+        // the prompt would have displayed. The duplicate matcher is used only
+        // to know what was shown. It does not choose what to supersede.
+        var shown = await FindAsync(
+            new SubmissionProbe(
+                keeper.FirstName,
+                keeper.MiddleName,
+                keeper.LastName,
+                keeper.Suffix,
+                keeper.Nickname,
+                keeper.Rank,
+                keeper.ServiceBranchId,
+                null),
+            null,
+            keeper.Id,
+            true,
+            actor,
+            ct);
+        var shownIds = shown
+            .Select(match => match.ChangeRequestId)
+            .Where(id => id is > 0)
+            .Select(id => id!.Value)
+            .ToHashSet();
+        older = older.Where(request => !shownIds.Contains(request.Id)).ToList();
         if (older.Count == 0)
         {
             return;
@@ -297,7 +336,7 @@ public sealed class SubmissionGuardService(
         foreach (var request in older)
         {
             request.RequestStatus = PendingReviewMaintenance.Superseded;
-            var note = $"Superseded by a newer submission from the same account for this honoree on this day. Change request {keeper.Id} remains in review.";
+            var note = $"Superseded by an exact copy from the same account on this day. Change request {keeper.Id} remains in review.";
             request.ReviewNotes = string.IsNullOrWhiteSpace(request.ReviewNotes)
                 ? note
                 : request.ReviewNotes.Contains(note, StringComparison.Ordinal)
@@ -318,71 +357,25 @@ public sealed class SubmissionGuardService(
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task<List<HonoreeChangeRequest>> SameHonoreeAsAsync(
-        HonoreeChangeRequest keeper,
-        List<HonoreeChangeRequest> older,
-        CancellationToken ct)
-    {
-        if (older.Count == 0)
-        {
-            return older;
-        }
+    public static bool SameNormalizedIdentity(
+        string? firstName,
+        string? middleName,
+        string? lastName,
+        string? suffix,
+        string? nickname,
+        string? rank,
+        int? serviceBranchId,
+        HonoreeChangeRequest row) =>
+        Fold(firstName) == Fold(row.FirstName)
+        && Fold(middleName) == Fold(row.MiddleName)
+        && Fold(lastName) == Fold(row.LastName)
+        && Fold(suffix) == Fold(row.Suffix)
+        && Fold(nickname) == Fold(row.Nickname)
+        && Fold(rank) == Fold(row.Rank)
+        && serviceBranchId == row.ServiceBranchId;
 
-        var keeperBranch = keeper.ServiceBranch?.ServiceBranchName;
-        if (keeperBranch is null && keeper.ServiceBranchId is int branchId)
-        {
-            keeperBranch = await db.ServiceBranches
-                .AsNoTracking()
-                .Where(branch => branch.Id == branchId)
-                .Select(branch => branch.ServiceBranchName)
-                .FirstOrDefaultAsync(ct);
-        }
-
-        var candidates = new List<DuplicateCandidate>
-        {
-            new(
-                SubmissionDuplicates.ProbeId,
-                DisplayName(keeper.FirstName, keeper.MiddleName, keeper.LastName, keeper.Suffix, keeper.Nickname),
-                keeperBranch,
-                null,
-                null,
-                null,
-                true,
-                null)
-        };
-        foreach (var request in older)
-        {
-            candidates.Add(new DuplicateCandidate(
-                request.Id,
-                DisplayName(request.FirstName, request.MiddleName, request.LastName, request.Suffix, request.Nickname),
-                request.ServiceBranch?.ServiceBranchName,
-                null,
-                null,
-                null,
-                true,
-                null));
-        }
-
-        var same = new HashSet<int>();
-        foreach (var group in HonoreeDuplicateMatcher.Match(candidates))
-        {
-            foreach (var pair in group.Pairs)
-            {
-                if (pair.LeftId != SubmissionDuplicates.ProbeId && pair.RightId != SubmissionDuplicates.ProbeId)
-                {
-                    continue;
-                }
-
-                var other = pair.LeftId == SubmissionDuplicates.ProbeId ? pair.RightId : pair.LeftId;
-                if (HonoreeDuplicateMatcher.LikelihoodOf(pair.ReasonCodes) != "Low")
-                {
-                    same.Add(other);
-                }
-            }
-        }
-
-        return older.Where(request => same.Contains(request.Id)).ToList();
-    }
+    public static string Fold(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToLowerInvariant();
 
     public async Task<SubmissionReceipt> EnsureReceiptAsync(int changeRequestId, CancellationToken ct)
     {

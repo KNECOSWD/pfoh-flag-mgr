@@ -653,7 +653,11 @@ public class FlagClaimsController(
             var recent = await submissions.FindRecentIdenticalAsync(
                 userObjectId,
                 request.FirstName,
+                request.MiddleName,
                 request.LastName,
+                request.Suffix,
+                request.Nickname,
+                request.Rank,
                 request.ServiceBranchId,
                 ct);
             if (recent is not null)
