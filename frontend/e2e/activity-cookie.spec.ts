@@ -89,6 +89,37 @@ async function installApi(page: Page) {
   await page.route("**/api/**", fulfillApi);
 }
 
+async function reachAboveNote(page: Page, selector: string) {
+  const target = page.locator(selector).first();
+  const note = page.locator("#cookie-note");
+  await page.evaluate((selector) => {
+    const node = document.querySelector(selector);
+    const notice = document.getElementById("cookie-note");
+    if (!(node instanceof HTMLElement) || !notice) return;
+    let scroller: HTMLElement | null = node.parentElement;
+    while (scroller) {
+      const overflow = getComputedStyle(scroller).overflowY;
+      const room = scroller.scrollHeight - scroller.clientHeight;
+      if ((overflow === "auto" || overflow === "scroll") && room > 1) break;
+      scroller = scroller.parentElement;
+    }
+    if (!scroller) return "no scroller";
+    const overlap = node.getBoundingClientRect().bottom - (notice.getBoundingClientRect().top - 8);
+    if (overlap > 0) scroller.scrollTop += overlap;
+  }, selector);
+  const placed = { box: await target.boundingBox(), noteBox: await note.boundingBox() };
+  expect(placed?.box, selector).not.toBeNull();
+  expect(placed?.noteBox, "cookie note").not.toBeNull();
+  expect(placed!.box!.y + placed!.box!.height).toBeLessThanOrEqual(placed!.noteBox!.y + 1);
+  expect(placed!.box!.y).toBeGreaterThanOrEqual(-1);
+  const usable = await target.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + Math.min(12, rect.width / 2), rect.top + rect.height / 2);
+    return Boolean(hit && (hit === node || node.contains(hit)));
+  });
+  expect(usable, selector).toBe(true);
+}
+
 async function expectWithinViewport(page: Page, selector: string) {
   const box = await page.locator(selector).boundingBox();
   expect(box, selector).not.toBeNull();
@@ -142,6 +173,8 @@ test("cookie note shows once at 390 and 1280 and stays dismissed", async ({ page
       ) - height;
     });
     expect(pad, `page keeps room for the notice at ${width}px`).toBeGreaterThanOrEqual(-1);
+    expect(pad, `body padding matches the notice at ${width}px`).toBeLessThan(2);
+    await reachAboveNote(page, "a[href='https://planoflagsofhonor.com/about-pfoh/']");
     const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
     expect(fits, `page fits at ${width}px`).toBe(true);
     await page.screenshot({ path: `e2e-shots/cookie-note-${width}.png`, fullPage: false });
@@ -165,6 +198,15 @@ test("telemetry stays off when the connection string is missing", async ({ page 
   await expect(page.getByRole("searchbox", { name: "Search honorees" })).toBeVisible();
   await expect(page.locator("#cookie-note")).toBeVisible();
   expect(outbound).toEqual([]);
+});
+
+test("the flag map legend stays reachable above the cookie note", async ({ page }) => {
+  await installApi(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/flag-map");
+  await expect(page.locator("#cookie-note")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Spot key" })).toBeVisible();
+  await reachAboveNote(page, ".publicFlagLegend");
 });
 
 test("activity card shows aggregate counts at 390 and 1280", async ({ page }) => {

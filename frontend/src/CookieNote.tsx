@@ -30,11 +30,12 @@ export function CookieNote() {
         node.style.paddingBottom = node.dataset.cookieNoteBase ?? "";
         delete node.dataset.cookieNoteBase;
         delete node.dataset.cookieNotePad;
-      }
-      const footer = document.querySelector("footer");
-      if (footer instanceof HTMLElement) {
-        footer.style.marginBottom = footer.dataset.cookieNoteBase ?? "";
-        delete footer.dataset.cookieNoteBase;
+        if (node.dataset.cookieNoteMax !== undefined) {
+          node.style.maxHeight = node.dataset.cookieNoteMax;
+          node.style.overflowY = node.dataset.cookieNoteOverflow ?? "";
+          delete node.dataset.cookieNoteMax;
+          delete node.dataset.cookieNoteOverflow;
+        }
       }
     };
     if (!shown) {
@@ -53,11 +54,14 @@ export function CookieNote() {
         const base = Math.max(0, computed - previous);
         node.dataset.cookieNotePad = String(height);
         node.style.paddingBottom = `${base + height}px`;
-      }
-      const footer = document.querySelector("footer");
-      if (footer instanceof HTMLElement) {
-        if (footer.dataset.cookieNoteBase === undefined) footer.dataset.cookieNoteBase = footer.style.marginBottom || "";
-        footer.style.marginBottom = `${height}px`;
+        if (node.tagName === "MAIN") {
+          if (node.dataset.cookieNoteMax === undefined) {
+            node.dataset.cookieNoteMax = node.style.maxHeight;
+            node.dataset.cookieNoteOverflow = node.style.overflowY;
+          }
+          node.style.maxHeight = "100dvh";
+          node.style.overflowY = "auto";
+        }
       }
     };
     apply();
@@ -74,33 +78,35 @@ export function CookieNote() {
   if (!shown) return null;
 
   return (
-    <div id="cookie-note" className="toast-container position-fixed bottom-0 start-0 end-0 px-2 py-1 w-100 pe-none">
-      <div className="toast show w-100 pe-auto" role="status" aria-live="polite" aria-atomic="true">
-        <div className="toast-body d-flex flex-row align-items-center gap-2 py-1 px-2">
-          <p className="mb-0 small flex-grow-1">{COOKIE_NOTE_TEXT}</p>
-          <button
-            type="button"
-            className="btn btn-outline-secondary btn-sm flex-shrink-0"
-            onClick={() => {
-              acceptCookieNote(browserStorage());
-              setChoice("accepted");
-              void ensureBrowserTelemetry({
-                apiBase: import.meta.env.VITE_API_BASE_URL ?? ""
-              });
-            }}
-          >
-            {COOKIE_NOTE_ACCEPT}
-          </button>
-          <button
-            type="button"
-            className="btn btn-link btn-sm flex-shrink-0"
-            onClick={() => {
-              declineCookieNote(browserStorage());
-              setChoice("declined");
-            }}
-          >
-            {COOKIE_NOTE_DECLINE}
-          </button>
+    <div id="cookie-note" className="toast-container position-fixed bottom-0 start-0 end-0 p-1 w-100 pe-none">
+      <div className="toast show w-100 border-0 pe-auto" role="status" aria-live="polite" aria-atomic="true">
+        <div className="toast-body d-flex flex-column gap-1 p-2">
+          <p className="mb-0 small lh-sm">{COOKIE_NOTE_TEXT}</p>
+          <div className="d-flex flex-row align-items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-outline-secondary btn-sm"
+              onClick={() => {
+                acceptCookieNote(browserStorage());
+                setChoice("accepted");
+                void ensureBrowserTelemetry({
+                  apiBase: import.meta.env.VITE_API_BASE_URL ?? ""
+                });
+              }}
+            >
+              {COOKIE_NOTE_ACCEPT}
+            </button>
+            <button
+              type="button"
+              className="btn btn-link btn-sm py-0"
+              onClick={() => {
+                declineCookieNote(browserStorage());
+                setChoice("declined");
+              }}
+            >
+              {COOKIE_NOTE_DECLINE}
+            </button>
+          </div>
         </div>
       </div>
     </div>
