@@ -4,7 +4,7 @@ import {
   InteractionRequiredAuthError
 } from "@azure/msal-browser";
 import { loginRequest } from "./authConfig";
-import { e2eToken } from "./e2eSession";
+import { e2eAuthHeaders, e2eToken } from "./e2eSession";
 import { isPublicApiPath } from "./publicApi.js";
 import {
   bannerForTokenError,
@@ -297,6 +297,51 @@ export type FlagClaim = {
   hasOtherClaimants?: boolean;
   otherClaimantCount?: number;
   claimNotice?: string | null;
+  receiptToken?: string | null;
+};
+
+export type SubmissionMatch = {
+  kind: "Approved" | "Pending" | string;
+  honoreeId?: number | null;
+  changeRequestId?: number | null;
+  name: string;
+  rank?: string | null;
+  branch?: string | null;
+  flagLocation?: string | null;
+  likelihood?: string;
+  reason?: string;
+  canUpdateDirectly?: boolean;
+  matchToken?: string | null;
+};
+
+export type SubmissionReceipt = {
+  reference: string;
+  status: string;
+  name: string;
+  rank?: string | null;
+  branch?: string | null;
+  flagLocation?: string | null;
+  tribute?: string | null;
+  nextSteps: string;
+};
+
+export type SupersededSubmission = {
+  changeRequestId: number;
+  honoreeName: string;
+  rank?: string | null;
+  branch?: string | null;
+  submittedUtc?: string | null;
+  submittedCentral?: string | null;
+  submitterEmail?: string | null;
+  keeperChangeRequestId?: number | null;
+  keeperName?: string | null;
+};
+
+export type SupersededSubmissionPage = {
+  items: SupersededSubmission[];
+  page: number;
+  pageSize: number;
+  total: number;
 };
 
 export type SaveHonoreeChangeRequest = {
@@ -759,6 +804,7 @@ async function request<T>(
         headers: {
           ...(isFormData ? {} : { "Content-Type": "application/json" }),
           Authorization: `Bearer ${token}`,
+          ...e2eAuthHeaders(),
           ...(options.headers ?? {})
         }
       });
@@ -845,16 +891,79 @@ export const flagClaimApi = {
       method: "POST"
     }),
 
+  duplicateCheck: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    requestBody: SaveHonoreeChangeRequest,
+    options: { excludeHonoreeId?: number | null; excludeChangeRequestId?: number | null } = {}
+  ) =>
+    request<{ enabled: boolean; matches: SubmissionMatch[] }>(instance, account, "/api/flag-claims/duplicate-check", {
+      method: "POST",
+      body: JSON.stringify({
+        ...requestBody,
+        excludeHonoreeId: options.excludeHonoreeId ?? null,
+        excludeChangeRequestId: options.excludeChangeRequestId ?? null
+      })
+    }),
+
   nominate: (
     instance: IPublicClientApplication,
     account: AccountInfo,
     requestBody: SaveHonoreeChangeRequest,
-    photo?: File | null
-  ) =>
-    request<FlagClaim>(instance, account, "/api/flag-claims/nominate", {
+    photo?: File | null,
+    options: {
+      idempotencyKey?: string;
+      duplicateAction?: string;
+      matchKind?: string;
+      matchHonoreeId?: number | null;
+      matchChangeRequestId?: number | null;
+      matchToken?: string | null;
+    } = {}
+  ) => {
+    const body = honoreeChangeFormData(requestBody, photo);
+    if (options.duplicateAction) body.append("DuplicateAction", options.duplicateAction);
+    if (options.matchKind) body.append("MatchKind", options.matchKind);
+    if (options.matchHonoreeId) body.append("MatchHonoreeId", String(options.matchHonoreeId));
+    if (options.matchChangeRequestId) body.append("MatchChangeRequestId", String(options.matchChangeRequestId));
+    if (options.matchToken) body.append("MatchToken", options.matchToken);
+    return request<FlagClaim>(instance, account, "/api/flag-claims/nominate", {
       method: "POST",
-      body: honoreeChangeFormData(requestBody, photo)
-    }),
+      body,
+      headers: options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : undefined
+    });
+  },
+
+  applyPending: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    changeRequestId: number,
+    requestBody: SaveHonoreeChangeRequest,
+    photo?: File | null,
+    idempotencyKey?: string
+  ) => {
+    const body = honoreeChangeFormData(requestBody, photo);
+    return request<FlagClaim>(instance, account, `/api/flag-claims/pending/${changeRequestId}/apply`, {
+      method: "POST",
+      body,
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined
+    });
+  },
+
+  adminApplyFields: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    honoreeId: number,
+    requestBody: SaveHonoreeChangeRequest,
+    photo?: File | null,
+    idempotencyKey?: string
+  ) => {
+    const body = honoreeChangeFormData(requestBody, photo);
+    return request<FlagClaim>(instance, account, `/api/flag-claims/admin/honoree/${honoreeId}/apply-fields`, {
+      method: "POST",
+      body,
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined
+    });
+  },
 
   startAdminEdit: (instance: IPublicClientApplication, account: AccountInfo, honoreeId: number) =>
     request<FlagClaim>(instance, account, `/api/flag-claims/admin/honoree/${honoreeId}/edit`, {
@@ -864,10 +973,15 @@ export const flagClaimApi = {
   applyAdminEditReprint: (
     instance: IPublicClientApplication,
     account: AccountInfo,
-    claimId: number
+    claimId: number,
+    duplicateAction?: "proceed" | "submit-new"
   ) =>
     request<FlagClaim>(instance, account, `/api/flag-claims/${claimId}/admin-apply-reprint`, {
-      method: "POST"
+      method: "POST",
+      headers: {
+        "X-Duplicate-Check": "1",
+        ...(duplicateAction ? { "X-Duplicate-Action": duplicateAction } : {})
+      }
     }),
 
   saveDraft: (
@@ -905,6 +1019,10 @@ export const flagClaimApi = {
     request<AdminClaimantSummary[]>(instance, account, `/api/flag-claims/admin/honoree/${honoreeId}/claimants`)
 };
 
+export const submissionApi = {
+  receipt: (token: string) => publicRequest<SubmissionReceipt>(`/api/submissions/${encodeURIComponent(token)}`)
+};
+
 export const lookupApi = {
   serviceBranches: () => publicRequest<ServiceBranch[]>("/api/lookups/service-branches"),
 
@@ -913,6 +1031,14 @@ export const lookupApi = {
 };
 
 export const adminApi = {
+  superseded: (instance: IPublicClientApplication, account: AccountInfo, page = 1) =>
+    request<SupersededSubmissionPage>(instance, account, `/api/admin/review/superseded?page=${page}`),
+
+  restoreSuperseded: (instance: IPublicClientApplication, account: AccountInfo, changeRequestId: number) =>
+    request<{ message: string }>(instance, account, `/api/admin/review/${changeRequestId}/restore`, {
+      method: "POST"
+    }),
+
   pending: async (instance: IPublicClientApplication, account: AccountInfo) => {
     const capture: { headers?: Headers } = {};
     const items = await request<AdminReviewItem[]>(instance, account, "/api/admin/review/pending", {}, capture);

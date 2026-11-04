@@ -217,42 +217,18 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
     }
 
     [Fact]
-    public async Task Pending_queue_keeps_one_request_per_card_and_cleanup_supersedes_the_older_ones()
+    public async Task Pending_queue_keeps_one_request_per_card()
     {
         await ResetAsync();
         var now = DateTime.UtcNow;
         await SeedSubmittedAsync(1, 11, 31, now.AddMinutes(-30), "pending/1.jpg", honoreeId: null);
         await SeedSubmittedAsync(2, 12, 31, now.AddMinutes(-20), "pending/2.jpg", honoreeId: null);
         await SeedSubmittedAsync(3, 13, 31, now.AddMinutes(-10), "pending/3.jpg", honoreeId: null);
-        factory.Files.Photos["pending/1.jpg"] = [1];
-        factory.Files.Photos["pending/2.jpg"] = [2];
-        factory.Files.Photos["pending/3.jpg"] = [3];
         var client = factory.CreateClient();
 
-        var beforeCleanup = await PendingAsync(client);
-        var visible = Assert.Single(beforeCleanup);
+        var pending = await PendingAsync(client);
+        var visible = Assert.Single(pending);
         Assert.Equal(3, visible.ChangeRequestId);
-        Assert.Empty(factory.Files.DeletedPendingPhotos);
-
-        await using (var scope = factory.Services.CreateAsyncScope())
-        {
-            var maintenance = scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>();
-            await maintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
-        }
-
-        await using var check = factory.Services.CreateAsyncScope();
-        var db = check.ServiceProvider.GetRequiredService<PfohDbContext>();
-        var requests = await db.HonoreeChangeRequests.OrderBy(request => request.Id).ToListAsync();
-        Assert.Equal("Superseded", requests[0].RequestStatus);
-        Assert.Equal("Superseded", requests[1].RequestStatus);
-        Assert.Equal("Submitted", requests[2].RequestStatus);
-        Assert.Contains("Change request 3", requests[0].ReviewNotes, StringComparison.Ordinal);
-        Assert.Null(requests[0].PhotoFileName);
-        Assert.Null(requests[1].PhotoFileName);
-        Assert.Equal("pending/3.jpg", requests[2].PhotoFileName);
-        Assert.Contains("pending/1.jpg", factory.Files.DeletedPendingPhotos);
-        Assert.Contains("pending/2.jpg", factory.Files.DeletedPendingPhotos);
-        Assert.DoesNotContain("pending/3.jpg", factory.Files.DeletedPendingPhotos);
     }
 
     [Fact]
@@ -281,8 +257,41 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
         var older = await db.HonoreeChangeRequests.SingleAsync(request => request.Id == 8);
         Assert.Equal("Superseded", older.RequestStatus);
-        Assert.Null(older.PhotoFileName);
-        Assert.Contains("pending/8.jpg", factory.Files.DeletedPendingPhotos);
+        Assert.Equal("pending/8.jpg", older.PhotoFileName);
+        Assert.DoesNotContain("pending/8.jpg", factory.Files.DeletedPendingPhotos);
+        var audit = Assert.Single(await db.SubmissionAuditEvents.ToListAsync());
+        Assert.Equal(SubmissionAuditEvent.Superseded, audit.Action);
+        Assert.Equal(8, audit.ChangeRequestId);
+        Assert.Equal(9, audit.KeeperChangeRequestId);
+
+        var superseded = await client.SendAsync(Authed(
+            HttpMethod.Get,
+            "/api/admin/review/superseded",
+            "admin-user",
+            "admin@example.test",
+            "Admin",
+            roles: "PFOH.Admin"));
+        Assert.Equal(HttpStatusCode.OK, superseded.StatusCode);
+        var listed = await superseded.Content.ReadFromJsonAsync<SupersededPage>(JsonOptions);
+        var item = Assert.Single(listed!.Items);
+        Assert.Equal(8, item.ChangeRequestId);
+        Assert.Equal(9, item.KeeperChangeRequestId);
+
+        var restore = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/admin/review/8/restore",
+            "admin-user",
+            "admin@example.test",
+            "Admin",
+            roles: "PFOH.Admin"));
+        Assert.Equal(HttpStatusCode.OK, restore.StatusCode);
+        db.ChangeTracker.Clear();
+        var restored = await db.HonoreeChangeRequests.SingleAsync(request => request.Id == 8);
+        Assert.Equal("Submitted", restored.RequestStatus);
+        Assert.Equal("pending/8.jpg", restored.PhotoFileName);
+        var back = await PendingAsync(client);
+        Assert.Contains(back, row => row.ChangeRequestId == 8);
+        Assert.Contains(back, row => row.ChangeRequestId == 9);
     }
 
     [Fact]
@@ -417,12 +426,6 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
             "submitter@example.com",
             "Hulett Submitter"));
         Assert.Equal(HttpStatusCode.OK, withdraw.StatusCode);
-
-        await using (var scope = factory.Services.CreateAsyncScope())
-        {
-            var maintenance = scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>();
-            await maintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
-        }
 
         var pending = await PendingAsync(client);
         var item = Assert.Single(pending);
@@ -645,7 +648,7 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
     }
 
     [Fact]
-    public async Task Cleanup_releases_spots_held_by_submitted_rejected_and_draft_new_submissions()
+    public async Task Release_clears_spots_held_by_submitted_rejected_and_draft_new_submissions()
     {
         await ResetAsync();
         await SeedGridAsync(88, "D-01");
@@ -661,7 +664,7 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var maintenance = scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>();
-            await maintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
+            await maintenance.ReleasePendingSubmissionSpotsAsync(CancellationToken.None);
         }
 
         await using var check = factory.Services.CreateAsyncScope();
@@ -771,6 +774,8 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
         db.Database.EnsureCreated();
+        db.SubmissionAuditEvents.RemoveRange(db.SubmissionAuditEvents);
+        db.SubmissionReceipts.RemoveRange(db.SubmissionReceipts);
         db.HonoreeChangeRequests.RemoveRange(db.HonoreeChangeRequests);
         db.Honorees.RemoveRange(db.Honorees);
         db.FlagClaims.RemoveRange(db.FlagClaims);
@@ -1345,4 +1350,8 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
     private sealed record FieldChange(string Label, string Previous, string Proposed);
 
     private sealed record QueueItem(int ChangeRequestId, int? HonoreeId);
+
+    private sealed record SupersededPage(List<SupersededItem> Items);
+
+    private sealed record SupersededItem(int ChangeRequestId, int? KeeperChangeRequestId);
 }

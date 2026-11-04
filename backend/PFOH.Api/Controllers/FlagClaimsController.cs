@@ -22,8 +22,10 @@ public class FlagClaimsController(
     HonoreeFileStorage fileStorage,
     PendingReviewMaintenance pendingReviews,
     ReprintQueueMaintenance reprintQueue,
-    HonoreePdfService pdfs) : ControllerBase
+    HonoreePdfService pdfs,
+    SubmissionGuardService submissions) : ControllerBase
 {
+    private const string IdempotencyHeader = "Idempotency-Key";
 
     // A flag claim represents semi-ownership by a user.
     // These statuses keep the flag associated with the claimant.
@@ -591,6 +593,30 @@ public class FlagClaimsController(
         ct);
     }
 
+    [HttpPost("duplicate-check")]
+    public async Task<ActionResult<DuplicateCheckResponse>> DuplicateCheck(
+        [FromBody] DuplicateCheckRequest? request,
+        CancellationToken ct)
+    {
+        request ??= new DuplicateCheckRequest();
+        var matches = await submissions.FindAsync(
+            new SubmissionProbe(
+                request.FirstName,
+                request.MiddleName,
+                request.LastName,
+                request.Suffix,
+                request.Nickname,
+                request.Rank,
+                request.ServiceBranchId,
+                User.GetEmail()),
+            request.ExcludeHonoreeId,
+            request.ExcludeChangeRequestId,
+            CallerIsAdmin(),
+            User.GetExternalObjectId(),
+            ct);
+        return Ok(new DuplicateCheckResponse(submissions.Enabled, matches));
+    }
+
     [HttpPost("nominate")]
     public async Task<ActionResult<FlagClaimDto>> NominateHonoree(
         [FromForm] NominateHonoreeRequest request,
@@ -612,11 +638,74 @@ public class FlagClaimsController(
 
         await PendingSubmissionGridSchema.EnsureAsync(db, ct);
 
-        var clientRequestId = Guid.NewGuid();
+        var clientRequestId = ReadIdempotencyKey() ?? Guid.NewGuid();
+        var replay = await submissions.FindByIdempotencyKeyAsync(clientRequestId, ct);
+        if (replay is not null)
+        {
+            return await ReplayForCallerAsync(replay, userObjectId, ct);
+        }
+
+        var duplicateAction = submissions.Enabled
+            ? request.DuplicateAction?.Trim().ToLowerInvariant()
+            : null;
+        if (submissions.Enabled && duplicateAction is not ("submit-new" or "update"))
+        {
+            var recent = await submissions.FindRecentIdenticalAsync(
+                userObjectId,
+                request.FirstName,
+                request.MiddleName,
+                request.LastName,
+                request.Suffix,
+                request.Nickname,
+                request.Rank,
+                request.ServiceBranchId,
+                ct);
+            if (recent is not null)
+            {
+                return Ok(await WithReceiptAsync(recent, ct));
+            }
+        }
+
+        if (duplicateAction == "update")
+        {
+            return await UpdateMatchedAsync(request, email, name, userObjectId, clientRequestId, ct);
+        }
+
+        if (submissions.Enabled && duplicateAction != "submit-new")
+        {
+            var matches = await submissions.FindAsync(
+                ProbeFrom(request, email),
+                null,
+                null,
+                CallerIsAdmin(),
+                userObjectId,
+                ct);
+            if (matches.Count > 0)
+            {
+                var raced = await ReplayIfKeyExistsAsync(clientRequestId, userObjectId, ct);
+                if (raced is not null)
+                {
+                    return raced;
+                }
+
+                return Conflict(new { code = "similar-entry", matches });
+            }
+        }
+
         var strategy = db.Database.CreateExecutionStrategy();
-        var created = await strategy.ExecuteInTransactionAsync<(int ChangeId, ActionResult<FlagClaimDto>? Error)>(async _ =>
+        (int ChangeId, ActionResult<FlagClaimDto>? Error) created;
+        try
+        {
+        created = await strategy.ExecuteInTransactionAsync<(int ChangeId, ActionResult<FlagClaimDto>? Error)>(async _ =>
         {
         db.ChangeTracker.Clear();
+        var already = await db.FlagClaims
+            .AsNoTracking()
+            .AnyAsync(row => row.ClientRequestId == clientRequestId, ct);
+        if (already)
+        {
+            return (-1, null);
+        }
 
         var submitter = await GetOrCreateSubmitterSponsorAsync(email, name, ct);
         if (submitter is null)
@@ -671,6 +760,29 @@ public class FlagClaimsController(
                 ct);
         },
         ct);
+        }
+        catch (DbUpdateException ex) when (UserProfileService.IsUniqueViolation(ex))
+        {
+            db.ChangeTracker.Clear();
+            var raced = await ReplayIfKeyExistsAsync(clientRequestId, userObjectId, ct);
+            if (raced is not null)
+            {
+                return raced;
+            }
+
+            throw;
+        }
+
+        if (created.ChangeId < 0)
+        {
+            var raced = await ReplayIfKeyExistsAsync(clientRequestId, userObjectId, ct);
+            if (raced is not null)
+            {
+                return raced;
+            }
+
+            return Conflict(new { code = "idempotency-key-in-use" });
+        }
 
         if (created.Error is not null)
         {
@@ -708,7 +820,8 @@ public class FlagClaimsController(
             .Include(claim => claim.Honoree)
             .Include(claim => claim.HonoreeChangeRequests)
             .FirstAsync(claim => claim.HonoreeChangeRequests.Any(row => row.Id == created.ChangeId), ct);
-        return Ok(ToDto(saved, null));
+        var savedChange = saved.HonoreeChangeRequests.First(row => row.Id == created.ChangeId);
+        return Ok(await FinishSubmissionAsync(saved, savedChange, ct));
     }
 
     [Authorize(Policy = "AdminOnly")]
@@ -880,6 +993,41 @@ public class FlagClaimsController(
         var actor = AdminActor.From(User);
         var adminName = actor.Email;
         int? changedHonoreeId = null;
+
+        if (submissions.Enabled && Request.Headers.ContainsKey("X-Duplicate-Check"))
+        {
+            var draft = await db.HonoreeChangeRequests
+                .AsNoTracking()
+                .Include(row => row.FlagClaim)
+                .Where(row => row.FlagClaimId == claimId && row.RequestStatus == "Draft")
+                .OrderByDescending(row => row.CreatedUtc)
+                .FirstOrDefaultAsync(ct);
+            var action = Request.Headers["X-Duplicate-Action"].ToString();
+            if (draft is not null
+                && !string.Equals(action, "proceed", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(action, "submit-new", StringComparison.OrdinalIgnoreCase))
+            {
+                var matches = await submissions.FindAsync(
+                    new SubmissionProbe(
+                        draft.FirstName,
+                        draft.MiddleName,
+                        draft.LastName,
+                        draft.Suffix,
+                        draft.Nickname,
+                        draft.Rank,
+                        draft.ServiceBranchId,
+                        draft.SubmitterEmailAddress),
+                    draft.HonoreeId,
+                    draft.Id,
+                    true,
+                    actor.ObjectId,
+                    ct);
+                if (matches.Count > 0)
+                {
+                    return Conflict(new { code = "similar-entry", matches });
+                }
+            }
+        }
 
         var strategy = db.Database.CreateExecutionStrategy();
         var result = await strategy.ExecuteInTransactionAsync<ActionResult<FlagClaimDto>>(async _ =>
@@ -1157,6 +1305,428 @@ public class FlagClaimsController(
             RequestStatus = "Draft",
             CreatedUtc = DateTime.UtcNow
         };
+    }
+
+    [Authorize(Policy = "AdminOnly")]
+    [HttpPost("admin/honoree/{honoreeId:int}/apply-fields")]
+    public async Task<ActionResult<FlagClaimDto>> AdminApplyFields(
+        int honoreeId,
+        [FromForm] NominateHonoreeRequest request,
+        CancellationToken ct)
+    {
+        if (!ModelState.IsValid)
+        {
+            return ValidationProblem(ModelState);
+        }
+
+        var key = ReadIdempotencyKey();
+        if (key is Guid existingKey)
+        {
+            var replay = await submissions.FindByIdempotencyKeyAsync(existingKey, ct);
+            if (replay is not null)
+            {
+                return Ok(await WithReceiptAsync(replay, ct));
+            }
+        }
+
+        var honoree = await db.Honorees
+            .FirstOrDefaultAsync(row => row.Id == honoreeId && row.IsActive && row.DeletedDate == null, ct);
+        if (honoree is null)
+        {
+            return NotFound("Honoree was not found.");
+        }
+
+        var admin = AdminActor.From(User);
+        honoree.FirstName = request.FirstName.Trim();
+        honoree.MiddleName = request.MiddleName?.Trim();
+        honoree.LastName = request.LastName.Trim();
+        honoree.Suffix = request.Suffix?.Trim();
+        honoree.Nickname = request.Nickname?.Trim();
+        honoree.Rank = request.Rank?.Trim() ?? string.Empty;
+        honoree.ServiceBranchId = request.ServiceBranchId;
+        honoree.ServiceBranchCategoryId = request.ServiceBranchCategoryId;
+        honoree.StartYear = request.StartYear;
+        honoree.EndYear = request.EndYear;
+        honoree.DatesUserEntry = request.DatesUserEntry?.Trim() ?? string.Empty;
+        honoree.ConflictsServed = request.ConflictsServed?.Trim() ?? string.Empty;
+        honoree.Awards = request.Awards?.Trim() ?? string.Empty;
+        honoree.Description = request.Description?.Trim() ?? string.Empty;
+        honoree.KIA = request.Kia;
+        honoree.ModifiedBy = admin.Email;
+        honoree.ModifiedDate = DateTime.UtcNow;
+
+        var claim = new FlagClaim
+        {
+            ClientRequestId = key ?? Guid.NewGuid(),
+            FlagGridId = honoree.FlagGridId,
+            HonoreeId = honoree.Id,
+            ExternalUserObjectId = admin.ObjectId ?? User.GetExternalObjectId(),
+            ExternalUserEmail = admin.Email,
+            ExternalUserName = await profiles.ResolveDisplayNameAsync(User, ct),
+            ClaimStatus = "AdminDirectEditCompleted",
+            CreatedUtc = DateTime.UtcNow,
+            SubmittedUtc = DateTime.UtcNow,
+            ApprovedUtc = DateTime.UtcNow,
+            ApprovedBy = admin.Email
+        };
+        var change = new HonoreeChangeRequest
+        {
+            FlagGridId = honoree.FlagGridId,
+            HonoreeId = honoree.Id,
+            RequestStatus = "Approved",
+            CreatedUtc = DateTime.UtcNow,
+            SubmittedUtc = DateTime.UtcNow,
+            ReviewedUtc = DateTime.UtcNow,
+            ReviewedBy = admin.Email,
+            RequiresCardReprint = true,
+            SubmitterEmailAddress = request.SubmitterEmailAddress,
+            SubmitterPhoneNumber = request.SubmitterPhoneNumber
+        };
+        ApplyRequest(change, request);
+        change.FlagGridId = honoree.FlagGridId;
+        change.HonoreeId = honoree.Id;
+        change.RequestStatus = "Approved";
+        claim.HonoreeChangeRequests.Add(change);
+        db.FlagClaims.Add(claim);
+        await db.SaveChangesAsync(ct);
+        var honoreeIdSaved = honoree.Id;
+        await AttachPendingPhotoAsync(change.Id, request.Photo, ct);
+        var stored = await db.HonoreeChangeRequests.FirstAsync(row => row.Id == change.Id, ct);
+        if (!string.IsNullOrWhiteSpace(stored.PhotoFileName))
+        {
+            var promoted = await fileStorage.PromoteImageAsync(stored.PhotoFileName, honoreeIdSaved, ct);
+            if (!string.IsNullOrWhiteSpace(promoted))
+            {
+                var current = await db.Honorees.FirstAsync(row => row.Id == honoreeIdSaved, ct);
+                current.PhotoFileName = promoted;
+                stored.PhotoFileName = promoted;
+                await db.SaveChangesAsync(ct);
+            }
+        }
+
+        await pdfs.TryRebuildAsync(honoree.Id, ct);
+        var saved = await db.FlagClaims
+            .Include(row => row.FlagGrid)
+            .Include(row => row.Honoree)
+            .Include(row => row.HonoreeChangeRequests)
+            .FirstAsync(row => row.Id == claim.Id, ct);
+        var savedChange = saved.HonoreeChangeRequests.OrderByDescending(row => row.Id).First();
+        return Ok(await FinishSubmissionAsync(saved, savedChange, ct));
+    }
+
+    [HttpPost("pending/{changeRequestId:int}/apply")]
+    public async Task<ActionResult<FlagClaimDto>> ApplyPending(
+        int changeRequestId,
+        [FromForm] NominateHonoreeRequest request,
+        CancellationToken ct)
+    {
+        if (!ModelState.IsValid)
+        {
+            return ValidationProblem(ModelState);
+        }
+
+        if (!submissions.Enabled)
+        {
+            return NotFound("That pending submission was not found.");
+        }
+
+        var key = ReadIdempotencyKey();
+        if (key is Guid existingKey)
+        {
+            var replay = await submissions.FindByIdempotencyKeyAsync(existingKey, ct);
+            if (replay is not null)
+            {
+                return await ReplayForCallerAsync(replay, User.GetExternalObjectId(), ct);
+            }
+        }
+
+        var change = await db.HonoreeChangeRequests
+            .Include(row => row.FlagClaim)
+            .FirstOrDefaultAsync(row => row.Id == changeRequestId && row.RequestStatus == "Submitted", ct);
+        if (change is null || change.HonoreeId is > 0)
+        {
+            return NotFound("That pending submission was not found.");
+        }
+
+        var callerId = User.GetExternalObjectId();
+        var owns = !string.IsNullOrWhiteSpace(callerId)
+            && string.Equals(change.FlagClaim?.ExternalUserObjectId, callerId, StringComparison.Ordinal);
+        if (!CallerIsAdmin() && !owns)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        var keepEmail = change.SubmitterEmailAddress;
+        var keepPhone = change.SubmitterPhoneNumber;
+        ApplyRequest(change, request);
+        if (!owns)
+        {
+            change.SubmitterEmailAddress = keepEmail;
+            change.SubmitterPhoneNumber = keepPhone;
+        }
+
+        if (change.FlagClaim is not null && key is Guid claimKey && change.FlagClaim.ClientRequestId is null)
+        {
+            change.FlagClaim.ClientRequestId = claimKey;
+        }
+
+        await db.SaveChangesAsync(ct);
+        await AttachPendingPhotoAsync(change.Id, request.Photo, ct);
+        var claim = await db.FlagClaims
+            .Include(row => row.FlagGrid)
+            .Include(row => row.Honoree)
+            .Include(row => row.HonoreeChangeRequests)
+            .FirstAsync(row => row.Id == change.FlagClaimId, ct);
+        var savedChange = claim.HonoreeChangeRequests.First(row => row.Id == change.Id);
+        return Ok(await FinishSubmissionAsync(claim, savedChange, ct));
+    }
+
+    private async Task<ActionResult<FlagClaimDto>> UpdateMatchedAsync(
+        NominateHonoreeRequest request,
+        string email,
+        string? name,
+        string userObjectId,
+        Guid clientRequestId,
+        CancellationToken ct)
+    {
+        if (submissions.TryReadMatchToken(request.MatchToken, out var tokenKind, out var tokenId))
+        {
+            request.MatchKind = tokenKind;
+            if (tokenKind == "Approved")
+            {
+                request.MatchHonoreeId = tokenId;
+            }
+
+            if (tokenKind == "Pending")
+            {
+                request.MatchChangeRequestId = tokenId;
+            }
+        }
+
+        var kind = request.MatchKind?.Trim();
+        if (string.Equals(kind, "Approved", StringComparison.OrdinalIgnoreCase) && request.MatchHonoreeId is int honoreeId)
+        {
+            if (CallerIsAdmin())
+            {
+                return await AdminApplyFields(honoreeId, request, ct);
+            }
+
+            return await CreateCorrectionAsync(request, email, name, userObjectId, clientRequestId, honoreeId, null, ct);
+        }
+
+        if (string.Equals(kind, "Pending", StringComparison.OrdinalIgnoreCase) && request.MatchChangeRequestId is int changeId)
+        {
+            var pending = await db.HonoreeChangeRequests
+                .Include(row => row.FlagClaim)
+                .FirstOrDefaultAsync(row => row.Id == changeId && row.RequestStatus == "Submitted", ct);
+            if (pending is null)
+            {
+                return NotFound("That pending submission was not found.");
+            }
+
+            var owns = !string.IsNullOrWhiteSpace(userObjectId)
+                && string.Equals(pending.FlagClaim?.ExternalUserObjectId, userObjectId, StringComparison.Ordinal);
+            if (pending.HonoreeId is > 0 && CallerIsAdmin())
+            {
+                return await AdminApplyFields(pending.HonoreeId.Value, request, ct);
+            }
+
+            if ((CallerIsAdmin() || owns) && pending.HonoreeId is not > 0)
+            {
+                return await ApplyPending(changeId, request, ct);
+            }
+
+            return await CreateCorrectionAsync(request, email, name, userObjectId, clientRequestId, null, changeId, ct);
+        }
+
+        return BadRequest("Choose the entry to update.");
+    }
+
+    private async Task<ActionResult<FlagClaimDto>> CreateCorrectionAsync(
+        NominateHonoreeRequest request,
+        string email,
+        string? name,
+        string userObjectId,
+        Guid clientRequestId,
+        int? honoreeId,
+        int? correctsChangeRequestId,
+        CancellationToken ct)
+    {
+        int? flagGridId = null;
+        if (honoreeId is int approvedId)
+        {
+            var honoree = await db.Honorees
+                .AsNoTracking()
+                .FirstOrDefaultAsync(row => row.Id == approvedId && row.IsActive && row.DeletedDate == null, ct);
+            if (honoree is null)
+            {
+                return NotFound("Honoree was not found.");
+            }
+
+            flagGridId = honoree.FlagGridId;
+        }
+
+        var claim = new FlagClaim
+        {
+            ClientRequestId = clientRequestId,
+            FlagGridId = null,
+            HonoreeId = null,
+            ExternalUserObjectId = userObjectId,
+            ExternalUserEmail = email,
+            ExternalUserName = name,
+            ClaimStatus = "Submitted",
+            CreatedUtc = DateTime.UtcNow,
+            SubmittedUtc = DateTime.UtcNow
+        };
+        var change = new HonoreeChangeRequest
+        {
+            FlagGridId = flagGridId,
+            HonoreeId = honoreeId,
+            CorrectsChangeRequestId = correctsChangeRequestId,
+            RequestStatus = "Submitted",
+            CreatedUtc = DateTime.UtcNow,
+            SubmittedUtc = DateTime.UtcNow,
+            SubmitterPhoneNumber = request.SubmitterPhoneNumber,
+            SubmitterEmailAddress = request.SubmitterEmailAddress ?? email
+        };
+        ApplyRequest(change, request);
+        change.HonoreeId = honoreeId;
+        change.FlagGridId = flagGridId;
+        change.CorrectsChangeRequestId = correctsChangeRequestId;
+        if (string.IsNullOrWhiteSpace(change.SubmitterEmailAddress))
+        {
+            change.SubmitterEmailAddress = email;
+        }
+
+        claim.HonoreeChangeRequests.Add(change);
+        db.FlagClaims.Add(claim);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (UserProfileService.IsUniqueViolation(ex))
+        {
+            db.ChangeTracker.Clear();
+            var raced = await ReplayIfKeyExistsAsync(clientRequestId, userObjectId, ct);
+            if (raced is not null)
+            {
+                return raced;
+            }
+
+            throw;
+        }
+
+        await AttachPendingPhotoAsync(change.Id, request.Photo, ct);
+        var saved = await db.FlagClaims
+            .Include(row => row.FlagGrid)
+            .Include(row => row.Honoree)
+            .Include(row => row.HonoreeChangeRequests)
+            .FirstAsync(row => row.Id == claim.Id, ct);
+        var savedChange = saved.HonoreeChangeRequests.OrderByDescending(row => row.Id).First();
+        return Ok(await FinishSubmissionAsync(saved, savedChange, ct));
+    }
+
+    private async Task<FlagClaimDto> FinishSubmissionAsync(
+        FlagClaim claim,
+        HonoreeChangeRequest change,
+        CancellationToken ct)
+    {
+        var receipt = await submissions.EnsureReceiptAsync(change.Id, ct);
+        return ToDto(claim, null) with { ReceiptToken = receipt.PublicToken };
+    }
+
+    private async Task<FlagClaimDto> WithReceiptAsync(FlagClaim claim, CancellationToken ct)
+    {
+        var change = claim.HonoreeChangeRequests.OrderByDescending(row => row.Id).FirstOrDefault();
+        if (change is null)
+        {
+            return ToDto(claim, null);
+        }
+
+        var receipt = await submissions.EnsureReceiptAsync(change.Id, ct);
+        return ToDto(claim, null) with { ReceiptToken = receipt.PublicToken };
+    }
+
+    private Guid? ReadIdempotencyKey()
+    {
+        if (!Request.Headers.TryGetValue(IdempotencyHeader, out var values))
+        {
+            return null;
+        }
+
+        return Guid.TryParse(values.ToString(), out var key) ? key : null;
+    }
+
+    private async Task<ActionResult<FlagClaimDto>?> ReplayIfKeyExistsAsync(
+        Guid key,
+        string userObjectId,
+        CancellationToken ct)
+    {
+        var raced = await submissions.FindByIdempotencyKeyAsync(key, ct);
+        if (raced is null)
+        {
+            return null;
+        }
+
+        return await ReplayForCallerAsync(raced, userObjectId, ct);
+    }
+
+    private async Task<ActionResult<FlagClaimDto>> ReplayForCallerAsync(
+        FlagClaim replay,
+        string userObjectId,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(userObjectId)
+            || !string.Equals(replay.ExternalUserObjectId, userObjectId, StringComparison.Ordinal))
+        {
+            return Conflict(new { code = "idempotency-key-in-use" });
+        }
+
+        return Ok(await WithReceiptAsync(replay, ct));
+    }
+
+    private static SubmissionProbe ProbeFrom(NominateHonoreeRequest request, string email) =>
+        new(
+            request.FirstName,
+            request.MiddleName,
+            request.LastName,
+            request.Suffix,
+            request.Nickname,
+            request.Rank,
+            request.ServiceBranchId,
+            email);
+
+    private async Task AttachPendingPhotoAsync(int changeId, IFormFile? photo, CancellationToken ct)
+    {
+        if (photo is null || photo.Length == 0)
+        {
+            return;
+        }
+
+        var pendingPhotoFileName = await fileStorage.UploadPendingImageAsync(photo, changeId, ct);
+        if (string.IsNullOrWhiteSpace(pendingPhotoFileName))
+        {
+            return;
+        }
+
+        var strategy = db.Database.CreateExecutionStrategy();
+        try
+        {
+            await strategy.ExecuteAsync(async () =>
+            {
+                db.ChangeTracker.Clear();
+                await using var transaction = await db.Database.BeginTransactionAsync(ct);
+                var stored = await db.HonoreeChangeRequests.FirstAsync(row => row.Id == changeId, ct);
+                stored.PhotoFileName = pendingPhotoFileName;
+                await db.SaveChangesAsync(ct);
+                await transaction.CommitAsync(ct);
+            });
+        }
+        catch
+        {
+            await fileStorage.DeletePendingImageAsync(pendingPhotoFileName, CancellationToken.None);
+            throw;
+        }
     }
 
     private static void ApplyRequest(HonoreeChangeRequest draft, SaveHonoreeChangeRequest request)

@@ -22,6 +22,7 @@ export function submissionKindLabel(kind) {
   if (kind === "Change") return "Change";
   if (kind === "Withdrawal") return "Removal request";
   if (kind === "Reactivation") return "Reactivation request";
+  if (kind === "Correction") return "Correction request";
   return "New submission";
 }
 
@@ -29,6 +30,7 @@ export function submissionKindClass(kind) {
   if (kind === "Change") return "isChange";
   if (kind === "Withdrawal") return "isWithdrawal";
   if (kind === "Reactivation") return "isReactivation";
+  if (kind === "Correction") return "isChange";
   return "isNew";
 }
 

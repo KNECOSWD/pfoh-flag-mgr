@@ -112,6 +112,11 @@ import { RemoveFromGridDialog, visibleReason } from "./removeFromGridDialog.js";
 import { AdminReactivation } from "./AdminReactivation";
 import { ReactivationPage } from "./ReactivationPage";
 import { reactivationTokenFromPath, signInReturnHref } from "./reactivationPath.js";
+import { PendingSubmissionPage } from "./PendingSubmissionPage";
+import { SubmissionDuplicatePrompt, type SubmissionMatchView } from "./SubmissionDuplicatePrompt";
+import { submissionHero } from "./submissionDuplicate.js";
+import { submissionTokenFromPath } from "./submissionPath.js";
+import type { SubmissionMatch, SupersededSubmission } from "./api";
 import { showTenYearsBanner, TenYearsBanner } from "./tenYearsBanner.js";
 
 const RETURN_INTENT_KEY = "pfoh-return-intent";
@@ -605,6 +610,24 @@ export default function App() {
   const [reactivationToken, setReactivationToken] = useState<string | null>(() =>
     kioskSessionOn(window.sessionStorage) ? null : reactivationTokenFromPath(window.location.pathname)
   );
+  const [submissionToken, setSubmissionToken] = useState<string | null>(() =>
+    kioskSessionOn(window.sessionStorage) ? null : submissionTokenFromPath(window.location.pathname)
+  );
+  const [submissionLookup, setSubmissionLookup] = useState<"loading" | "found" | "missing">("loading");
+  const [lookupToken, setLookupToken] = useState(submissionToken);
+  if (lookupToken !== submissionToken) {
+    setLookupToken(submissionToken);
+    setSubmissionLookup("loading");
+  }
+  const [similarMatches, setSimilarMatches] = useState<SubmissionMatch[] | null>(null);
+  const [duplicateMode, setDuplicateMode] = useState<"nominate" | "admin-edit">("nominate");
+  const [supersededSubmissions, setSupersededSubmissions] = useState<SupersededSubmission[]>([]);
+  const [supersededPage, setSupersededPage] = useState(1);
+  const [supersededPageSize, setSupersededPageSize] = useState(25);
+  const [supersededTotal, setSupersededTotal] = useState(0);
+  const submitLockRef = useRef(false);
+  const idempotencyKeyRef = useRef("");
+  const duplicateChoiceRef = useRef<{ action: "submit-new" | "update" | "proceed"; match?: SubmissionMatch } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [authPrompt, setAuthPrompt] = useState<ReturnIntent | null>(null);
   const confirmResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
@@ -671,7 +694,7 @@ export default function App() {
     [printQueue, selectedPrintIds]
   );
 
-  const isFindRoute = activeRoute === "/find" && !reactivationToken;
+  const isFindRoute = activeRoute === "/find" && !reactivationToken && !submissionToken;
   const isPublicFlagMapRoute = activeRoute === "/flag-map";
   const isMyFlagsRoute = activeRoute === "/my-flags";
   const isHonorHeroRoute = activeRoute === "/honor-a-hero";
@@ -1134,6 +1157,8 @@ export default function App() {
     }
 
     setReactivationToken(null);
+    setSubmissionToken(null);
+    setSimilarMatches(null);
 
     window.setTimeout(() => {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1186,6 +1211,7 @@ export default function App() {
       const nextRoute = normalizeAppRoute(window.location.pathname);
       setActiveRoute(nextRoute);
       setReactivationToken(reactivationTokenFromPath(window.location.pathname));
+      setSubmissionToken(submissionTokenFromPath(window.location.pathname));
       setMobileNavOpen(false);
 
       if (nextRoute !== "/honor-a-hero") {
@@ -1404,6 +1430,36 @@ export default function App() {
     }
 
     void loadPrintHistory();
+    void loadSuperseded();
+  }
+
+  async function loadSuperseded(page = supersededPage) {
+    if (!account) return;
+    try {
+      const result = await adminApi.superseded(instance, account, page);
+      setSupersededSubmissions(result.items);
+      setSupersededPage(result.page);
+      setSupersededPageSize(result.pageSize);
+      setSupersededTotal(result.total);
+    } catch {
+      setSupersededSubmissions([]);
+      setSupersededTotal(0);
+    }
+  }
+
+  async function restoreSuperseded(changeRequestId: number) {
+    if (!account) return;
+    setSaving(true);
+    setError("");
+    try {
+      await adminApi.restoreSuperseded(instance, account, changeRequestId);
+      setNotice("The submission is back in the approval queue.");
+      await loadAdminData();
+    } catch (err) {
+      setError(reportableErrorMessage(err, "Unable to restore that submission."));
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function loadPrintHistory() {
@@ -1708,9 +1764,40 @@ export default function App() {
     setSelectedClaim(null);
     setIsNominating(true);
     setForm(applySubmitterProfileDefaults(blankForm));
+    setSimilarMatches(null);
+    duplicateChoiceRef.current = null;
+    idempotencyKeyRef.current = "";
     setNotice("");
     setError("");
     navigateToRoute("/honor-a-hero");
+  }
+
+  function openSubmission(token: string) {
+    duplicateChoiceRef.current = null;
+    idempotencyKeyRef.current = "";
+    setSimilarMatches(null);
+    setIsNominating(false);
+    setSelectedClaim(null);
+    setSelectedPhoto(null);
+    setSelectedPhotoRotation(0);
+    setForm(blankForm);
+    setSubmissionToken(token);
+    setActiveRoute("/find");
+    setMobileNavOpen(false);
+    window.history.pushState(null, "", `/submission/${token}`);
+    window.setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }, 40);
+  }
+
+  function chooseDuplicate(action: "submit-new" | "update" | "proceed", match?: SubmissionMatch) {
+    duplicateChoiceRef.current = { action, match };
+    setSimilarMatches(null);
+    if (duplicateMode === "admin-edit") {
+      void submitClaim({ preventDefault() {} } as FormEvent);
+    } else {
+      void submitNomination({ preventDefault() {} } as FormEvent);
+    }
   }
 
   async function suggestChange(honoreeId: number) {
@@ -2177,8 +2264,9 @@ export default function App() {
   async function submitNomination(event: React.FormEvent) {
     event.preventDefault();
 
-    if (!account) return;
+    if (!account || submitLockRef.current) return;
 
+    submitLockRef.current = true;
     setSaving(true);
     setSubmitPhase("Preparing photo...");
     setError("");
@@ -2188,24 +2276,47 @@ export default function App() {
       const formToSubmit = applySubmitterProfileDefaults(form);
       const photoForUpload = await prepareSubmissionPhoto();
       setForm(formToSubmit);
+      const choice = duplicateChoiceRef.current;
+      if (!choice) {
+        setSubmitPhase("Checking for a similar entry...");
+        const check = await flagClaimApi.duplicateCheck(instance, account, formToSubmit);
+        if (check.enabled && check.matches.length > 0) {
+          setDuplicateMode("nominate");
+          setSimilarMatches(check.matches);
+          return;
+        }
+      }
+      if (!idempotencyKeyRef.current) idempotencyKeyRef.current = crypto.randomUUID();
       setSubmitPhase("Uploading submission...");
       const claim = await withDeadline(
-        () => flagClaimApi.nominate(instance, account, formToSubmit, photoForUpload),
+        () => flagClaimApi.nominate(instance, account, formToSubmit, photoForUpload, {
+          idempotencyKey: idempotencyKeyRef.current,
+          duplicateAction: choice?.action === "update" ? "update" : choice?.action === "submit-new" ? "submit-new" : undefined,
+          matchKind: choice?.match?.kind,
+          matchHonoreeId: choice?.match?.honoreeId,
+          matchChangeRequestId: choice?.match?.changeRequestId,
+          matchToken: choice?.match?.matchToken
+        }),
         75000,
         "Uploading the submission took too long."
       );
       rememberSubmission(claim);
       setSubmitPhase("Finishing submission...");
-      setIsNominating(false);
       setSelectedPhoto(null);
       setSelectedPhotoRotation(0);
-      setForm(blankForm);
-      setNotice(publicCopy.newRecordConfirmation);
-      navigateToRoute("/my-flags");
+      if (claim.receiptToken) {
+        openSubmission(claim.receiptToken);
+      } else {
+        setIsNominating(false);
+        setForm(blankForm);
+        setNotice(publicCopy.newRecordConfirmation);
+        navigateToRoute("/my-flags");
+      }
       void loadData();
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to submit nomination."));
     } finally {
+      submitLockRef.current = false;
       setSaving(false);
       setSubmitPhase("");
     }
@@ -2235,10 +2346,11 @@ export default function App() {
   async function submitClaim(event: React.FormEvent) {
     event.preventDefault();
 
-    if (!account || !selectedClaim) return;
+    if (!account || !selectedClaim || submitLockRef.current) return;
 
     const isAdminDirectEdit = selectedClaim.claimStatus === "AdminDirectEdit";
 
+    submitLockRef.current = true;
     setSaving(true);
     setSubmitPhase("Preparing photo...");
     setError("");
@@ -2248,6 +2360,37 @@ export default function App() {
       const formToSubmit = applySubmitterProfileDefaults(form);
       const photoForUpload = await prepareSubmissionPhoto();
       setForm(formToSubmit);
+      const choice = duplicateChoiceRef.current;
+      if (isAdminDirectEdit && !choice) {
+        setSubmitPhase("Checking for a similar entry...");
+        const check = await flagClaimApi.duplicateCheck(instance, account, formToSubmit, {
+          excludeHonoreeId: selectedClaim.honoreeId
+        });
+        if (check.enabled && check.matches.length > 0) {
+          setDuplicateMode("admin-edit");
+          setSimilarMatches(check.matches);
+          return;
+        }
+      }
+
+      if (isAdminDirectEdit && choice?.action === "update" && choice.match) {
+        if (!idempotencyKeyRef.current) idempotencyKeyRef.current = crypto.randomUUID();
+        const claim = choice.match.kind === "Pending" && choice.match.changeRequestId
+          ? await flagClaimApi.applyPending(instance, account, choice.match.changeRequestId, formToSubmit, photoForUpload, idempotencyKeyRef.current)
+          : choice.match.honoreeId
+            ? await flagClaimApi.adminApplyFields(instance, account, choice.match.honoreeId, formToSubmit, photoForUpload, idempotencyKeyRef.current)
+            : null;
+        if (claim) {
+          rememberSubmission(claim);
+          if (claim.receiptToken) {
+            openSubmission(claim.receiptToken);
+          } else {
+            setNotice("The record was updated.");
+          }
+        }
+        return;
+      }
+
       setSubmitPhase("Uploading submission...");
       await withDeadline(
         () => flagClaimApi.saveDraft(instance, account, selectedClaim.id, formToSubmit, photoForUpload),
@@ -2257,7 +2400,12 @@ export default function App() {
 
       if (isAdminDirectEdit) {
         const claim = await withDeadline(
-          () => flagClaimApi.applyAdminEditReprint(instance, account, selectedClaim.id),
+          () => flagClaimApi.applyAdminEditReprint(
+            instance,
+            account,
+            selectedClaim.id,
+            choice?.action === "proceed" || choice?.action === "submit-new" ? "proceed" : undefined
+          ),
           75000,
           "Uploading the submission took too long."
         );
@@ -2288,6 +2436,7 @@ export default function App() {
     } catch (err) {
       setError(reportableErrorMessage(err, "Unable to submit changes."));
     } finally {
+      submitLockRef.current = false;
       setSaving(false);
       setSubmitPhase("");
     }
@@ -3267,8 +3416,8 @@ export default function App() {
           </a>
           <div className="heroContent">
             <p className="eyebrow">Plano Flags of Honor</p>
-            <h1>{(reactivationToken ? reactivationBanner : profileOpen ? profileBanner : pageBanners[activeRoute]).title}</h1>
-            <p className="heroLead">{(reactivationToken ? reactivationBanner : profileOpen ? profileBanner : pageBanners[activeRoute]).subtitle}</p>
+            <h1>{(submissionToken ? submissionHero(submissionLookup) : reactivationToken ? reactivationBanner : profileOpen ? profileBanner : pageBanners[activeRoute]).title}</h1>
+            <p className="heroLead">{(submissionToken ? submissionHero(submissionLookup) : reactivationToken ? reactivationBanner : profileOpen ? profileBanner : pageBanners[activeRoute]).subtitle}</p>
           </div>
         </div>
 
@@ -3299,10 +3448,10 @@ export default function App() {
 
           <nav id="hero-navigation" className="heroNav desktopHeroNav navbar-nav flex-row flex-wrap" aria-label="Main navigation">
             {siteNav.filter((item) => item.show).map((item) => (
-              <a key={item.route} className={activeRoute === item.route ? "nav-link isActive" : "nav-link"} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
+              <a key={item.route} className={!submissionToken && activeRoute === item.route ? "nav-link isActive" : "nav-link"} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
             ))}
             <a
-              className={activeRoute === "/honor-a-hero" ? "nav-link isActive" : "nav-link"}
+              className={!submissionToken && activeRoute === "/honor-a-hero" ? "nav-link isActive" : "nav-link"}
               href="/honor-a-hero"
               onClick={(event) => handleRouteLink(event, "/honor-a-hero")}
             >
@@ -3344,10 +3493,10 @@ export default function App() {
 
                 <nav className="mobileDrawerNav" aria-label="Mobile navigation">
                   {siteNav.filter((item) => item.show).map((item) => (
-                    <a key={item.route} className={activeRoute === item.route ? "isActive" : ""} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
+                    <a key={item.route} className={!submissionToken && activeRoute === item.route ? "isActive" : ""} href={item.route} onClick={(event) => handleRouteLink(event, item.route)}>{item.label}</a>
                   ))}
                   <a
-                    className={activeRoute === "/honor-a-hero" ? "isActive" : ""}
+                    className={!submissionToken && activeRoute === "/honor-a-hero" ? "isActive" : ""}
                     href="/honor-a-hero"
                     onClick={(event) => handleRouteLink(event, "/honor-a-hero")}
                   >
@@ -4061,6 +4210,10 @@ export default function App() {
             </div>
           ) : null}
 
+          {submissionToken ? (
+            <PendingSubmissionPage token={submissionToken} onResolved={setSubmissionLookup} />
+          ) : null}
+
           {reactivationToken ? (
             <ReactivationPage
               token={reactivationToken}
@@ -4677,7 +4830,55 @@ export default function App() {
                 </div>
               )}
 
-
+              <section className="mt-4" aria-label="Superseded submissions">
+                <h3 className="h5">Superseded submissions</h3>
+                <p className="helperText">These submissions were replaced by a later one for the same honoree from the same account on the same day. They stay out of the approval queue. Restore puts one back.</p>
+                {supersededSubmissions.length === 0 ? (
+                  <p className="compactEmptyState">No superseded submissions.</p>
+                ) : (
+                  <ul className="list-group">
+                    {supersededSubmissions.map((item) => (
+                      <li className="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2" key={item.changeRequestId}>
+                        <span>
+                          <strong>{item.honoreeName}</strong>
+                          <span className="badge text-bg-secondary ms-2">Superseded</span>
+                          <span className="d-block">{[item.rank, item.branch].filter(Boolean).join(", ")}</span>
+                          {item.submittedCentral ? <span className="d-block">Submitted {item.submittedCentral}</span> : null}
+                          {item.submitterEmail ? <span className="d-block">{item.submitterEmail}</span> : null}
+                          {item.keeperChangeRequestId ? (
+                            <span className="d-block">
+                              Replaced by submission {item.keeperChangeRequestId}
+                              {item.keeperName ? `, ${item.keeperName}` : ""}
+                            </span>
+                          ) : null}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-outline-primary"
+                          disabled={saving}
+                          onClick={() => void restoreSuperseded(item.changeRequestId)}
+                        >
+                          Restore
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {supersededTotal > supersededSubmissions.length || supersededPage > 1 ? (
+                  <div className="d-flex flex-wrap gap-2 mt-3">
+                    {supersededPage > 1 ? (
+                      <button type="button" className="btn btn-outline-primary" onClick={() => void loadSuperseded(supersededPage - 1)}>
+                        Previous
+                      </button>
+                    ) : null}
+                    {supersededPage * supersededPageSize < supersededTotal ? (
+                      <button type="button" className="btn btn-outline-primary" onClick={() => void loadSuperseded(supersededPage + 1)}>
+                        Next
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
 
               </section>
               ) : null}
@@ -5388,6 +5589,13 @@ export default function App() {
                   <p className="helperText col-12">{publicCopy.aboveSubmit}</p>
                 )}
 
+                {similarMatches && similarMatches.length > 0 ? (
+                  <SubmissionDuplicatePrompt
+                    matches={similarMatches as SubmissionMatchView[]}
+                    onYes={(match) => chooseDuplicate("update", match)}
+                    onNo={() => chooseDuplicate(duplicateMode === "admin-edit" ? "proceed" : "submit-new")}
+                  />
+                ) : (
                 <div className="actions col-12 d-flex flex-wrap gap-2">
                   {!isNominating ? (
                     <button type="button" className="btn btn-outline-primary" disabled={saving} onClick={saveDraft}>
@@ -5402,6 +5610,7 @@ export default function App() {
                         : "Submit for review"}
                   </button>
                 </div>
+                )}
               </form>
             </section>
           ) : null}

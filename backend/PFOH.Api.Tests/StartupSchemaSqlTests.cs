@@ -32,6 +32,7 @@ public class StartupSchemaSqlTests
         ["HonoreeNotDuplicatePairSchema"] = 1,
         ["PendingSubmissionGridSchema"] = 4,
         ["ReactivationSchema"] = 1,
+        ["SubmissionGuardSchema"] = 3,
         ["ReprintDuplicateReviewSchema"] = 1,
         ["UserProfileSchema"] = 4
     };

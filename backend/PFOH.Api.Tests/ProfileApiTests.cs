@@ -753,6 +753,8 @@ public class PfohApiFactory : WebApplicationFactory<Program>
 
     public Dictionary<string, string?>? ExtraSettings { get; set; }
 
+    public string? SqlServerConnectionString { get; set; }
+
     // The shared suite raises the permit so unrelated tests are not limited.
     // A rate-limit test sets this to keep the app default of 60.
     public bool UseRealAuthenticatedGetLimit { get; set; }
@@ -798,14 +800,24 @@ public class PfohApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<NominatePhotoSaveFaultInterceptor>();
             services.AddSingleton<ReactivationRedeemRaceInterceptor>();
             services.AddSingleton<ILoggerProvider, ReprintRemoveWarningLog>();
-            services.AddDbContext<PfohDbContext>((sp, options) => options
-                .UseInMemoryDatabase(databaseName)
-                .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
-                .AddInterceptors(
+            services.AddDbContext<PfohDbContext>((sp, options) =>
+            {
+                if (!string.IsNullOrWhiteSpace(SqlServerConnectionString))
+                {
+                    options.UseSqlServer(SqlServerConnectionString);
+                }
+                else
+                {
+                    options.UseInMemoryDatabase(databaseName)
+                        .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning));
+                }
+
+                options.AddInterceptors(
                     sp.GetRequiredService<PublicFlagMapCacheInvalidator>(),
                     sp.GetRequiredService<ReprintClaimStatusFaultInterceptor>(),
                     sp.GetRequiredService<NominatePhotoSaveFaultInterceptor>(),
-                    sp.GetRequiredService<ReactivationRedeemRaceInterceptor>()));
+                    sp.GetRequiredService<ReactivationRedeemRaceInterceptor>());
+            });
 
             services.RemoveAll<HonoreeFileStorage>();
             services.AddSingleton<HonoreeFileStorage, PendingReviewTestFileStorage>();

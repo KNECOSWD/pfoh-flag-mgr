@@ -18,7 +18,8 @@ public record FlagClaimDto(
     HonoreeChangeRequestDto? LatestChangeRequest,
     bool HasOtherClaimants = false,
     int OtherClaimantCount = 0,
-    string? ClaimNotice = null);
+    string? ClaimNotice = null,
+    Guid? ReceiptToken = null);
 
 public record HonoreeChangeRequestDto(
     int Id,
@@ -97,4 +98,17 @@ public class SaveHonoreeChangeRequest
 
 public class NominateHonoreeRequest : SaveHonoreeChangeRequest
 {
+    /// <summary>Empty, submit-new, or update. Empty with a likely match is rejected.</summary>
+    [MaxLength(20)]
+    public string? DuplicateAction { get; set; }
+
+    [MaxLength(20)]
+    public string? MatchKind { get; set; }
+
+    public int? MatchHonoreeId { get; set; }
+
+    public int? MatchChangeRequestId { get; set; }
+
+    [MaxLength(2000)]
+    public string? MatchToken { get; set; }
 }

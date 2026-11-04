@@ -223,6 +223,9 @@ public static class HonoreeDuplicateMatcher
         _ => 2
     };
 
+    public static string LikelihoodOf(IEnumerable<string> codes) =>
+        Likelihood(codes.ToHashSet(StringComparer.Ordinal));
+
     private static string Likelihood(HashSet<string> codes)
     {
         if (codes.Contains("H1") ||

@@ -1,5 +1,15 @@
 # Changelog
 
+## 5.3.0
+
+- Submitting an honoree checks the existing duplicate matcher against pending and approved records. When a likely match is on file, the form asks "Is this the same person?" Yes continues on the update path. No closes the card and submits this one. With two or more matches, each card has its own Yes, and one "No, none of these" ends the prompt.
+- A public submitter cannot edit an approved honoree directly. Yes on an approved match, or on a pending match owned by a different signed-in account, sends a correction to the administrator review queue. Yes on a pending match owned by the signed-in account updates that entry. Ownership is the account id, not the email typed on the form. The match preview shows only the public name, branch, rank, and flag location.
+- No submits the entry and does not supersede any earlier row, including one the card limit left off the prompt. Approved records are left alone. The same-account keep-newest path, including a newer My Flags submit, writes an audit row, keeps the photo, and lists the row for an administrator to restore. The app does not supersede rows when it starts. A pending change and a correction from a different account both stay in the queue. A person withdrawing their own draft still removes that draft's pending photo.
+- After a successful submit, the site opens a pending review page. That page is the confirmation. It shows what was submitted, the status, a short reference number, and what happens next. The page address is an unguessable token. The short reference does not open the page. No email is sent. The Submit button stays disabled after the first click, and the server treats a repeated idempotency key as the same submission.
+- Administrators see the same match prompt on the public form and on an administrator edit. An administrator can update an approved record directly.
+- The check is on by default. Set SubmissionDuplicates__Enabled to false and restart the app to turn it off without a new build. While it is off, the flag stops the duplicate prompt, correction routing, and update-in-place, and the submission is stored as a new entry. No never supersedes. The pending review page still opens after a successful submit.
+- The database change is additive: dbo.SubmissionReceipts, dbo.SubmissionAuditEvents, and a nullable CorrectsChangeRequestId column. The script is backend/PFOH.Api/Data/Scripts/20261103180000_AddSubmissionGuard.sql.
+
 ## 5.2.0
 
 - Administrators can remove an honoree from a flag grid from Search or Flag Manager. The confirm dialog requires a reason, warns when another active honoree looks similar, and offers Merge instead. The spot is freed, the honoree is marked inactive, open claims go to Unclaimed, pending edits are cancelled, and unprinted reprints are cleared. The Removal Queue row records who did it and why, and Restore puts the honoree back on that spot when it is still open.
