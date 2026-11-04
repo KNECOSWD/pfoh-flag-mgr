@@ -42,11 +42,9 @@ function PublicDuplicateCard({
       tabIndex={-1}
       ref={regionRef}
     >
-      <h4 id={headingId} className="h5 fw-semibold mb-3">{publicDuplicateHeading}</h4>
+      <h3 id={headingId} className="fw-semibold mb-3">{publicDuplicateHeading}</h3>
       <article className="border rounded p-3 mb-3 bg-white">
-        <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
-          <h3 className="h5 mb-0">{match.name}</h3>
-        </div>
+        <strong className="d-block fw-semibold mb-2">{match.name}</strong>
         {details ? <p className="mb-1">{details}</p> : null}
         {match.flagLocation ? <p className="mb-1">Flag location: {match.flagLocation}</p> : null}
         {match.reason ? <p className="mb-0">{matchReasonSentence(match.reason)}</p> : null}

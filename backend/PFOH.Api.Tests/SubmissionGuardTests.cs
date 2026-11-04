@@ -95,6 +95,26 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         Assert.DoesNotContain("Captain", newestPending.Raw, StringComparison.Ordinal);
 
         await ResetAsync();
+        var newerApprovedId = await SeedApprovedAsync("Ada", "Mann", "General", "Army", "BB-20", "newer-low@example.test", "2145550194", created: newer, suffix: "Jr");
+        var olderApprovedId = await SeedApprovedAsync("Ada", "Mann", "Captain", "Army", "AA-10", "older-high@example.test", "2145550193", created: older);
+        Assert.True(newerApprovedId < olderApprovedId);
+        var newerDateLowerApprovedId = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test");
+        var newerDateApprovedCard = AssertPublicCard(newerDateLowerApprovedId.Raw, "Ada Mann Jr");
+        Assert.Equal("General", newerDateApprovedCard.Rank);
+        Assert.Equal("BB-20", newerDateApprovedCard.FlagLocation);
+        Assert.DoesNotContain("AA-10", newerDateLowerApprovedId.Raw, StringComparison.Ordinal);
+
+        await ResetAsync();
+        var newerPendingId = await SeedPendingAsync("Ada", "Mann", "General", 1, "newer-low@example.test", "2145550184", newer, suffix: "Jr");
+        var olderPendingId = await SeedPendingAsync("Ada", "Mann", "Captain", 1, "older-high@example.test", "2145550183", older);
+        Assert.True(newerPendingId < olderPendingId);
+        var newerDateLowerPendingId = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test");
+        var newerDatePendingCard = AssertPublicCard(newerDateLowerPendingId.Raw, "Ada Mann Jr");
+        Assert.Equal("General", newerDatePendingCard.Rank);
+        Assert.Null(newerDatePendingCard.FlagLocation);
+        Assert.DoesNotContain("Captain", newerDateLowerPendingId.Raw, StringComparison.Ordinal);
+
+        await ResetAsync();
         var tied = new DateTime(2024, 6, 1, 12, 0, 0, DateTimeKind.Utc);
         await SeedPendingAsync("Ada", "Mann", "Captain", 1, "first@example.test", "2145550171", tied);
         await SeedPendingAsync("Ada", "Mann", "General", 1, "second@example.test", "2145550172", tied, suffix: "Jr");

@@ -86,7 +86,10 @@ test("the form, page, and queue use the guard without an em dash", () => {
   assert.match(publicCard, /publicDuplicateHeading/);
   assert.match(publicCard, /samePersonLabel/);
   assert.match(publicCard, /submitAsNewLabel/);
-  assert.match(publicCard, /<h4 /);
+  assert.match(publicCard, /<h3 id=\{headingId\}/);
+  assert.match(publicCard, /<strong className="d-block fw-semibold mb-2">/);
+  assert.doesNotMatch(publicCard, /<h4/);
+  assert.equal(publicCard.match(/<h3 /g)?.length, 1);
   assert.match(publicCard, /role="region"/);
   assert.match(publicCard, /aria-labelledby=\{headingId\}/);
   assert.match(publicCard, /tabIndex=\{-1\}/);
