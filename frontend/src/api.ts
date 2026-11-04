@@ -301,7 +301,7 @@ export type FlagClaim = {
 };
 
 export type SubmissionMatch = {
-  kind: "Approved" | "Pending" | string;
+  kind?: "Approved" | "Pending" | string;
   honoreeId?: number | null;
   changeRequestId?: number | null;
   name: string;

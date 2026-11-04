@@ -165,7 +165,7 @@ public sealed class SubmissionGuardService(
             }
         }
 
-        var matches = new List<(int SortId, SubmissionMatchDto Match)>();
+        var matches = new List<RankedMatch>();
         foreach (var (id, hit) in best)
         {
             if (id > 0 && approvedById.TryGetValue(id, out var honoree))
@@ -173,18 +173,22 @@ public sealed class SubmissionGuardService(
                 var location = string.IsNullOrWhiteSpace(honoree.FlagGrid?.FlagGridName)
                     ? null
                     : honoree.FlagGrid!.FlagGridName;
-                matches.Add((id, new SubmissionMatchDto(
-                    "Approved",
-                    honoree.Id,
-                    null,
-                    DuplicateReviewGroups.DisplayName(honoree),
-                    BlankToNull(honoree.Rank),
-                    BlankToNull(honoree.ServiceBranch?.ServiceBranchName),
-                    location,
-                    hit.Likelihood,
-                    hit.Reason,
-                    callerIsAdmin,
-                    ProtectApproved(honoree.Id))));
+                matches.Add(new RankedMatch(
+                    id,
+                    honoree.CreatedDate,
+                    true,
+                    new SubmissionMatchDto(
+                        "Approved",
+                        honoree.Id,
+                        null,
+                        DuplicateReviewGroups.DisplayName(honoree),
+                        BlankToNull(honoree.Rank),
+                        BlankToNull(honoree.ServiceBranch?.ServiceBranchName),
+                        location,
+                        hit.Likelihood,
+                        hit.Reason,
+                        callerIsAdmin,
+                        ProtectApproved(honoree.Id))));
             }
             else if (id < 0 && pendingById.TryGetValue(-id, out var request))
             {
@@ -192,32 +196,33 @@ public sealed class SubmissionGuardService(
                 var owns = !string.IsNullOrWhiteSpace(callerObjectId)
                     && string.Equals(ownerId, callerObjectId, StringComparison.Ordinal);
                 var revealId = callerIsAdmin || owns;
-                matches.Add((request.Id, new SubmissionMatchDto(
-                    "Pending",
-                    null,
-                    revealId ? request.Id : null,
-                    DisplayName(request.FirstName, request.MiddleName, request.LastName, request.Suffix, request.Nickname),
-                    BlankToNull(request.Rank),
-                    BlankToNull(request.ServiceBranch?.ServiceBranchName),
-                    null,
-                    hit.Likelihood,
-                    hit.Reason,
-                    owns && request.HonoreeId is not > 0 || callerIsAdmin,
-                    ProtectPending(request.Id))));
+                matches.Add(new RankedMatch(
+                    request.Id,
+                    request.SubmittedUtc ?? request.CreatedUtc,
+                    false,
+                    new SubmissionMatchDto(
+                        "Pending",
+                        null,
+                        revealId ? request.Id : null,
+                        DisplayName(request.FirstName, request.MiddleName, request.LastName, request.Suffix, request.Nickname),
+                        BlankToNull(request.Rank),
+                        BlankToNull(request.ServiceBranch?.ServiceBranchName),
+                        null,
+                        hit.Likelihood,
+                        hit.Reason,
+                        owns && request.HonoreeId is not > 0 || callerIsAdmin,
+                        ProtectPending(request.Id))));
             }
         }
 
-        matches.Sort((left, right) =>
+        if (!callerIsAdmin)
         {
-            var rank = Rank(left.Match.Likelihood).CompareTo(Rank(right.Match.Likelihood));
-            if (rank != 0)
-            {
-                return rank;
-            }
+            // Highest score, then an approved honoree over a pending one, then the newest.
+            matches.Sort(ComparePublic);
+            return matches.Count == 0 ? [] : [matches[0].Match];
+        }
 
-            var name = string.Compare(left.Match.Name, right.Match.Name, StringComparison.OrdinalIgnoreCase);
-            return name != 0 ? name : left.SortId.CompareTo(right.SortId);
-        });
+        matches.Sort(CompareAdmin);
         return matches.Count <= 8
             ? matches.Select(item => item.Match).ToList()
             : matches.Take(8).Select(item => item.Match).ToList();
@@ -590,6 +595,43 @@ public sealed class SubmissionGuardService(
         var a = NormalizeEmail(left);
         var b = NormalizeEmail(right);
         return !string.IsNullOrEmpty(a) && a == b;
+    }
+
+    private sealed record RankedMatch(int SortId, DateTime Recency, bool Approved, SubmissionMatchDto Match);
+
+    private static int CompareAdmin(RankedMatch left, RankedMatch right)
+    {
+        var rank = Rank(left.Match.Likelihood).CompareTo(Rank(right.Match.Likelihood));
+        if (rank != 0)
+        {
+            return rank;
+        }
+
+        var name = string.Compare(left.Match.Name, right.Match.Name, StringComparison.OrdinalIgnoreCase);
+        return name != 0 ? name : left.SortId.CompareTo(right.SortId);
+    }
+
+    private static int ComparePublic(RankedMatch left, RankedMatch right)
+    {
+        var rank = Rank(left.Match.Likelihood).CompareTo(Rank(right.Match.Likelihood));
+        if (rank != 0)
+        {
+            return rank;
+        }
+
+        var approved = (left.Approved ? 0 : 1).CompareTo(right.Approved ? 0 : 1);
+        if (approved != 0)
+        {
+            return approved;
+        }
+
+        var recency = right.Recency.CompareTo(left.Recency);
+        if (recency != 0)
+        {
+            return recency;
+        }
+
+        return right.SortId.CompareTo(left.SortId);
     }
 
     private static int Rank(string likelihood) => likelihood switch

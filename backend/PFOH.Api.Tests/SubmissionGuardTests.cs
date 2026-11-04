@@ -16,22 +16,19 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     [Fact]
-    public async Task Duplicate_check_labels_pending_and_approved_and_hides_private_fields()
+    public async Task Public_duplicate_check_returns_one_card_and_hides_private_fields()
     {
         await ResetAsync();
-        var honoreeId = await SeedApprovedAsync("Ada", "Mann", "Captain", "Army", "AA-10", "secret-approved@example.test", "2145550199");
-        var pendingId = await SeedPendingAsync("Ben", "Brooks", "Petty Officer", 2, "secret-pending@example.test", "2145550188", DateTime.UtcNow);
+        await SeedApprovedAsync("Ada", "Mann", "Captain", "Army", "AA-10", "secret-approved@example.test", "2145550199");
+        await SeedPendingAsync("Ben", "Brooks", "Petty Officer", 2, "secret-pending@example.test", "2145550188", DateTime.UtcNow);
         var client = factory.CreateClient();
 
         var approved = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test");
-        var approvedMatch = Assert.Single(approved.Matches);
-        Assert.Equal("Approved", approvedMatch.Kind);
-        Assert.Equal(honoreeId, approvedMatch.HonoreeId);
-        Assert.Equal("Captain", approvedMatch.Rank);
-        Assert.Equal("Army", approvedMatch.Branch);
-        Assert.Equal("AA-10", approvedMatch.FlagLocation);
-        Assert.False(approvedMatch.CanUpdateDirectly);
-        Assert.False(string.IsNullOrWhiteSpace(approvedMatch.MatchToken));
+        var approvedCard = AssertPublicCard(approved.Raw, "Ada Mann");
+        Assert.Equal("Captain", approvedCard.Rank);
+        Assert.Equal("Army", approvedCard.Branch);
+        Assert.Equal("AA-10", approvedCard.FlagLocation);
+        Assert.Contains("same full name", approvedCard.Reason, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("secret-approved@example.test", approved.Raw, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("2145550199", approved.Raw, StringComparison.Ordinal);
         Assert.DoesNotContain("\"email\"", approved.Raw, StringComparison.OrdinalIgnoreCase);
@@ -39,22 +36,248 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         Assert.DoesNotContain("\"notes\"", approved.Raw, StringComparison.OrdinalIgnoreCase);
 
         var otherAccount = await CheckAsync(client, "Ben", "Brooks", 2, "family@example.test");
-        var pendingMatch = Assert.Single(otherAccount.Matches);
-        Assert.Equal("Pending", pendingMatch.Kind);
-        Assert.Null(pendingMatch.ChangeRequestId);
-        Assert.False(string.IsNullOrWhiteSpace(pendingMatch.MatchToken));
-        Assert.Null(pendingMatch.FlagLocation);
-        Assert.False(pendingMatch.CanUpdateDirectly);
-        Assert.Contains("\"changeRequestId\":null", otherAccount.Raw, StringComparison.OrdinalIgnoreCase);
+        var pendingCard = AssertPublicCard(otherAccount.Raw, "Ben Brooks");
+        Assert.Equal("Petty Officer", pendingCard.Rank);
+        Assert.Equal("Navy", pendingCard.Branch);
+        Assert.Null(pendingCard.FlagLocation);
         Assert.DoesNotContain("secret-pending@example.test", otherAccount.Raw, StringComparison.OrdinalIgnoreCase);
 
         var sameAccount = await CheckAsync(client, "Ben", "Brooks", 2, "typed-victim@example.test", oid: "original-owner");
-        var owned = Assert.Single(sameAccount.Matches);
-        Assert.True(owned.CanUpdateDirectly);
-        Assert.Equal(pendingId, owned.ChangeRequestId);
+        var owned = AssertPublicCard(sameAccount.Raw, "Ben Brooks");
+        Assert.False(string.IsNullOrWhiteSpace(owned.MatchToken));
 
         var differentBranch = await CheckAsync(client, "Ada", "Mann", 2, "someone-else@example.test");
         Assert.Empty(differentBranch.Matches);
+        Assert.DoesNotContain("\"kind\"", differentBranch.Raw, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Public_check_picks_the_highest_score_then_approved_then_newest()
+    {
+        var client = factory.CreateClient();
+        var older = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var newer = new DateTime(2024, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        await ResetAsync();
+        await SeedApprovedAsync("Ada", "Mann", "Captain", "Army", "AA-10", "secret-approved@example.test", "2145550199", created: newer, middle: "Q");
+        await SeedPendingAsync("Ada", "Mann", "Petty Officer", 1, "secret-pending@example.test", "2145550188", older);
+        var higherScore = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test");
+        var highCard = AssertPublicCard(higherScore.Raw, "Ada Mann");
+        Assert.Equal("Petty Officer", highCard.Rank);
+        Assert.Null(highCard.FlagLocation);
+        Assert.DoesNotContain("Captain", higherScore.Raw, StringComparison.Ordinal);
+
+        await ResetAsync();
+        await SeedPendingAsync("Ada", "Mann", "Petty Officer", 1, "secret-pending@example.test", "2145550188", newer);
+        await SeedApprovedAsync("Ada", "Mann", "Captain", "Army", "AA-10", "secret-approved@example.test", "2145550199", created: older, suffix: "Jr");
+        var approvedWins = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test");
+        var approvedCard = AssertPublicCard(approvedWins.Raw, "Ada Mann Jr");
+        Assert.Equal("Captain", approvedCard.Rank);
+        Assert.Equal("AA-10", approvedCard.FlagLocation);
+        Assert.DoesNotContain("Petty Officer", approvedWins.Raw, StringComparison.Ordinal);
+
+        await ResetAsync();
+        await SeedApprovedAsync("Ada", "Mann", "Captain", "Army", "AA-10", "older@example.test", "2145550191", created: older);
+        await SeedApprovedAsync("Ada", "Mann", "General", "Army", "BB-20", "newer@example.test", "2145550192", created: newer, suffix: "Jr");
+        var newestApproved = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test");
+        var newestApprovedCard = AssertPublicCard(newestApproved.Raw, "Ada Mann Jr");
+        Assert.Equal("General", newestApprovedCard.Rank);
+        Assert.Equal("BB-20", newestApprovedCard.FlagLocation);
+        Assert.DoesNotContain("AA-10", newestApproved.Raw, StringComparison.Ordinal);
+
+        await ResetAsync();
+        await SeedPendingAsync("Ada", "Mann", "Captain", 1, "older@example.test", "2145550181", older);
+        await SeedPendingAsync("Ada", "Mann", "General", 1, "newer@example.test", "2145550182", newer, suffix: "Jr");
+        var newestPending = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test");
+        var newestPendingCard = AssertPublicCard(newestPending.Raw, "Ada Mann Jr");
+        Assert.Equal("General", newestPendingCard.Rank);
+        Assert.Null(newestPendingCard.FlagLocation);
+        Assert.DoesNotContain("Captain", newestPending.Raw, StringComparison.Ordinal);
+
+        await ResetAsync();
+        var newerApprovedId = await SeedApprovedAsync("Ada", "Mann", "General", "Army", "BB-20", "newer-low@example.test", "2145550194", created: newer, suffix: "Jr");
+        var olderApprovedId = await SeedApprovedAsync("Ada", "Mann", "Captain", "Army", "AA-10", "older-high@example.test", "2145550193", created: older);
+        Assert.True(newerApprovedId < olderApprovedId);
+        var newerDateLowerApprovedId = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test");
+        var newerDateApprovedCard = AssertPublicCard(newerDateLowerApprovedId.Raw, "Ada Mann Jr");
+        Assert.Equal("General", newerDateApprovedCard.Rank);
+        Assert.Equal("BB-20", newerDateApprovedCard.FlagLocation);
+        Assert.DoesNotContain("AA-10", newerDateLowerApprovedId.Raw, StringComparison.Ordinal);
+
+        await ResetAsync();
+        var newerPendingId = await SeedPendingAsync("Ada", "Mann", "General", 1, "newer-low@example.test", "2145550184", newer, suffix: "Jr");
+        var olderPendingId = await SeedPendingAsync("Ada", "Mann", "Captain", 1, "older-high@example.test", "2145550183", older);
+        Assert.True(newerPendingId < olderPendingId);
+        var newerDateLowerPendingId = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test");
+        var newerDatePendingCard = AssertPublicCard(newerDateLowerPendingId.Raw, "Ada Mann Jr");
+        Assert.Equal("General", newerDatePendingCard.Rank);
+        Assert.Null(newerDatePendingCard.FlagLocation);
+        Assert.DoesNotContain("Captain", newerDateLowerPendingId.Raw, StringComparison.Ordinal);
+
+        await ResetAsync();
+        var tied = new DateTime(2024, 6, 1, 12, 0, 0, DateTimeKind.Utc);
+        await SeedPendingAsync("Ada", "Mann", "Captain", 1, "first@example.test", "2145550171", tied);
+        await SeedPendingAsync("Ada", "Mann", "General", 1, "second@example.test", "2145550172", tied, suffix: "Jr");
+        var newerId = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test");
+        var newerIdCard = AssertPublicCard(newerId.Raw, "Ada Mann Jr");
+        Assert.Equal("General", newerIdCard.Rank);
+        Assert.DoesNotContain("Captain", newerId.Raw, StringComparison.Ordinal);
+
+        await ResetAsync();
+        await SeedApprovedAsync("Ada", "Mann", "Captain", "Army", "AA-10", "approved@example.test", "2145550161", created: older, nickname: "Zebra");
+        foreach (var nickname in new[] { "A", "B", "C", "D", "E", "F", "G", "H" })
+        {
+            await SeedPendingAsync("Ada", "Mann", "Seaman", 1, $"{nickname}@example.test", "2145550162", newer, nickname: nickname);
+        }
+
+        var beyondTheAdminCap = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test");
+        var cappedCard = AssertPublicCard(beyondTheAdminCap.Raw, "Ada Mann (Zebra)");
+        Assert.Equal("Captain", cappedCard.Rank);
+        Assert.Equal("AA-10", cappedCard.FlagLocation);
+        Assert.DoesNotContain("Seaman", beyondTheAdminCap.Raw, StringComparison.Ordinal);
+        Assert.DoesNotContain("(A)", beyondTheAdminCap.Raw, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Admin_duplicate_check_keeps_every_labeled_match()
+    {
+        var older = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var newer = new DateTime(2024, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        var client = factory.CreateClient();
+
+        foreach (var role in new[] { "PFOH.Admin", "Admin" })
+        {
+            await ResetAsync();
+            var pendingId = await SeedPendingAsync("Ada", "Mann", "Petty Officer", 1, "secret-pending@example.test", "2145550188", newer);
+            var honoreeId = await SeedApprovedAsync("Ada", "Mann", "Captain", "Army", "AA-10", "secret-approved@example.test", "2145550199", created: older, suffix: "Jr");
+            var body = await CheckAsync(client, "Ada", "Mann", 1, "admin@example.test", oid: "admin-user", roles: role);
+            Assert.Equal(2, body.Matches.Count);
+            Assert.Equal("Ada Mann", body.Matches[0].Name);
+            Assert.Equal("Pending", body.Matches[0].Kind);
+            Assert.Equal("High", body.Matches[0].Likelihood);
+            Assert.Equal(pendingId, body.Matches[0].ChangeRequestId);
+            Assert.True(body.Matches[0].CanUpdateDirectly);
+            AssertAdminMatchFields(body.Raw, 0);
+            Assert.Equal("Ada Mann Jr", body.Matches[1].Name);
+            Assert.Equal("Approved", body.Matches[1].Kind);
+            Assert.Equal(honoreeId, body.Matches[1].HonoreeId);
+            Assert.Equal("AA-10", body.Matches[1].FlagLocation);
+            Assert.True(body.Matches[1].CanUpdateDirectly);
+            AssertAdminMatchFields(body.Raw, 1);
+            Assert.Contains("\"kind\"", body.Raw, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("secret-approved@example.test", body.Raw, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("2145550199", body.Raw, StringComparison.Ordinal);
+
+            await ResetAsync();
+            await SeedApprovedAsync("Ada", "Mann", "Captain", "Army", "AA-10", "approved@example.test", "2145550161", created: older, nickname: "Zebra");
+            foreach (var nickname in new[] { "A", "B", "C", "D", "E", "F", "G", "H" })
+            {
+                await SeedPendingAsync("Ada", "Mann", "Seaman", 1, $"{nickname}@example.test", "2145550162", newer, nickname: nickname);
+            }
+
+            var capped = await CheckAsync(client, "Ada", "Mann", 1, "admin@example.test", oid: "admin-user", roles: role);
+            Assert.Equal(8, capped.Matches.Count);
+            Assert.All(capped.Matches, match => Assert.Equal("Pending", match.Kind));
+            Assert.DoesNotContain(capped.Matches, match => match.Name.Contains("Zebra", StringComparison.Ordinal));
+            Assert.Equal("Ada Mann (A)", capped.Matches[0].Name);
+            Assert.Equal("Ada Mann (H)", capped.Matches[7].Name);
+        }
+    }
+
+    [Fact]
+    public async Task Public_submit_conflict_returns_the_same_single_card()
+    {
+        await ResetAsync();
+        var older = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var newer = new DateTime(2024, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        await SeedPendingAsync("Ada", "Mann", "Petty Officer", 1, "secret-pending@example.test", "2145550188", newer);
+        await SeedApprovedAsync("Ada", "Mann", "Captain", "Army", "AA-10", "secret-approved@example.test", "2145550199", created: older, suffix: "Jr");
+        var client = factory.CreateClient();
+
+        var response = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/flag-claims/nominate",
+            "public-user",
+            "family@example.test",
+            "Family Member",
+            body: Nomination("Ada", "Mann", 1, "family@example.test", "General", null, null, null, null),
+            idempotencyKey: Guid.NewGuid()));
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var raw = await response.Content.ReadAsStringAsync();
+        var card = AssertPublicConflict(raw, "Ada Mann Jr");
+        Assert.Equal("Captain", card.Rank);
+        Assert.Equal("AA-10", card.FlagLocation);
+        Assert.DoesNotContain("Petty Officer", raw, StringComparison.Ordinal);
+
+        var admin = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/flag-claims/nominate",
+            "admin-user",
+            "admin@example.test",
+            "Admin",
+            roles: "PFOH.Admin",
+            body: Nomination("Ada", "Mann", 1, "admin@example.test", "General", null, null, null, null),
+            idempotencyKey: Guid.NewGuid()));
+        Assert.Equal(HttpStatusCode.Conflict, admin.StatusCode);
+        var adminRaw = await admin.Content.ReadAsStringAsync();
+        using var adminDoc = JsonDocument.Parse(adminRaw);
+        Assert.Equal("similar-entry", adminDoc.RootElement.GetProperty("code").GetString());
+        var adminMatches = adminDoc.RootElement.GetProperty("matches").EnumerateArray().ToList();
+        Assert.Equal(2, adminMatches.Count);
+        Assert.Equal("Pending", adminMatches[0].GetProperty("kind").GetString());
+        Assert.Equal("Ada Mann", adminMatches[0].GetProperty("name").GetString());
+        Assert.Equal("Approved", adminMatches[1].GetProperty("kind").GetString());
+        Assert.Equal("Ada Mann Jr", adminMatches[1].GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task Public_same_person_uses_the_match_token_without_a_status_label()
+    {
+        await ResetAsync();
+        var pendingId = await SeedPendingAsync("Ben", "Brooks", "Petty Officer", 2, "family@example.test", "2145550188", DateTime.UtcNow, owner: "same-person");
+        var client = factory.CreateClient();
+        var pendingCheck = await CheckAsync(client, "Ben", "Brooks", 2, "family@example.test", oid: "same-person");
+        var pendingCard = AssertPublicCard(pendingCheck.Raw, "Ben Brooks");
+
+        var update = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/flag-claims/nominate",
+            "same-person",
+            "family@example.test",
+            "Family Member",
+            body: Nomination("Ben", "Brooks", 2, "family@example.test", "Chief", "update", null, null, null, matchToken: pendingCard.MatchToken),
+            idempotencyKey: Guid.NewGuid()));
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        await using var pendingScope = factory.Services.CreateAsyncScope();
+        var pendingDb = pendingScope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var pending = await pendingDb.HonoreeChangeRequests.Include(row => row.FlagClaim).SingleAsync();
+        Assert.Equal(pendingId, pending.Id);
+        Assert.Equal("Chief", pending.Rank);
+        Assert.Equal("Submitted", pending.RequestStatus);
+        Assert.Equal("same-person", pending.FlagClaim!.ExternalUserObjectId);
+
+        await ResetAsync();
+        var honoreeId = await SeedApprovedAsync("Ada", "Mann", "Captain", "Army", "AA-10", "secret-approved@example.test", "2145550199");
+        var approvedCheck = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test");
+        var approvedCard = AssertPublicCard(approvedCheck.Raw, "Ada Mann");
+        var correction = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/flag-claims/nominate",
+            "public-user",
+            "family@example.test",
+            "Family Member",
+            body: Nomination("Ada", "Mann", 1, "family@example.test", "General", "update", null, null, null, matchToken: approvedCard.MatchToken),
+            idempotencyKey: Guid.NewGuid()));
+        Assert.Equal(HttpStatusCode.OK, correction.StatusCode);
+        await using var approvedScope = factory.Services.CreateAsyncScope();
+        var approvedDb = approvedScope.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var honoree = await approvedDb.Honorees.SingleAsync(row => row.Id == honoreeId);
+        Assert.Equal("Captain", honoree.Rank);
+        Assert.True(honoree.IsActive);
+        var row = await approvedDb.HonoreeChangeRequests.SingleAsync();
+        Assert.Equal(honoreeId, row.HonoreeId);
+        Assert.Equal("General", row.Rank);
+        Assert.Equal("Submitted", row.RequestStatus);
     }
 
     [Fact]
@@ -260,8 +483,7 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
 
         var client = factory.CreateClient();
         var check = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test", oid: "family-user");
-        Assert.Equal(8, check.Matches.Count);
-        Assert.Single(seeded, id => check.Matches.All(match => match.ChangeRequestId != id));
+        AssertPublicCard(check.Raw, "Ada Mann");
 
         var response = await client.SendAsync(Authed(
             HttpMethod.Post,
@@ -622,11 +844,15 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         string branch,
         string gridName,
         string email,
-        string phone)
+        string phone,
+        DateTime? created = null,
+        string? suffix = null,
+        string? middle = null,
+        string? nickname = null)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
-        var now = DateTime.UtcNow;
+        var now = created ?? DateTime.UtcNow;
         var branchId = branch == "Navy" ? 2 : 1;
         var grid = new FlagGrid
         {
@@ -641,7 +867,10 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         var honoree = new Honoree
         {
             FirstName = first,
+            MiddleName = middle,
             LastName = last,
+            Suffix = suffix,
+            Nickname = nickname,
             Rank = rank,
             ServiceBranchId = branchId,
             ServiceBranchCategoryId = 1,
@@ -681,7 +910,8 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         string? suffix = null,
         string? photo = null,
         int? honoreeId = null,
-        int? correctsChangeRequestId = null)
+        int? correctsChangeRequestId = null,
+        string? nickname = null)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
@@ -701,6 +931,7 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
             MiddleName = middle,
             LastName = last,
             Suffix = suffix,
+            Nickname = nickname,
             Rank = rank,
             ServiceBranchId = branchId,
             HonoreeId = honoreeId,
@@ -774,7 +1005,7 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         ModifiedDate = now
     };
 
-    private async Task<CheckBody> CheckAsync(HttpClient client, string first, string last, int branchId, string email, string? oid = null)
+    private async Task<CheckBody> CheckAsync(HttpClient client, string first, string last, int branchId, string email, string? oid = null, string? roles = null)
     {
         var response = await client.SendAsync(Authed(
             HttpMethod.Post,
@@ -782,6 +1013,7 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
             oid ?? "public-user",
             email,
             "Family Member",
+            roles: roles,
             body: new
             {
                 firstName = first,
@@ -847,7 +1079,8 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         int? honoreeId,
         int? changeRequestId,
         string? middle = null,
-        string? suffix = null)
+        string? suffix = null,
+        string? matchToken = null)
     {
         var content = new MultipartFormDataContent
         {
@@ -891,6 +1124,11 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
             content.Add(new StringContent(change.ToString()), "MatchChangeRequestId");
         }
 
+        if (!string.IsNullOrEmpty(matchToken))
+        {
+            content.Add(new StringContent(matchToken), "MatchToken");
+        }
+
         return content;
     }
 
@@ -929,6 +1167,67 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
 
         return request;
     }
+
+    private static readonly string[] PublicCardFields = ["branch", "flagLocation", "matchToken", "name", "rank", "reason"];
+
+    private static readonly string[] AdminMatchFields =
+    [
+        "branch", "canUpdateDirectly", "changeRequestId", "flagLocation", "honoreeId",
+        "kind", "likelihood", "matchToken", "name", "rank", "reason"
+    ];
+
+    private static PublicCard AssertPublicCard(string raw, string name)
+    {
+        using var doc = JsonDocument.Parse(raw);
+        var rootNames = doc.RootElement.EnumerateObject().Select(property => property.Name).OrderBy(item => item).ToArray();
+        Assert.Equal(["enabled", "matches"], rootNames);
+        Assert.True(doc.RootElement.GetProperty("enabled").GetBoolean());
+        return ReadPublicCard(doc.RootElement.GetProperty("matches"), name);
+    }
+
+    private static PublicCard AssertPublicConflict(string raw, string name)
+    {
+        using var doc = JsonDocument.Parse(raw);
+        var rootNames = doc.RootElement.EnumerateObject().Select(property => property.Name).OrderBy(item => item).ToArray();
+        Assert.Equal(["code", "matches"], rootNames);
+        Assert.Equal("similar-entry", doc.RootElement.GetProperty("code").GetString());
+        return ReadPublicCard(doc.RootElement.GetProperty("matches"), name);
+    }
+
+    private static PublicCard ReadPublicCard(JsonElement matches, string name)
+    {
+        var match = Assert.Single(matches.EnumerateArray());
+        var names = match.EnumerateObject().Select(property => property.Name).OrderBy(item => item).ToArray();
+        Assert.Equal(PublicCardFields, names);
+        Assert.Equal(name, match.GetProperty("name").GetString());
+        var token = match.GetProperty("matchToken").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(token));
+        return new PublicCard(
+            name,
+            match.GetProperty("rank").ValueKind == JsonValueKind.Null ? null : match.GetProperty("rank").GetString(),
+            match.GetProperty("branch").ValueKind == JsonValueKind.Null ? null : match.GetProperty("branch").GetString(),
+            match.GetProperty("flagLocation").ValueKind == JsonValueKind.Null ? null : match.GetProperty("flagLocation").GetString(),
+            match.GetProperty("reason").GetString() ?? string.Empty,
+            token!);
+    }
+
+    private static void AssertAdminMatchFields(string raw, int index)
+    {
+        using var doc = JsonDocument.Parse(raw);
+        var rootNames = doc.RootElement.EnumerateObject().Select(property => property.Name).OrderBy(item => item).ToArray();
+        Assert.Equal(["enabled", "matches"], rootNames);
+        var match = doc.RootElement.GetProperty("matches")[index];
+        var names = match.EnumerateObject().Select(property => property.Name).OrderBy(item => item).ToArray();
+        Assert.Equal(AdminMatchFields, names);
+    }
+
+    private sealed record PublicCard(
+        string Name,
+        string? Rank,
+        string? Branch,
+        string? FlagLocation,
+        string Reason,
+        string MatchToken);
 
     private sealed record CheckBody(bool Enabled, List<MatchBody> Matches, string Raw = "")
     {
@@ -1092,6 +1391,27 @@ public class SubmissionGuardOffTests(SubmissionGuardOffFactory factory) : IClass
         Assert.Equal(HttpStatusCode.NotFound, applyResponse.StatusCode);
         saved.ChangeTracker.Clear();
         Assert.Equal("Captain", (await saved.HonoreeChangeRequests.SingleAsync(row => row.Id == earlierId)).Rank);
+    }
+
+    [Fact]
+    public async Task Turning_the_check_off_returns_no_matches()
+    {
+        var client = factory.CreateClient();
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/flag-claims/duplicate-check")
+        {
+            Content = JsonContent.Create(new { firstName = "Ada", lastName = "Mann", serviceBranchId = 1 })
+        };
+        request.Headers.Add(TestAuthHandler.OidHeader, "family-user");
+        request.Headers.Add(TestAuthHandler.EmailHeader, "family@example.test");
+        request.Headers.Add(TestAuthHandler.NameHeader, "Family Member");
+        var response = await client.SendAsync(request);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var raw = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(raw);
+        Assert.False(doc.RootElement.GetProperty("enabled").GetBoolean());
+        Assert.Empty(doc.RootElement.GetProperty("matches").EnumerateArray());
+        Assert.False(doc.RootElement.TryGetProperty("count", out _));
+        Assert.False(doc.RootElement.GetProperty("matches").EnumerateArray().Any());
     }
 
     private static MultipartFormDataContent GuardOffForm(string? action, string rank, int? changeRequestId)

@@ -4,10 +4,13 @@ import test from "node:test";
 import {
   matchKindLabel,
   matchReasonSentence,
+  publicDuplicateHeading,
+  samePersonLabel,
   samePersonNoLabel,
   similarEntryLead,
   submissionHero,
-  submissionReference
+  submissionReference,
+  submitAsNewLabel
 } from "../src/submissionDuplicate.js";
 import { submissionTokenFromPath } from "../src/submissionPath.js";
 
@@ -16,6 +19,9 @@ const token = "3f1c0b2a-4d5e-4f60-8a71-9b0c1d2e3f40";
 test("the similar-entry prompt asks if this is the same person", () => {
   assert.equal(similarEntryLead, "Is this the same person?");
   assert.doesNotMatch(similarEntryLead, /we found a similar entry/i);
+  assert.equal(publicDuplicateHeading, "We found someone similar already on the field");
+  assert.equal(samePersonLabel, "Same person");
+  assert.equal(submitAsNewLabel, "Submit as new");
   assert.equal(matchKindLabel("Approved"), "Approved");
   assert.equal(matchKindLabel("Pending"), "Pending review");
   assert.equal(samePersonNoLabel(1), "No");
@@ -73,6 +79,37 @@ test("the form, page, and queue use the guard without an em dash", () => {
   assert.match(prompt, /btn btn-primary/);
   assert.match(prompt, /btn btn-outline-primary/);
   assert.doesNotMatch(prompt, /Submit as a new entry/);
+  assert.match(app, /variant=\{isAdmin \|\| duplicateMode === "admin-edit" \? "admin" : "public"\}/);
+  const publicCard = prompt.slice(prompt.indexOf("function PublicDuplicateCard"), prompt.indexOf("function AdminDuplicatePrompt"));
+  const adminCard = prompt.slice(prompt.indexOf("function AdminDuplicatePrompt"), prompt.indexOf("export function SubmissionDuplicatePrompt"));
+  assert.ok(publicCard.length > 0 && adminCard.length > 0);
+  assert.match(publicCard, /publicDuplicateHeading/);
+  assert.match(publicCard, /samePersonLabel/);
+  assert.match(publicCard, /submitAsNewLabel/);
+  assert.match(publicCard, /<h3 id=\{headingId\}/);
+  assert.match(publicCard, /<strong className="d-block fw-semibold mb-2">/);
+  assert.doesNotMatch(publicCard, /<h4/);
+  assert.equal(publicCard.match(/<h3 /g)?.length, 1);
+  assert.match(publicCard, /role="region"/);
+  assert.match(publicCard, /aria-labelledby=\{headingId\}/);
+  assert.match(publicCard, /tabIndex=\{-1\}/);
+  assert.match(publicCard, /focus\(\)/);
+  assert.match(publicCard, /role="group"/);
+  assert.match(publicCard, /col-12 col-sm-6 d-grid/);
+  assert.match(publicCard, /btn btn-outline-primary/);
+  assert.ok(publicCard.includes("</article>"));
+  assert.equal(publicCard.indexOf("</article>"), publicCard.lastIndexOf("</article>"));
+  assert.ok(publicCard.indexOf("samePersonLabel") > publicCard.indexOf("</article>"));
+  assert.ok(publicCard.indexOf("submitAsNewLabel") > publicCard.indexOf("</article>"));
+  assert.doesNotMatch(publicCard, /matchKindLabel/);
+  assert.doesNotMatch(publicCard, /badge/);
+  assert.doesNotMatch(publicCard, />\s*Yes\s*</);
+  assert.doesNotMatch(publicCard, /btn btn-primary/);
+  assert.doesNotMatch(publicCard, /!important/);
+  assert.match(adminCard, />\s*Yes\s*</);
+  assert.match(adminCard, /badge text-bg-primary/);
+  assert.match(adminCard, /samePersonNoLabel\(matches\.length\)/);
+  assert.match(adminCard, /similarEntryLead/);
   assert.doesNotMatch(prompt, /Back to the form/);
   assert.doesNotMatch(prompt, /Update this entry/);
   assert.match(app, /!submissionToken && activeRoute === item\.route/);

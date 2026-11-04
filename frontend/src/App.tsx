@@ -5591,6 +5591,7 @@ export default function App() {
 
                 {similarMatches && similarMatches.length > 0 ? (
                   <SubmissionDuplicatePrompt
+                    variant={isAdmin || duplicateMode === "admin-edit" ? "admin" : "public"}
                     matches={similarMatches as SubmissionMatchView[]}
                     onYes={(match) => chooseDuplicate("update", match)}
                     onNo={() => chooseDuplicate(duplicateMode === "admin-edit" ? "proceed" : "submit-new")}
