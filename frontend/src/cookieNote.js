@@ -37,7 +37,8 @@ export function isAdminPath(pathname) {
   return path === "/admin" || path.toLowerCase().startsWith("/admin/");
 }
 
-export function cookieNoteVisible(choice, pathname) {
+export function cookieNoteVisible(choice, pathname, telemetryEnabled) {
+  if (!telemetryEnabled) return false;
   if (choice === "accepted" || choice === "declined") return false;
   return !isAdminPath(pathname);
 }

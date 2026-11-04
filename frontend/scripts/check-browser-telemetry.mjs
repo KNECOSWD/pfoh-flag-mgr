@@ -158,16 +158,18 @@ test("the cookie note is opt-in and stays hidden after No thanks", () => {
   assert.equal(COOKIE_NOTE_DECLINE, "No thanks");
   const storage = memoryStorage();
   assert.equal(cookieNoteChoice(storage), "");
-  assert.equal(cookieNoteVisible("", "/find"), true);
-  assert.equal(cookieNoteVisible("", "/admin/review"), false);
+  assert.equal(cookieNoteVisible("", "/find", true), true);
+  assert.equal(cookieNoteVisible("", "/find", false), false);
+  assert.equal(cookieNoteVisible("", "/find"), false);
+  assert.equal(cookieNoteVisible("", "/admin/review", true), false);
   assert.equal(acceptCookieNote(storage), true);
   assert.equal(cookieNoteChoice(storage), "accepted");
-  assert.equal(cookieNoteVisible("accepted", "/find"), false);
+  assert.equal(cookieNoteVisible("accepted", "/find", true), false);
   storage.setItem(COOKIE_NOTE_STORAGE_KEY, "");
   const declined = memoryStorage();
   assert.equal(declineCookieNote(declined), true);
   assert.equal(cookieNoteChoice(declined), "declined");
-  assert.equal(cookieNoteVisible("declined", "/flag-map"), false);
+  assert.equal(cookieNoteVisible("declined", "/flag-map", true), false);
   declined.setItem(COOKIE_NOTE_STORAGE_KEY, "");
   assert.equal(cookieNoteChoice(declined), "");
 
@@ -178,6 +180,9 @@ test("the cookie note is opt-in and stays hidden after No thanks", () => {
   assert.doesNotMatch(note, /btn-primary/);
   assert.match(note, /toast-container position-fixed bottom-0/);
   assert.match(note, /id="cookie-note"/);
+  assert.match(note, /id="cookie-note-spacer"/);
+  assert.match(note, /loadTelemetryConfig/);
+  assert.doesNotMatch(note, /paddingBottom|maxHeight|overflowY/);
   assert.equal(note.includes(COOKIE_NOTE_TEXT), false);
   const main = readFileSync(new URL("../src/main.tsx", import.meta.url), "utf8");
   assert.match(main, /cookieNoteChoice\(browserStorage\(\)\) === "accepted"/);

@@ -114,7 +114,7 @@ test("before choosing there are no telemetry requests and no ai cookies", async 
   await page.goto("/find");
   await expect(page.locator("#cookie-note")).toBeVisible();
   await page.waitForTimeout(400);
-  expect(hits).toEqual([]);
+  expect(hits.filter((url) => !url.includes("/api/telemetry-config"))).toEqual([]);
   expect(await aiCookies(page)).toEqual([]);
 });
 
@@ -127,7 +127,7 @@ test("No thanks stays off after reload", async ({ page }) => {
   await page.reload();
   await expect(page.getByRole("searchbox", { name: "Search honorees" })).toBeVisible();
   await expect(page.locator("#cookie-note")).toHaveCount(0);
-  expect(hits).toEqual([]);
+  expect(hits.filter((url) => !url.includes("/api/telemetry-config"))).toEqual([]);
   expect(await aiCookies(page)).toEqual([]);
   expect(await page.evaluate(() => localStorage.getItem("pfoh.cookieChoice"))).toBe("declined");
 });
