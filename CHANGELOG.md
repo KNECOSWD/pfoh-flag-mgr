@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.4.0
+
+- The public site can count page views with the same Application Insights resource the API already uses. Counting starts only after the visitor chooses OK. Until then, and after No thanks, the browser does not load the SDK, set visit cookies, or send telemetry. The connection string still comes from GET /api/telemetry-config, and only after OK. When that setting is empty, page views stay off.
+- A page view is recorded for the current page after OK, and again on each in-app route change. Query strings and fragments are removed from every field, including the operation name and exception details. Reactivation links, pending receipt tokens, and receipt codes are stored as {token}. Administrator pages are not recorded and do not show the notice. The browser does not record a visitor's name or email, and it does not record ajax or fetch calls.
+- The notice uses small text, with OK and No thanks together on the next row. OK and No thanks are stored in the browser as accepted or declined. Clearing that saved choice shows the notice again. The page keeps space equal to the notice and can scroll that content clear of it, so the footer and the flag map stay reachable. The browser does not download the Application Insights configuration file. The SDK comes from the npm package.
+- Administrators have an Activity page. It shows counts only: new accounts, change requests by status, flag claims by status, and submission receipts. Windows are the last 7 UTC days, the last 30 UTC days, and all time for accounts. A table lists each of the last 30 UTC days. The page does not show names, email addresses, or tokens.
+
 ## 5.3.2
 
 - Submitting saved changes from My Flags opens the pending review page. The submit returns one receipt, the same page a new nomination already opens. Submitting that claim again returns the same receipt and does not create a second one.
