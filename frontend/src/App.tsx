@@ -2412,6 +2412,10 @@ export default function App() {
         rememberSubmission(claim);
         setSubmitPhase("Finishing submission...");
         setNotice("Admin edit applied and added to the reprint queue.");
+        setSelectedClaim(null);
+        setSelectedPhoto(null);
+        setSelectedPhotoRotation(0);
+        setForm(blankForm);
       } else {
         const claim = await withDeadline(
           () => flagClaimApi.submit(instance, account, selectedClaim.id),
@@ -2420,16 +2424,16 @@ export default function App() {
         );
         rememberSubmission(claim);
         setSubmitPhase("Finishing submission...");
-        setNotice(publicCopy.editConfirmation);
-      }
-
-      setSelectedClaim(null);
-      setSelectedPhoto(null);
-      setSelectedPhotoRotation(0);
-      setForm(blankForm);
-
-      if (!isAdminDirectEdit) {
-        navigateToRoute("/my-flags");
+        if (claim.receiptToken) {
+          openSubmission(claim.receiptToken);
+        } else {
+          setNotice(publicCopy.editConfirmation);
+          setSelectedClaim(null);
+          setSelectedPhoto(null);
+          setSelectedPhotoRotation(0);
+          setForm(blankForm);
+          navigateToRoute("/my-flags");
+        }
       }
 
       void loadData();

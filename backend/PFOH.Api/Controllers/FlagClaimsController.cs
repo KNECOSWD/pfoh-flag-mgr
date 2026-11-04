@@ -992,6 +992,17 @@ public class FlagClaimsController(
 
         if (latestDraft is null)
         {
+            var submitted = claim.HonoreeChangeRequests
+                .Where(request => request.RequestStatus == "Submitted")
+                .OrderByDescending(request => request.SubmittedUtc ?? request.CreatedUtc)
+                .ThenByDescending(request => request.Id)
+                .FirstOrDefault();
+            if (submitted is not null &&
+                await db.SubmissionReceipts.AnyAsync(receipt => receipt.ChangeRequestId == submitted.Id, ct))
+            {
+                return Ok(await FinishSubmissionAsync(claim, submitted, ct));
+            }
+
             return BadRequest("Make at least one change and save a draft before submitting this claim.");
         }
 
@@ -1004,7 +1015,7 @@ public class FlagClaimsController(
         await db.SaveChangesAsync(ct);
         await pendingReviews.SupersedeOlderPendingAsync(latestDraft, ct);
 
-        return Ok(ToDto(claim, null));
+        return Ok(await FinishSubmissionAsync(claim, latestDraft, ct));
     }
 
     [Authorize(Policy = "AdminOnly")]
