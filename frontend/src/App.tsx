@@ -45,6 +45,8 @@ import { AdminAttentionBanner } from "./adminAttentionBanner.js";
 import { canRequestAdminAttention, requestAdminAttentionCounts } from "./adminAttentionLoad.js";
 import { thumbnailLoadKey } from "./authorizedThumbnail.js";
 import { startVersionWatch, versionUrl } from "./versionReload.js";
+import { noteBrowserRoute } from "./browserTelemetry.js";
+import { AdminActivity } from "./AdminActivity";
 import { AdminNavMenu } from "./AdminNavMenu";
 import { DuplicateMerge } from "./DuplicateMerge";
 import { MergeHistory } from "./MergeHistory";
@@ -248,7 +250,7 @@ const blankForm: SaveHonoreeChangeRequest = {
   submitterEmailAddress: ""
 };
 
-type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/duplicates" | "/admin/duplicates/history" | "/admin/flag-map" | "/admin/printing" | "/admin/removal-queue" | "/admin/reactivation";
+type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/duplicates" | "/admin/duplicates/history" | "/admin/flag-map" | "/admin/printing" | "/admin/removal-queue" | "/admin/reactivation" | "/admin/activity";
 
 const appRoutes: AppRoute[] = [
   "/find",
@@ -261,7 +263,8 @@ const appRoutes: AppRoute[] = [
   "/admin/flag-map",
   "/admin/printing",
   "/admin/removal-queue",
-  "/admin/reactivation"
+  "/admin/reactivation",
+  "/admin/activity"
 ];
 
 const pageBanners: Record<AppRoute, { title: string; subtitle: string }> = {
@@ -308,6 +311,10 @@ const pageBanners: Record<AppRoute, { title: string; subtitle: string }> = {
   "/admin/reactivation": {
     title: "REACTIVATION LINKS",
     subtitle: "Generate one-time links for inactive honorees with no flag."
+  },
+  "/admin/activity": {
+    title: "ACTIVITY",
+    subtitle: "Counts of new accounts, requests, claims, and receipts."
   }
 };
 
@@ -713,11 +720,13 @@ export default function App() {
     { route: "/admin/printing", label: "Print Center" },
     { route: "/admin/flag-map", label: "Flag Manager" },
     { route: "/admin/removal-queue", label: "Removal Queue" },
-    { route: "/admin/reactivation", label: "Reactivation" }
+    { route: "/admin/reactivation", label: "Reactivation" },
+    { route: "/admin/activity", label: "Activity" }
   ];
   const isPrintingRoute = activeRoute === "/admin/printing";
   const isRemovalQueueRoute = activeRoute === "/admin/removal-queue";
   const isReactivationAdminRoute = activeRoute === "/admin/reactivation";
+  const isActivityRoute = activeRoute === "/admin/activity";
   const isAdminRoute = activeRoute.startsWith("/admin");
   const stickyAdmin = adminFromApi || readStickyAdmin(window.sessionStorage, account?.homeAccountId ?? "");
   const publicAdmin = isPublicPage(activeRoute)
@@ -918,6 +927,10 @@ export default function App() {
     if (isPublicPage(activeRouteRef.current)) return;
     if (message) setError(message);
   }), []);
+
+  useEffect(() => {
+    noteBrowserRoute(window.location.pathname);
+  }, [activeRoute, reactivationToken, submissionToken]);
 
   useEffect(() => startVersionWatch({
     loadedVersion: packageInfo.version,
@@ -4589,7 +4602,7 @@ export default function App() {
           {isAdminRoute && !kioskLocked && !isAdmin ? (
             <section className="card guestNotice">
               <h2>Administrator access required</h2>
-              <p>Sign in with an account assigned the PFOH.Admin role to use review, duplicates, flag map, printing, removal queue, and reactivation tools.</p>
+              <p>Sign in with an account assigned the PFOH.Admin role to use review, duplicates, flag map, printing, removal queue, reactivation, and activity tools.</p>
               {!isAuthenticated ? (
                 <div className="authChoiceButtons">
                   <button type="button" onClick={() => void signIn("login")}>
@@ -4630,6 +4643,10 @@ export default function App() {
                   account={account ?? null}
                   confirm={requestConfirmation}
                 />
+              ) : null}
+
+              {isActivityRoute ? (
+                <AdminActivity instance={instance} account={account ?? null} />
               ) : null}
 
               {isRemovalQueueRoute ? (

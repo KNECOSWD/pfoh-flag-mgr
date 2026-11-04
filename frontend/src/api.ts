@@ -1030,7 +1030,35 @@ export const lookupApi = {
     publicRequest<ServiceBranchCategory[]>("/api/lookups/service-branch-categories")
 };
 
+export type ActivityStatusCount = {
+  status: string;
+  count: number;
+};
+
+export type ActivityStatusWindow = {
+  total: number;
+  byStatus: ActivityStatusCount[];
+};
+
+export type AdminActivity = {
+  asOfUtc: string;
+  accounts: { last7Days: number; last30Days: number; allTime: number };
+  changeRequests: { last7Days: ActivityStatusWindow; last30Days: ActivityStatusWindow };
+  flagClaims: { last7Days: ActivityStatusWindow; last30Days: ActivityStatusWindow };
+  receipts: { last7Days: number; last30Days: number };
+  daily: {
+    date: string;
+    accounts: number;
+    changeRequests: number;
+    flagClaims: number;
+    receipts: number;
+  }[];
+};
+
 export const adminApi = {
+  activity: (instance: IPublicClientApplication, account: AccountInfo) =>
+    request<AdminActivity>(instance, account, "/api/admin/activity"),
+
   superseded: (instance: IPublicClientApplication, account: AccountInfo, page = 1) =>
     request<SupersededSubmissionPage>(instance, account, `/api/admin/review/superseded?page=${page}`),
 
