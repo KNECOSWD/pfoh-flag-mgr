@@ -141,7 +141,8 @@ public class AdminReviewController(
                 request.HonoreeId,
                 request.SubmittedUtc,
                 request.CreatedUtc ?? DateTime.UtcNow,
-                request.ClaimantObjectId))
+                request.ClaimantObjectId,
+                request.FlagClaimId))
             .Concat(openRequests.Where(request => restoredIds.Contains(request.Id)))
             .Concat(withdrawalRequests)
             .DistinctBy(request => request.Id)

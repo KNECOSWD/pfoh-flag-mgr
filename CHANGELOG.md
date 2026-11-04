@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.3.2
+
+- Submitting saved changes from My Flags opens the pending review page. The submit returns one receipt, the same page a new nomination already opens. Submitting that claim again returns the same receipt and does not create a second one.
+- A newer submit on the same claim replaces the older pending row even when that claim has no flag grid and no honoree yet. The older row stays restorable, and one audit row records the replacement. A different signed-in account on that claim is left alone. Matching the same flag grid or the same honoree is unchanged.
+- Pending rows already stored are not rewritten. There is no database change. SubmissionDuplicates__Enabled does not turn this replacement on or off.
+
 ## 5.3.1
 
 - The public duplicate prompt shows one person, the closest match already on file. The heading is "We found someone similar already on the field". The card shows that person's name, rank, branch, flag location, and why it matched. It does not say whether the record is pending or approved, and it does not list anyone else.

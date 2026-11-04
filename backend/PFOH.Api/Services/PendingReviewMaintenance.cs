@@ -17,12 +17,14 @@ public class PendingReviewMaintenance(PfohDbContext db)
         int? HonoreeId,
         DateTime? SubmittedUtc,
         DateTime CreatedUtc,
-        string? OwnerObjectId);
+        string? OwnerObjectId,
+        int FlagClaimId);
 
     public static bool SameCard(CardRef left, CardRef right)
     {
-        var sameSpot = left.FlagGridId is > 0 && left.FlagGridId == right.FlagGridId
-            || left.HonoreeId is > 0 && left.HonoreeId == right.HonoreeId;
+        var sameSpot = (left.FlagGridId is > 0 && left.FlagGridId == right.FlagGridId)
+            || (left.HonoreeId is > 0 && left.HonoreeId == right.HonoreeId)
+            || (left.FlagClaimId is > 0 && left.FlagClaimId == right.FlagClaimId);
         if (!sameSpot)
         {
             return false;
@@ -79,7 +81,8 @@ public class PendingReviewMaintenance(PfohDbContext db)
             keeper.HonoreeId,
             keeper.SubmittedUtc,
             keeper.CreatedUtc,
-            keeperOwner);
+            keeperOwner,
+            keeper.FlagClaimId);
 
         var pending = await db.HonoreeChangeRequests
             .Include(request => request.FlagClaim)
@@ -95,7 +98,8 @@ public class PendingReviewMaintenance(PfohDbContext db)
                     request.HonoreeId,
                     request.SubmittedUtc,
                     request.CreatedUtc,
-                    request.FlagClaim?.ExternalUserObjectId)))
+                    request.FlagClaim?.ExternalUserObjectId,
+                    request.FlagClaimId)))
             .ToList();
 
         if (older.Count == 0)

@@ -136,3 +136,21 @@ test("the form, page, and queue use the guard without an em dash", () => {
   assert.doesNotMatch(page, /—/);
   assert.doesNotMatch(readFileSync(new URL("../src/submissionDuplicate.js", import.meta.url), "utf8"), /—/);
 });
+
+test("a My Flags submit opens the pending page when a receipt token comes back", () => {
+  const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const start = app.indexOf("async function submitClaim");
+  const end = app.indexOf("async function refreshFlagPositions");
+  assert.ok(start > 0 && end > start);
+  const slice = app.slice(start, end);
+  const submitAt = slice.indexOf("flagClaimApi.submit");
+  assert.ok(submitAt > 0);
+  const afterSubmit = slice.slice(submitAt);
+  assert.match(
+    afterSubmit,
+    /if \(claim\.receiptToken\) \{\s*openSubmission\(claim\.receiptToken\);\s*\} else \{[\s\S]*?navigateToRoute\("\/my-flags"\)/
+  );
+  assert.doesNotMatch(slice, /—/);
+  const nominate = app.slice(app.indexOf("async function submitNomination"), start);
+  assert.match(nominate, /if \(claim\.receiptToken\) \{\s*openSubmission\(claim\.receiptToken\);/);
+});
