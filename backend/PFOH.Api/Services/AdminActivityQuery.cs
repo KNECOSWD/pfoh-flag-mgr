@@ -27,12 +27,11 @@ public static class AdminActivityQuery
     {
         var (start7, start30, end) = AdminActivityWindows.For(utcNow);
 
-        var accountStamps = await db.UserProfiles
+        var accountStampsAll = await db.UserProfiles
             .AsNoTracking()
-            .Where(row => row.CreatedUtc >= start30 && row.CreatedUtc < end)
             .Select(row => row.CreatedUtc)
             .ToListAsync(ct);
-        var accountAllTime = await db.UserProfiles.AsNoTracking().CountAsync(ct);
+        var accountAllTime = accountStampsAll.Count;
 
         var changeRows = await db.HonoreeChangeRequests
             .AsNoTracking()
@@ -58,7 +57,7 @@ public static class AdminActivityQuery
             .Select(row => row.CreatedUtc)
             .ToListAsync(ct);
 
-        var accountsByDay = CountByDay(accountStamps, start30, end);
+        var accountsByDay = CountByDay(accountStampsAll, start30, end);
         var changesByDay = CountByDay(changeStamps.Select(row => row.At), start30, end);
         var claimsByDay = CountByDay(claimStamps.Select(row => row.At), start30, end);
         var receiptsByDay = CountByDay(receiptStamps, start30, end);
@@ -78,13 +77,39 @@ public static class AdminActivityQuery
         return new AdminActivityResponse(
             DateTime.SpecifyKind(utcNow, DateTimeKind.Utc),
             new AccountCounts(
-                CountInWindow(accountStamps, start7, end),
-                accountStamps.Count,
+                CountInWindow(accountStampsAll, start7, end),
+                CountInWindow(accountStampsAll, start30, end),
                 accountAllTime),
             new WindowedStatuses(StatusWindowFor(changeStamps, start7, end), StatusWindowFor(changeStamps, start30, end)),
             new WindowedStatuses(StatusWindowFor(claimStamps, start7, end), StatusWindowFor(claimStamps, start30, end)),
             new ReceiptCounts(CountInWindow(receiptStamps, start7, end), receiptStamps.Count),
-            daily);
+            daily,
+            RegistrationSeries(accountStampsAll, end),
+            null);
+    }
+
+    private static List<RegistrationDay> RegistrationSeries(IReadOnlyList<DateTime> stamps, DateTime end)
+    {
+        DateTime? first = null;
+        foreach (var stamp in stamps)
+        {
+            if (stamp >= end) continue;
+            var day = stamp.Date;
+            if (first is null || day < first) first = day;
+        }
+
+        if (first is null) return new List<RegistrationDay>();
+
+        var counts = CountByDay(stamps, first.Value, end);
+        var series = new List<RegistrationDay>();
+        for (var day = DateTime.SpecifyKind(first.Value, DateTimeKind.Utc); day < end; day = day.AddDays(1))
+        {
+            series.Add(new RegistrationDay(
+                day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                counts.GetValueOrDefault(day.Date)));
+        }
+
+        return series;
     }
 
     private static int CountInWindow(IEnumerable<DateTime> instants, DateTime start, DateTime end)

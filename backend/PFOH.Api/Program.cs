@@ -141,6 +141,8 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<IActivityPageViewClient, AzureActivityPageViewClient>();
+builder.Services.AddSingleton<ActivityPageViews>();
 builder.Services.AddHttpClient();
 // AddApplicationInsightsTelemetry inserts a provider-wide Warning rule at the
 // front of the filter list. Logging:ApplicationInsights:LogLevel is more specific

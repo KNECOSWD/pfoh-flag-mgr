@@ -45,7 +45,7 @@ import { AdminAttentionBanner } from "./adminAttentionBanner.js";
 import { canRequestAdminAttention, requestAdminAttentionCounts } from "./adminAttentionLoad.js";
 import { thumbnailLoadKey } from "./authorizedThumbnail.js";
 import { startVersionWatch, versionUrl } from "./versionReload.js";
-import { noteBrowserRoute } from "./browserTelemetry.js";
+import { ensureBrowserTelemetry, isAdminPath, noteBrowserRoute } from "./browserTelemetry.js";
 import { AdminActivity } from "./AdminActivity";
 import { AdminNavMenu } from "./AdminNavMenu";
 import { DuplicateMerge } from "./DuplicateMerge";
@@ -930,6 +930,11 @@ export default function App() {
 
   useEffect(() => {
     noteBrowserRoute(window.location.pathname);
+    if (!isAdminPath(window.location.pathname)) {
+      void ensureBrowserTelemetry({
+        apiBase: import.meta.env.VITE_API_BASE_URL ?? ""
+      });
+    }
   }, [activeRoute, reactivationToken, submissionToken]);
 
   useEffect(() => startVersionWatch({

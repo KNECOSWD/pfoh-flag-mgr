@@ -1040,6 +1040,12 @@ export type ActivityStatusWindow = {
   byStatus: ActivityStatusCount[];
 };
 
+export type ActivityPageViews = {
+  total: number;
+  daily: { date: string; pageViews: number }[];
+  topPages: { name: string; pageViews: number }[];
+};
+
 export type AdminActivity = {
   asOfUtc: string;
   accounts: { last7Days: number; last30Days: number; allTime: number };
@@ -1053,6 +1059,8 @@ export type AdminActivity = {
     flagClaims: number;
     receipts: number;
   }[];
+  registrations?: { date: string; count: number }[];
+  pageViews?: ActivityPageViews | null;
 };
 
 export const adminApi = {

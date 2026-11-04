@@ -29,7 +29,7 @@ function assertScrubbed(body: string) {
 async function fulfillApi(route: Route) {
   const path = new URL(route.request().url()).pathname;
   if (path === "/api/version") {
-    await route.fulfill({ json: { version: "5.4.0" } });
+    await route.fulfill({ json: { version: "5.5.0" } });
     return;
   }
   if (path === "/api/telemetry-config") {
@@ -61,9 +61,7 @@ test("the real SDK payload has no raw token after load, navigation, or an except
   });
 
   await page.goto(`/submission/${GUID}?code=${CODE}#top`);
-  await expect(page.locator("#cookie-note")).toBeVisible();
-  expect(payloads).toEqual([]);
-  await page.getByRole("button", { name: "OK" }).click();
+  await expect(page.locator("#cookie-note")).toHaveCount(0);
   await expect.poll(() => payloads.length, { timeout: 15000 }).toBeGreaterThan(0);
   for (const body of payloads) assertScrubbed(body);
   expect(operationName(payloads.join("\n")).some((name) => name === "/submission/{token}")).toBe(true);
@@ -108,33 +106,83 @@ async function aiCookies(page: Page) {
   return cookies.filter((cookie) => cookie.name === "ai_user" || cookie.name === "ai_session");
 }
 
-test("before choosing there are no telemetry requests and no ai cookies", async ({ page }) => {
-  const hits = watchTelemetry(page);
+async function storageKeys(page: Page) {
+  return page.evaluate(() => {
+    const pick = (storage: Storage) => Object.keys(storage).filter((key) => key.startsWith("ai_") || key === "pfoh.cookieChoice");
+    return { local: pick(localStorage), session: pick(sessionStorage), cookie: document.cookie };
+  });
+}
+
+test("public pages keep no ai cookies or consent key after a navigation", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("pfoh.cookieChoice", "accepted");
+  });
   await page.route("**/api/**", fulfillApi);
-  await page.goto("/find");
-  await expect(page.locator("#cookie-note")).toBeVisible();
-  await page.waitForTimeout(400);
-  expect(hits.filter((url) => !url.includes("/api/telemetry-config"))).toEqual([]);
-  expect(await aiCookies(page)).toEqual([]);
+  await page.route("**/ai-ingest/**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
+  await page.setViewportSize({ width: 1280, height: 800 });
+
+  const steps: { start: string; link: string }[] = [
+    { start: "/", link: "a[href='/flag-map']" },
+    { start: "/find", link: "a[href='/flag-map']" },
+    { start: "/my-flags", link: "a[href='/find']" }
+  ];
+  for (const step of steps) {
+    await page.context().clearCookies();
+    await page.goto(step.start);
+    await page.locator(`nav[aria-label="Main navigation"] ${step.link}`).click();
+    await page.waitForTimeout(400);
+    expect(await aiCookies(page), step.start).toEqual([]);
+    const stored = await storageKeys(page);
+    expect(stored.local, step.start).toEqual([]);
+    expect(stored.session, step.start).toEqual([]);
+    expect(stored.cookie, step.start).not.toMatch(/(?:^|;\s*)ai_/);
+    await expect(page.locator("#cookie-note")).toHaveCount(0);
+  }
 });
 
-test("No thanks stays off after reload", async ({ page }) => {
-  const hits = watchTelemetry(page);
+test("no cookie note at 390 and 1280 and find keeps one primary", async ({ page }) => {
   await page.route("**/api/**", fulfillApi);
-  await page.goto("/find");
-  await page.getByRole("button", { name: "No thanks" }).click();
-  await expect(page.locator("#cookie-note")).toHaveCount(0);
-  await page.reload();
-  await expect(page.getByRole("searchbox", { name: "Search honorees" })).toBeVisible();
-  await expect(page.locator("#cookie-note")).toHaveCount(0);
-  expect(hits.filter((url) => !url.includes("/api/telemetry-config"))).toEqual([]);
-  expect(await aiCookies(page)).toEqual([]);
-  expect(await page.evaluate(() => localStorage.getItem("pfoh.cookieChoice"))).toBe("declined");
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 800 });
+    await page.goto("/find");
+    await expect(page.getByRole("searchbox", { name: "Search honorees" })).toBeVisible();
+    await expect(page.locator("#cookie-note")).toHaveCount(0);
+    await expect(page.locator(".btn-primary")).toHaveCount(1);
+    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
+    expect(fits, `find fits at ${width}px`).toBe(true);
+  }
 });
 
-test("the cookie note stays off admin routes", async ({ page }) => {
+test("admin pages do not load the SDK", async ({ page }) => {
+  const sdk: string[] = [];
+  page.on("request", (request) => {
+    if (/applicationinsights|ai-ingest|\/v2\/track|monitor\.azure/i.test(request.url())) sdk.push(request.url());
+  });
   await page.route("**/api/**", fulfillApi);
   await page.goto("/admin/review");
   await expect(page.getByRole("heading", { name: "Administrator access required" })).toBeVisible();
+  await page.waitForTimeout(400);
+  expect(sdk).toEqual([]);
   await expect(page.locator("#cookie-note")).toHaveCount(0);
+});
+
+test("disabled telemetry does not load the SDK", async ({ page }) => {
+  const sdk: string[] = [];
+  page.on("request", (request) => {
+    if (/applicationinsights|ai-ingest|\/v2\/track|monitor\.azure/i.test(request.url())) sdk.push(request.url());
+  });
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/telemetry-config") {
+      await route.fulfill({ json: { enabled: false } });
+      return;
+    }
+    await fulfillApi(route);
+  });
+  await page.goto("/find");
+  await expect(page.getByRole("searchbox", { name: "Search honorees" })).toBeVisible();
+  await page.waitForTimeout(400);
+  expect(sdk).toEqual([]);
+  await expect(page.locator("#cookie-note")).toHaveCount(0);
+  expect(await aiCookies(page)).toEqual([]);
 });

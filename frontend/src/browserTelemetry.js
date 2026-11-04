@@ -8,6 +8,21 @@ const ROUTE_TOKEN_IN_TEXT = /(\/(?:reactivate|submission|receipt|pending)\/)[^/?
 const OPAQUE_IN_TEXT = /\/[A-Za-z0-9_-]{20,}/g;
 const URL_IN_TEXT = /https?:\/\/[^\s"'<>]+/gi;
 
+export const LEGACY_COOKIE_CHOICE_KEY = "pfoh.cookieChoice";
+
+export function isAdminPath(pathname) {
+  const path = String(pathname || "/").split("?")[0].replace(/\/$/, "") || "/";
+  return path === "/admin" || path.toLowerCase().startsWith("/admin/");
+}
+
+export function clearLegacyCookieChoice(storage) {
+  try {
+    if (storage && typeof storage.removeItem === "function") storage.removeItem(LEGACY_COOKIE_CHOICE_KEY);
+  } catch {
+    /* storage can be blocked */
+  }
+}
+
 let client = null;
 let ensurePromise = null;
 let queued = null;
@@ -31,6 +46,9 @@ export function browserTelemetrySettings(connectionString) {
     autoTrackPageVisitTime: false,
     disableCorrelationHeaders: true,
     enableCorsCorrelation: false,
+    disableCookiesUsage: true,
+    isStorageUseDisabled: true,
+    enableSessionStorageBuffer: false,
     loggingLevelConsole: 0,
     maxBatchInterval: 250,
     extensionConfig: {
@@ -275,6 +293,9 @@ export function noteBrowserRoute(pathname) {
 }
 
 export async function startBrowserTelemetry(options = {}) {
+  const path = options.pathname ?? (typeof window === "undefined" ? "/" : window.location.pathname);
+  if (isAdminPath(path)) return { enabled: false };
+
   const fetchConfig = options.fetchConfig
     ?? (() => loadTelemetryConfig(options.fetchImpl ?? globalThis.fetch, options.apiBase ?? ""));
   const config = await fetchConfig();
@@ -310,6 +331,8 @@ export async function startBrowserTelemetry(options = {}) {
 }
 
 export function ensureBrowserTelemetry(options) {
+  const path = options?.pathname ?? (typeof window === "undefined" ? "/" : window.location.pathname);
+  if (isAdminPath(path)) return Promise.resolve({ enabled: false });
   if (!ensurePromise) ensurePromise = startBrowserTelemetry(options);
   return ensurePromise;
 }

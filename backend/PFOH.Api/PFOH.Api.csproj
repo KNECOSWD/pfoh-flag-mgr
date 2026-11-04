@@ -9,6 +9,8 @@
     <InternalsVisibleTo Include="PFOH.Api.Tests" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
+    <PackageReference Include="Azure.Monitor.Query" Version="1.7.1" />
     <PackageReference Include="Azure.Storage.Blobs" Version="12.22.2" />
     <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="2.22.0" />
     <PackageReference Include="ClosedXML" Version="0.105.1" />

@@ -6,7 +6,9 @@ public sealed record AdminActivityResponse(
     WindowedStatuses ChangeRequests,
     WindowedStatuses FlagClaims,
     ReceiptCounts Receipts,
-    IReadOnlyList<DailyActivityCount> Daily);
+    IReadOnlyList<DailyActivityCount> Daily,
+    IReadOnlyList<RegistrationDay> Registrations,
+    PageViewsSection? PageViews);
 
 public sealed record AccountCounts(int Last7Days, int Last30Days, int AllTime);
 
@@ -24,3 +26,14 @@ public sealed record DailyActivityCount(
     int ChangeRequests,
     int FlagClaims,
     int Receipts);
+
+public sealed record RegistrationDay(string Date, int Count);
+
+public sealed record PageViewsSection(
+    int Total,
+    IReadOnlyList<DailyPageViews> Daily,
+    IReadOnlyList<TopPageViews> TopPages);
+
+public sealed record DailyPageViews(string Date, int PageViews);
+
+public sealed record TopPageViews(string Name, int PageViews);
