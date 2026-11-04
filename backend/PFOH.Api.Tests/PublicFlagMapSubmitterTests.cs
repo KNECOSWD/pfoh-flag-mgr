@@ -103,7 +103,7 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
 
         AssertNoStore(matched);
         Assert.DoesNotContain("Canary", string.Join('\n', factory.Logs), StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(factory.Logs, line => line.Contains("outcome ok", StringComparison.Ordinal) && line.Contains("198.51.100.10", StringComparison.Ordinal));
+        Assert.Contains(factory.Logs.ToArray(), line => line.Contains("outcome ok", StringComparison.Ordinal) && line.Contains("198.51.100.10", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -242,7 +242,7 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
         Assert.DoesNotContain(ClaimLast, logs, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("first=", logs, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("last=", logs, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(factory.Logs, line => line.Contains("outcome ok", StringComparison.Ordinal) && line.Contains("198.51.100.61", StringComparison.Ordinal));
+        Assert.Contains(factory.Logs.ToArray(), line => line.Contains("outcome ok", StringComparison.Ordinal) && line.Contains("198.51.100.61", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -359,7 +359,7 @@ public class PublicFlagMapSubmitterTests : IClassFixture<PublicFlagMapSubmitterT
         Assert.DoesNotContain(CanaryFirst, logs, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(CanaryEmail, logs, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("query=", logs, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains(factory.Logs, line => line.Contains("outcome", StringComparison.Ordinal) && line.Contains(exempt, StringComparison.Ordinal));
+        Assert.Contains(factory.Logs.ToArray(), line => line.Contains("outcome", StringComparison.Ordinal) && line.Contains(exempt, StringComparison.Ordinal));
 
         using var map = await SendPath(factory, exempt, "/api/public/flag-map/sections");
         Assert.NotEqual(HttpStatusCode.TooManyRequests, map.StatusCode);
