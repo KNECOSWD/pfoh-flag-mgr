@@ -2,12 +2,18 @@ const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PUBLIC_CODE = /^PFOH-[A-Za-z0-9]{4,12}$/i;
 const OPAQUE = /^[A-Za-z0-9_-]{20,}$/;
 const TOKEN_ROUTES = new Set(["reactivate", "submission", "receipt", "pending"]);
-const URL_FIELDS = ["uri", "name", "url", "refUri"];
+const GUID_IN_TEXT = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const CODE_IN_TEXT = /PFOH-[A-Za-z0-9]{4,12}/gi;
+const ROUTE_TOKEN_IN_TEXT = /(\/(?:reactivate|submission|receipt|pending)\/)[^/?#\s"'<>]+/gi;
+const OPAQUE_IN_TEXT = /\/[A-Za-z0-9_-]{20,}/g;
+const URL_IN_TEXT = /https?:\/\/[^\s"'<>]+/gi;
 
 let client = null;
 let ensurePromise = null;
 let queued = null;
 let lastTracked = "";
+let currentOperationName = "/";
+let instrumentationKey = "";
 let telemetryEnabled = false;
 const listeners = new Set();
 
@@ -25,7 +31,14 @@ export function browserTelemetrySettings(connectionString) {
     autoTrackPageVisitTime: false,
     disableCorrelationHeaders: true,
     enableCorsCorrelation: false,
-    loggingLevelConsole: 0
+    loggingLevelConsole: 0,
+    maxBatchInterval: 250,
+    extensionConfig: {
+      AppInsightsCfgSyncPlugin: {
+        cfgUrl: "",
+        blkCdnCfg: true
+      }
+    }
   };
 }
 
@@ -88,13 +101,54 @@ export function shouldTrackPagePath(value) {
   return lowered !== "/admin" && !lowered.startsWith("/admin/");
 }
 
-export function redactTelemetryText(value) {
-  const raw = String(value ?? "");
-  if (!raw) return raw;
-  if (raw.startsWith("/") || /^https?:\/\//i.test(raw) || raw.includes("?") || raw.includes("#")) {
-    return redactTelemetryTarget(raw);
+export function scrubTelemetryString(value) {
+  let text = String(value ?? "");
+  if (!text) return text;
+  if (text.startsWith("/") || /^https?:\/\//i.test(text)) {
+    text = redactTelemetryTarget(text);
   }
-  return raw;
+  text = text.replace(URL_IN_TEXT, (url) => redactTelemetryTarget(url));
+  text = text.replace(ROUTE_TOKEN_IN_TEXT, "$1{token}");
+  text = text.replace(GUID_IN_TEXT, (guid) => (
+    instrumentationKey && guid.toLowerCase() === instrumentationKey.toLowerCase() ? guid : "{token}"
+  ));
+  text = text.replace(CODE_IN_TEXT, "{token}");
+  text = text.replace(OPAQUE_IN_TEXT, "/{token}");
+  return text;
+}
+
+function scrubNode(value, seen) {
+  if (typeof value === "string") return scrubTelemetryString(value);
+  if (!value || typeof value !== "object") return value;
+  if (typeof value === "function") return value;
+  if (seen.has(value)) return value;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1) {
+      value[index] = scrubNode(value[index], seen);
+    }
+    return value;
+  }
+  for (const key of Object.keys(value)) {
+    value[key] = scrubNode(value[key], seen);
+  }
+  return value;
+}
+
+function pathBased(value) {
+  return typeof value === "string" && (value.startsWith("/") || /^https?:\/\//i.test(value) || value.includes("?") || value.includes("#"));
+}
+
+function applyCurrentOperation(item) {
+  const name = currentOperationName || "/";
+  if (!item.tags || typeof item.tags !== "object") item.tags = {};
+  item.tags["ai.operation.name"] = name;
+  if (pathBased(item.tags["ai.operation.id"])) {
+    item.tags["ai.operation.id"] = scrubTelemetryString(item.tags["ai.operation.id"]);
+  }
+  if (!item.ext || typeof item.ext !== "object") item.ext = {};
+  if (!item.ext.trace || typeof item.ext.trace !== "object") item.ext.trace = {};
+  item.ext.trace.name = name;
 }
 
 export function redactTelemetryItem(item) {
@@ -102,20 +156,12 @@ export function redactTelemetryItem(item) {
   const baseType = String(item.baseType || "");
   if (baseType.includes("RemoteDependency") || baseType === "Ajax") return false;
 
-  const data = item.baseData;
-  if (data && typeof data === "object") {
-    for (const key of URL_FIELDS) {
-      if (typeof data[key] === "string") data[key] = redactTelemetryText(data[key]);
-    }
-  }
-  if (item.tags && typeof item.tags === "object") {
-    for (const key of Object.keys(item.tags)) {
-      if (typeof item.tags[key] === "string") item.tags[key] = redactTelemetryText(item.tags[key]);
-    }
-  }
+  scrubNode(item, new Set());
+  applyCurrentOperation(item);
 
+  const data = item.baseData;
   const candidate = data && (data.uri || data.name);
-  if (typeof candidate === "string" && (candidate.startsWith("/") || /^https?:\/\//i.test(candidate)) && !shouldTrackPagePath(candidate)) {
+  if (!baseType.includes("Exception") && typeof candidate === "string" && (candidate.startsWith("/") || /^https?:\/\//i.test(candidate)) && !shouldTrackPagePath(candidate)) {
     return false;
   }
   return true;
@@ -166,6 +212,8 @@ export function resetBrowserTelemetryState() {
   ensurePromise = null;
   queued = null;
   lastTracked = "";
+  currentOperationName = "/";
+  instrumentationKey = "";
   setTelemetryEnabled(false);
 }
 
@@ -188,8 +236,28 @@ export async function loadTelemetryConfig(fetchImpl, apiBase = "") {
   }
 }
 
+const routeListeners = new Set();
+
+export function subscribeBrowserRoute(listener) {
+  listener(typeof window === "undefined" ? currentOperationName : window.location.pathname);
+  routeListeners.add(listener);
+  return () => {
+    routeListeners.delete(listener);
+  };
+}
+
+function syncOperationName(name) {
+  currentOperationName = name || "/";
+  const trace = client && typeof client.getTraceCtx === "function" ? client.getTraceCtx() : null;
+  if (trace && typeof trace.setName === "function") trace.setName(currentOperationName);
+  const path = typeof window === "undefined" ? currentOperationName : window.location.pathname;
+  for (const listener of routeListeners) listener(path);
+}
+
 function track(view) {
-  if (!view || lastTracked === view.name) return;
+  if (!view) return;
+  syncOperationName(view.name);
+  if (lastTracked === view.name) return;
   lastTracked = view.name;
   if (!view.track || !client) return;
   client.trackPageView({ name: view.name, uri: view.uri });
@@ -197,6 +265,7 @@ function track(view) {
 
 export function noteBrowserRoute(pathname) {
   const view = pageViewFromLocation(pathname);
+  syncOperationName(view.name);
   if (!client) {
     queued = view;
     return;
@@ -215,6 +284,8 @@ export async function startBrowserTelemetry(options = {}) {
   }
 
   try {
+    const keyMatch = /InstrumentationKey=([^;]+)/i.exec(config.connectionString);
+    instrumentationKey = keyMatch ? keyMatch[1].trim() : "";
     const sdk = await (options.loadSdk
       ? options.loadSdk()
       : import("@microsoft/applicationinsights-web"));

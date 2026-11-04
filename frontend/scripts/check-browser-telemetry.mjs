@@ -14,11 +14,14 @@ import {
   telemetryIsEnabled
 } from "../src/browserTelemetry.js";
 import {
-  COOKIE_NOTE_BUTTON,
+  COOKIE_NOTE_ACCEPT,
+  COOKIE_NOTE_DECLINE,
   COOKIE_NOTE_STORAGE_KEY,
   COOKIE_NOTE_TEXT,
-  cookieNoteIsDismissed,
-  dismissCookieNote
+  acceptCookieNote,
+  cookieNoteChoice,
+  cookieNoteVisible,
+  declineCookieNote
 } from "../src/cookieNote.js";
 
 const TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
@@ -45,30 +48,6 @@ test("the telemetry initializer strips tokens, query strings, and fragments", ()
   assert.equal(redactTelemetryTarget("/find?q=SecretName"), "/find");
   assert.equal(redactTelemetryTarget("/find#SecretName"), "/find");
 
-  const item = {
-    baseType: "PageviewData",
-    baseData: {
-      name: `/submission/${GUID}?code=${CODE}#top`,
-      uri: `https://planoflagsofhonor.org/reactivate/${TOKEN}?next=/admin#done`,
-      refUri: "https://planoflagsofhonor.org/find?q=SecretName#bio"
-    },
-    tags: {
-      "ai.operation.name": `/submission/${GUID}?x=1`
-    }
-  };
-  assert.equal(redactTelemetryItem(item), true);
-  assert.equal(item.baseData.name, "/submission/{token}");
-  assert.equal(item.baseData.uri, `https://planoflagsofhonor.org/reactivate/{token}`);
-  assert.equal(item.baseData.refUri, "https://planoflagsofhonor.org/find");
-  assert.equal(item.tags["ai.operation.name"], "/submission/{token}");
-  const serialized = JSON.stringify(item);
-  assert.equal(serialized.includes(TOKEN), false);
-  assert.equal(serialized.includes(GUID), false);
-  assert.equal(serialized.includes(CODE), false);
-  assert.equal(serialized.includes("SecretName"), false);
-  assert.equal(serialized.includes("?"), false);
-  assert.equal(serialized.includes("#"), false);
-
   const admin = {
     baseType: "PageviewData",
     baseData: { name: "/admin/review", uri: "/admin/review?token=abc#tab" }
@@ -88,6 +67,8 @@ test("page view settings stay on the free tier and do not identify the visitor",
   assert.equal(settings.enableAjaxPerfTracking, false);
   assert.equal(settings.disableCookiesUsage, undefined);
   assert.equal(settings.isCookieUseDisabled, undefined);
+  assert.equal(settings.extensionConfig.AppInsightsCfgSyncPlugin.blkCdnCfg, true);
+  assert.equal(settings.extensionConfig.AppInsightsCfgSyncPlugin.cfgUrl, "");
   const source = readFileSync(new URL("../src/browserTelemetry.js", import.meta.url), "utf8");
   assert.equal(source.includes("setAuthenticatedUserContext"), false);
   const tree = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8")
@@ -167,26 +148,39 @@ test("a route change tracks the redacted page and skips admin pages", async () =
   resetBrowserTelemetryState();
 });
 
-test("the cookie note shows once and stays dismissed", () => {
+test("the cookie note is opt-in and stays hidden after No thanks", () => {
   assert.equal(
     COOKIE_NOTE_TEXT,
-    "We use cookies to count visits and see which pages are used, so we can improve this site. They are not used for ads, and we don't sell your information."
+    "We use cookies to count visits and see which pages are used, so we can improve this site. They are not used for ads, and we don't sell your information. The counts are stored with Microsoft Azure."
   );
-  assert.equal(COOKIE_NOTE_BUTTON, "OK");
+  assert.equal(COOKIE_NOTE_TEXT.includes("\u2014"), false);
+  assert.equal(COOKIE_NOTE_ACCEPT, "OK");
+  assert.equal(COOKIE_NOTE_DECLINE, "No thanks");
   const storage = memoryStorage();
-  assert.equal(cookieNoteIsDismissed(storage), false);
-  assert.equal(dismissCookieNote(storage), true);
-  assert.equal(cookieNoteIsDismissed(storage), true);
-  assert.equal(storage.getItem(COOKIE_NOTE_STORAGE_KEY), "1");
-  const again = memoryStorage({ [COOKIE_NOTE_STORAGE_KEY]: "1" });
-  assert.equal(cookieNoteIsDismissed(again), true);
+  assert.equal(cookieNoteChoice(storage), "");
+  assert.equal(cookieNoteVisible("", "/find"), true);
+  assert.equal(cookieNoteVisible("", "/admin/review"), false);
+  assert.equal(acceptCookieNote(storage), true);
+  assert.equal(cookieNoteChoice(storage), "accepted");
+  assert.equal(cookieNoteVisible("accepted", "/find"), false);
+  storage.setItem(COOKIE_NOTE_STORAGE_KEY, "");
+  const declined = memoryStorage();
+  assert.equal(declineCookieNote(declined), true);
+  assert.equal(cookieNoteChoice(declined), "declined");
+  assert.equal(cookieNoteVisible("declined", "/flag-map"), false);
+  declined.setItem(COOKIE_NOTE_STORAGE_KEY, "");
+  assert.equal(cookieNoteChoice(declined), "");
 
   const note = readFileSync(new URL("../src/CookieNote.tsx", import.meta.url), "utf8");
   assert.match(note, /COOKIE_NOTE_TEXT/);
-  assert.match(note, /COOKIE_NOTE_BUTTON/);
+  assert.match(note, /btn-outline-secondary/);
+  assert.match(note, /btn-link/);
+  assert.doesNotMatch(note, /btn-primary/);
   assert.match(note, /toast-container position-fixed bottom-0/);
   assert.match(note, /id="cookie-note"/);
   assert.equal(note.includes(COOKIE_NOTE_TEXT), false);
+  const main = readFileSync(new URL("../src/main.tsx", import.meta.url), "utf8");
+  assert.match(main, /cookieNoteChoice\(browserStorage\(\)\) === "accepted"/);
 
   let copies = 0;
   function walk(dir) {

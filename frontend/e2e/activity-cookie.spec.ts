@@ -106,18 +106,24 @@ test.beforeAll(() => {
 
 test("cookie note shows once at 390 and 1280 and stays dismissed", async ({ page }) => {
   await installApi(page);
-  await page.route("**/api/telemetry-config", (route) => route.fulfill({
-    json: { enabled: true, connectionString: "InstrumentationKey=00000000-0000-0000-0000-000000000000" }
-  }));
 
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 800 });
     if (width === 390) await page.goto("/find");
+    else await page.evaluate(() => window.scrollTo(0, 0));
     const note = page.locator("#cookie-note");
     await expect(note).toBeVisible();
-    await expect(note).toContainText("We use cookies to count visits and see which pages are used, so we can improve this site. They are not used for ads, and we don't sell your information.");
+    await expect(note).toContainText("The counts are stored with Microsoft Azure.");
     const ok = note.getByRole("button", { name: "OK" });
+    const decline = note.getByRole("button", { name: "No thanks" });
+    await expect(decline).toBeVisible();
+    await expect(decline).not.toHaveClass(/btn-primary/);
     await expect(ok).toBeVisible();
+    await expect(ok).toHaveClass(/btn-outline-secondary/);
+    await expect(ok).not.toHaveClass(/btn-primary/);
+    await expect(page.locator(".btn-primary")).toHaveCount(1);
+    const noteBox = await note.boundingBox();
+    expect(noteBox?.height ?? 999, `cookie note stays compact at ${width}px`).toBeLessThan(140);
     await expectWithinViewport(page, "#cookie-note");
     const searchUsable = await page.getByRole("searchbox", { name: "Search honorees" }).evaluate((node) => {
       const rect = node.getBoundingClientRect();
@@ -125,6 +131,17 @@ test("cookie note shows once at 390 and 1280 and stays dismissed", async ({ page
       return Boolean(hit && (hit === node || node.contains(hit)));
     });
     expect(searchUsable, `search stays usable at ${width}px`).toBe(true);
+    const pad = await page.evaluate(() => {
+      const notice = document.getElementById("cookie-note");
+      const main = document.querySelector("main");
+      if (!notice || !main) return -1;
+      const height = notice.getBoundingClientRect().height;
+      return Math.min(
+        parseFloat(getComputedStyle(document.body).paddingBottom),
+        parseFloat(getComputedStyle(main).paddingBottom)
+      ) - height;
+    });
+    expect(pad, `page keeps room for the notice at ${width}px`).toBeGreaterThanOrEqual(-1);
     const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
     expect(fits, `page fits at ${width}px`).toBe(true);
     await page.screenshot({ path: `e2e-shots/cookie-note-${width}.png`, fullPage: false });
@@ -135,7 +152,7 @@ test("cookie note shows once at 390 and 1280 and stays dismissed", async ({ page
   await page.reload();
   await expect(page.getByRole("searchbox", { name: "Search honorees" })).toBeVisible();
   await expect(page.locator("#cookie-note")).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("pfoh.cookieNoteDismissed"))).toBe("1");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("pfoh.cookieChoice"))).toBe("accepted");
 });
 
 test("telemetry stays off when the connection string is missing", async ({ page }) => {
@@ -146,7 +163,7 @@ test("telemetry stays off when the connection string is missing", async ({ page 
   await installApi(page);
   await page.goto("/find");
   await expect(page.getByRole("searchbox", { name: "Search honorees" })).toBeVisible();
-  await expect(page.locator("#cookie-note")).toHaveCount(0);
+  await expect(page.locator("#cookie-note")).toBeVisible();
   expect(outbound).toEqual([]);
 });
 
@@ -156,6 +173,7 @@ test("activity card shows aggregate counts at 390 and 1280", async ({ page }) =>
   }, e2eAdmin());
   await installApi(page);
   await page.goto("/admin/activity");
+  await expect(page.locator("#cookie-note")).toHaveCount(0);
   const card = page.locator("#activity");
   await expect(card.getByRole("heading", { name: "Activity" })).toBeVisible();
   await expect(card).toContainText("Counts use UTC days.");
