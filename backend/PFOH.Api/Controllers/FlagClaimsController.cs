@@ -821,11 +821,6 @@ public class FlagClaimsController(
             .Include(claim => claim.HonoreeChangeRequests)
             .FirstAsync(claim => claim.HonoreeChangeRequests.Any(row => row.Id == created.ChangeId), ct);
         var savedChange = saved.HonoreeChangeRequests.First(row => row.Id == created.ChangeId);
-        if (duplicateAction == "submit-new")
-        {
-            await submissions.SupersedeSameDayAsync(savedChange, email, userObjectId, ct);
-        }
-
         return Ok(await FinishSubmissionAsync(saved, savedChange, ct));
     }
 

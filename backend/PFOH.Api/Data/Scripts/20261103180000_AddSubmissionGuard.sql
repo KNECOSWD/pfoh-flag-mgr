@@ -60,14 +60,17 @@ IF OBJECT_ID(N'[dbo].[SubmissionReceipts]', N'U') IS NOT NULL
 
 -- Rollback
 -- 1. Turn the check off without a new build: set SubmissionDuplicates__Enabled to false
---    and restart the app. That stops new prompts and new same-day supersedes.
--- 2. Optional data undo, before dropping the audit table. This puts back only the
---    rows this feature marked Superseded. It does not touch Approved rows.
+--    and restart the app. That stops new prompts. Answering No does not supersede.
+-- 2. Optional data undo, before dropping the audit table. This puts back only rows
+--    superseded by the 5.3.0 No path (an exact copy from the same account on this day).
+--    It does not touch Approved rows, and it does not touch keep-newest supersedes.
+--    Those use the note "Superseded by a newer submission for this honoree."
 --    UPDATE c
 --    SET c.RequestStatus = N'Submitted'
 --    FROM dbo.HonoreeChangeRequests AS c
 --    INNER JOIN dbo.SubmissionAuditEvents AS a ON a.ChangeRequestId = c.Id
 --    WHERE a.Action = N'Superseded'
+--      AND a.Note LIKE N'Superseded by an exact copy from the same account on this day%'
 --      AND c.RequestStatus = N'Superseded'
 --      AND NOT EXISTS (
 --          SELECT 1 FROM dbo.SubmissionAuditEvents AS later

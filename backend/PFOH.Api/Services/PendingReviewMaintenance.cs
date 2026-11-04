@@ -111,52 +111,6 @@ public class PendingReviewMaintenance(PfohDbContext db)
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task CleanupDuplicatePendingAsync(CancellationToken ct)
-    {
-        var pending = await db.HonoreeChangeRequests
-            .Include(request => request.FlagClaim)
-            .Where(request => request.RequestStatus == "Submitted")
-            .ToListAsync(ct);
-
-        var keepers = KeepNewest(
-            pending,
-            request => new CardRef(
-                request.Id,
-                request.FlagGridId,
-                request.HonoreeId,
-                request.SubmittedUtc,
-                request.CreatedUtc,
-                request.FlagClaim?.ExternalUserObjectId));
-        var keepIds = keepers.Select(request => request.Id).ToHashSet();
-
-        foreach (var request in pending.Where(request => !keepIds.Contains(request.Id)))
-        {
-            var keeper = keepers.First(candidate => SameCard(
-                new CardRef(
-                    candidate.Id,
-                    candidate.FlagGridId,
-                    candidate.HonoreeId,
-                    candidate.SubmittedUtc,
-                    candidate.CreatedUtc,
-                    candidate.FlagClaim?.ExternalUserObjectId),
-                new CardRef(
-                    request.Id,
-                    request.FlagGridId,
-                    request.HonoreeId,
-                    request.SubmittedUtc,
-                    request.CreatedUtc,
-                    request.FlagClaim?.ExternalUserObjectId)));
-            await MarkSupersededAsync(request, keeper, ct);
-        }
-
-        if (pending.Any(request => !keepIds.Contains(request.Id)))
-        {
-            await db.SaveChangesAsync(ct);
-        }
-
-        await ReleasePendingSubmissionSpotsAsync(ct);
-    }
-
     public async Task ReleasePendingSubmissionSpotsAsync(CancellationToken ct)
     {
         var held = await db.HonoreeChangeRequests

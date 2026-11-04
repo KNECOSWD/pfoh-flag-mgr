@@ -246,7 +246,7 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
     }
 
     [Fact]
-    public async Task No_supersedes_only_an_exact_copy_the_prompt_did_not_show()
+    public async Task No_does_not_supersede_an_exact_copy_the_card_limit_hid()
     {
         await ResetAsync();
         var (sameDay, _) = ChicagoSamples();
@@ -261,8 +261,7 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         var client = factory.CreateClient();
         var check = await CheckAsync(client, "Ada", "Mann", 1, "family@example.test", oid: "family-user");
         Assert.Equal(8, check.Matches.Count);
-        var shown = check.Matches.Select(match => match.ChangeRequestId!.Value).ToHashSet();
-        var hiddenId = Assert.Single(seeded, id => !shown.Contains(id));
+        Assert.Single(seeded, id => check.Matches.All(match => match.ChangeRequestId != id));
 
         var response = await client.SendAsync(Authed(
             HttpMethod.Post,
@@ -276,43 +275,9 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
 
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
-        var rows = await db.HonoreeChangeRequests.ToDictionaryAsync(row => row.Id);
-        Assert.Equal("Superseded", rows[hiddenId].RequestStatus);
-        Assert.Equal($"pending/ada-{seeded.IndexOf(hiddenId)}.jpg", rows[hiddenId].PhotoFileName);
-        foreach (var id in shown)
-        {
-            Assert.Equal("Submitted", rows[id].RequestStatus);
-        }
-
-        var audit = Assert.Single(await db.SubmissionAuditEvents.ToListAsync());
-        Assert.Equal(hiddenId, audit.ChangeRequestId);
-        Assert.Equal("family@example.test", audit.ActorEmail);
-        Assert.Equal("family-user", audit.ActorObjectId);
-        var keeperId = rows.Keys.Single(id => !seeded.Contains(id));
-        Assert.Equal(keeperId, audit.KeeperChangeRequestId);
-
-        var superseded = await client.SendAsync(Authed(
-            HttpMethod.Get,
-            "/api/admin/review/superseded",
-            "admin-user",
-            "admin@example.test",
-            "Admin",
-            roles: "PFOH.Admin"));
-        var page = await superseded.Content.ReadFromJsonAsync<SupersededPage>(Json);
-        var listed = Assert.Single(page!.Items);
-        Assert.Equal(hiddenId, listed.ChangeRequestId);
-        Assert.Matches(" (CST|CDT)$", listed.SubmittedCentral);
-
-        var restore = await client.SendAsync(Authed(
-            HttpMethod.Post,
-            $"/api/admin/review/{hiddenId}/restore",
-            "admin-user",
-            "admin@example.test",
-            "Admin",
-            roles: "PFOH.Admin"));
-        Assert.Equal(HttpStatusCode.OK, restore.StatusCode);
-        db.ChangeTracker.Clear();
-        Assert.Equal("Submitted", (await db.HonoreeChangeRequests.SingleAsync(row => row.Id == hiddenId)).RequestStatus);
+        var rows = await db.HonoreeChangeRequests.Where(row => seeded.Contains(row.Id)).ToListAsync();
+        Assert.All(rows, row => Assert.Equal("Submitted", row.RequestStatus));
+        Assert.Empty(await db.SubmissionAuditEvents.ToListAsync());
     }
 
     [Fact]
@@ -637,6 +602,11 @@ public class SubmissionGuardTests(PfohApiFactory factory) : IClassFixture<PfohAp
         Assert.DoesNotContain("ISubmissionMailer", api, StringComparison.Ordinal);
         Assert.DoesNotContain("SendConfirmation", submit, StringComparison.Ordinal);
         Assert.DoesNotContain("CleanupDuplicatePendingAsync", api, StringComparison.Ordinal);
+        Assert.DoesNotContain("CleanupDuplicatePendingAsync", File.ReadAllText(SourcePath("backend/PFOH.Api/Services/PendingReviewMaintenance.cs")), StringComparison.Ordinal);
+        Assert.DoesNotContain("SupersedeSameDayAsync", File.ReadAllText(SourcePath("backend/PFOH.Api/Controllers/FlagClaimsController.cs")), StringComparison.Ordinal);
+        var rollback = script.Split("-- Rollback", 2)[1];
+        Assert.Contains("Superseded by an exact copy from the same account on this day", rollback, StringComparison.Ordinal);
+        Assert.Contains("newer submission for this honoree", rollback, StringComparison.Ordinal);
         Assert.Contains("SET LOCK_TIMEOUT 5000", SubmissionGuardSchema.CreateSql, StringComparison.Ordinal);
         Assert.Contains("SET LOCK_TIMEOUT 5000", SubmissionGuardSchema.AddPublicCodeSql, StringComparison.Ordinal);
         Assert.Contains("SET LOCK_TIMEOUT 5000", SubmissionGuardSchema.AddPublicCodeIndexSql, StringComparison.Ordinal);

@@ -217,48 +217,18 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
     }
 
     [Fact]
-    public async Task Pending_queue_keeps_one_request_per_card_and_cleanup_supersedes_the_older_ones()
+    public async Task Pending_queue_keeps_one_request_per_card()
     {
         await ResetAsync();
         var now = DateTime.UtcNow;
         await SeedSubmittedAsync(1, 11, 31, now.AddMinutes(-30), "pending/1.jpg", honoreeId: null);
         await SeedSubmittedAsync(2, 12, 31, now.AddMinutes(-20), "pending/2.jpg", honoreeId: null);
         await SeedSubmittedAsync(3, 13, 31, now.AddMinutes(-10), "pending/3.jpg", honoreeId: null);
-        factory.Files.Photos["pending/1.jpg"] = [1];
-        factory.Files.Photos["pending/2.jpg"] = [2];
-        factory.Files.Photos["pending/3.jpg"] = [3];
         var client = factory.CreateClient();
 
-        var beforeCleanup = await PendingAsync(client);
-        var visible = Assert.Single(beforeCleanup);
+        var pending = await PendingAsync(client);
+        var visible = Assert.Single(pending);
         Assert.Equal(3, visible.ChangeRequestId);
-        Assert.Empty(factory.Files.DeletedPendingPhotos);
-
-        await using (var scope = factory.Services.CreateAsyncScope())
-        {
-            var maintenance = scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>();
-            await maintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
-        }
-
-        await using var check = factory.Services.CreateAsyncScope();
-        var db = check.ServiceProvider.GetRequiredService<PfohDbContext>();
-        var requests = await db.HonoreeChangeRequests.OrderBy(request => request.Id).ToListAsync();
-        Assert.Equal("Superseded", requests[0].RequestStatus);
-        Assert.Equal("Superseded", requests[1].RequestStatus);
-        Assert.Equal("Submitted", requests[2].RequestStatus);
-        Assert.Contains("Change request 3", requests[0].ReviewNotes, StringComparison.Ordinal);
-        Assert.Equal("pending/1.jpg", requests[0].PhotoFileName);
-        Assert.Equal("pending/2.jpg", requests[1].PhotoFileName);
-        Assert.Equal("pending/3.jpg", requests[2].PhotoFileName);
-        Assert.Empty(factory.Files.DeletedPendingPhotos);
-        var audits = await db.SubmissionAuditEvents.OrderBy(row => row.ChangeRequestId).ToListAsync();
-        Assert.Equal([1, 2], audits.Select(row => row.ChangeRequestId));
-        Assert.All(audits, audit =>
-        {
-            Assert.Equal(SubmissionAuditEvent.Superseded, audit.Action);
-            Assert.Equal(3, audit.KeeperChangeRequestId);
-            Assert.Equal("owner-photo", audit.ActorObjectId);
-        });
     }
 
     [Fact]
@@ -456,12 +426,6 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
             "submitter@example.com",
             "Hulett Submitter"));
         Assert.Equal(HttpStatusCode.OK, withdraw.StatusCode);
-
-        await using (var scope = factory.Services.CreateAsyncScope())
-        {
-            var maintenance = scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>();
-            await maintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
-        }
 
         var pending = await PendingAsync(client);
         var item = Assert.Single(pending);
@@ -684,7 +648,7 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
     }
 
     [Fact]
-    public async Task Cleanup_releases_spots_held_by_submitted_rejected_and_draft_new_submissions()
+    public async Task Release_clears_spots_held_by_submitted_rejected_and_draft_new_submissions()
     {
         await ResetAsync();
         await SeedGridAsync(88, "D-01");
@@ -700,7 +664,7 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var maintenance = scope.ServiceProvider.GetRequiredService<PendingReviewMaintenance>();
-            await maintenance.CleanupDuplicatePendingAsync(CancellationToken.None);
+            await maintenance.ReleasePendingSubmissionSpotsAsync(CancellationToken.None);
         }
 
         await using var check = factory.Services.CreateAsyncScope();
