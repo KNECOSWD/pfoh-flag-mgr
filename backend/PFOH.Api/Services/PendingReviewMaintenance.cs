@@ -4,7 +4,7 @@ using PFOH.Api.Models;
 
 namespace PFOH.Api.Services;
 
-public class PendingReviewMaintenance(PfohDbContext db, HonoreeFileStorage fileStorage)
+public class PendingReviewMaintenance(PfohDbContext db)
 {
     public const string Withdrawn = "Withdrawn";
     public const string Superseded = "Superseded";
@@ -105,7 +105,7 @@ public class PendingReviewMaintenance(PfohDbContext db, HonoreeFileStorage fileS
 
         foreach (var request in older)
         {
-            await MarkSupersededAsync(request, keeper.Id, ct);
+            await MarkSupersededAsync(request, keeper, ct);
         }
 
         await db.SaveChangesAsync(ct);
@@ -146,7 +146,7 @@ public class PendingReviewMaintenance(PfohDbContext db, HonoreeFileStorage fileS
                     request.SubmittedUtc,
                     request.CreatedUtc,
                     request.FlagClaim?.ExternalUserObjectId)));
-            await MarkSupersededAsync(request, keeper.Id, ct);
+            await MarkSupersededAsync(request, keeper, ct);
         }
 
         if (pending.Any(request => !keepIds.Contains(request.Id)))
@@ -190,20 +190,31 @@ public class PendingReviewMaintenance(PfohDbContext db, HonoreeFileStorage fileS
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task MarkSupersededAsync(HonoreeChangeRequest request, int keeperId, CancellationToken ct)
+    private async Task MarkSupersededAsync(HonoreeChangeRequest request, HonoreeChangeRequest keeper, CancellationToken ct)
     {
+        if (keeper.FlagClaim is null && keeper.FlagClaimId > 0)
+        {
+            await db.Entry(keeper).Reference(row => row.FlagClaim).LoadAsync(ct);
+        }
+
         request.RequestStatus = Superseded;
-        var note = $"Superseded by a newer submission for this honoree. Change request {keeperId} remains in review.";
+        var note = $"Superseded by a newer submission for this honoree. Change request {keeper.Id} remains in review.";
         request.ReviewNotes = string.IsNullOrWhiteSpace(request.ReviewNotes)
             ? note
             : request.ReviewNotes.Contains(note, StringComparison.Ordinal)
                 ? request.ReviewNotes
                 : $"{request.ReviewNotes.Trim()}\n{note}";
 
-        await fileStorage.DeletePendingImageAsync(request.PhotoFileName, ct);
-        if (HonoreeFileStorage.IsPendingPhotoName(request.PhotoFileName))
+        var actorEmail = keeper.FlagClaim?.ExternalUserEmail;
+        db.SubmissionAuditEvents.Add(new SubmissionAuditEvent
         {
-            request.PhotoFileName = null;
-        }
+            Action = SubmissionAuditEvent.Superseded,
+            ChangeRequestId = request.Id,
+            KeeperChangeRequestId = keeper.Id,
+            ActorEmail = string.IsNullOrWhiteSpace(actorEmail) ? "signed-in user" : actorEmail.Trim(),
+            ActorObjectId = keeper.FlagClaim?.ExternalUserObjectId,
+            CreatedUtc = DateTime.UtcNow,
+            Note = note
+        });
     }
 }

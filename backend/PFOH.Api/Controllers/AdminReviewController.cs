@@ -129,8 +129,12 @@ public class AdminReviewController(
         var withdrawalRequests = submittedRequests
             .Where(request => request.RequestStatus == PendingReviewMaintenance.Withdrawal)
             .ToList();
+        var openRequests = submittedRequests
+            .Where(request => request.RequestStatus != PendingReviewMaintenance.Withdrawal)
+            .ToList();
+        var restoredIds = await RestoredChangeRequestIdsAsync(openRequests.Select(request => request.Id).ToList(), ct);
         var newestRequests = PendingReviewMaintenance.KeepNewest(
-            submittedRequests.Where(request => request.RequestStatus != PendingReviewMaintenance.Withdrawal).ToList(),
+            openRequests,
             request => new PendingReviewMaintenance.CardRef(
                 request.Id,
                 request.FlagGridId,
@@ -138,7 +142,9 @@ public class AdminReviewController(
                 request.SubmittedUtc,
                 request.CreatedUtc ?? DateTime.UtcNow,
                 request.ClaimantObjectId))
+            .Concat(openRequests.Where(request => restoredIds.Contains(request.Id)))
             .Concat(withdrawalRequests)
+            .DistinctBy(request => request.Id)
             .ToList();
 
         var honoreeIds = newestRequests
@@ -1972,6 +1978,30 @@ public class AdminReviewController(
         return notes.Contains(addition, StringComparison.Ordinal)
             ? notes
             : $"{notes.Trim()}\n{addition}";
+    }
+
+    private async Task<HashSet<int>> RestoredChangeRequestIdsAsync(
+        IReadOnlyCollection<int> changeRequestIds,
+        CancellationToken ct)
+    {
+        if (changeRequestIds.Count == 0)
+        {
+            return [];
+        }
+
+        var events = await db.SubmissionAuditEvents
+            .AsNoTracking()
+            .Where(evt => changeRequestIds.Contains(evt.ChangeRequestId))
+            .Select(evt => new { evt.Id, evt.ChangeRequestId, evt.Action })
+            .ToListAsync(ct);
+        return events
+            .GroupBy(evt => evt.ChangeRequestId)
+            .Where(group => string.Equals(
+                group.OrderByDescending(evt => evt.Id).First().Action,
+                SubmissionAuditEvent.Restored,
+                StringComparison.Ordinal))
+            .Select(group => group.Key)
+            .ToHashSet();
     }
 
     private static string? BlankToNull(string? value) =>

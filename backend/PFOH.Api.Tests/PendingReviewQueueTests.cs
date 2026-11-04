@@ -247,12 +247,18 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         Assert.Equal("Superseded", requests[1].RequestStatus);
         Assert.Equal("Submitted", requests[2].RequestStatus);
         Assert.Contains("Change request 3", requests[0].ReviewNotes, StringComparison.Ordinal);
-        Assert.Null(requests[0].PhotoFileName);
-        Assert.Null(requests[1].PhotoFileName);
+        Assert.Equal("pending/1.jpg", requests[0].PhotoFileName);
+        Assert.Equal("pending/2.jpg", requests[1].PhotoFileName);
         Assert.Equal("pending/3.jpg", requests[2].PhotoFileName);
-        Assert.Contains("pending/1.jpg", factory.Files.DeletedPendingPhotos);
-        Assert.Contains("pending/2.jpg", factory.Files.DeletedPendingPhotos);
-        Assert.DoesNotContain("pending/3.jpg", factory.Files.DeletedPendingPhotos);
+        Assert.Empty(factory.Files.DeletedPendingPhotos);
+        var audits = await db.SubmissionAuditEvents.OrderBy(row => row.ChangeRequestId).ToListAsync();
+        Assert.Equal([1, 2], audits.Select(row => row.ChangeRequestId));
+        Assert.All(audits, audit =>
+        {
+            Assert.Equal(SubmissionAuditEvent.Superseded, audit.Action);
+            Assert.Equal(3, audit.KeeperChangeRequestId);
+            Assert.Equal("owner-photo", audit.ActorObjectId);
+        });
     }
 
     [Fact]
@@ -281,8 +287,41 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
         var older = await db.HonoreeChangeRequests.SingleAsync(request => request.Id == 8);
         Assert.Equal("Superseded", older.RequestStatus);
-        Assert.Null(older.PhotoFileName);
-        Assert.Contains("pending/8.jpg", factory.Files.DeletedPendingPhotos);
+        Assert.Equal("pending/8.jpg", older.PhotoFileName);
+        Assert.DoesNotContain("pending/8.jpg", factory.Files.DeletedPendingPhotos);
+        var audit = Assert.Single(await db.SubmissionAuditEvents.ToListAsync());
+        Assert.Equal(SubmissionAuditEvent.Superseded, audit.Action);
+        Assert.Equal(8, audit.ChangeRequestId);
+        Assert.Equal(9, audit.KeeperChangeRequestId);
+
+        var superseded = await client.SendAsync(Authed(
+            HttpMethod.Get,
+            "/api/admin/review/superseded",
+            "admin-user",
+            "admin@example.test",
+            "Admin",
+            roles: "PFOH.Admin"));
+        Assert.Equal(HttpStatusCode.OK, superseded.StatusCode);
+        var listed = await superseded.Content.ReadFromJsonAsync<SupersededPage>(JsonOptions);
+        var item = Assert.Single(listed!.Items);
+        Assert.Equal(8, item.ChangeRequestId);
+        Assert.Equal(9, item.KeeperChangeRequestId);
+
+        var restore = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/admin/review/8/restore",
+            "admin-user",
+            "admin@example.test",
+            "Admin",
+            roles: "PFOH.Admin"));
+        Assert.Equal(HttpStatusCode.OK, restore.StatusCode);
+        db.ChangeTracker.Clear();
+        var restored = await db.HonoreeChangeRequests.SingleAsync(request => request.Id == 8);
+        Assert.Equal("Submitted", restored.RequestStatus);
+        Assert.Equal("pending/8.jpg", restored.PhotoFileName);
+        var back = await PendingAsync(client);
+        Assert.Contains(back, row => row.ChangeRequestId == 8);
+        Assert.Contains(back, row => row.ChangeRequestId == 9);
     }
 
     [Fact]
@@ -771,6 +810,8 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
         db.Database.EnsureCreated();
+        db.SubmissionAuditEvents.RemoveRange(db.SubmissionAuditEvents);
+        db.SubmissionReceipts.RemoveRange(db.SubmissionReceipts);
         db.HonoreeChangeRequests.RemoveRange(db.HonoreeChangeRequests);
         db.Honorees.RemoveRange(db.Honorees);
         db.FlagClaims.RemoveRange(db.FlagClaims);
@@ -1345,4 +1386,8 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
     private sealed record FieldChange(string Label, string Previous, string Proposed);
 
     private sealed record QueueItem(int ChangeRequestId, int? HonoreeId);
+
+    private sealed record SupersededPage(List<SupersededItem> Items);
+
+    private sealed record SupersededItem(int ChangeRequestId, int? KeeperChangeRequestId);
 }
