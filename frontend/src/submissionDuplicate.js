@@ -1,4 +1,7 @@
 export const similarEntryLead = "Is this the same person?";
+export const publicDuplicateHeading = "We found someone similar already on the field";
+export const samePersonLabel = "Same person";
+export const submitAsNewLabel = "Submit as new";
 
 /**
  * @param {"loading" | "found" | "missing" | string | null | undefined} lookup

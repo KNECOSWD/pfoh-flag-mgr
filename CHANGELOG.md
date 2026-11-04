@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.3.1
+
+- The public duplicate prompt shows one person, the closest match already on file. The heading is "We found someone similar already on the field". The card shows that person's name, rank, branch, flag location, and why it matched. It does not say whether the record is pending or approved, and it does not list anyone else.
+- Two buttons sit together under the card, the same size: "Same person" continues the update or correction, and "Submit as new" files this submission and leaves the earlier one alone. On a narrow screen the buttons stack and stay a pair.
+- When several records are equally close, the public prompt prefers an approved honoree over a pending one, then the newest. An administrator still sees every match, with the same pending and approved labels as before.
+- Set SubmissionDuplicates__Enabled to false and restart the app to turn the check off. While it is off, the prompt, the correction route, and update-in-place stay off, and the submission is stored as a new entry. No database change.
+
 ## 5.3.0
 
 - Submitting an honoree checks the existing duplicate matcher against pending and approved records. When a likely match is on file, the form asks "Is this the same person?" Yes continues on the update path. No closes the card and submits this one. With two or more matches, each card has its own Yes, and one "No, none of these" ends the prompt.

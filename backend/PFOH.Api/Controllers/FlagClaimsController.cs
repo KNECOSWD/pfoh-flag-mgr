@@ -36,6 +36,15 @@ public class FlagClaimsController(
 
     private bool CallerIsAdmin() => User.IsInRole("PFOH.Admin") || User.IsInRole("Admin");
 
+    private static List<PublicSubmissionMatchDto> PublicMatches(IReadOnlyList<SubmissionMatchDto> matches) =>
+        matches.Select(match => new PublicSubmissionMatchDto(
+            match.Name,
+            match.Rank,
+            match.Branch,
+            match.FlagLocation,
+            match.Reason,
+            match.MatchToken)).ToList();
+
     // One request per review thumbnail. Not part of the 60/min cap.
     [DisableRateLimiting]
     [HttpGet("/api/flagclaims/change-requests/{id:int}/photo")]
@@ -594,11 +603,12 @@ public class FlagClaimsController(
     }
 
     [HttpPost("duplicate-check")]
-    public async Task<ActionResult<DuplicateCheckResponse>> DuplicateCheck(
+    public async Task<IActionResult> DuplicateCheck(
         [FromBody] DuplicateCheckRequest? request,
         CancellationToken ct)
     {
         request ??= new DuplicateCheckRequest();
+        var callerIsAdmin = CallerIsAdmin();
         var matches = await submissions.FindAsync(
             new SubmissionProbe(
                 request.FirstName,
@@ -611,9 +621,14 @@ public class FlagClaimsController(
                 User.GetEmail()),
             request.ExcludeHonoreeId,
             request.ExcludeChangeRequestId,
-            CallerIsAdmin(),
+            callerIsAdmin,
             User.GetExternalObjectId(),
             ct);
+        if (!callerIsAdmin)
+        {
+            return Ok(new PublicDuplicateCheckResponse(submissions.Enabled, PublicMatches(matches)));
+        }
+
         return Ok(new DuplicateCheckResponse(submissions.Enabled, matches));
     }
 
@@ -673,11 +688,12 @@ public class FlagClaimsController(
 
         if (submissions.Enabled && duplicateAction != "submit-new")
         {
+            var callerIsAdmin = CallerIsAdmin();
             var matches = await submissions.FindAsync(
                 ProbeFrom(request, email),
                 null,
                 null,
-                CallerIsAdmin(),
+                callerIsAdmin,
                 userObjectId,
                 ct);
             if (matches.Count > 0)
@@ -688,7 +704,12 @@ public class FlagClaimsController(
                     return raced;
                 }
 
-                return Conflict(new { code = "similar-entry", matches });
+                if (callerIsAdmin)
+                {
+                    return Conflict(new { code = "similar-entry", matches });
+                }
+
+                return Conflict(new { code = "similar-entry", matches = PublicMatches(matches) });
             }
         }
 

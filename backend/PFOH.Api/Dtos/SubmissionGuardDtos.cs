@@ -17,6 +17,22 @@ public sealed record DuplicateCheckResponse(
     bool Enabled,
     IReadOnlyList<SubmissionMatchDto> Matches);
 
+/// <summary>
+/// Fields the public duplicate card shows, plus the token that continues Same person.
+/// Status labels, scores, ids, and any other matches stay off this payload.
+/// </summary>
+public sealed record PublicSubmissionMatchDto(
+    string Name,
+    string? Rank,
+    string? Branch,
+    string? FlagLocation,
+    string Reason,
+    string? MatchToken);
+
+public sealed record PublicDuplicateCheckResponse(
+    bool Enabled,
+    IReadOnlyList<PublicSubmissionMatchDto> Matches);
+
 public sealed class DuplicateCheckRequest
 {
     public string FirstName { get; set; } = string.Empty;
