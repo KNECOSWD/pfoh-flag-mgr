@@ -42,7 +42,7 @@ function PublicDuplicateCard({
       tabIndex={-1}
       ref={regionRef}
     >
-      <h3 id={headingId} className="fw-semibold mb-3">{publicDuplicateHeading}</h3>
+      <h3 id={headingId} className="fs-5 fw-semibold mb-3">{publicDuplicateHeading}</h3>
       <article className="border rounded p-3 mb-3 bg-white">
         <strong className="d-block fw-semibold mb-2">{match.name}</strong>
         {details ? <p className="mb-1">{details}</p> : null}
