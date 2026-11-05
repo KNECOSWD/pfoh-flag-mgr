@@ -105,7 +105,7 @@ public static class ActivityNameScrub
         foreach (var row in rows)
         {
             if (row.PageViews <= 0) continue;
-            var name = Scrub(row.Name);
+            var name = PagePath(row.Name);
             if (string.IsNullOrWhiteSpace(name) || IsAdminPage(name)) continue;
             var day = row.Day.UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
             daily[day] = daily.GetValueOrDefault(day) + row.PageViews;
@@ -167,6 +167,14 @@ public static class ActivityNameScrub
             || GuidSegment.IsMatch(segment)
             || PublicCode.IsMatch(segment)
             || Opaque.IsMatch(segment);
+
+    private static readonly Regex SchemeHost = new(@"^https?://[^/?#]+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static string PagePath(string? value)
+    {
+        var text = SchemeHost.Replace(Scrub(value), "");
+        return PathOf(text.Length == 0 ? "/" : text);
+    }
 
     private static string PathOf(string value)
     {

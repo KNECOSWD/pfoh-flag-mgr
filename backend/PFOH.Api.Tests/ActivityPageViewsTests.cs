@@ -76,6 +76,22 @@ public class ActivityPageViewsTests
     }
 
     [Fact]
+    public void Top_pages_merge_a_full_url_with_the_same_path()
+    {
+        var shaped = ActivityNameScrub.Shape(
+        [
+            new ActivityPageViewRow(new DateTimeOffset(2026, 11, 4, 0, 0, 0, TimeSpan.Zero), "https://host/receipt/{token}", 2),
+            new ActivityPageViewRow(new DateTimeOffset(2026, 11, 4, 0, 0, 0, TimeSpan.Zero), "/receipt/{token}", 5),
+            new ActivityPageViewRow(new DateTimeOffset(2026, 11, 4, 0, 0, 0, TimeSpan.Zero), "https://planoflagsofhonor.org/receipt/PFOH-7K3Q9X", 1)
+        ]);
+
+        Assert.Equal(8, shaped.Total);
+        Assert.Single(shaped.TopPages);
+        Assert.Equal("/receipt/{token}", shaped.TopPages[0].Name);
+        Assert.Equal(8, shaped.TopPages[0].PageViews);
+    }
+
+    [Fact]
     public async Task Failure_and_missing_config_return_null_and_warn_once()
     {
         var client = new FakeClient { Error = new InvalidOperationException("403") };

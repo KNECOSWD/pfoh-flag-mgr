@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type { AccountInfo, IPublicClientApplication } from "@azure/msal-browser";
 import { adminApi, type AdminActivity as AdminActivityData, type ActivityPageViews, type ActivityStatusWindow } from "./api";
@@ -145,6 +145,8 @@ export function AdminActivity({
   const [span, setSpan] = useState<RangeId>("42");
   const [hover, setHover] = useState<number | null>(null);
   const [pinned, setPinned] = useState<number | null>(null);
+  const [compact, setCompact] = useState(false);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!account) {
@@ -174,6 +176,14 @@ export function AdminActivity({
     };
   }, [instance, account, account?.homeAccountId]);
 
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 575.98px)");
+    const apply = () => setCompact(media.matches);
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, []);
+
   const series = useMemo(() => {
     if (!data) return [] as DayPoint[];
     const days = registrationSeries(data);
@@ -195,22 +205,28 @@ export function AdminActivity({
   const stamp = data ? asOfLabel(data.asOfUtc) : "";
 
   const chart = useMemo(() => {
-    const W = 1200;
-    const H = 280;
-    const padB = 36;
-    const top = 22;
+    const dayWidth = 28;
+    const padB = 40;
+    const top = compact ? 36 : 28;
     const padX = 8;
-    const plotH = H - padB - top;
     const maxDay = Math.max(1, ...visible.map((day) => day.count));
     const maxRun = Math.max(1, visible.length ? visible[visible.length - 1].running : 1);
-    const cw = (W - padX * 2) / Math.max(1, visible.length);
-    const rowH = Math.min(14, plotH / maxDay);
-    const fs = Math.max(2, Math.min(8, cw * 0.45, rowH * 0.65));
+    const rowH = 20;
+    const fs = 16;
+    const plotH = Math.max(compact ? 240 : 168, maxDay * rowH);
+    const H = top + plotH + padB;
+    const W = padX * 2 + Math.max(1, visible.length) * dayWidth;
     const tickEvery = Math.max(1, Math.ceil(visible.length / 6));
     const yOf = (running: number) => H - padB - (running / maxRun) * plotH;
-    const line = visible.map((day, index) => `${padX + index * cw + cw / 2},${yOf(day.running)}`).join(" ");
-    return { W, H, padB, top, padX, cw, rowH, fs, tickEvery, line };
-  }, [visible]);
+    const line = visible.map((day, index) => `${padX + index * dayWidth + dayWidth / 2},${yOf(day.running)}`).join(" ");
+    return { W, H, padB, top, padX, cw: dayWidth, rowH, fs, tickEvery, line };
+  }, [visible, compact]);
+
+  useLayoutEffect(() => {
+    const node = chartRef.current;
+    if (!node) return;
+    node.scrollLeft = node.scrollWidth;
+  }, [chart.W]);
 
   function moveDay(event: KeyboardEvent<SVGGElement>, index: number) {
     if (event.key !== "ArrowRight" && event.key !== "ArrowLeft" && event.key !== "Home" && event.key !== "End") return;
@@ -227,24 +243,6 @@ export function AdminActivity({
 
   return (
     <section id="activity" className="card card-body" aria-labelledby="activity-heading">
-      <style>{`
-        .activity-flag {
-          transform-box: fill-box;
-          transform-origin: left center;
-          animation: activity-flag-wave 2.4s ease-in-out infinite;
-        }
-        @keyframes activity-flag-wave {
-          0%, 100% { transform: skewX(0deg); }
-          50% { transform: skewX(-8deg); }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .activity-flag { animation: none; }
-        }
-        .activity-day:focus-visible .activity-day-hit {
-          stroke: #173b73;
-          stroke-width: 2;
-        }
-      `}</style>
       <h2 id="activity-heading">Field of Honor Activity</h2>
       <p className="small mb-3">
         {UTC_NOTE}
@@ -300,14 +298,15 @@ export function AdminActivity({
               Each flag is one new account. The line is the running total. Flags stay still when reduced motion is on.
             </p>
             {visible.length === 0 ? <p>No accounts have been created yet.</p> : (
-              <div className="overflow-hidden">
+              <div ref={chartRef} className="activity-chart">
               <svg
                 role="group"
                 aria-labelledby="activity-accounts"
                 aria-describedby="activity-chart-desc"
+                width={chart.W}
+                height={chart.H}
                 viewBox={`0 0 ${chart.W} ${chart.H}`}
                 className="d-block"
-                style={{ width: "100%", minWidth: 0, maxWidth: "100%" }}
               >
                 <line x1={chart.padX} x2={chart.W - chart.padX} y1={chart.H - chart.padB} y2={chart.H - chart.padB} stroke="#dce6f3" />
                 {visible.map((day, index) => {
@@ -341,13 +340,13 @@ export function AdminActivity({
                       />
                       {flags}
                       {(index % chart.tickEvery === 0 || index === visible.length - 1) ? (
-                        <text x={x + chart.cw / 2} y={chart.H - 12} textAnchor="middle" fontSize={12} fill={INK}>{formatDay(day.date)}</text>
+                        <text x={x + chart.cw / 2} y={chart.H - 16} textAnchor="middle" fontSize={13} fill={INK}>{formatDay(day.date)}</text>
                       ) : null}
                     </g>
                   );
                 })}
                 <polyline className="activity-running-total" points={chart.line} fill="none" stroke={CRIMSON} strokeWidth={2.5} pointerEvents="none" />
-                <text x={chart.W - 12} y={16} textAnchor="end" fontSize={12} fill={INK}>{`Running total: ${visible[visible.length - 1].running}`}</text>
+                <text x={chart.W - 12} y={18} textAnchor="end" fontSize={13} fill={INK}>{`Running total: ${visible[visible.length - 1].running}`}</text>
               </svg>
               </div>
             )}

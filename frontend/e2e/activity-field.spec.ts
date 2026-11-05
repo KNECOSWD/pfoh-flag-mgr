@@ -157,6 +157,33 @@ test("range switch, keyboard detail, and screenshots", async ({ page }) => {
   }
 });
 
+test("the flag field stays readable at 390", async ({ page }) => {
+  await install(page, activity());
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/activity");
+  await expect(page.locator("#activity .activity-flag").first()).toBeAttached();
+  const metrics = await page.locator("#activity").evaluate(() => {
+    const label = document.querySelector("#activity svg text");
+    const flag = document.querySelector("#activity .activity-flag");
+    const day = document.querySelector("#activity .activity-day-hit");
+    if (!label || !flag || !day) return null;
+    const ctm = (label as SVGGraphicsElement).getScreenCTM();
+    const scale = ctm ? Math.hypot(ctm.a, ctm.b) : 1;
+    const font = parseFloat(getComputedStyle(label).fontSize) * scale;
+    return {
+      font,
+      day: day.getBoundingClientRect().width,
+      flag: flag.getBoundingClientRect().height,
+      pageOverflow: document.documentElement.scrollWidth > window.innerWidth + 1
+    };
+  });
+  expect(metrics).not.toBeNull();
+  expect(metrics!.font).toBeGreaterThanOrEqual(12);
+  expect(metrics!.day).toBeGreaterThanOrEqual(24);
+  expect(metrics!.flag).toBeGreaterThanOrEqual(8);
+  expect(metrics!.pageOverflow).toBe(false);
+});
+
 test("reduced motion keeps the flags still", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await install(page, activity());

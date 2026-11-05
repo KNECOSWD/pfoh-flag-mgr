@@ -980,6 +980,34 @@ main > .pageBody > .adminSectionStack > .card {
   }
 }
 
+.activity-chart {
+  overflow-x: auto;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.activity-flag {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: activity-flag-wave 2.4s ease-in-out infinite;
+}
+
+@keyframes activity-flag-wave {
+  0%, 100% { transform: skewX(0deg); }
+  50% { transform: skewX(-8deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-flag {
+    animation: none;
+  }
+}
+
+.activity-day:focus-visible .activity-day-hit {
+  stroke: #173b73;
+  stroke-width: 2;
+}
+
 .card:not(.adminCard) > .sectionHeader .helperText {
   text-align: left;
   @media (min-width: 761px) {
