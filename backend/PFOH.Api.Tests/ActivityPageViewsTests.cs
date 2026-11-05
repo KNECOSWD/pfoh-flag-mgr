@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -36,6 +37,16 @@ public class ActivityPageViewsTests
         Assert.DoesNotContain("user_Id", ActivityPageViewQuery.Kql, StringComparison.Ordinal);
         Assert.DoesNotContain("dcount", ActivityPageViewQuery.Kql, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(TimeSpan.FromMinutes(15), ActivityPageViews.CacheFor);
+    }
+
+    [Fact]
+    public void Query_does_not_use_views_as_an_identifier()
+    {
+        var kql = ActivityPageViewQuery.Kql;
+        Assert.Contains("pageViews", kql, StringComparison.Ordinal);
+        Assert.Contains("summarize viewCount = sum(itemCount) by day = bin(timestamp, 1d), name", kql, StringComparison.Ordinal);
+        Assert.Contains("| project day, name, viewCount", kql, StringComparison.Ordinal);
+        Assert.DoesNotMatch(new Regex(@"\bviews\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), kql);
     }
 
     [Fact]
