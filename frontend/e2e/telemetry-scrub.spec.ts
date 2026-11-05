@@ -29,7 +29,7 @@ function assertScrubbed(body: string) {
 async function fulfillApi(route: Route) {
   const path = new URL(route.request().url()).pathname;
   if (path === "/api/version") {
-    await route.fulfill({ json: { version: "5.5.0" } });
+    await route.fulfill({ json: { version: "5.6.0" } });
     return;
   }
   if (path === "/api/telemetry-config") {

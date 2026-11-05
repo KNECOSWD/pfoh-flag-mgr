@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.6.0
+
+- The Activity page uses one date range. Two handles share a single track for the first day and the last day. 2 weeks, 6 weeks, and All set that same track. Moving a handle updates the headline counts and the running total while it moves, and the columns widen or narrow to fill the chart.
+- Choosing a day opens a side panel with that day's new accounts and running total. Change requests, flag claims, receipts, and page views are shown when the Activity data already has them. The panel links to Review and Flag Manager.
+- Page views stay the totals and top pages since Nov 4, 2026. Visitor counts are not shown.
+
 ## 5.5.0
 
 - The Activity page shows new accounts as a field of flags, one flag for each account created that UTC day, and a line for the running total. The range is 2 weeks, 6 weeks, or every day since the first account. Hover, tap, or the keyboard reads one day. Counts stay aggregate: no names, email addresses, or ids.
