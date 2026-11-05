@@ -93,15 +93,26 @@ test("range switch, keyboard detail, and screenshots", async ({ page }) => {
   const card = page.locator("#activity");
   await expect(card.getByRole("heading", { name: "Activity" })).toBeVisible();
   await expect(days(page)).toHaveCount(42);
+  const detail = page.locator("#activity-day-detail");
+  const total = (await card.getByText("Accounts in total", { exact: true }).evaluate((node) => node.previousElementSibling?.textContent || "")).trim();
+  async function expectRunningTotal() {
+    await expect(card.locator("svg")).toContainText(`Running total: ${total}`);
+  }
+  await expect(detail).toContainText("Jun 15:");
+  await expectRunningTotal();
 
   await card.getByRole("button", { name: "2 weeks", exact: true }).click();
   await expect(days(page)).toHaveCount(14);
+  await expect(detail).toContainText("Jun 15:");
+  await expectRunningTotal();
   await card.getByRole("button", { name: "All", exact: true }).click();
   await expect(days(page)).toHaveCount(SPAN);
+  await expect(detail).toContainText("Jun 15:");
+  await expectRunningTotal();
   await card.getByRole("button", { name: "6 weeks", exact: true }).click();
   await expect(days(page)).toHaveCount(42);
+  await expectRunningTotal();
 
-  const detail = page.locator("#activity-day-detail");
   await days(page).last().focus();
   await expect(detail).toContainText("Jun 15: 2 new");
   await page.keyboard.press("ArrowLeft");
@@ -135,6 +146,8 @@ test("range switch, keyboard detail, and screenshots", async ({ page }) => {
   });
   expect(contrast).toBeGreaterThanOrEqual(4.5);
   await expect(card.locator(".btn-primary")).toHaveCount(1);
+  await card.getByRole("button", { name: "6 weeks", exact: true }).click();
+  await expect(detail).toContainText("Jun 15:");
 
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });

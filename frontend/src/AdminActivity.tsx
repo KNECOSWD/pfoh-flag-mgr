@@ -176,8 +176,10 @@ export function AdminActivity({
 
   const series = useMemo(() => {
     if (!data) return [] as DayPoint[];
-    let running = 0;
-    return registrationSeries(data).map((day) => {
+    const days = registrationSeries(data);
+    const counted = days.reduce((sum, day) => sum + day.count, 0);
+    let running = Math.max(0, data.accounts.allTime - counted);
+    return days.map((day) => {
       running += day.count;
       return { date: day.date, count: day.count, running };
     });
@@ -188,7 +190,7 @@ export function AdminActivity({
     return series.slice(Math.max(0, series.length - Number(span)));
   }, [series, span]);
 
-  const active = hover ?? pinned;
+  const active = hover ?? pinned ?? (visible.length > 0 ? visible.length - 1 : null);
   const activeDay = active != null && active >= 0 && active < visible.length ? visible[active] : null;
   const stamp = data ? asOfLabel(data.asOfUtc) : "";
 
