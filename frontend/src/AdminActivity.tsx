@@ -260,7 +260,7 @@ export function AdminActivity({
               { label: "Change requests", value: data.changeRequests.last7Days.total },
               { label: "Receipts", value: data.receipts.last7Days }
             ].map((item) => (
-              <div className="col" key={item.label}>
+              <div className="col" key={item.label} style={{ minWidth: 0 }}>
                 <div className="border rounded p-2 h-100 bg-white">
                   <div className="fs-4 fw-semibold">{item.value}</div>
                   <div className="small">{item.label}</div>
@@ -298,12 +298,14 @@ export function AdminActivity({
               Each flag is one new account. The line is the running total. Flags stay still when reduced motion is on.
             </p>
             {visible.length === 0 ? <p>No accounts have been created yet.</p> : (
+              <div className="overflow-hidden">
               <svg
                 role="group"
                 aria-labelledby="activity-accounts"
                 aria-describedby="activity-chart-desc"
                 viewBox={`0 0 ${chart.W} ${chart.H}`}
-                className="w-100 d-block"
+                className="d-block"
+                style={{ width: "100%", minWidth: 0, maxWidth: "100%" }}
               >
                 <line x1={chart.padX} x2={chart.W - chart.padX} y1={chart.H - chart.padB} y2={chart.H - chart.padB} stroke="#dce6f3" />
                 {visible.map((day, index) => {
@@ -345,8 +347,10 @@ export function AdminActivity({
                 <polyline className="activity-running-total" points={chart.line} fill="none" stroke={CRIMSON} strokeWidth={2.5} pointerEvents="none" />
                 <text x={chart.W - 12} y={16} textAnchor="end" fontSize={12} fill={INK}>{`Running total: ${visible[visible.length - 1].running}`}</text>
               </svg>
+              </div>
             )}
-            <table className="visually-hidden">
+            <div className="visually-hidden">
+            <table>
               <caption>New accounts by UTC day</caption>
               <thead>
                 <tr>
@@ -365,6 +369,7 @@ export function AdminActivity({
                 ))}
               </tbody>
             </table>
+            </div>
           </section>
 
           <section aria-labelledby="activity-requests" className="mb-4">
@@ -389,7 +394,8 @@ export function AdminActivity({
 
           <PageViewsBlock pageViews={data.pageViews} />
 
-          <table className="visually-hidden">
+          <div className="visually-hidden">
+          <table>
             <caption>Last 30 UTC days</caption>
             <thead>
               <tr>
@@ -412,6 +418,7 @@ export function AdminActivity({
               ))}
             </tbody>
           </table>
+          </div>
         </>
       ) : null}
     </section>
