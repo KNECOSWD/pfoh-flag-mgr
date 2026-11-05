@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import {
+  LEGACY_COOKIE_CHOICE_KEY,
   browserTelemetrySettings,
+  clearLegacyCookieChoice,
+  isAdminPath,
   loadTelemetryConfig,
   noteBrowserRoute,
   pageViewFromLocation,
@@ -13,16 +15,6 @@ import {
   startBrowserTelemetry,
   telemetryIsEnabled
 } from "../src/browserTelemetry.js";
-import {
-  COOKIE_NOTE_ACCEPT,
-  COOKIE_NOTE_DECLINE,
-  COOKIE_NOTE_STORAGE_KEY,
-  COOKIE_NOTE_TEXT,
-  acceptCookieNote,
-  cookieNoteChoice,
-  cookieNoteVisible,
-  declineCookieNote
-} from "../src/cookieNote.js";
 
 const TOKEN = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG";
 const GUID = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
@@ -32,7 +24,8 @@ function memoryStorage(initial) {
   const values = new Map(Object.entries(initial || {}));
   return {
     getItem: (key) => (values.has(key) ? values.get(key) : null),
-    setItem: (key, value) => values.set(key, String(value))
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key)
   };
 }
 
@@ -65,8 +58,10 @@ test("page view settings stay on the free tier and do not identify the visitor",
   assert.equal(settings.disableAjaxTracking, true);
   assert.equal(settings.disableFetchTracking, true);
   assert.equal(settings.enableAjaxPerfTracking, false);
-  assert.equal(settings.disableCookiesUsage, undefined);
-  assert.equal(settings.isCookieUseDisabled, undefined);
+  assert.equal(settings.disableCookiesUsage, true);
+  assert.equal(settings.isStorageUseDisabled, true);
+  assert.equal(settings.enableSessionStorageBuffer, false);
+  assert.equal(settings.disableInstrumentationKeyValidation, undefined);
   assert.equal(settings.extensionConfig.AppInsightsCfgSyncPlugin.blkCdnCfg, true);
   assert.equal(settings.extensionConfig.AppInsightsCfgSyncPlugin.cfgUrl, "");
   const source = readFileSync(new URL("../src/browserTelemetry.js", import.meta.url), "utf8");
@@ -148,58 +143,33 @@ test("a route change tracks the redacted page and skips admin pages", async () =
   resetBrowserTelemetryState();
 });
 
-test("the cookie note is opt-in and stays hidden after No thanks", () => {
-  assert.equal(
-    COOKIE_NOTE_TEXT,
-    "We use cookies to count visits and see which pages are used, so we can improve this site. They are not used for ads, and we don't sell your information. The counts are stored with Microsoft Azure."
-  );
-  assert.equal(COOKIE_NOTE_TEXT.includes("\u2014"), false);
-  assert.equal(COOKIE_NOTE_ACCEPT, "OK");
-  assert.equal(COOKIE_NOTE_DECLINE, "No thanks");
-  const storage = memoryStorage();
-  assert.equal(cookieNoteChoice(storage), "");
-  assert.equal(cookieNoteVisible("", "/find", true), true);
-  assert.equal(cookieNoteVisible("", "/find", false), false);
-  assert.equal(cookieNoteVisible("", "/find"), false);
-  assert.equal(cookieNoteVisible("", "/admin/review", true), false);
-  assert.equal(acceptCookieNote(storage), true);
-  assert.equal(cookieNoteChoice(storage), "accepted");
-  assert.equal(cookieNoteVisible("accepted", "/find", true), false);
-  storage.setItem(COOKIE_NOTE_STORAGE_KEY, "");
-  const declined = memoryStorage();
-  assert.equal(declineCookieNote(declined), true);
-  assert.equal(cookieNoteChoice(declined), "declined");
-  assert.equal(cookieNoteVisible("declined", "/flag-map", true), false);
-  declined.setItem(COOKIE_NOTE_STORAGE_KEY, "");
-  assert.equal(cookieNoteChoice(declined), "");
+test("public pages load cookieless telemetry and admin pages do not", async () => {
+  const storage = memoryStorage({ [LEGACY_COOKIE_CHOICE_KEY]: "accepted" });
+  clearLegacyCookieChoice(storage);
+  assert.equal(storage.getItem(LEGACY_COOKIE_CHOICE_KEY), null);
+  assert.equal(isAdminPath("/admin/activity"), true);
+  assert.equal(isAdminPath("/find"), false);
 
-  const note = readFileSync(new URL("../src/CookieNote.tsx", import.meta.url), "utf8");
-  assert.match(note, /COOKIE_NOTE_TEXT/);
-  assert.match(note, /btn-outline-secondary/);
-  assert.match(note, /btn-link/);
-  assert.doesNotMatch(note, /btn-primary/);
-  assert.match(note, /toast-container position-fixed bottom-0/);
-  assert.match(note, /id="cookie-note"/);
-  assert.match(note, /id="cookie-note-spacer"/);
-  assert.match(note, /loadTelemetryConfig/);
-  assert.doesNotMatch(note, /paddingBottom|maxHeight|overflowY/);
-  assert.equal(note.includes(COOKIE_NOTE_TEXT), false);
-  const main = readFileSync(new URL("../src/main.tsx", import.meta.url), "utf8");
-  assert.match(main, /cookieNoteChoice\(browserStorage\(\)\) === "accepted"/);
-
-  let copies = 0;
-  function walk(dir) {
-    for (const name of readdirSync(dir)) {
-      const path = join(dir, name);
-      if (statSync(path).isDirectory()) {
-        walk(path);
-        continue;
-      }
-      if (!/\.(js|tsx|ts|mjs)$/.test(name)) continue;
-      const text = readFileSync(path, "utf8");
-      if (text.includes(COOKIE_NOTE_TEXT)) copies += 1;
+  let loaded = false;
+  const admin = await startBrowserTelemetry({
+    pathname: "/admin/review",
+    fetchConfig: async () => {
+      loaded = true;
+      return { enabled: true, connectionString: "InstrumentationKey=00000000-0000-0000-0000-000000000000" };
+    },
+    loadSdk: async () => {
+      throw new Error("admin must not load the SDK");
     }
-  }
-  walk(new URL("../src", import.meta.url).pathname);
-  assert.equal(copies, 1);
+  });
+  assert.equal(admin.enabled, false);
+  assert.equal(loaded, false);
+
+  const main = readFileSync(new URL("../src/main.tsx", import.meta.url), "utf8");
+  const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  assert.match(main, /clearLegacyCookieChoice\(localStorage\)/);
+  assert.match(main, /isAdminPath\(window\.location\.pathname\)/);
+  assert.doesNotMatch(main, /CookieNote/);
+  assert.match(app, /ensureBrowserTelemetry\(/);
+  assert.equal(existsSync(new URL("../src/CookieNote.tsx", import.meta.url)), false);
+  assert.equal(existsSync(new URL("../src/cookieNote.js", import.meta.url)), false);
 });

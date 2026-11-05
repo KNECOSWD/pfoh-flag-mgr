@@ -90,6 +90,12 @@ public class AdminActivityTests
         Assert.Equal(1, activity.Daily.Single(day => day.Date == "2026-06-08").Accounts);
         Assert.Equal(0, activity.Daily.Single(day => day.Date == "2026-05-18").Accounts);
         Assert.Equal(0, activity.Daily.Single(day => day.Date == "2026-05-18").ChangeRequests);
+        Assert.Null(activity.PageViews);
+        Assert.Equal("2026-05-16", activity.Registrations[0].Date);
+        Assert.Equal("2026-06-15", activity.Registrations[^1].Date);
+        Assert.Equal(activity.Accounts.AllTime, activity.Registrations.Sum(day => day.Count));
+        Assert.Equal(1, activity.Registrations.Single(day => day.Date == "2026-05-16").Count);
+        Assert.Equal(0, activity.Registrations.Single(day => day.Date == "2026-05-18").Count);
     }
 
     [Fact]
@@ -140,6 +146,7 @@ public class AdminActivityTests
         Assert.DoesNotContain("PFOH-SECRET", raw, StringComparison.Ordinal);
         Assert.DoesNotContain("aaaaaaaa-bbbb-cccc-dddd", raw, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("owner-secret", raw, StringComparison.Ordinal);
+        Assert.DoesNotContain("user_Id", raw, StringComparison.Ordinal);
 
         var activity = JsonSerializer.Deserialize<AdminActivityResponse>(raw, Json);
         Assert.NotNull(activity);
@@ -161,6 +168,8 @@ public class AdminActivityTests
         var profiles = await stored.UserProfiles.AsNoTracking().ToListAsync();
         Assert.Contains(profiles, profile => profile.Email == "secret-user@example.test");
         Assert.Equal(profiles.Count, activity.Accounts.AllTime);
+        Assert.Null(activity.PageViews);
+        Assert.Equal(profiles.Count(profile => profile.CreatedUtc < end), activity.Registrations.Sum(day => day.Count));
         Assert.Equal(profiles.Count(profile => profile.CreatedUtc >= start7 && profile.CreatedUtc < end), activity.Accounts.Last7Days);
         Assert.Equal(profiles.Count(profile => profile.CreatedUtc >= start30 && profile.CreatedUtc < end), activity.Accounts.Last30Days);
         Assert.True(activity.Accounts.AllTime >= activity.Accounts.Last30Days);

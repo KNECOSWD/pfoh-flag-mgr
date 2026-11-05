@@ -57,7 +57,7 @@ const CONNECTION = "InstrumentationKey=00000000-0000-0000-0000-000000000000;Inge
 async function fulfillApi(route: Route, telemetryEnabled = false) {
   const path = new URL(route.request().url()).pathname;
   if (path === "/api/version") {
-    await route.fulfill({ json: { version: "5.4.0" } });
+    await route.fulfill({ json: { version: "5.5.0" } });
     return;
   }
   if (path === "/api/telemetry-config") {
@@ -134,87 +134,6 @@ async function expectWithinViewport(page: Page, selector: string) {
 
 test.beforeAll(() => {
   mkdirSync("e2e-shots", { recursive: true });
-});
-
-test("cookie note shows once at 390 and 1280 and stays dismissed", async ({ page }) => {
-  await installApi(page, true);
-
-  for (const width of [390, 1280]) {
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 800 });
-    if (width === 390) await page.goto("/find");
-    else await page.evaluate(() => window.scrollTo(0, 0));
-    const note = page.locator("#cookie-note");
-    await expect(note).toBeVisible();
-    await expect(note).toContainText("The counts are stored with Microsoft Azure.");
-    const ok = note.getByRole("button", { name: "OK" });
-    const decline = note.getByRole("button", { name: "No thanks" });
-    await expect(decline).toBeVisible();
-    await expect(decline).not.toHaveClass(/btn-primary/);
-    await expect(ok).toBeVisible();
-    await expect(ok).toHaveClass(/btn-outline-secondary/);
-    await expect(ok).not.toHaveClass(/btn-primary/);
-    await expect(page.locator(".btn-primary")).toHaveCount(1);
-    const noteBox = await note.boundingBox();
-    expect(noteBox?.height ?? 999, `cookie note stays compact at ${width}px`).toBeLessThan(140);
-    await expectWithinViewport(page, "#cookie-note");
-    const searchUsable = await page.getByRole("searchbox", { name: "Search honorees" }).evaluate((node) => {
-      const rect = node.getBoundingClientRect();
-      const hit = document.elementFromPoint(rect.left + 12, rect.top + rect.height / 2);
-      return Boolean(hit && (hit === node || node.contains(hit)));
-    });
-    expect(searchUsable, `search stays usable at ${width}px`).toBe(true);
-    const room = await page.evaluate(() => {
-      const notice = document.getElementById("cookie-note");
-      const spacer = document.getElementById("cookie-note-spacer");
-      if (!notice || !spacer) return -1;
-      return spacer.getBoundingClientRect().height - notice.getBoundingClientRect().height;
-    });
-    expect(room, `page keeps room for the notice at ${width}px`).toBeGreaterThanOrEqual(-1);
-    expect(room, `spacer matches the notice at ${width}px`).toBeLessThan(2);
-    await reachAboveNote(page, "a[href='https://planoflagsofhonor.com/about-pfoh/']");
-    const fits = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
-    expect(fits, `page fits at ${width}px`).toBe(true);
-    await page.screenshot({ path: `e2e-shots/cookie-note-${width}.png`, fullPage: false });
-  }
-
-  await page.locator("#cookie-note").getByRole("button", { name: "OK" }).click();
-  await expect(page.locator("#cookie-note")).toHaveCount(0);
-  await page.reload();
-  await expect(page.getByRole("searchbox", { name: "Search honorees" })).toBeVisible();
-  await expect(page.locator("#cookie-note")).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => localStorage.getItem("pfoh.cookieChoice"))).toBe("accepted");
-});
-
-test("enabled false on a fresh profile shows no note and sends no telemetry", async ({ page }) => {
-  const outbound: string[] = [];
-  page.on("request", (request) => {
-    const url = request.url();
-    if (/visualstudio|applicationinsights|monitor\.azure|\/v2\/track|ai-ingest/i.test(url)) outbound.push(url);
-  });
-  await installApi(page, false);
-  const config = page.waitForResponse((response) => response.url().includes("/api/telemetry-config"));
-  await page.goto("/find");
-  await config;
-  await expect(page.getByRole("searchbox", { name: "Search honorees" })).toBeVisible();
-  const appeared = await page.locator("#cookie-note").waitFor({ state: "visible", timeout: 1000 }).then(() => true, () => false);
-  expect(appeared, "cookie note stays hidden when telemetry is off").toBe(false);
-  expect(outbound).toEqual([]);
-  const cookies = await page.context().cookies();
-  expect(cookies.filter((cookie) => cookie.name.startsWith("ai_"))).toEqual([]);
-  expect(await page.evaluate(() => document.cookie)).not.toMatch(/(?:^|;\s*)ai_/);
-});
-
-test("the flag map legend stays reachable above the cookie note", async ({ page }) => {
-  await installApi(page, true);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/flag-map");
-  await expect(page.locator("#cookie-note")).toBeVisible();
-  await expect(page.getByRole("list", { name: "Spot key" })).toBeVisible();
-  await reachAboveNote(page, ".publicFlagLegend");
-  for (const selector of [".publicFlagRowLabel", ".publicFlagColumnLabel"]) {
-    if (await page.locator(selector).count() === 0) continue;
-    await reachAboveNote(page, selector);
-  }
 });
 
 test("activity card shows aggregate counts at 390 and 1280", async ({ page }) => {

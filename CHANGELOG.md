@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.5.0
+
+- The Activity page shows new accounts as a field of flags, one flag for each account created that UTC day, and a line for the running total. The range is 2 weeks, 6 weeks, or every day since the first account. Hover, tap, or the keyboard reads one day. Counts stay aggregate: no names, email addresses, or ids.
+- Headline counts are accounts in total, new accounts in the last 7 UTC days, flag claims, change requests, and submission receipts.
+- Page views are read from the Application Insights component in ActivityTelemetry:AppInsightsResourceId. The query totals daily page views and the top pages since Nov 4, 2026, keeps the result for 15 minutes, and leaves the section out when the query cannot run. Page names are scrubbed the same way as browser page views. Visitor counts are not shown.
+- The cookie notice is removed. Public pages load the Application Insights browser SDK when telemetry is enabled, without cookies or browser storage. Administrator pages do not load it.
+
 ## 5.4.0
 
 - The public site can count page views with the same Application Insights resource the API already uses. Counting starts only after the visitor chooses OK. Until then, and after No thanks, the browser does not load the SDK, set visit cookies, or send telemetry. The connection string still comes from GET /api/telemetry-config, and only after OK. When that setting is empty, page views stay off.

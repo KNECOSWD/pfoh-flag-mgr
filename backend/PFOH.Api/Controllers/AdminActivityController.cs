@@ -11,12 +11,13 @@ namespace PFOH.Api.Controllers;
 [Route("api/admin/activity")]
 [Authorize(Policy = "AdminOnly")]
 [EnableRateLimiting("AuthenticatedGet")]
-public class AdminActivityController(PfohDbContext db) : ControllerBase
+public class AdminActivityController(PfohDbContext db, ActivityPageViews pageViews) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<AdminActivityResponse>> Get(CancellationToken ct)
     {
         Response.Headers.CacheControl = "no-store";
-        return Ok(await AdminActivityQuery.ReadAsync(db, DateTime.UtcNow, ct));
+        var activity = await AdminActivityQuery.ReadAsync(db, DateTime.UtcNow, ct);
+        return Ok(activity with { PageViews = await pageViews.ReadAsync(ct) });
     }
 }

@@ -764,7 +764,11 @@ public class PfohApiFactory : WebApplicationFactory<Program>
         builder.UseEnvironment("Development");
         builder.ConfigureAppConfiguration((_, config) =>
         {
-            var settings = new Dictionary<string, string?>();
+            var settings = new Dictionary<string, string?>
+            {
+                // The deployed file names the component. Tests must not call Azure.
+                ["ActivityTelemetry:AppInsightsResourceId"] = ""
+            };
             if (!UseRealAuthenticatedGetLimit)
             {
                 settings["RateLimit:AuthenticatedGetPermit"] = (AuthenticatedGetPermit ?? 100_000).ToString();

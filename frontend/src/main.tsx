@@ -8,9 +8,7 @@ import {
 import { MsalProvider } from "@azure/msal-react";
 import { msalConfig } from "./authConfig";
 import App from "./App";
-import { CookieNote } from "./CookieNote";
-import { ensureBrowserTelemetry } from "./browserTelemetry.js";
-import { browserStorage, cookieNoteChoice } from "./cookieNote.js";
+import { clearLegacyCookieChoice, ensureBrowserTelemetry, isAdminPath } from "./browserTelemetry.js";
 import { publishSignInError, readAuthErrorFromLocation } from "./signInError";
 import { isRecoverableAuthError } from "./tokenRequest.js";
 import "bootstrap/dist/css/bootstrap.min.css";
@@ -60,7 +58,12 @@ async function startApp() {
     publishSignInError(leftover);
   }
 
-  if (cookieNoteChoice(browserStorage()) === "accepted") {
+  try {
+    clearLegacyCookieChoice(localStorage);
+  } catch {
+    /* storage can be blocked */
+  }
+  if (!isAdminPath(window.location.pathname)) {
     void ensureBrowserTelemetry({
       apiBase: import.meta.env.VITE_API_BASE_URL ?? ""
     });
@@ -70,7 +73,6 @@ async function startApp() {
     <React.StrictMode>
       <MsalProvider instance={msalInstance}>
         <App />
-        <CookieNote />
       </MsalProvider>
     </React.StrictMode>
   );
