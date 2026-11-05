@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.6.1
+
+- The Activity page shows page views and the top pages again. The Application Insights query that loads them no longer uses a reserved word for the count.
+
 ## 5.6.0
 
 - The Activity page uses one date range. Two handles share a single track for the first day and the last day. 2 weeks, 6 weeks, and All set that same track. Moving a handle updates the headline counts and the running total while it moves, and the columns widen or narrow to fill the chart.

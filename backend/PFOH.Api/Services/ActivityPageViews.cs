@@ -29,8 +29,8 @@ public static class ActivityPageViewQuery
         """
         pageViews
         | where timestamp >= datetime(2026-11-04T23:18:00Z)
-        | summarize views = sum(itemCount) by day = bin(timestamp, 1d), name
-        | project day, name, views
+        | summarize viewCount = sum(itemCount) by day = bin(timestamp, 1d), name
+        | project day, name, viewCount
         | order by day asc
         """;
 
