@@ -53,7 +53,7 @@ async function install(page: Page, body: unknown) {
   await page.route("**/api/**", async (route: Route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/version") {
-      await route.fulfill({ json: { version: "5.5.0" } });
+      await route.fulfill({ json: { version: "5.6.0" } });
       return;
     }
     if (path === "/api/telemetry-config") {
@@ -66,6 +66,10 @@ async function install(page: Page, body: unknown) {
     }
     if (path === "/api/admin/review/pending") {
       await route.fulfill({ json: [], headers: { "X-Open-Duplicate-Groups": "0" } });
+      return;
+    }
+    if (path === "/api/admin/review/superseded") {
+      await route.fulfill({ json: { items: [], page: 1, pageSize: 1, total: 0 } });
       return;
     }
     if (path === "/api/flag-claims/my" || path.startsWith("/api/lookups/") || path === "/api/admin/review/approved-reprint-queue" || path === "/api/admin/review/flag-positions") {
@@ -81,6 +85,24 @@ async function install(page: Page, body: unknown) {
 }
 
 const days = (page: Page) => page.locator("#activity").getByRole("button", { name: /new,/ });
+
+async function expectChartFills(page: Page, dayCount: number) {
+  await expect.poll(async () => page.locator("#activity-chart").evaluate((node, count) => {
+    const svg = node.querySelector("svg");
+    const hits = node.querySelectorAll(".activity-day-hit");
+    const hit = hits[0];
+    if (!svg || !hit) return false;
+    const host = node.getBoundingClientRect().width;
+    const svgWidth = svg.getBoundingClientRect().width;
+    const hitWidth = hit.getBoundingClientRect().width;
+    const coverage = host > 0 ? (hitWidth * hits.length) / host : 0;
+    return svgWidth > host * 0.95
+      && hits.length === count
+      && coverage > 0.55
+      && node.scrollWidth - node.clientWidth <= 1
+      && document.documentElement.scrollWidth <= window.innerWidth + 1;
+  }, dayCount)).toBe(true);
+}
 
 test.beforeAll(() => {
   mkdirSync("e2e-shots", { recursive: true });
@@ -101,17 +123,23 @@ test("range switch, keyboard detail, and screenshots", async ({ page }) => {
   await expect(detail).toContainText("Jun 15:");
   await expectRunningTotal();
 
+  await expect(card.getByRole("slider")).toHaveCount(2);
   await card.getByRole("button", { name: "2 weeks", exact: true }).click();
   await expect(days(page)).toHaveCount(14);
   await expect(detail).toContainText("Jun 15:");
   await expectRunningTotal();
+  await expectChartFills(page, 14);
+  const twoWeekColumn = await page.locator("#activity-chart .activity-day-hit").first().evaluate((node) => node.getBoundingClientRect().width);
+  expect(twoWeekColumn).toBeGreaterThan(40);
   await card.getByRole("button", { name: "All", exact: true }).click();
   await expect(days(page)).toHaveCount(SPAN);
   await expect(detail).toContainText("Jun 15:");
   await expectRunningTotal();
+  await expectChartFills(page, SPAN);
   await card.getByRole("button", { name: "6 weeks", exact: true }).click();
   await expect(days(page)).toHaveCount(42);
   await expectRunningTotal();
+  await expectChartFills(page, 42);
 
   await days(page).last().focus();
   await expect(detail).toContainText("Jun 15: 2 new");
@@ -119,6 +147,9 @@ test("range switch, keyboard detail, and screenshots", async ({ page }) => {
   await expect(detail).toContainText("in total");
   await expect(detail).not.toContainText("Jun 15: 2 new");
   await days(page).first().click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(detail).toContainText("new,");
 
   const contrast = await detail.evaluate((node) => {
@@ -157,40 +188,128 @@ test("range switch, keyboard detail, and screenshots", async ({ page }) => {
   }
 });
 
-test("the flag field stays readable at 390", async ({ page }) => {
+test("the chart fills the card at 390", async ({ page }) => {
   await install(page, activity());
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/admin/activity");
-  await expect(page.locator("#activity .activity-flag").first()).toBeAttached();
-  const metrics = await page.locator("#activity").evaluate(() => {
-    const label = document.querySelector("#activity svg text");
-    const flag = document.querySelector("#activity .activity-flag");
-    const day = document.querySelector("#activity .activity-day-hit");
-    if (!label || !flag || !day) return null;
-    const ctm = (label as SVGGraphicsElement).getScreenCTM();
+  await expect(days(page)).toHaveCount(42);
+  await expectChartFills(page, 42);
+  const font = await page.locator("#activity-chart svg text").first().evaluate((node) => {
+    const ctm = (node as SVGGraphicsElement).getScreenCTM();
     const scale = ctm ? Math.hypot(ctm.a, ctm.b) : 1;
-    const font = parseFloat(getComputedStyle(label).fontSize) * scale;
-    return {
-      font,
-      day: day.getBoundingClientRect().width,
-      flag: flag.getBoundingClientRect().height,
-      pageOverflow: document.documentElement.scrollWidth > window.innerWidth + 1
-    };
+    return parseFloat(getComputedStyle(node).fontSize) * scale;
   });
-  expect(metrics).not.toBeNull();
-  expect(metrics!.font).toBeGreaterThanOrEqual(12);
-  expect(metrics!.day).toBeGreaterThanOrEqual(24);
-  expect(metrics!.flag).toBeGreaterThanOrEqual(8);
-  expect(metrics!.pageOverflow).toBe(false);
+  expect(font).toBeGreaterThanOrEqual(12);
+  await page.getByRole("button", { name: "2 weeks", exact: true }).click();
+  await expectChartFills(page, 14);
+  await page.getByRole("button", { name: "All", exact: true }).click();
+  await expectChartFills(page, SPAN);
 });
 
-test("reduced motion keeps the flags still", async ({ page }) => {
+test("reduced motion keeps the chart still", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await install(page, activity());
   await page.goto("/admin/activity");
-  await expect(page.locator(".activity-flag").first()).toBeVisible();
-  const animation = await page.locator(".activity-flag").first().evaluate((node) => getComputedStyle(node).animationName);
-  expect(animation).toBe("none");
+  const chart = page.locator("#activity-chart");
+  await expect(chart).toHaveAttribute("data-chart-motion", "off");
+  await expect(days(page).last()).toBeVisible();
+  const animated = await chart.evaluate((node) => Array.from(node.querySelectorAll("*")).some((el) => {
+    const style = getComputedStyle(el);
+    const duration = style.transitionDuration.split(",")[0]?.trim() ?? "0s";
+    return style.animationName !== "none" || (duration !== "0s" && style.transitionProperty !== "none");
+  }));
+  expect(animated).toBe(false);
+  await days(page).last().click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveCSS("transition-property", "none");
+});
+
+test("the range handles update counts and a day opens the side panel", async ({ page }) => {
+  await install(page, activity({
+    total: 12,
+    daily: [{ date: END, pageViews: 5 }],
+    topPages: [{ name: "/find", pageViews: 5 }]
+  }));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/admin/activity");
+  const card = page.locator("#activity");
+  const detail = page.locator("#activity-day-detail");
+  const label = page.locator("#activity-range-label");
+  await expect(days(page)).toHaveCount(42);
+  await expect(label).toContainText("Jun 15");
+  await expect(card.getByText("New accounts in range", { exact: true })).toBeVisible();
+
+  const accountsTotal = () => card.getByText("Accounts in total", { exact: true }).evaluate((node) => (node.previousElementSibling?.textContent || "").trim());
+  expect(await accountsTotal()).toBe("80");
+  await page.getByRole("slider", { name: "To" }).focus();
+  await expect(page.getByRole("slider", { name: "To" })).toHaveAttribute("aria-valuetext", /Jun 15/);
+  await page.keyboard.press("ArrowLeft");
+  await expect(label).toContainText("Jun 14");
+  await expect(label).not.toContainText("Jun 15");
+  await expect.poll(accountsTotal).toBe("78");
+  await expect(card.locator("#activity-chart svg")).toContainText("Running total: 78");
+  await expect(detail).toContainText("Jun 14:");
+  const newAccounts = () => card.getByText("New accounts in range", { exact: true }).evaluate((node) => (node.previousElementSibling?.textContent || "").trim());
+  await expect.poll(newAccounts).toBe("0");
+  await expectChartFills(page, 41);
+  await expect(card.locator(".btn-primary")).toHaveCount(0);
+
+  const from = page.getByRole("slider", { name: "From" });
+  const fromBox = await from.boundingBox();
+  expect(fromBox).not.toBeNull();
+  await page.mouse.move(fromBox!.x + fromBox!.width / 2, fromBox!.y + fromBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(fromBox!.x + fromBox!.width / 2 + 120, fromBox!.y + fromBox!.height / 2);
+  await page.mouse.up();
+  await expect.poll(() => days(page).count()).toBeLessThan(41);
+  await expectChartFills(page, await days(page).count());
+
+  await card.getByRole("button", { name: "6 weeks", exact: true }).click();
+  await expect(days(page)).toHaveCount(42);
+  await expectChartFills(page, 42);
+  await expect(card.locator(".btn-primary")).toHaveCount(1);
+
+  await days(page).last().click();
+  const panel = page.getByRole("dialog", { name: "Jun 15" });
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText("2 new accounts");
+  await expect(panel).toContainText("Change requests");
+  await expect(panel).toContainText("Flag claims");
+  await expect(panel).toContainText("Receipts");
+  await expect(panel).toContainText("Page views");
+  await expect(panel).toContainText("5");
+  await expect(panel).not.toContainText(/visitor/i);
+  await expect(panel.getByRole("link", { name: "Review" })).toHaveAttribute("href", "/admin/review");
+  await expect(panel.getByRole("link", { name: "Flag Manager" })).toHaveAttribute("href", "/admin/flag-map");
+  await panel.getByRole("link", { name: "Flag Manager" }).click();
+  await expect(page).toHaveURL(/\/admin\/flag-map$/);
+  await expect(page.locator("#flag-position-manager")).toBeVisible();
+  await page.goto("/admin/activity");
+  await days(page).last().click();
+  await page.getByRole("dialog").getByRole("link", { name: "Review" }).click();
+  await expect(page).toHaveURL(/\/admin\/review$/);
+  await expect(page.getByRole("heading", { name: "Review submitted changes" })).toBeVisible();
+});
+
+test("keyboard home wins over the hovered day at 1280", async ({ page }) => {
+  await install(page, activity());
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/admin/activity");
+  const detail = page.locator("#activity-day-detail");
+  await expect(days(page)).toHaveCount(42);
+  const target = days(page).nth(10);
+  await target.hover();
+  const hovered = (await target.getAttribute("aria-label")) ?? "";
+  const hoveredDay = hovered.split(":")[0];
+  await expect(detail).toContainText(`${hoveredDay}:`);
+  await target.focus();
+  await page.keyboard.press("Home");
+  const first = (await days(page).first().getAttribute("aria-label")) ?? "";
+  const firstDay = first.split(":")[0];
+  await expect(detail).toContainText(`${firstDay}:`);
+  expect(firstDay).not.toBe(hoveredDay);
+  await expect(detail).not.toContainText(`${hoveredDay}:`);
 });
 
 test("page views show when sent and stay hidden when absent", async ({ page }) => {

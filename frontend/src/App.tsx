@@ -4651,7 +4651,11 @@ export default function App() {
               ) : null}
 
               {isActivityRoute ? (
-                <AdminActivity instance={instance} account={account ?? null} />
+                <AdminActivity
+                  instance={instance}
+                  account={account ?? null}
+                  onNavigate={(route) => navigateToRoute(route)}
+                />
               ) : null}
 
               {isRemovalQueueRoute ? (

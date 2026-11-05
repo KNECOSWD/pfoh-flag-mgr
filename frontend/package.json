@@ -1,7 +1,7 @@
 {
   "name": "pfoh-flag-manager-frontend",
   "private": true,
-  "version": "5.5.0",
+  "version": "5.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
@@ -14,11 +14,13 @@
     "@azure/msal-react": "^3.0.5",
     "@microsoft/applicationinsights-web": "3.3.11",
     "@radix-ui/react-dialog": "^1.1.17",
+    "@radix-ui/react-slider": "^1.6.1",
     "@vitejs/plugin-react": "^4.3.4",
     "bootstrap": "^5.3.8",
     "pdf-lib": "^1.17.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "recharts": "^2.15.4",
     "typescript": "^5.7.2",
     "vite": "^6.0.7"
   },
