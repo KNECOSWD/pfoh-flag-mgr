@@ -174,9 +174,62 @@ public class HonoreeCardPdfLayoutTests
                 Description = tribute,
                 ConflictsServed = conflicts ?? string.Empty,
                 Awards = awards ?? string.Empty,
-                Rank = "Private",
+                Rank = string.Empty,
                 ServiceBranch = new ServiceBranch { ServiceBranchName = Branch },
                 FlagGrid = new FlagGrid { FlagGridName = "V-12" }
+            },
+            searchResult: null,
+            photoBytes: null,
+            SyntheticArtwork());
+        Assert.Equal("%PDF", Encoding.ASCII.GetString(pdf, 0, 4));
+        return ReadRuns(pdf);
+    }
+
+    [Fact]
+    public void Rank_sits_on_its_own_line_between_the_name_and_the_years()
+    {
+        var runs = RenderHeader("Sergeant");
+        var name = Assert.Single(runs, run => run.Text == "Alex Rivera");
+        var rank = Assert.Single(runs, run => run.Text == "Sergeant");
+        var years = Assert.Single(runs, run => run.Text == "1963 - 1966");
+        var branch = Assert.Single(runs, run => run.Text == Branch);
+
+        Assert.True(name.Y > rank.Y && rank.Y > years.Y && years.Y > branch.Y, Dump(runs));
+        Assert.Equal(name.Y - rank.Y, rank.Y - years.Y, 0.5);
+        Assert.Equal(rank.Y - years.Y, years.Y - branch.Y, 0.5);
+        Assert.True(rank.X > BioLeft + 20, Dump(runs));
+    }
+
+    [Fact]
+    public void Blank_rank_keeps_the_name_directly_above_the_years()
+    {
+        foreach (var rank in new string?[] { null, "", "   ", "\n\t" })
+        {
+            var runs = RenderHeader(rank);
+            var name = Assert.Single(runs, run => run.Text == "Alex Rivera");
+            var years = Assert.Single(runs, run => run.Text == "1963 - 1966");
+            var branch = Assert.Single(runs, run => run.Text == Branch);
+            Assert.DoesNotContain(runs, run => run.Text == "Sergeant");
+            Assert.DoesNotContain(runs, run => run.Y < name.Y - 0.5 && run.Y > years.Y + 0.5);
+            Assert.Equal(name.Y - years.Y, years.Y - branch.Y, 0.5);
+            Assert.InRange(name.Y - years.Y, 14, 16);
+        }
+    }
+
+    private static List<TextRun> RenderHeader(string? rank)
+    {
+        var pdf = HonoreeReportPdfGenerator.Create(
+            new EmptyHost(),
+            new Honoree
+            {
+                FirstName = "Alex",
+                LastName = "Rivera",
+                Rank = rank ?? string.Empty,
+                StartYear = 1963,
+                EndYear = 1966,
+                Description = "Synthetic tribute.",
+                ServiceBranch = new ServiceBranch { ServiceBranchName = Branch },
+                FlagGrid = new FlagGrid { FlagGridName = "AA-10" }
             },
             searchResult: null,
             photoBytes: null,

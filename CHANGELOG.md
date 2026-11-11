@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.6.2
+
+- An honoree card prints the rank on its own line under the name and above the years, when the honoree has a rank. A blank rank leaves the card layout unchanged.
+
 ## 5.6.1
 
 - The Activity page shows page views and the top pages again. The Application Insights query that loads them no longer uses a reserved word for the count.

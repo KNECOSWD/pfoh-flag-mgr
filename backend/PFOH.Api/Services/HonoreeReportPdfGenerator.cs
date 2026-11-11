@@ -254,6 +254,13 @@ public static class HonoreeReportPdfGenerator
         DrawCenteredText(gfx, BuildLegacyDisplayName(honoree), y, 12.2, bold: true);
         y += 15;
 
+        var rank = Clean(honoree.Rank);
+        if (!string.IsNullOrWhiteSpace(rank))
+        {
+            DrawCenteredText(gfx, rank, y, 12.2, bold: true);
+            y += 15;
+        }
+
         var years = BuildServiceYears(honoree);
         if (!string.IsNullOrWhiteSpace(years))
         {
