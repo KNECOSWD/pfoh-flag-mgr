@@ -141,9 +141,11 @@ test("range switch, keyboard detail, and screenshots", async ({ page }) => {
   await expectRunningTotal();
   await expectChartFills(page, 42);
 
-  await days(page).last().focus();
+  const lastDay = days(page).last();
+  await lastDay.focus();
   await expect(detail).toContainText("Jun 15: 2 new");
-  await page.keyboard.press("ArrowLeft");
+  await page.mouse.move(0, 0);
+  await lastDay.press("ArrowLeft");
   await expect(detail).toContainText("in total");
   await expect(detail).not.toContainText("Jun 15: 2 new");
   await days(page).first().click();
