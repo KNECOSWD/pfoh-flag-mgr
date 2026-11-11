@@ -169,6 +169,7 @@ builder.Services.AddSingleton<HonoreeFileStorage>();
 builder.Services.AddSingleton<IHonoreeCardRenderer, HonoreeCardRenderer>();
 builder.Services.AddScoped<HonoreePdfService>();
 builder.Services.AddScoped<FlagGridRemovalService>();
+builder.Services.AddScoped<InactiveHonoreeAdminService>();
 builder.Services.AddSingleton<ProfileStoreCircuit>();
 builder.Services.AddHealthChecks()
     .AddCheck<ProfileStoreHealthCheck>("profile-store", tags: ["ready"]);
@@ -585,12 +586,13 @@ try
     {
         await FlagRemovalQueueSchema.EnsureAsync(startupDb, CancellationToken.None);
         await FlagGridRemovalAuditSchema.EnsureAsync(startupDb, CancellationToken.None);
+        await HonoreeActiveFlagSlotSchema.EnsureAsync(startupDb, CancellationToken.None);
     }
     catch (Exception ex)
     {
         app.Logger.LogError(
             ex,
-            "STARTUP CLEANUP FAILED while ensuring dbo.FlagRemovalQueueItems or dbo.FlagGridRemovalAudits. {Failure}",
+            "STARTUP CLEANUP FAILED while ensuring dbo.FlagRemovalQueueItems, dbo.FlagGridRemovalAudits, or UX_Honorees_OneActiveFlagGrid. {Failure}",
             ex.ToString());
     }
 

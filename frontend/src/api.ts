@@ -420,6 +420,46 @@ export type ReactivationEligible = {
   activeLinkExpiresUtc?: string | null;
 };
 
+export type InactiveHonoreeRow = {
+  honoreeId: number;
+  name: string;
+  rank?: string | null;
+  branch?: string | null;
+  formerFlagGridId?: number | null;
+  formerFlagGridName?: string | null;
+  deactivatedUtc?: string | null;
+  deactivatedBy: string;
+  reason: string;
+  slotStatus: string;
+  slotDetail?: string | null;
+  canReactivate: boolean;
+};
+
+export type InactiveHonoreeList = {
+  items: InactiveHonoreeRow[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
+
+export type InactiveHonoreeFreeSlot = {
+  id: number;
+  flagGridName: string;
+};
+
+export type InactiveHonoreeResult = {
+  honoreeId: number;
+  name: string;
+  outcome: string;
+  code: string;
+  message: string;
+  flagGridId?: number | null;
+  flagGridName?: string | null;
+  reprintQueued: boolean;
+  removalCanceled: boolean;
+  pdfWarning?: string | null;
+};
+
 export type ReactivationLinkRow = {
   honoreeId: string;
   name: string;
@@ -1442,6 +1482,37 @@ export const adminReactivationApi = {
     request<{ revokedCount: number }>(instance, account, "/api/admin/reactivation/revoke", {
       method: "POST",
       body: JSON.stringify({ honoreeIds: all ? null : honoreeIds, all })
+    })
+};
+
+export const inactiveHonoreeApi = {
+  list: (instance: IPublicClientApplication, account: AccountInfo, query: string, page: number) => {
+    const params = new URLSearchParams();
+    if (query.trim()) params.set("q", query.trim());
+    params.set("page", String(page));
+    params.set("pageSize", "25");
+    return request<InactiveHonoreeList>(instance, account, `/api/admin/inactive-honorees?${params.toString()}`);
+  },
+
+  freeSlots: (instance: IPublicClientApplication, account: AccountInfo, query: string) => {
+    const params = new URLSearchParams();
+    if (query.trim()) params.set("q", query.trim());
+    const suffix = params.toString();
+    return request<{ items: InactiveHonoreeFreeSlot[]; truncated: boolean }>(
+      instance,
+      account,
+      suffix ? `/api/admin/inactive-honorees/free-slots?${suffix}` : "/api/admin/inactive-honorees/free-slots"
+    );
+  },
+
+  reactivate: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    items: { honoreeId: number; flagGridId: number | null }[]
+  ) =>
+    request<{ results: InactiveHonoreeResult[] }>(instance, account, "/api/admin/inactive-honorees/reactivate", {
+      method: "POST",
+      body: JSON.stringify({ items })
     })
 };
 

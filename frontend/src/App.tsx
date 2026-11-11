@@ -112,6 +112,7 @@ import { RemovalQueue } from "./RemovalQueue";
 import { AdminHonoreeActions } from "./adminHonoreeActions.js";
 import { RemoveFromGridDialog, visibleReason } from "./removeFromGridDialog.js";
 import { AdminReactivation } from "./AdminReactivation";
+import { InactiveHonorees } from "./InactiveHonorees";
 import { ReactivationPage } from "./ReactivationPage";
 import { reactivationTokenFromPath, signInReturnHref } from "./reactivationPath.js";
 import { PendingSubmissionPage } from "./PendingSubmissionPage";
@@ -250,7 +251,7 @@ const blankForm: SaveHonoreeChangeRequest = {
   submitterEmailAddress: ""
 };
 
-type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/duplicates" | "/admin/duplicates/history" | "/admin/flag-map" | "/admin/printing" | "/admin/removal-queue" | "/admin/reactivation" | "/admin/activity";
+type AppRoute = "/find" | "/my-flags" | "/honor-a-hero" | "/flag-map" | "/admin/review" | "/admin/duplicates" | "/admin/duplicates/history" | "/admin/flag-map" | "/admin/printing" | "/admin/removal-queue" | "/admin/reactivation" | "/admin/inactive" | "/admin/activity";
 
 const appRoutes: AppRoute[] = [
   "/find",
@@ -264,6 +265,7 @@ const appRoutes: AppRoute[] = [
   "/admin/printing",
   "/admin/removal-queue",
   "/admin/reactivation",
+  "/admin/inactive",
   "/admin/activity"
 ];
 
@@ -311,6 +313,10 @@ const pageBanners: Record<AppRoute, { title: string; subtitle: string }> = {
   "/admin/reactivation": {
     title: "REACTIVATION LINKS",
     subtitle: "Generate one-time links for inactive honorees with no flag."
+  },
+  "/admin/inactive": {
+    title: "INACTIVE HONOREES",
+    subtitle: "Find a deactivated honoree and restore that person to the field."
   },
   "/admin/activity": {
     title: "ACTIVITY",
@@ -721,11 +727,13 @@ export default function App() {
     { route: "/admin/flag-map", label: "Flag Manager" },
     { route: "/admin/removal-queue", label: "Removal Queue" },
     { route: "/admin/reactivation", label: "Reactivation" },
+    { route: "/admin/inactive", label: "Inactive honorees" },
     { route: "/admin/activity", label: "Activity" }
   ];
   const isPrintingRoute = activeRoute === "/admin/printing";
   const isRemovalQueueRoute = activeRoute === "/admin/removal-queue";
   const isReactivationAdminRoute = activeRoute === "/admin/reactivation";
+  const isInactiveHonoreesRoute = activeRoute === "/admin/inactive";
   const isActivityRoute = activeRoute === "/admin/activity";
   const isAdminRoute = activeRoute.startsWith("/admin");
   const stickyAdmin = adminFromApi || readStickyAdmin(window.sessionStorage, account?.homeAccountId ?? "");
@@ -4607,7 +4615,7 @@ export default function App() {
           {isAdminRoute && !kioskLocked && !isAdmin ? (
             <section className="card guestNotice">
               <h2>Administrator access required</h2>
-              <p>Sign in with an account assigned the PFOH.Admin role to use review, duplicates, flag map, printing, removal queue, reactivation, and activity tools.</p>
+              <p>Sign in with an account assigned the PFOH.Admin role to use review, duplicates, flag map, printing, removal queue, reactivation, inactive honorees, and activity tools.</p>
               {!isAuthenticated ? (
                 <div className="authChoiceButtons">
                   <button type="button" onClick={() => void signIn("login")}>
@@ -4644,6 +4652,14 @@ export default function App() {
 
               {isReactivationAdminRoute ? (
                 <AdminReactivation
+                  instance={instance}
+                  account={account ?? null}
+                  confirm={requestConfirmation}
+                />
+              ) : null}
+
+              {isInactiveHonoreesRoute ? (
+                <InactiveHonorees
                   instance={instance}
                   account={account ?? null}
                   confirm={requestConfirmation}

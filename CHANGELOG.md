@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.7.0
+
+- Administrators can look up inactive honorees by flag, name, or branch and restore them. The list shows when and why each person was deactivated, or Not recorded when that was not stored.
+- Restoring a person makes that honoree active again. If the old flag is open, the person goes back on it. If that flag is taken, reserved, or gone, the restore waits until an open flag is chosen. A person with no flag on record can be active without one.
+- One restore can cover several people. Each result says whether that person was restored or blocked, and why. The same audit used for a flag removal records who restored the honoree, when, the flag, and the old and new state.
+- A restored flag with no open removal is added to the print queue, the same way a new flag assignment is. Putting someone back on a flag that is still waiting to be pulled cancels that removal instead. No email is sent.
+
 ## 5.6.2
 
 - An honoree card prints the rank on its own line under the name and above the years, when the honoree has a rank. A blank rank leaves the card layout unchanged.

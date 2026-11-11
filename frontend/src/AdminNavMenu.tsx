@@ -47,7 +47,7 @@ export function AdminNavMenu<Route extends string>({
       if (layout !== "bar") return;
       const rect = buttonRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const width = 184;
+      const width = 240;
       setPanelBox({
         top: rect.bottom + 6,
         left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))

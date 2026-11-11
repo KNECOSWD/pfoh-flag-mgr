@@ -106,7 +106,7 @@ async function fulfillApi(route: Route) {
     return;
   }
   if (path === "/api/version") {
-    await route.fulfill({ json: { version: "5.6.2" } });
+    await route.fulfill({ json: { version: "5.7.0" } });
     return;
   }
   if (path === "/api/flag-claims/my") {
