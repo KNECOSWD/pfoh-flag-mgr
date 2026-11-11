@@ -188,6 +188,42 @@ test("an administrator can search, confirm, and resolve a flag conflict", async 
   await expect(dialog).toContainText("Restore Grace Hopper to flag D-04.");
 });
 
+test("the list and confirm dialog fit a 390px screen", async ({ page }) => {
+  await install(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/inactive");
+  await expect(page.locator("#inactive-honorees-title")).toBeVisible();
+  await expect(page.getByRole("row", { name: /Ada Lovelace/ })).toBeVisible();
+  const search = page.getByRole("button", { name: "Search" });
+  const restore = page.getByRole("button", { name: "Restore selected honorees" });
+  await expect(search).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await expectTappable(search);
+  await expectTappable(restore);
+  await expectTappable(page.getByRole("row", { name: /Ada Lovelace/ }).getByRole("button", { name: "Restore" }));
+  await page.screenshot({ path: "e2e-shots/inactive-list-390.png", fullPage: true });
+
+  await page.getByRole("row", { name: /Ada Lovelace/ }).getByRole("button", { name: "Restore" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toContainText("Restore Ada Lovelace to flag C-11.");
+  await expectNoHorizontalOverflow(page);
+  await expectTappable(dialog.getByRole("button", { name: "Restore" }));
+  await expectTappable(dialog.getByRole("button", { name: "Cancel" }));
+  await page.screenshot({ path: "e2e-shots/inactive-confirm-390.png", fullPage: true });
+});
+
+async function expectNoHorizontalOverflow(page: Page) {
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+}
+
+async function expectTappable(locator: ReturnType<Page["getByRole"]>) {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.width).toBeGreaterThanOrEqual(44);
+  expect(box!.height).toBeGreaterThanOrEqual(44);
+}
+
 test("a signed-in non-admin does not get the page or the nav entry", async ({ page }) => {
   await install(page, []);
   await page.setViewportSize({ width: 1280, height: 900 });

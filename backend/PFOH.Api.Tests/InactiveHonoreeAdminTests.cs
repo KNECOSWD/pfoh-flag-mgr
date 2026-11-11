@@ -20,11 +20,24 @@ public class InactiveHonoreeAdminTests(PfohApiFactory factory) : IClassFixture<P
         Assert.True(FlagPositionLabel.Matches("C11", "C-11"));
         Assert.True(FlagPositionLabel.Matches("c-11", "C-11"));
         Assert.True(FlagPositionLabel.Matches("AA10", "AA-10"));
-        Assert.False(FlagPositionLabel.Matches("C11", "C-01"));
+        Assert.False(FlagPositionLabel.Matches("Q11", "Q-17"));
         Assert.False(FlagPositionLabel.Matches("Navy", "C-11"));
         Assert.Contains("UX_Honorees_OneActiveFlagGrid", HonoreeActiveFlagSlotSchema.EnsureSql, StringComparison.Ordinal);
+        Assert.Contains("PRINT @FlagSlotIndexWarning", HonoreeActiveFlagSlotSchema.EnsureSql, StringComparison.Ordinal);
         Assert.DoesNotContain("UPDATE ", HonoreeActiveFlagSlotSchema.EnsureSql, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("DELETE ", HonoreeActiveFlagSlotSchema.EnsureSql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("3 flag positions", HonoreeActiveFlagSlotSchema.SkipWarning(3, indexPresent: false), StringComparison.Ordinal);
+        Assert.Null(HonoreeActiveFlagSlotSchema.SkipWarning(3, indexPresent: true));
+        Assert.Null(HonoreeActiveFlagSlotSchema.SkipWarning(0, indexPresent: false));
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "VERSION")))
+        {
+            dir = dir.Parent;
+        }
+
+        var program = File.ReadAllText(Path.Combine(dir!.FullName, "backend", "PFOH.Api", "Program.cs"));
+        Assert.Contains("UX_Honorees_OneActiveFlagGrid was not created because {DuplicateFlagCount}", program, StringComparison.Ordinal);
+        Assert.Contains("LogWarning", program, StringComparison.Ordinal);
         Assert.Contains("ALTER COLUMN [FlagGridId] int NULL", FlagGridRemovalAuditSchema.AlterFlagGridIdNullableSql, StringComparison.Ordinal);
     }
 
@@ -245,6 +258,55 @@ public class InactiveHonoreeAdminTests(PfohApiFactory factory) : IClassFixture<P
         var database = after.ServiceProvider.GetRequiredService<PfohDbContext>();
         Assert.False((await database.Honorees.SingleAsync(row => row.Id == absorbed)).IsActive);
         Assert.Equal(0, await database.FlagGridRemovalAudits.CountAsync(row => row.Action == "Restore"));
+    }
+
+    [Fact]
+    public async Task Reserved_and_removed_flags_are_refused_without_an_audit()
+    {
+        await ResetAsync();
+        var reservedId = await SeedGridAsync("R-15", reserved: true);
+        var removedId = await SeedGridAsync("M-15");
+        var reservedHonoree = await SeedInactiveAsync("Ada", "Lovelace", null, reservedId, "Moved away", DateTime.UtcNow, "remover@example.test");
+        var removedHonoree = await SeedInactiveAsync("Grace", "Hopper", null, removedId, "Moved away", DateTime.UtcNow, "remover@example.test");
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            var removed = await db.FlagGrids.SingleAsync(grid => grid.Id == removedId);
+            removed.DeletedDate = DateTime.UtcNow;
+            removed.DeletedBy = "seed";
+            await db.SaveChangesAsync();
+        }
+
+        var client = factory.CreateClient();
+        var reservedResponse = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
+        {
+            items = new[] { new { honoreeId = reservedHonoree, flagGridId = reservedId } }
+        }));
+        Assert.Equal(HttpStatusCode.Conflict, reservedResponse.StatusCode);
+        Assert.Contains("reserved", await reservedResponse.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+
+        var removedResponse = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
+        {
+            items = new[] { new { honoreeId = removedHonoree, flagGridId = removedId } }
+        }));
+        var removedBody = await removedResponse.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.Conflict, removedResponse.StatusCode);
+        Assert.Contains("no longer on the field", removedBody, StringComparison.Ordinal);
+
+        var missingResponse = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
+        {
+            items = new[] { new { honoreeId = removedHonoree, flagGridId = 987654 } }
+        }));
+        Assert.Equal(HttpStatusCode.Conflict, missingResponse.StatusCode);
+
+        await using var after = factory.Services.CreateAsyncScope();
+        var database = after.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.False((await database.Honorees.SingleAsync(row => row.Id == reservedHonoree)).IsActive);
+        Assert.False((await database.Honorees.SingleAsync(row => row.Id == removedHonoree)).IsActive);
+        Assert.Null((await database.Honorees.SingleAsync(row => row.Id == reservedHonoree)).FlagGridId);
+        Assert.Null((await database.Honorees.SingleAsync(row => row.Id == removedHonoree)).FlagGridId);
+        Assert.Equal(0, await database.FlagGridRemovalAudits.CountAsync(row => row.Action == "Restore"));
+        Assert.True((await database.FlagGrids.SingleAsync(grid => grid.Id == reservedId)).Reserved);
     }
 
     [Fact]

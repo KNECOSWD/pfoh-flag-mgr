@@ -82,6 +82,8 @@ test("inactive honorees stay behind the administrator gate", () => {
   assert.match(controller, /\[Authorize\(Policy = "AdminOnly"\)\]/);
   assert.match(api, /\/api\/admin\/inactive-honorees/);
   assert.match(page, /htmlFor="inactive-honoree-search"/);
+  assert.match(page, /className="btn btn-outline-secondary"[^>]*>Search</);
+  assert.equal(page.match(/btn btn-primary/g)?.length ?? 0, 1);
   assert.match(page, /aria-label="Select all inactive honorees on this page"/);
   assert.match(page, /aria-label=\{row\.canReactivate \? `Select \$\{row\.name\}`/);
   assert.match(page, /htmlFor=\{`free-flag-\$\{row\.honoreeId\}`\}/);

@@ -192,7 +192,7 @@ export function InactiveHonorees({
   const lastShown = Math.min(page * pageSize, total);
 
   return (
-    <section className="card adminCard" aria-labelledby="inactive-honorees-title">
+    <section className="card adminCard inactiveHonorees" aria-labelledby="inactive-honorees-title">
       <div className="sectionHeader">
         <div>
           <p className="eyebrow">Administrator</p>
@@ -224,7 +224,7 @@ export function InactiveHonorees({
             autoComplete="off"
           />
         </div>
-        <button type="submit" className="btn btn-primary" disabled={busy}>Search</button>
+        <button type="submit" className="btn btn-outline-secondary" disabled={busy}>Search</button>
       </form>
       <div className="d-flex flex-column flex-md-row gap-2 mb-3">
         <button

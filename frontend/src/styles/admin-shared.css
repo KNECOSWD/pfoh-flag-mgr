@@ -798,6 +798,16 @@ main > .pageBody > .adminSectionStack > .card {
   z-index: var(--z-modal);
 }
 
+.inactiveHonorees {
+  min-width: 0;
+}
+
+.inactiveHonorees .btn,
+.inactiveHonorees .form-control,
+.inactiveHonorees .form-select {
+  min-height: 2.75rem;
+}
+
 .adminNavPanel {
   gap: var(--space-3xs);
   padding: var(--space-3xs);

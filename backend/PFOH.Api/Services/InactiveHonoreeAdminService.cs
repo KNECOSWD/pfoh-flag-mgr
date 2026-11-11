@@ -22,6 +22,7 @@ public sealed class InactiveHonoreeAdminService(
     PfohDbContext db,
     HonoreePdfService pdfs,
     ReprintQueueMaintenance reprints,
+    InactiveRestoreGate restoreGate,
     ILogger<InactiveHonoreeAdminService> logger)
 {
     public const int DefaultPageSize = 25;
@@ -100,6 +101,11 @@ public sealed class InactiveHonoreeAdminService(
         CancellationToken ct)
     {
         InactiveHonoreeReactivateItemResultDto result;
+        if (restoreGate.BeforeRestore is not null)
+        {
+            await restoreGate.BeforeRestore(ct);
+        }
+
         if (!db.Database.IsRelational())
         {
             result = await RestoreCoreAsync(item, actor, transaction: null, ct);
@@ -211,7 +217,7 @@ public sealed class InactiveHonoreeAdminService(
                     $"{name} was not restored. Flag {grid.FlagGridName} is assigned to {occupant.Name}. Choose an open flag.");
             }
 
-            if (UsesSqlServer)
+            if (db.Database.IsRelational())
             {
                 var claimed = await ClaimFlagRowAsync(grid.Id, honoree.Id, actor.Email, ct);
                 if (claimed != 1)
@@ -878,11 +884,9 @@ public sealed class InactiveHonoreeAdminService(
     private static bool IsSlotConflict(DbUpdateException ex)
     {
         var text = ex.InnerException?.Message ?? ex.Message;
-        return text.Contains("UX_Honorees_OneActiveFlagGrid", StringComparison.OrdinalIgnoreCase);
+        return text.Contains("UX_Honorees_OneActiveFlagGrid", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("UNIQUE constraint failed: Honorees.FlagGridId", StringComparison.OrdinalIgnoreCase);
     }
-
-    private bool UsesSqlServer =>
-        (db.Database.ProviderName ?? string.Empty).Contains("SqlServer", StringComparison.OrdinalIgnoreCase);
 
     private static InactiveHonoreeReactivateItemResultDto Result(
         int honoreeId,

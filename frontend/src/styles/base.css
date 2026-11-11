@@ -1449,7 +1449,7 @@ textarea {
 
 .modalActions button {
   width: 100%;
-  min-height: 2.5rem;
+  min-height: var(--size-touch);
   @media (min-width: 761px) {
     width: unset;
     min-height: 2.45rem;

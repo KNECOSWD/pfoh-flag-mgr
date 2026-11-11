@@ -169,6 +169,7 @@ builder.Services.AddSingleton<HonoreeFileStorage>();
 builder.Services.AddSingleton<IHonoreeCardRenderer, HonoreeCardRenderer>();
 builder.Services.AddScoped<HonoreePdfService>();
 builder.Services.AddScoped<FlagGridRemovalService>();
+builder.Services.AddSingleton<InactiveRestoreGate>();
 builder.Services.AddScoped<InactiveHonoreeAdminService>();
 builder.Services.AddSingleton<ProfileStoreCircuit>();
 builder.Services.AddHealthChecks()
@@ -586,7 +587,13 @@ try
     {
         await FlagRemovalQueueSchema.EnsureAsync(startupDb, CancellationToken.None);
         await FlagGridRemovalAuditSchema.EnsureAsync(startupDb, CancellationToken.None);
-        await HonoreeActiveFlagSlotSchema.EnsureAsync(startupDb, CancellationToken.None);
+        var flagSlotIndex = await HonoreeActiveFlagSlotSchema.EnsureAsync(startupDb, CancellationToken.None);
+        if (flagSlotIndex.SkipWarning is not null)
+        {
+            app.Logger.LogWarning(
+                "UX_Honorees_OneActiveFlagGrid was not created because {DuplicateFlagCount} flag positions already have more than one active honoree. New restores still refuse a second active assignment.",
+                flagSlotIndex.DuplicateFlagCount);
+        }
     }
     catch (Exception ex)
     {

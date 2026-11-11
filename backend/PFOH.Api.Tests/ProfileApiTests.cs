@@ -755,6 +755,8 @@ public class PfohApiFactory : WebApplicationFactory<Program>
 
     public string? SqlServerConnectionString { get; set; }
 
+    public string? SqliteConnectionString { get; set; }
+
     // The shared suite raises the permit so unrelated tests are not limited.
     // A rate-limit test sets this to keep the app default of 60.
     public bool UseRealAuthenticatedGetLimit { get; set; }
@@ -809,6 +811,10 @@ public class PfohApiFactory : WebApplicationFactory<Program>
                 if (!string.IsNullOrWhiteSpace(SqlServerConnectionString))
                 {
                     options.UseSqlServer(SqlServerConnectionString);
+                }
+                else if (!string.IsNullOrWhiteSpace(SqliteConnectionString))
+                {
+                    options.UseSqlite(SqliteConnectionString);
                 }
                 else
                 {
