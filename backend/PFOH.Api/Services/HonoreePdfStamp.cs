@@ -11,7 +11,9 @@ namespace PFOH.Api.Services;
 /// </summary>
 public static class HonoreePdfStamp
 {
-    public const int FormatVersion = 1;
+    // 2 prints the rank on its own line under the name. A stored card stamped
+    // with 1 no longer matches, so the next open or print rebuilds that one card.
+    public const int FormatVersion = 2;
 
     public const string MetadataKey = "pfohstamp";
 
@@ -20,11 +22,12 @@ public static class HonoreePdfStamp
         string? flagGridName,
         string? serviceBranchName,
         string? sponsorName,
-        string? photoEtag)
+        string? photoEtag,
+        int formatVersion = FormatVersion)
     {
         var payload = string.Join(
             '\u001f',
-            FormatVersion.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            formatVersion.ToString(System.Globalization.CultureInfo.InvariantCulture),
             honoree.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
             honoree.FirstName ?? "",
             honoree.MiddleName ?? "",

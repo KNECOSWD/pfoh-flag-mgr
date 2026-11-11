@@ -242,6 +242,32 @@ public class Release52Tests : IDisposable
     }
 
     [Fact]
+    public async Task A_v1_card_stamp_is_rebuilt_on_open_and_startup_does_not_render()
+    {
+        await ResetAsync();
+        await SeedOnGridAsync(1, "Alex", "Rivera", 11, "AA-10", gridHonoreeId: 1);
+        var client = factory.CreateClient();
+        Assert.Equal(0, factory.Renderer.Calls);
+
+        var v1 = await CurrentStampAsync(1, formatVersion: 1);
+        var current = await CurrentStampAsync(1);
+        Assert.Equal(2, HonoreePdfStamp.FormatVersion);
+        Assert.NotEqual(v1, current);
+        factory.Files.Pdfs[1] = "%PDF-v1"u8.ToArray();
+        factory.Files.PdfStamps[1] = v1;
+
+        var opened = await client.GetAsync("/api/honorees/1/pdf");
+        Assert.Equal(HttpStatusCode.OK, opened.StatusCode);
+        Assert.NotEqual("%PDF-v1", System.Text.Encoding.UTF8.GetString(await opened.Content.ReadAsByteArrayAsync()));
+        Assert.Equal(1, factory.Renderer.Calls);
+        Assert.Equal(current, factory.Files.PdfStamps[1]);
+
+        var again = await client.GetAsync("/api/honorees/1/pdf");
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
+        Assert.Equal(1, factory.Renderer.Calls);
+    }
+
+    [Fact]
     public async Task Regenerate_pdf_is_admin_only_and_hides_storage_internals()
     {
         await ResetAsync();
@@ -548,7 +574,7 @@ public class Release52Tests : IDisposable
         Assert.Equal("Unclaimed", await saved.FlagClaims.Where(item => item.Id == 9).Select(item => item.ClaimStatus).SingleAsync());
     }
 
-    private async Task<string> CurrentStampAsync(int honoreeId)
+    private async Task<string> CurrentStampAsync(int honoreeId, int? formatVersion = null)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
@@ -559,12 +585,9 @@ public class Release52Tests : IDisposable
         var sponsor = honoree.Sponsor is null
             ? null
             : string.Join(" ", new[] { honoree.Sponsor.FirstName, honoree.Sponsor.LastName }.Where(part => !string.IsNullOrWhiteSpace(part)));
-        return HonoreePdfStamp.Compute(
-            honoree,
-            honoree.FlagGrid?.FlagGridName,
-            honoree.ServiceBranch?.ServiceBranchName,
-            sponsor,
-            etag);
+        return formatVersion is int version
+            ? HonoreePdfStamp.Compute(honoree, honoree.FlagGrid?.FlagGridName, honoree.ServiceBranch?.ServiceBranchName, sponsor, etag, version)
+            : HonoreePdfStamp.Compute(honoree, honoree.FlagGrid?.FlagGridName, honoree.ServiceBranch?.ServiceBranchName, sponsor, etag);
     }
 
     private async Task ResetAsync()

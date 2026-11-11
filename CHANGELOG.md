@@ -3,6 +3,7 @@
 ## 5.6.2
 
 - An honoree card prints the rank on its own line under the name and above the years, when the honoree has a rank. A blank rank leaves the card layout unchanged.
+- A stored card from the previous layout is rebuilt the next time it is opened or printed. Startup does not rebuild every card.
 
 ## 5.6.1
 
