@@ -432,6 +432,7 @@ export type InactiveHonoreeRow = {
   reason: string;
   canReactivate: boolean;
   blockReason?: string | null;
+  legacyKey?: number | null;
 };
 
 export type InactiveHonoreeList = {
@@ -1472,6 +1473,20 @@ export const adminReactivationApi = {
     request<{ revokedCount: number }>(instance, account, "/api/admin/reactivation/revoke", {
       method: "POST",
       body: JSON.stringify({ honoreeIds: all ? null : honoreeIds, all })
+    }),
+
+  inactive: (instance: IPublicClientApplication, account: AccountInfo, query: string, page: number) => {
+    const params = new URLSearchParams();
+    if (query.trim()) params.set("q", query.trim());
+    params.set("page", String(page));
+    params.set("pageSize", "25");
+    return request<InactiveHonoreeList>(instance, account, `/api/admin/reactivation/inactive?${params.toString()}`);
+  },
+
+  addToReviewQueue: (instance: IPublicClientApplication, account: AccountInfo, honoreeIds: number[]) =>
+    request<{ results: InactiveHonoreeResult[] }>(instance, account, "/api/admin/reactivation/review-queue", {
+      method: "POST",
+      body: JSON.stringify({ items: honoreeIds.map((honoreeId) => ({ honoreeId })) })
     })
 };
 
