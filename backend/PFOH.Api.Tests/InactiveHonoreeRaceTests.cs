@@ -11,10 +11,10 @@ namespace PFOH.Api.Tests;
 
 /// <summary>
 /// The shared API fixture uses EF Core's in-memory provider, which ignores
-/// transactions, so two overlapping restores cannot contend for a row.
+/// transactions, so two overlapping restores cannot contend.
 /// SQLite is already used by the merge and profile race tests. It has a real
-/// write lock and a busy timeout, so two HTTP restores of one free flag run
-/// at the same time and the database lets only one commit.
+/// write lock and a busy timeout, so two HTTP restores of one honoree run
+/// at the same time and only one approval-queue row is saved.
 /// </summary>
 public sealed class InactiveHonoreeSqliteFactory : PfohApiFactory
 {
@@ -47,22 +47,10 @@ public sealed class InactiveHonoreeSqliteFactory : PfohApiFactory
 public class InactiveHonoreeRaceTests(InactiveHonoreeSqliteFactory factory) : IClassFixture<InactiveHonoreeSqliteFactory>
 {
     [Fact]
-    public async Task Two_concurrent_restores_of_one_free_flag_save_only_one_honoree()
+    public async Task Two_concurrent_reactivations_of_one_honoree_write_one_audit()
     {
         await ResetAsync();
-        var gridId = await SeedGridAsync("Q-40");
-        var first = await SeedInactiveAsync("Ada", "Lovelace", gridId);
-        var second = await SeedInactiveAsync("Grace", "Hopper", gridId);
-        await using (var scope = factory.Services.CreateAsyncScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
-            await db.Database.ExecuteSqlRawAsync(
-                """
-                CREATE UNIQUE INDEX IF NOT EXISTS UX_Honorees_OneActiveFlagGrid
-                ON Honorees (FlagGridId)
-                WHERE IsActive = 1 AND DeletedDate IS NULL AND FlagGridId IS NOT NULL;
-                """);
-        }
+        var honoreeId = await SeedInactiveAsync("Ada", "Lovelace");
 
         var entered = 0;
         var bothEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -81,9 +69,7 @@ public class InactiveHonoreeRaceTests(InactiveHonoreeSqliteFactory factory) : IC
         {
             using var firstClient = factory.CreateClient();
             using var secondClient = factory.CreateClient();
-            var firstTask = firstClient.SendAsync(Admin(first));
-            var secondTask = secondClient.SendAsync(Admin(second));
-            var responses = await Task.WhenAll(firstTask, secondTask);
+            var responses = await Task.WhenAll(firstClient.SendAsync(Admin(honoreeId)), secondClient.SendAsync(Admin(honoreeId)));
             var statuses = responses.Select(response => response.StatusCode).OrderBy(status => status).ToArray();
             Assert.Equal([HttpStatusCode.OK, HttpStatusCode.Conflict], statuses);
             Assert.Equal(2, entered);
@@ -95,18 +81,17 @@ public class InactiveHonoreeRaceTests(InactiveHonoreeSqliteFactory factory) : IC
 
         await using var after = factory.Services.CreateAsyncScope();
         var database = after.ServiceProvider.GetRequiredService<PfohDbContext>();
-        var active = await database.Honorees.Where(honoree => honoree.IsActive && honoree.FlagGridId == gridId).ToListAsync();
-        Assert.Single(active);
-        var otherId = active[0].Id == first ? second : first;
-        Assert.False((await database.Honorees.SingleAsync(honoree => honoree.Id == otherId)).IsActive);
-        Assert.Equal(gridId, (await database.FlagGrids.SingleAsync(grid => grid.Id == gridId)).HonoreeId);
-        Assert.Equal(1, await database.FlagGridRemovalAudits.CountAsync(row => row.Action == "Restore"));
+        var honoree = await database.Honorees.SingleAsync(row => row.Id == honoreeId);
+        Assert.False(honoree.IsActive);
+        Assert.Null(honoree.FlagGridId);
+        Assert.Equal(1, await database.HonoreeChangeRequests.CountAsync(row => row.HonoreeId == honoreeId && row.RequestStatus == "Submitted" && row.FlagGridId == null));
+        Assert.Equal(1, await database.FlagGridRemovalAudits.CountAsync(row => row.Action == "Restore" && row.FlagGridId == null && row.Reason == InactiveHonoreeAdminService.ApprovalQueueNote));
 
-        HttpRequestMessage Admin(int honoreeId)
+        HttpRequestMessage Admin(int id)
         {
             var request = new HttpRequestMessage(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate")
             {
-                Content = JsonContent.Create(new { items = new[] { new { honoreeId, flagGridId = gridId } } })
+                Content = JsonContent.Create(new { items = new[] { new { honoreeId = id } } })
             };
             request.Headers.Add(TestAuthHandler.OidHeader, "admin-1");
             request.Headers.Add(TestAuthHandler.EmailHeader, "admin@example.test");
@@ -131,26 +116,7 @@ public class InactiveHonoreeRaceTests(InactiveHonoreeSqliteFactory factory) : IC
         await db.SaveChangesAsync();
     }
 
-    private async Task<int> SeedGridAsync(string name)
-    {
-        await using var scope = factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
-        var now = DateTime.UtcNow;
-        var grid = new FlagGrid
-        {
-            FlagGridName = name,
-            Notes = string.Empty,
-            CreatedBy = "seed",
-            ModifiedBy = "seed",
-            CreatedDate = now,
-            ModifiedDate = now
-        };
-        db.FlagGrids.Add(grid);
-        await db.SaveChangesAsync();
-        return grid.Id;
-    }
-
-    private async Task<int> SeedInactiveAsync(string first, string last, int gridId)
+    private async Task<int> SeedInactiveAsync(string first, string last)
     {
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
@@ -180,7 +146,7 @@ public class InactiveHonoreeRaceTests(InactiveHonoreeSqliteFactory factory) : IC
         db.FlagGridRemovalAudits.Add(new FlagGridRemovalAudit
         {
             HonoreeId = honoree.Id,
-            FlagGridId = gridId,
+            FlagGridId = null,
             Action = "Remove",
             ActorEmail = "remover@example.test",
             OccurredUtc = now,

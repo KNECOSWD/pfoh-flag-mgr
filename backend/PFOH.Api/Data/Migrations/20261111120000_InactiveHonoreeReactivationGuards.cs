@@ -6,12 +6,11 @@ using PFOH.Api.Services;
 namespace PFOH.Api.Data.Migrations;
 
 /// <summary>
-/// Schema only. Makes FlagGridRemovalAudits.FlagGridId nullable and adds
-/// UX_Honorees_OneActiveFlagGrid when no two active honorees already share a flag.
-/// No row is updated or deleted. Production runs the same SQL from
-/// FlagGridRemovalAuditSchema.EnsureAsync and HonoreeActiveFlagSlotSchema.EnsureAsync
+/// Schema only. Makes FlagGridRemovalAudits.FlagGridId nullable so a restore
+/// into the approval queue can be audited with no flag. No row is updated or
+/// deleted. Production applies the same SQL from FlagGridRemovalAuditSchema.EnsureAsync
 /// because the live database has no EF migration history.
-/// Rollback drops the unique index and leaves FlagGridId nullable.
+/// Down leaves FlagGridId nullable. Forcing NOT NULL would fail after a null was stored.
 /// </summary>
 [Migration("20261111120000_InactiveHonoreeReactivationGuards")]
 public partial class InactiveHonoreeReactivationGuards : Migration
@@ -20,11 +19,10 @@ public partial class InactiveHonoreeReactivationGuards : Migration
     {
         migrationBuilder.Sql(FlagGridRemovalAuditSchema.CreateSql);
         migrationBuilder.Sql(FlagGridRemovalAuditSchema.AlterFlagGridIdNullableSql);
-        migrationBuilder.Sql(HonoreeActiveFlagSlotSchema.EnsureSql);
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
     {
-        migrationBuilder.Sql(HonoreeActiveFlagSlotSchema.DropSql);
+        migrationBuilder.Sql("PRINT N'FlagGridId stays nullable. Rollback does not rewrite rows.';");
     }
 }

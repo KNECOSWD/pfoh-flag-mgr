@@ -22,14 +22,6 @@ public class AdminInactiveHonoreesController(InactiveHonoreeAdminService honoree
         return Ok(await honorees.ListAsync(q, page, pageSize, ct));
     }
 
-    [HttpGet("free-slots")]
-    public async Task<ActionResult<InactiveHonoreeFreeSlotListDto>> FreeSlots(
-        [FromQuery] string? q,
-        CancellationToken ct)
-    {
-        return Ok(await honorees.ListFreeSlotsAsync(q, ct));
-    }
-
     [HttpPost("reactivate")]
     public async Task<ActionResult<InactiveHonoreeReactivateResultDto>> Reactivate(
         [FromBody] InactiveHonoreeReactivateBody? body,
@@ -43,7 +35,7 @@ public class AdminInactiveHonoreesController(InactiveHonoreeAdminService honoree
 
         if (items.Count > InactiveHonoreeAdminService.MaxBatch)
         {
-            return BadRequest(new { message = $"Restore up to {InactiveHonoreeAdminService.MaxBatch} honorees at a time." });
+            return BadRequest(new { message = $"Send up to {InactiveHonoreeAdminService.MaxBatch} honorees at a time." });
         }
 
         var result = await honorees.ReactivateAsync(items, AdminActor.From(User), ct);

@@ -94,18 +94,6 @@ async function install(page: Page, roles: string[] = ["PFOH.Admin"]) {
       });
       return;
     }
-    if (path === "/api/admin/inactive-honorees/free-slots") {
-      await route.fulfill({
-        json: {
-          items: [
-            { id: 20, flagGridName: "D-04" },
-            { id: 21, flagGridName: "E-02" }
-          ],
-          truncated: false
-        }
-      });
-      return;
-    }
     if (path === "/api/admin/inactive-honorees/reactivate") {
       await route.fulfill({
         json: {
@@ -115,12 +103,8 @@ async function install(page: Page, roles: string[] = ["PFOH.Admin"]) {
               name: "Ada Lovelace",
               outcome: "reactivated",
               code: "ok",
-              message: "Ada Lovelace is active on flag C-11.",
-              flagGridId: 11,
-              flagGridName: "C-11",
-              reprintQueued: false,
-              removalCanceled: true,
-              pdfWarning: null
+              message: "Ada Lovelace will go to the approval queue with no flag assigned.",
+              changeRequestId: 50
             }
           ]
         }
@@ -151,7 +135,7 @@ test.beforeAll(() => {
   mkdirSync("e2e-shots", { recursive: true });
 });
 
-test("an administrator can search, confirm, and resolve a flag conflict", async ({ page }) => {
+test("an administrator can search and confirm a queue reactivation", async ({ page }) => {
   await install(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto("/admin/inactive");
@@ -172,20 +156,15 @@ test("an administrator can search, confirm, and resolve a flag conflict", async 
   await page.getByRole("button", { name: "Search" }).click();
   await expect(page.getByRole("row", { name: /Grace Hopper/ })).toBeVisible();
 
-  await page.getByRole("row", { name: /Ada Lovelace/ }).getByRole("button", { name: "Restore" }).click();
+  await page.getByRole("checkbox", { name: "Select Ada Lovelace" }).check();
+  await page.getByRole("checkbox", { name: "Select Alan Turing" }).check();
+  await page.getByRole("button", { name: "Reactivate selected honorees" }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText("Restore Ada Lovelace to flag C-11.");
+  await expect(dialog).toContainText("Send Ada Lovelace to the approval queue with no flag assigned.");
+  await expect(dialog).toContainText("Send Alan Turing to the approval queue with no flag assigned.");
+  await expect(dialog).not.toContainText("C-11");
   await page.screenshot({ path: "e2e-shots/inactive-confirm.png", fullPage: true });
   await dialog.getByRole("button", { name: "Cancel" }).click();
-  await expect(dialog).toHaveCount(0);
-
-  await page.getByRole("checkbox", { name: "Select Grace Hopper" }).check();
-  await expect(page.getByText("Flag B-02 is not open. It is assigned to Alex Kim. Choose an open flag.").first()).toBeVisible();
-  await expect(page.getByLabel("Open flag for Grace Hopper")).toBeVisible();
-  await page.screenshot({ path: "e2e-shots/inactive-conflict.png", fullPage: true });
-  await page.getByLabel("Open flag for Grace Hopper").selectOption("D-04");
-  await page.getByRole("button", { name: "Restore selected honoree" }).click();
-  await expect(dialog).toContainText("Restore Grace Hopper to flag D-04.");
 });
 
 test("the list and confirm dialog fit a 390px screen", async ({ page }) => {
@@ -195,19 +174,20 @@ test("the list and confirm dialog fit a 390px screen", async ({ page }) => {
   await expect(page.locator("#inactive-honorees-title")).toBeVisible();
   await expect(page.getByRole("row", { name: /Ada Lovelace/ })).toBeVisible();
   const search = page.getByRole("button", { name: "Search" });
-  const restore = page.getByRole("button", { name: "Restore selected honorees" });
+  const reactivate = page.getByRole("button", { name: "Reactivate selected honorees" });
   await expect(search).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await expectTappable(search);
-  await expectTappable(restore);
-  await expectTappable(page.getByRole("row", { name: /Ada Lovelace/ }).getByRole("button", { name: "Restore" }));
+  await expectTappable(reactivate);
+  await expectTappable(page.getByRole("row", { name: /Ada Lovelace/ }).getByRole("button", { name: "Reactivate" }));
   await page.screenshot({ path: "e2e-shots/inactive-list-390.png", fullPage: true });
 
-  await page.getByRole("row", { name: /Ada Lovelace/ }).getByRole("button", { name: "Restore" }).click();
+  await page.getByRole("row", { name: /Ada Lovelace/ }).getByRole("button", { name: "Reactivate" }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog).toContainText("Restore Ada Lovelace to flag C-11.");
+  await expect(dialog).toContainText("Send Ada Lovelace to the approval queue with no flag assigned.");
+  await expect(dialog).not.toContainText("C-11");
   await expectNoHorizontalOverflow(page);
-  await expectTappable(dialog.getByRole("button", { name: "Restore" }));
+  await expectTappable(dialog.getByRole("button", { name: "Send to queue" }));
   await expectTappable(dialog.getByRole("button", { name: "Cancel" }));
   await page.screenshot({ path: "e2e-shots/inactive-confirm-390.png", fullPage: true });
 });

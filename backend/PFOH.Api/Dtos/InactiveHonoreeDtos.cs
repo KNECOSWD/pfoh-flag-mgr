@@ -10,9 +10,8 @@ public sealed record InactiveHonoreeDto(
     DateTime? DeactivatedUtc,
     string DeactivatedBy,
     string Reason,
-    string SlotStatus,
-    string? SlotDetail,
-    bool CanReactivate);
+    bool CanReactivate,
+    string? BlockReason);
 
 public sealed record InactiveHonoreeListDto(
     IReadOnlyList<InactiveHonoreeDto> Items,
@@ -28,8 +27,6 @@ public sealed class InactiveHonoreeReactivateBody
 public sealed class InactiveHonoreeReactivateItem
 {
     public int HonoreeId { get; set; }
-
-    public int? FlagGridId { get; set; }
 }
 
 public sealed record InactiveHonoreeReactivateItemResultDto(
@@ -38,17 +35,7 @@ public sealed record InactiveHonoreeReactivateItemResultDto(
     string Outcome,
     string Code,
     string Message,
-    int? FlagGridId,
-    string? FlagGridName,
-    bool ReprintQueued,
-    bool RemovalCanceled,
-    string? PdfWarning);
+    int? ChangeRequestId);
 
 public sealed record InactiveHonoreeReactivateResultDto(
     IReadOnlyList<InactiveHonoreeReactivateItemResultDto> Results);
-
-public sealed record InactiveHonoreeFreeSlotDto(int Id, string FlagGridName);
-
-public sealed record InactiveHonoreeFreeSlotListDto(
-    IReadOnlyList<InactiveHonoreeFreeSlotDto> Items,
-    bool Truncated);

@@ -316,7 +316,7 @@ const pageBanners: Record<AppRoute, { title: string; subtitle: string }> = {
   },
   "/admin/inactive": {
     title: "INACTIVE HONOREES",
-    subtitle: "Find a deactivated honoree and restore that person to the field."
+    subtitle: "Find a deactivated honoree and send that person to the approval queue."
   },
   "/admin/activity": {
     title: "ACTIVITY",

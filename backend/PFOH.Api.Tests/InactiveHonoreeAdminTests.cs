@@ -22,22 +22,6 @@ public class InactiveHonoreeAdminTests(PfohApiFactory factory) : IClassFixture<P
         Assert.True(FlagPositionLabel.Matches("AA10", "AA-10"));
         Assert.False(FlagPositionLabel.Matches("Q11", "Q-17"));
         Assert.False(FlagPositionLabel.Matches("Navy", "C-11"));
-        Assert.Contains("UX_Honorees_OneActiveFlagGrid", HonoreeActiveFlagSlotSchema.EnsureSql, StringComparison.Ordinal);
-        Assert.Contains("PRINT @FlagSlotIndexWarning", HonoreeActiveFlagSlotSchema.EnsureSql, StringComparison.Ordinal);
-        Assert.DoesNotContain("UPDATE ", HonoreeActiveFlagSlotSchema.EnsureSql, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("DELETE ", HonoreeActiveFlagSlotSchema.EnsureSql, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("3 flag positions", HonoreeActiveFlagSlotSchema.SkipWarning(3, indexPresent: false), StringComparison.Ordinal);
-        Assert.Null(HonoreeActiveFlagSlotSchema.SkipWarning(3, indexPresent: true));
-        Assert.Null(HonoreeActiveFlagSlotSchema.SkipWarning(0, indexPresent: false));
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "VERSION")))
-        {
-            dir = dir.Parent;
-        }
-
-        var program = File.ReadAllText(Path.Combine(dir!.FullName, "backend", "PFOH.Api", "Program.cs"));
-        Assert.Contains("UX_Honorees_OneActiveFlagGrid was not created because {DuplicateFlagCount}", program, StringComparison.Ordinal);
-        Assert.Contains("LogWarning", program, StringComparison.Ordinal);
         Assert.Contains("ALTER COLUMN [FlagGridId] int NULL", FlagGridRemovalAuditSchema.AlterFlagGridIdNullableSql, StringComparison.Ordinal);
     }
 
@@ -60,7 +44,7 @@ public class InactiveHonoreeAdminTests(PfohApiFactory factory) : IClassFixture<P
         Assert.Equal("Moved away", byFlag.Items[0].Reason);
         Assert.Equal("remover@example.test", byFlag.Items[0].DeactivatedBy);
         Assert.Equal(2024, byFlag.Items[0].DeactivatedUtc?.Year);
-        Assert.Equal("free", byFlag.Items[0].SlotStatus);
+        Assert.True(byFlag.Items[0].CanReactivate);
 
         var byName = await ReadListAsync(client, "/api/admin/inactive-honorees?q=hopper");
         Assert.Equal(["Grace Hopper"], byName.Items.Select(item => item.Name).ToArray());
@@ -72,7 +56,6 @@ public class InactiveHonoreeAdminTests(PfohApiFactory factory) : IClassFixture<P
         Assert.Equal(InactiveHonoreeAdminService.NotRecorded, turing.Reason);
         Assert.Equal(InactiveHonoreeAdminService.NotRecorded, turing.DeactivatedBy);
         Assert.Null(turing.DeactivatedUtc);
-        Assert.Equal("none", turing.SlotStatus);
         Assert.True(turing.CanReactivate);
 
         var page = await ReadListAsync(client, "/api/admin/inactive-honorees?page=2&pageSize=1");
@@ -82,138 +65,120 @@ public class InactiveHonoreeAdminTests(PfohApiFactory factory) : IClassFixture<P
     }
 
     [Fact]
-    public async Task Reactivate_restores_the_open_flag_and_writes_an_audit()
+    public async Task Reactivate_queues_the_honoree_with_no_flag_and_writes_an_audit()
     {
         await ResetAsync();
-        var gridId = await SeedGridAsync("C-11");
+        var gridId = await SeedGridAsync("Q-40");
         var honoreeId = await SeedInactiveAsync("Ada", "Lovelace", null, gridId, "Moved away", DateTime.UtcNow, "remover@example.test", openRemoval: true);
 
         var client = factory.CreateClient();
         var response = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
         {
-            items = new[] { new { honoreeId, flagGridId = (int?)null } }
+            items = new[] { new { honoreeId } }
         }));
         var body = await response.Content.ReadAsStringAsync();
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var payload = JsonSerializer.Deserialize<ReactivatePayload>(body, Json);
-        Assert.NotNull(payload);
-        Assert.Equal("reactivated", payload.Results[0].Outcome);
-        Assert.Contains("Ada Lovelace is active on flag C-11.", payload.Results[0].Message, StringComparison.Ordinal);
-        Assert.True(payload.Results[0].RemovalCanceled);
-        Assert.False(payload.Results[0].ReprintQueued);
+        Assert.Contains("approval queue with no flag assigned", body, StringComparison.Ordinal);
 
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
         var honoree = await db.Honorees.SingleAsync(row => row.Id == honoreeId);
-        Assert.True(honoree.IsActive);
+        Assert.False(honoree.IsActive);
+        Assert.Null(honoree.FlagGridId);
         Assert.Null(honoree.DeletedDate);
-        Assert.Equal(gridId, honoree.FlagGridId);
-        var grid = await db.FlagGrids.SingleAsync(row => row.Id == gridId);
-        Assert.Equal(honoreeId, grid.HonoreeId);
+        var change = await db.HonoreeChangeRequests.SingleAsync(row => row.HonoreeId == honoreeId);
+        Assert.Equal("Submitted", change.RequestStatus);
+        Assert.Null(change.FlagGridId);
         var audit = await db.FlagGridRemovalAudits.SingleAsync(row => row.HonoreeId == honoreeId && row.Action == "Restore");
+        Assert.Equal(InactiveHonoreeAdminService.ApprovalQueueNote, audit.Reason);
+        Assert.Null(audit.FlagGridId);
         Assert.Equal("admin@example.test", audit.ActorEmail);
         Assert.Equal("admin-1", audit.ActorObjectId);
-        Assert.Equal(gridId, audit.FlagGridId);
-        Assert.Contains("\"isActive\":false", audit.BeforeState, StringComparison.Ordinal);
-        Assert.Contains("\"isActive\":true", audit.AfterState, StringComparison.Ordinal);
-        Assert.Contains("\"flagGridId\":" + gridId, audit.AfterState, StringComparison.Ordinal);
-        Assert.True(audit.OccurredUtc > DateTime.UtcNow.AddMinutes(-5));
-        var removal = await db.FlagRemovalQueueItems.SingleAsync(row => row.HonoreeId == honoreeId);
-        Assert.NotNull(removal.CanceledUtc);
-        Assert.Equal(0, await db.HonoreeChangeRequests.CountAsync(row => row.HonoreeId == honoreeId && row.RequiresCardReprint && row.CardPrintedUtc == null));
+
+        var again = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
+        {
+            items = new[] { new { honoreeId } }
+        }));
+        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+        Assert.Contains("already in the approval queue", await again.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(1, await db.FlagGridRemovalAudits.CountAsync(row => row.Action == "Restore"));
+        Assert.Equal(1, await db.HonoreeChangeRequests.CountAsync(row => row.HonoreeId == honoreeId && row.RequestStatus == "Submitted"));
     }
 
     [Fact]
-    public async Task Taken_flag_is_blocked_until_an_open_flag_is_chosen()
+    public async Task Reactivated_honoree_can_be_approved_and_then_assigned()
     {
         await ResetAsync();
-        var takenId = await SeedGridAsync("C-11");
-        var openId = await SeedGridAsync("D-04");
-        await SeedInactiveAsync("Grace", "Hopper", null, takenId, "Holds the flag", DateTime.UtcNow, "remover@example.test", active: true);
-        var honoreeId = await SeedInactiveAsync("Ada", "Lovelace", null, takenId, "Moved away", DateTime.UtcNow, "remover@example.test");
-
+        var honoreeId = await SeedInactiveAsync("Ada", "Lovelace", null, null, "Moved away", DateTime.UtcNow, "remover@example.test");
+        var flagId = await SeedGridAsync("Q-40");
         var client = factory.CreateClient();
-        var blocked = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
+        var queued = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
         {
-            items = new[] { new { honoreeId, flagGridId = (int?)null } }
+            items = new[] { new { honoreeId } }
         }));
-        var blockedBody = await blocked.Content.ReadAsStringAsync();
-        Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
-        Assert.Contains("assigned to Grace Hopper", blockedBody, StringComparison.Ordinal);
-        Assert.Contains("Choose an open flag", blockedBody, StringComparison.Ordinal);
+        Assert.Equal(HttpStatusCode.OK, queued.StatusCode);
+        var payload = await queued.Content.ReadFromJsonAsync<ReactivatePayload>(Json);
+        var changeId = payload!.Results[0].ChangeRequestId;
+
+        var pending = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/review/pending"));
+        Assert.Equal(HttpStatusCode.OK, pending.StatusCode);
+        var pendingBody = await pending.Content.ReadAsStringAsync();
+        Assert.Contains("Ada Lovelace", pendingBody, StringComparison.Ordinal);
+
+        var approved = await client.SendAsync(Admin(HttpMethod.Post, $"/api/admin/review/{changeId}/approve", new
+        {
+            requiresCardReprint = false,
+            reviewNotes = "Approved from the queue."
+        }));
+        Assert.Equal(HttpStatusCode.OK, approved.StatusCode);
 
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
             var honoree = await db.Honorees.SingleAsync(row => row.Id == honoreeId);
-            Assert.False(honoree.IsActive);
+            Assert.True(honoree.IsActive);
             Assert.Null(honoree.FlagGridId);
-            Assert.Equal(0, await db.FlagGridRemovalAudits.CountAsync(row => row.Action == "Restore"));
+            Assert.Null(honoree.DeletedDate);
         }
 
-        var restored = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
+        var assigned = await client.SendAsync(Admin(HttpMethod.Post, $"/api/admin/review/flag-positions/{flagId}/assign", new
         {
-            items = new[] { new { honoreeId, flagGridId = openId } }
+            honoreeId
         }));
-        var restoredBody = await restored.Content.ReadAsStringAsync();
-        Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
-        Assert.Contains("Ada Lovelace is active on flag D-04.", restoredBody, StringComparison.Ordinal);
-        Assert.Contains("print queue", restoredBody, StringComparison.Ordinal);
+        var assignedBody = await assigned.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, assigned.StatusCode);
+        Assert.Contains("Q-40", assignedBody, StringComparison.Ordinal);
 
         await using var after = factory.Services.CreateAsyncScope();
         var database = after.ServiceProvider.GetRequiredService<PfohDbContext>();
-        var ada = await database.Honorees.SingleAsync(row => row.Id == honoreeId);
-        Assert.True(ada.IsActive);
-        Assert.Equal(openId, ada.FlagGridId);
-        Assert.Equal(honoreeId, (await database.FlagGrids.SingleAsync(row => row.Id == openId)).HonoreeId);
-        Assert.Equal(takenId, (await database.Honorees.SingleAsync(row => row.FirstName == "Grace")).FlagGridId);
-        var audit = await database.FlagGridRemovalAudits.SingleAsync(row => row.Action == "Restore");
-        Assert.Equal("admin@example.test", audit.ActorEmail);
-        Assert.Equal(openId, audit.FlagGridId);
-        Assert.Contains("\"isActive\":false", audit.BeforeState, StringComparison.Ordinal);
-        Assert.Contains("\"isActive\":true", audit.AfterState, StringComparison.Ordinal);
-        Assert.True(await database.HonoreeChangeRequests.AnyAsync(row =>
-            row.HonoreeId == honoreeId &&
-            row.FlagGridId == openId &&
-            row.RequiresCardReprint &&
-            row.CardPrintedUtc == null &&
-            row.RequestStatus == "Approved"));
+        var placed = await database.Honorees.SingleAsync(row => row.Id == honoreeId);
+        Assert.True(placed.IsActive);
+        Assert.Equal(flagId, placed.FlagGridId);
+        Assert.Equal(honoreeId, (await database.FlagGrids.SingleAsync(grid => grid.Id == flagId)).HonoreeId);
     }
 
     [Fact]
-    public async Task Multi_select_reports_each_honoree()
+    public async Task Multi_select_sends_each_honoree_to_the_approval_queue()
     {
         await ResetAsync();
-        var openId = await SeedGridAsync("D-04");
-        var takenId = await SeedGridAsync("C-11");
-        var ada = await SeedInactiveAsync("Ada", "Lovelace", null, openId, "Moved away", DateTime.UtcNow, "remover@example.test");
-        await SeedInactiveAsync("Grace", "Hopper", null, takenId, "Holds the flag", DateTime.UtcNow, "remover@example.test", active: true);
-        var alan = await SeedInactiveAsync("Alan", "Turing", null, takenId, "Moved away", DateTime.UtcNow, "remover@example.test");
-
+        var ada = await SeedInactiveAsync("Ada", "Lovelace", null, null, "Moved away", DateTime.UtcNow, "remover@example.test");
+        var alan = await SeedInactiveAsync("Alan", "Turing", null, null, null, null, null);
         var client = factory.CreateClient();
         var response = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
         {
-            items = new[]
-            {
-                new { honoreeId = ada, flagGridId = (int?)null },
-                new { honoreeId = alan, flagGridId = (int?)null }
-            }
+            items = new[] { new { honoreeId = ada }, new { honoreeId = alan } }
         }));
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var payload = await response.Content.ReadFromJsonAsync<ReactivatePayload>(Json);
-        Assert.NotNull(payload);
-        Assert.Equal(2, payload.Results.Count);
-        Assert.Equal("reactivated", payload.Results.Single(row => row.HonoreeId == ada).Outcome);
-        var blocked = payload.Results.Single(row => row.HonoreeId == alan);
-        Assert.Equal("blocked", blocked.Outcome);
-        Assert.Equal("slot-conflict", blocked.Code);
-        Assert.Contains("assigned to Grace Hopper", blocked.Message, StringComparison.Ordinal);
+        Assert.Equal(2, payload!.Results.Count);
+        Assert.All(payload.Results, item => Assert.Equal("reactivated", item.Outcome));
 
         await using var scope = factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
-        Assert.True((await db.Honorees.SingleAsync(row => row.Id == ada)).IsActive);
+        Assert.Equal(2, await db.HonoreeChangeRequests.CountAsync(row => row.RequestStatus == "Submitted" && row.FlagGridId == null));
+        Assert.Equal(2, await db.FlagGridRemovalAudits.CountAsync(row => row.Action == "Restore" && row.Reason == InactiveHonoreeAdminService.ApprovalQueueNote && row.FlagGridId == null));
+        Assert.False((await db.Honorees.SingleAsync(row => row.Id == ada)).IsActive);
         Assert.False((await db.Honorees.SingleAsync(row => row.Id == alan)).IsActive);
-        Assert.Equal(1, await db.FlagGridRemovalAudits.CountAsync(row => row.Action == "Restore"));
     }
 
     [Fact]
@@ -243,13 +208,12 @@ public class InactiveHonoreeAdminTests(PfohApiFactory factory) : IClassFixture<P
 
         var client = factory.CreateClient();
         var list = await ReadListAsync(client, "/api/admin/inactive-honorees?q=Lovelace");
-        Assert.Equal("merged", list.Items[0].SlotStatus);
         Assert.False(list.Items[0].CanReactivate);
         Assert.Contains("Merged into Grace Hopper.", list.Items[0].Reason, StringComparison.Ordinal);
 
         var response = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
         {
-            items = new[] { new { honoreeId = absorbed, flagGridId = (int?)null } }
+            items = new[] { new { honoreeId = absorbed } }
         }));
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Contains("Merge history", await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
@@ -261,52 +225,23 @@ public class InactiveHonoreeAdminTests(PfohApiFactory factory) : IClassFixture<P
     }
 
     [Fact]
-    public async Task Reserved_and_removed_flags_are_refused_without_an_audit()
+    public async Task An_already_active_honoree_is_not_reactivated()
     {
         await ResetAsync();
-        var reservedId = await SeedGridAsync("R-15", reserved: true);
-        var removedId = await SeedGridAsync("M-15");
-        var reservedHonoree = await SeedInactiveAsync("Ada", "Lovelace", null, reservedId, "Moved away", DateTime.UtcNow, "remover@example.test");
-        var removedHonoree = await SeedInactiveAsync("Grace", "Hopper", null, removedId, "Moved away", DateTime.UtcNow, "remover@example.test");
-        await using (var scope = factory.Services.CreateAsyncScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
-            var removed = await db.FlagGrids.SingleAsync(grid => grid.Id == removedId);
-            removed.DeletedDate = DateTime.UtcNow;
-            removed.DeletedBy = "seed";
-            await db.SaveChangesAsync();
-        }
-
+        var honoreeId = await SeedInactiveAsync("Ada", "Lovelace", null, null, null, null, null, active: true);
         var client = factory.CreateClient();
-        var reservedResponse = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
+        var response = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
         {
-            items = new[] { new { honoreeId = reservedHonoree, flagGridId = reservedId } }
+            items = new[] { new { honoreeId } }
         }));
-        Assert.Equal(HttpStatusCode.Conflict, reservedResponse.StatusCode);
-        Assert.Contains("reserved", await reservedResponse.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
-
-        var removedResponse = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
-        {
-            items = new[] { new { honoreeId = removedHonoree, flagGridId = removedId } }
-        }));
-        var removedBody = await removedResponse.Content.ReadAsStringAsync();
-        Assert.Equal(HttpStatusCode.Conflict, removedResponse.StatusCode);
-        Assert.Contains("no longer on the field", removedBody, StringComparison.Ordinal);
-
-        var missingResponse = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
-        {
-            items = new[] { new { honoreeId = removedHonoree, flagGridId = 987654 } }
-        }));
-        Assert.Equal(HttpStatusCode.Conflict, missingResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains("already active", await response.Content.ReadAsStringAsync(), StringComparison.OrdinalIgnoreCase);
 
         await using var after = factory.Services.CreateAsyncScope();
-        var database = after.ServiceProvider.GetRequiredService<PfohDbContext>();
-        Assert.False((await database.Honorees.SingleAsync(row => row.Id == reservedHonoree)).IsActive);
-        Assert.False((await database.Honorees.SingleAsync(row => row.Id == removedHonoree)).IsActive);
-        Assert.Null((await database.Honorees.SingleAsync(row => row.Id == reservedHonoree)).FlagGridId);
-        Assert.Null((await database.Honorees.SingleAsync(row => row.Id == removedHonoree)).FlagGridId);
-        Assert.Equal(0, await database.FlagGridRemovalAudits.CountAsync(row => row.Action == "Restore"));
-        Assert.True((await database.FlagGrids.SingleAsync(grid => grid.Id == reservedId)).Reserved);
+        var db = after.ServiceProvider.GetRequiredService<PfohDbContext>();
+        Assert.True((await db.Honorees.SingleAsync(row => row.Id == honoreeId)).IsActive);
+        Assert.Equal(0, await db.FlagGridRemovalAudits.CountAsync(row => row.Action == "Restore"));
+        Assert.Equal(0, await db.HonoreeChangeRequests.CountAsync(row => row.HonoreeId == honoreeId));
     }
 
     [Fact]
@@ -315,7 +250,6 @@ public class InactiveHonoreeAdminTests(PfohApiFactory factory) : IClassFixture<P
         await ResetAsync();
         var client = factory.CreateClient();
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/admin/inactive-honorees")).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/admin/inactive-honorees/free-slots")).StatusCode);
         var anonymousPost = new HttpRequestMessage(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate")
         {
             Content = JsonContent.Create(new { items = new[] { new { honoreeId = 1 } } })
@@ -337,34 +271,6 @@ public class InactiveHonoreeAdminTests(PfohApiFactory factory) : IClassFixture<P
 
         var adminRole = await client.SendAsync(Admin(HttpMethod.Get, "/api/admin/inactive-honorees", roles: "Admin"));
         Assert.Equal(HttpStatusCode.OK, adminRole.StatusCode);
-    }
-
-    [Fact]
-    public async Task Honoree_with_no_flag_is_restored_without_a_slot()
-    {
-        await ResetAsync();
-        var honoreeId = await SeedInactiveAsync("Alan", "Turing", null, null, null, null, null);
-        var client = factory.CreateClient();
-        var response = await client.SendAsync(Admin(HttpMethod.Post, "/api/admin/inactive-honorees/reactivate", new
-        {
-            items = new[] { new { honoreeId, flagGridId = (int?)null } }
-        }));
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var payload = await response.Content.ReadFromJsonAsync<ReactivatePayload>(Json);
-        Assert.Equal("no-slot", payload!.Results[0].Code);
-        Assert.Contains("no flag position", payload.Results[0].Message, StringComparison.Ordinal);
-        Assert.False(payload.Results[0].ReprintQueued);
-
-        await using var scope = factory.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
-        var honoree = await db.Honorees.SingleAsync(row => row.Id == honoreeId);
-        Assert.True(honoree.IsActive);
-        Assert.Null(honoree.FlagGridId);
-        var audit = await db.FlagGridRemovalAudits.SingleAsync();
-        Assert.Null(audit.FlagGridId);
-        Assert.Equal("admin@example.test", audit.ActorEmail);
-        Assert.Contains("\"isActive\":false", audit.BeforeState, StringComparison.Ordinal);
-        Assert.Contains("\"isActive\":true", audit.AfterState, StringComparison.Ordinal);
     }
 
     private async Task<ListPayload> ReadListAsync(HttpClient client, string url)
@@ -551,7 +457,6 @@ public class InactiveHonoreeAdminTests(PfohApiFactory factory) : IClassFixture<P
         DateTime? DeactivatedUtc,
         string DeactivatedBy,
         string Reason,
-        string SlotStatus,
         bool CanReactivate);
 
     private sealed record ReactivatePayload(List<ReactivateItem> Results);
@@ -561,6 +466,5 @@ public class InactiveHonoreeAdminTests(PfohApiFactory factory) : IClassFixture<P
         string Outcome,
         string Code,
         string Message,
-        bool ReprintQueued,
-        bool RemovalCanceled);
+        int? ChangeRequestId);
 }

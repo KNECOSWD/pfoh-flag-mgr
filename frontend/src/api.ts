@@ -430,9 +430,8 @@ export type InactiveHonoreeRow = {
   deactivatedUtc?: string | null;
   deactivatedBy: string;
   reason: string;
-  slotStatus: string;
-  slotDetail?: string | null;
   canReactivate: boolean;
+  blockReason?: string | null;
 };
 
 export type InactiveHonoreeList = {
@@ -442,22 +441,13 @@ export type InactiveHonoreeList = {
   total: number;
 };
 
-export type InactiveHonoreeFreeSlot = {
-  id: number;
-  flagGridName: string;
-};
-
 export type InactiveHonoreeResult = {
   honoreeId: number;
   name: string;
   outcome: string;
   code: string;
   message: string;
-  flagGridId?: number | null;
-  flagGridName?: string | null;
-  reprintQueued: boolean;
-  removalCanceled: boolean;
-  pdfWarning?: string | null;
+  changeRequestId?: number | null;
 };
 
 export type ReactivationLinkRow = {
@@ -1494,21 +1484,10 @@ export const inactiveHonoreeApi = {
     return request<InactiveHonoreeList>(instance, account, `/api/admin/inactive-honorees?${params.toString()}`);
   },
 
-  freeSlots: (instance: IPublicClientApplication, account: AccountInfo, query: string) => {
-    const params = new URLSearchParams();
-    if (query.trim()) params.set("q", query.trim());
-    const suffix = params.toString();
-    return request<{ items: InactiveHonoreeFreeSlot[]; truncated: boolean }>(
-      instance,
-      account,
-      suffix ? `/api/admin/inactive-honorees/free-slots?${suffix}` : "/api/admin/inactive-honorees/free-slots"
-    );
-  },
-
   reactivate: (
     instance: IPublicClientApplication,
     account: AccountInfo,
-    items: { honoreeId: number; flagGridId: number | null }[]
+    items: { honoreeId: number }[]
   ) =>
     request<{ results: InactiveHonoreeResult[] }>(instance, account, "/api/admin/inactive-honorees/reactivate", {
       method: "POST",

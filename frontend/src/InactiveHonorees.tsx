@@ -1,20 +1,12 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import type { AccountInfo, IPublicClientApplication } from "@azure/msal-browser";
 import {
   ApiError,
   inactiveHonoreeApi,
   type InactiveHonoreeRow,
-  type InactiveHonoreeFreeSlot,
   type InactiveHonoreeResult
 } from "./api";
-import {
-  confirmRestorationMessage,
-  conflictLead,
-  formatDeactivated,
-  needsFlagChoice,
-  notRecorded,
-  restorationPlan
-} from "./inactiveHonoreeAdmin.js";
+import { confirmReactivationMessage, formatDeactivated, notRecorded } from "./inactiveHonoreeAdmin.js";
 
 export function InactiveHonorees({
   instance,
@@ -32,9 +24,6 @@ export function InactiveHonorees({
   const [pageSize, setPageSize] = useState(25);
   const [rows, setRows] = useState<InactiveHonoreeRow[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
-  const [slots, setSlots] = useState<InactiveHonoreeFreeSlot[]>([]);
-  const [slotQuery, setSlotQuery] = useState("");
-  const [choices, setChoices] = useState<Record<number, InactiveHonoreeFreeSlot>>({});
   const [results, setResults] = useState<InactiveHonoreeResult[]>([]);
   const [message, setMessage] = useState("");
   const [messageTone, setMessageTone] = useState<"secondary" | "danger">("secondary");
@@ -76,35 +65,7 @@ export function InactiveHonorees({
 
   const selectable = rows.filter((row) => row.canReactivate);
   const allSelected = selectable.length > 0 && selectable.every((row) => selected.includes(row.honoreeId));
-  const selectedRows = rows.filter((row) => selected.includes(row.honoreeId));
-  const conflictRows = selectedRows.filter((row) => needsFlagChoice(row));
-
-  useEffect(() => {
-    if (!account || conflictRows.length === 0) return;
-    let cancelled = false;
-    inactiveHonoreeApi.freeSlots(instance, account, slotQuery)
-      .then((list) => {
-        if (!cancelled) setSlots(list.items);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setMessageTone("danger");
-          setMessage("Open flags could not be loaded.");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [instance, account, account?.homeAccountId, conflictRows.length, slotQuery]);
-
-  const plans = useMemo(
-    () => selectedRows.map((row) => ({
-      row,
-      plan: restorationPlan(row, choices[row.honoreeId] ?? null)
-    })),
-    [selectedRows, choices]
-  );
-  const blockedPlan = plans.find((item) => item.plan.blocked);
+  const selectedRows = rows.filter((row) => selected.includes(row.honoreeId) && row.canReactivate);
 
   function toggle(id: number) {
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
@@ -147,23 +108,18 @@ export function InactiveHonorees({
     }
   }
 
-  async function restore(target: InactiveHonoreeRow[]) {
+  async function reactivate(target: InactiveHonoreeRow[]) {
     if (!account || target.length === 0) return;
-    const ready = target.map((row) => ({
-      row,
-      plan: restorationPlan(row, choices[row.honoreeId] ?? null)
-    }));
-    const blocked = ready.find((item) => item.plan.blocked);
-    if (blocked) {
-      setSelected((current) => current.includes(blocked.row.honoreeId) ? current : [...current, blocked.row.honoreeId]);
+    const ready = target.filter((row) => row.canReactivate);
+    if (ready.length === 0) {
       setMessageTone("danger");
-      setMessage(blocked.plan.message || conflictLead(blocked.row));
+      setMessage(target[0]?.blockReason || "This honoree cannot be sent to the approval queue.");
       return;
     }
 
-    const confirmed = await confirm(confirmRestorationMessage(ready.map((item) => item.plan)), {
-      title: ready.length === 1 ? "Restore this honoree" : "Restore these honorees",
-      confirmText: "Restore"
+    const confirmed = await confirm(confirmReactivationMessage(ready), {
+      title: ready.length === 1 ? "Send this honoree to the approval queue" : "Send these honorees to the approval queue",
+      confirmText: "Send to queue"
     });
     if (!confirmed) return;
 
@@ -171,18 +127,16 @@ export function InactiveHonorees({
     setMessage("");
     setResults([]);
     try {
-      const payload = await inactiveHonoreeApi.reactivate(instance, account, ready.map((item) => ({
-        honoreeId: item.row.honoreeId,
-        flagGridId: item.plan.flagGridId ?? null
+      const payload = await inactiveHonoreeApi.reactivate(instance, account, ready.map((row) => ({
+        honoreeId: row.honoreeId
       })));
       setResults(payload.results);
       setSelected([]);
-      setChoices({});
       await load(page, submittedQuery);
     } catch (error) {
       setMessageTone("danger");
       const serverMessage = error instanceof ApiError ? error.serverMessage : "";
-      setMessage(serverMessage || (error instanceof Error ? error.message : "The honoree could not be restored."));
+      setMessage(serverMessage || (error instanceof Error ? error.message : "The honoree could not be sent to the approval queue."));
     } finally {
       setBusy(false);
     }
@@ -200,7 +154,7 @@ export function InactiveHonorees({
         </div>
       </div>
       <p>
-        These records are inactive in the database. Search by flag, name, or branch. Restoring a person makes that honoree active again. If the old flag is no longer open, choose a free flag. Nothing is emailed.
+        These records are inactive in the database. Search by flag, name, or branch. Reactivating a person sends that honoree to the approval queue with no flag assigned. A flag is chosen only after approval.
       </p>
       {message ? <p className={`alert alert-${messageTone}`} role={messageTone === "danger" ? "alert" : "status"}>{message}</p> : null}
       {results.length > 0 ? (
@@ -230,54 +184,12 @@ export function InactiveHonorees({
         <button
           type="button"
           className="btn btn-primary"
-          disabled={busy || selectedRows.length === 0 || Boolean(blockedPlan)}
-          onClick={() => { void restore(selectedRows); }}
+          disabled={busy || selectedRows.length === 0}
+          onClick={() => { void reactivate(selectedRows); }}
         >
-          {selectedRows.length === 1 ? "Restore selected honoree" : "Restore selected honorees"}
+          {selectedRows.length === 1 ? "Reactivate selected honoree" : "Reactivate selected honorees"}
         </button>
       </div>
-      {conflictRows.length > 0 ? (
-        <div className="border rounded p-3 mb-3">
-          <h3 className="h6">Choose an open flag</h3>
-          <div className="mb-3">
-            <label className="form-label" htmlFor="free-flag-search">Search open flags</label>
-            <input
-              id="free-flag-search"
-              className="form-control"
-              type="search"
-              value={slotQuery}
-              onChange={(event) => setSlotQuery(event.target.value)}
-              autoComplete="off"
-            />
-          </div>
-          {conflictRows.map((row) => (
-            <div key={row.honoreeId} className="mb-3">
-              <p className="mb-1" role="status">{conflictLead(row)}</p>
-              <label className="form-label" htmlFor={`free-flag-${row.honoreeId}`}>Open flag for {row.name}</label>
-              <select
-                id={`free-flag-${row.honoreeId}`}
-                className="form-select"
-                value={choices[row.honoreeId]?.id ?? ""}
-                onChange={(event) => {
-                  const value = Number(event.target.value);
-                  const slot = slots.find((item) => item.id === value) ?? null;
-                  setChoices((current) => {
-                    const next = { ...current };
-                    if (!slot) delete next[row.honoreeId];
-                    else next[row.honoreeId] = slot;
-                    return next;
-                  });
-                }}
-              >
-                <option value="">Choose an open flag</option>
-                {slots.map((slot) => (
-                  <option key={slot.id} value={slot.id}>{slot.flagGridName}</option>
-                ))}
-              </select>
-            </div>
-          ))}
-        </div>
-      ) : null}
       {!loaded ? <p>Loading inactive honorees.</p> : null}
       {loaded && rows.length === 0 ? (
         <p>{submittedQuery ? "No inactive honorees match this search." : "No inactive honorees are on file."}</p>
@@ -299,10 +211,10 @@ export function InactiveHonorees({
                 </th>
                 <th>Name</th>
                 <th>Branch</th>
-                <th>Flag</th>
+                <th>Former flag</th>
                 <th>Deactivated</th>
                 <th>Reason</th>
-                <th>Restore</th>
+                <th>Reactivate</th>
               </tr>
             </thead>
             <tbody>
@@ -312,7 +224,7 @@ export function InactiveHonorees({
                     <input
                       className="form-check-input"
                       type="checkbox"
-                      aria-label={row.canReactivate ? `Select ${row.name}` : `${row.name} cannot be restored from this page`}
+                      aria-label={row.canReactivate ? `Select ${row.name}` : `${row.name} cannot be sent to the approval queue`}
                       checked={selected.includes(row.honoreeId)}
                       disabled={!row.canReactivate}
                       onChange={() => toggle(row.honoreeId)}
@@ -330,16 +242,16 @@ export function InactiveHonorees({
                   </td>
                   <td>
                     {row.reason || notRecorded}
-                    {row.slotDetail ? <div>{row.slotDetail}</div> : null}
+                    {row.blockReason ? <div>{row.blockReason}</div> : null}
                   </td>
                   <td>
                     <button
                       type="button"
                       className="btn btn-outline-primary btn-sm"
                       disabled={busy || !row.canReactivate}
-                      onClick={() => { void restore([row]); }}
+                      onClick={() => { void reactivate([row]); }}
                     >
-                      Restore
+                      Reactivate
                     </button>
                   </td>
                 </tr>

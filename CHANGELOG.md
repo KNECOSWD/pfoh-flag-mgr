@@ -2,10 +2,9 @@
 
 ## 5.7.0
 
-- Administrators can look up inactive honorees by flag, name, or branch and restore them. The list shows when and why each person was deactivated, or Not recorded when that was not stored.
-- Restoring a person makes that honoree active again. If the old flag is open, the person goes back on it. If that flag is taken, reserved, or gone, the restore waits until an open flag is chosen. A person with no flag on record can be active without one.
-- One restore can cover several people. Each result says whether that person was restored or blocked, and why. The same audit used for a flag removal records who restored the honoree, when, the flag, and the old and new state.
-- A restored flag with no open removal is added to the print queue, the same way a new flag assignment is. Putting someone back on a flag that is still waiting to be pulled cancels that removal instead. No email is sent.
+- Administrators can look up inactive honorees by flag, name, or branch. The list shows when and why each person was deactivated, or Not recorded when that was not stored.
+- Reactivating a person does not put them back on a flag. The person goes to the approval queue with no flag assigned, the same pending status a new submission has before approval. A flag is chosen only through the existing approval and assignment flow.
+- One reactivation can cover several people. Each person gets an audit row with action Restore, no flag, and the note Reactivated to approval queue. Sending someone who is already active or already in the queue is refused, and a second click does not write a second audit row. No email is sent.
 
 ## 5.6.2
 
