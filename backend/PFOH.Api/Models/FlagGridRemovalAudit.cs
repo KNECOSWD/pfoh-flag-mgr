@@ -11,7 +11,11 @@ public class FlagGridRemovalAudit
 
     public int HonoreeId { get; set; }
 
-    public int FlagGridId { get; set; }
+    /// <summary>
+    /// The flag spot this remove or restore touched. Null when an administrator
+    /// reactivated an honoree who had no flag on record.
+    /// </summary>
+    public int? FlagGridId { get; set; }
 
     public int? RemovalQueueItemId { get; set; }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.7.0
+
+- Administrators can look up inactive honorees by flag, name, or branch. The list shows when and why each person was deactivated, or Not recorded when that was not stored.
+- Reactivating a person does not put them back on a flag. The person goes to the approval queue with no flag assigned, the same pending status a new submission has before approval. A flag is chosen only through the existing approval and assignment flow.
+- One reactivation can cover several people. Each person gets an audit row with action Restore, no flag, and the note Reactivated to approval queue. Sending someone who is already active or already in the queue is refused, and a second click does not write a second audit row. No email is sent.
+
 ## 5.6.2
 
 - An honoree card prints the rank on its own line under the name and above the years, when the honoree has a rank. A blank rank leaves the card layout unchanged.

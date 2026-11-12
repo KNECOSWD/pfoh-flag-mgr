@@ -169,6 +169,8 @@ builder.Services.AddSingleton<HonoreeFileStorage>();
 builder.Services.AddSingleton<IHonoreeCardRenderer, HonoreeCardRenderer>();
 builder.Services.AddScoped<HonoreePdfService>();
 builder.Services.AddScoped<FlagGridRemovalService>();
+builder.Services.AddSingleton<InactiveRestoreGate>();
+builder.Services.AddScoped<InactiveHonoreeAdminService>();
 builder.Services.AddSingleton<ProfileStoreCircuit>();
 builder.Services.AddHealthChecks()
     .AddCheck<ProfileStoreHealthCheck>("profile-store", tags: ["ready"]);

@@ -140,6 +140,10 @@ jobs:
         if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-reactivation.mjs
 
+      - name: Check inactive honoree restore
+        if: steps.changes.outputs.code != 'false'
+        run: node --test frontend/scripts/check-inactive-honorees.mjs
+
       - name: Check the submission duplicate guard
         if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-submission-guard.mjs

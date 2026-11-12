@@ -420,6 +420,36 @@ export type ReactivationEligible = {
   activeLinkExpiresUtc?: string | null;
 };
 
+export type InactiveHonoreeRow = {
+  honoreeId: number;
+  name: string;
+  rank?: string | null;
+  branch?: string | null;
+  formerFlagGridId?: number | null;
+  formerFlagGridName?: string | null;
+  deactivatedUtc?: string | null;
+  deactivatedBy: string;
+  reason: string;
+  canReactivate: boolean;
+  blockReason?: string | null;
+};
+
+export type InactiveHonoreeList = {
+  items: InactiveHonoreeRow[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
+
+export type InactiveHonoreeResult = {
+  honoreeId: number;
+  name: string;
+  outcome: string;
+  code: string;
+  message: string;
+  changeRequestId?: number | null;
+};
+
 export type ReactivationLinkRow = {
   honoreeId: string;
   name: string;
@@ -1442,6 +1472,26 @@ export const adminReactivationApi = {
     request<{ revokedCount: number }>(instance, account, "/api/admin/reactivation/revoke", {
       method: "POST",
       body: JSON.stringify({ honoreeIds: all ? null : honoreeIds, all })
+    })
+};
+
+export const inactiveHonoreeApi = {
+  list: (instance: IPublicClientApplication, account: AccountInfo, query: string, page: number) => {
+    const params = new URLSearchParams();
+    if (query.trim()) params.set("q", query.trim());
+    params.set("page", String(page));
+    params.set("pageSize", "25");
+    return request<InactiveHonoreeList>(instance, account, `/api/admin/inactive-honorees?${params.toString()}`);
+  },
+
+  reactivate: (
+    instance: IPublicClientApplication,
+    account: AccountInfo,
+    items: { honoreeId: number }[]
+  ) =>
+    request<{ results: InactiveHonoreeResult[] }>(instance, account, "/api/admin/inactive-honorees/reactivate", {
+      method: "POST",
+      body: JSON.stringify({ items })
     })
 };
 
