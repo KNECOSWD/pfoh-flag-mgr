@@ -21,6 +21,7 @@ public sealed class InactiveHonoreeAdminService(
     public const int MaxBatch = 50;
     public const string NotRecorded = "Not recorded";
     public const string ApprovalQueueNote = "Reactivated to approval queue";
+    public const string ReactivationPageQueueNote = "Added to review queue from Reactivation page";
 
     private const string RestoreAction = "Restore";
 
@@ -29,24 +30,66 @@ public sealed class InactiveHonoreeAdminService(
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public async Task<InactiveHonoreeListDto> ListAsync(string? query, int page, int pageSize, CancellationToken ct)
+    public Task<InactiveHonoreeListDto> ListAsync(string? query, int page, int pageSize, CancellationToken ct) =>
+        ListCoreAsync(query, page, pageSize, unflaggedOnly: false, ct);
+
+    public Task<InactiveHonoreeListDto> ListUnflaggedAsync(string? query, int page, int pageSize, CancellationToken ct) =>
+        ListCoreAsync(query, page, pageSize, unflaggedOnly: true, ct);
+
+    public Task<InactiveHonoreeReactivateResultDto> ReactivateAsync(
+        IReadOnlyList<InactiveHonoreeReactivateItem> items,
+        AdminActor actor,
+        CancellationToken ct) =>
+        QueueAsync(items, actor, fromReactivationPage: false, ct);
+
+    public Task<InactiveHonoreeReactivateResultDto> AddToReviewQueueAsync(
+        IReadOnlyList<InactiveHonoreeReactivateItem> items,
+        AdminActor actor,
+        CancellationToken ct) =>
+        QueueAsync(items, actor, fromReactivationPage: true, ct);
+
+    private async Task<InactiveHonoreeListDto> ListCoreAsync(
+        string? query,
+        int page,
+        int pageSize,
+        bool unflaggedOnly,
+        CancellationToken ct)
     {
         pageSize = pageSize < 1 ? DefaultPageSize : Math.Min(pageSize, MaxPageSize);
         var needle = NormalizeQuery(query);
         var honorees = await db.Honorees
             .AsNoTracking()
             .Include(honoree => honoree.ServiceBranch)
-            .Where(honoree => !honoree.IsActive)
+            .Where(honoree => !honoree.IsActive && (!unflaggedOnly || honoree.FlagGridId == null))
             .ToListAsync(ct);
+        if (unflaggedOnly && honorees.Count > 0)
+        {
+            var ids = honorees.Select(honoree => honoree.Id).ToList();
+            var pointed = (await db.FlagGrids.AsNoTracking()
+                .Where(grid => grid.HonoreeId != null && ids.Contains(grid.HonoreeId.Value))
+                .Select(grid => grid.HonoreeId!.Value)
+                .ToListAsync(ct)).ToHashSet();
+            honorees = honorees.Where(honoree => !pointed.Contains(honoree.Id)).ToList();
+        }
+
         var facts = await LoadFactsAsync(honorees, ct);
         var rows = honorees
             .Select(honoree => (Honoree: honoree, Dto: ToDto(honoree, facts[honoree.Id])))
-            .Where(row => Matches(needle, row.Dto))
+            .Where(row => unflaggedOnly
+                ? MatchesUnflagged(needle, row.Dto, row.Honoree.LegacyKey)
+                : Matches(needle, row.Dto))
             .OrderBy(row => row.Honoree.LastName)
             .ThenBy(row => row.Honoree.FirstName)
             .ThenBy(row => row.Honoree.Id)
             .Select(row => row.Dto)
             .ToList();
+        if (unflaggedOnly)
+        {
+            rows = rows.Select(row => row.BlockReason == "Already in the approval queue."
+                ? row with { BlockReason = "Already in the review queue." }
+                : row).ToList();
+        }
+
         var total = rows.Count;
         var pageCount = Math.Max(1, (int)Math.Ceiling(total / (double)pageSize));
         page = page < 1 ? 1 : Math.Min(page, pageCount);
@@ -54,15 +97,26 @@ public sealed class InactiveHonoreeAdminService(
         return new InactiveHonoreeListDto(items, page, pageSize, total);
     }
 
-    public async Task<InactiveHonoreeReactivateResultDto> ReactivateAsync(
+    private async Task<InactiveHonoreeReactivateResultDto> QueueAsync(
         IReadOnlyList<InactiveHonoreeReactivateItem> items,
         AdminActor actor,
+        bool fromReactivationPage,
         CancellationToken ct)
     {
-        var results = new List<InactiveHonoreeReactivateItemResultDto>(items.Count);
+        var pending = new List<InactiveHonoreeReactivateItem>(items.Count);
+        var seen = new HashSet<int>();
         foreach (var item in items)
         {
-            results.Add(await ReactivateOneAsync(item.HonoreeId, actor, ct));
+            if (!fromReactivationPage || seen.Add(item.HonoreeId))
+            {
+                pending.Add(item);
+            }
+        }
+
+        var results = new List<InactiveHonoreeReactivateItemResultDto>(pending.Count);
+        foreach (var item in pending)
+        {
+            results.Add(await ReactivateOneAsync(item.HonoreeId, actor, fromReactivationPage, ct));
         }
 
         return new InactiveHonoreeReactivateResultDto(results);
@@ -71,6 +125,7 @@ public sealed class InactiveHonoreeAdminService(
     private async Task<InactiveHonoreeReactivateItemResultDto> ReactivateOneAsync(
         int honoreeId,
         AdminActor actor,
+        bool fromReactivationPage,
         CancellationToken ct)
     {
         if (restoreGate.BeforeRestore is not null)
@@ -80,13 +135,13 @@ public sealed class InactiveHonoreeAdminService(
 
         if (!db.Database.IsRelational())
         {
-            return await QueueCoreAsync(honoreeId, actor, ct);
+            return await QueueCoreAsync(honoreeId, actor, fromReactivationPage, ct);
         }
 
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
         try
         {
-            var result = await QueueCoreAsync(honoreeId, actor, ct);
+            var result = await QueueCoreAsync(honoreeId, actor, fromReactivationPage, ct);
             if (result.Outcome == "reactivated")
             {
                 await transaction.CommitAsync(ct);
@@ -112,6 +167,7 @@ public sealed class InactiveHonoreeAdminService(
     private async Task<InactiveHonoreeReactivateItemResultDto> QueueCoreAsync(
         int honoreeId,
         AdminActor actor,
+        bool fromReactivationPage,
         CancellationToken ct)
     {
         await FlagGridRemovalAuditSchema.EnsureAsync(db, ct);
@@ -124,9 +180,18 @@ public sealed class InactiveHonoreeAdminService(
         }
 
         var name = FlagRemovalQueue.DisplayName(honoree);
+        var note = fromReactivationPage ? ReactivationPageQueueNote : ApprovalQueueNote;
         if (honoree.IsActive)
         {
-            return Result(honoree.Id, name, "blocked", "already-active", $"{name} was not sent. This honoree is already active.");
+            var activeMessage = fromReactivationPage
+                ? $"{name} was not added. This honoree is already active."
+                : $"{name} was not sent. This honoree is already active.";
+            return Result(honoree.Id, name, "blocked", "already-active", activeMessage);
+        }
+
+        if (fromReactivationPage && await HasAssignedFlagAsync(honoree, ct))
+        {
+            return Result(honoree.Id, name, "blocked", "has-a-flag", $"{name} was not added. This honoree has a flag.");
         }
 
         var facts = (await LoadFactsAsync([honoree], ct))[honoree.Id];
@@ -134,8 +199,8 @@ public sealed class InactiveHonoreeAdminService(
         {
             var code = facts.InApprovalQueue ? "already-pending" : "merged";
             var message = facts.InApprovalQueue
-                ? $"{name} was not sent again. This honoree is already in the approval queue."
-                : $"{name} was not sent. {facts.Reason} Undo that merge from Merge history.";
+                ? PendingMessage(name, fromReactivationPage)
+                : MergedMessage(name, facts.Reason, fromReactivationPage);
             return Result(honoree.Id, name, "blocked", code, message);
         }
 
@@ -143,17 +208,12 @@ public sealed class InactiveHonoreeAdminService(
             request.HonoreeId == honoree.Id && request.RequestStatus == "Submitted", ct);
         if (alreadyPending)
         {
-            return Result(
-                honoree.Id,
-                name,
-                "blocked",
-                "already-pending",
-                $"{name} was not sent again. This honoree is already in the approval queue.");
+            return Result(honoree.Id, name, "blocked", "already-pending", PendingMessage(name, fromReactivationPage));
         }
 
         var now = DateTime.UtcNow;
-        var before = Snapshot(honoree);
-        if (honoree.FlagGridId is int linked)
+        var before = Snapshot(honoree, note);
+        if (!fromReactivationPage && honoree.FlagGridId is int linked)
         {
             var linkedGrid = await db.FlagGrids.FirstOrDefaultAsync(grid => grid.Id == linked, ct);
             if (linkedGrid is not null && linkedGrid.HonoreeId == honoree.Id)
@@ -210,7 +270,7 @@ public sealed class InactiveHonoreeAdminService(
             RequestStatus = "Submitted",
             CreatedUtc = now,
             SubmittedUtc = now,
-            ReviewNotes = ApprovalQueueNote
+            ReviewNotes = note
         };
         db.FlagClaims.Add(claim);
         db.HonoreeChangeRequests.Add(change);
@@ -222,19 +282,36 @@ public sealed class InactiveHonoreeAdminService(
             ActorEmail = actor.Email,
             ActorObjectId = actor.ObjectId,
             OccurredUtc = now,
-            Reason = ApprovalQueueNote,
+            Reason = note,
             BeforeState = JsonSerializer.Serialize(before, Json),
-            AfterState = JsonSerializer.Serialize(Snapshot(honoree), Json)
+            AfterState = JsonSerializer.Serialize(Snapshot(honoree, note), Json)
         });
         await db.SaveChangesAsync(ct);
-        return Result(
-            honoree.Id,
-            name,
-            "reactivated",
-            "ok",
-            $"{name} will go to the approval queue with no flag assigned.",
-            change.Id);
+        var success = fromReactivationPage
+            ? $"{name} was added to the review queue."
+            : $"{name} will go to the approval queue with no flag assigned.";
+        return Result(honoree.Id, name, "reactivated", "ok", success, change.Id);
     }
+
+    private async Task<bool> HasAssignedFlagAsync(Honoree honoree, CancellationToken ct)
+    {
+        if (honoree.FlagGridId is not null)
+        {
+            return true;
+        }
+
+        return await db.FlagGrids.AnyAsync(grid => grid.HonoreeId == honoree.Id, ct);
+    }
+
+    private static string PendingMessage(string name, bool fromReactivationPage) =>
+        fromReactivationPage
+            ? $"{name} was not added. This honoree is already in the review queue."
+            : $"{name} was not sent again. This honoree is already in the approval queue.";
+
+    private static string MergedMessage(string name, string reason, bool fromReactivationPage) =>
+        fromReactivationPage
+            ? $"{name} was not added. {reason} Undo that merge from Merge history."
+            : $"{name} was not sent. {reason} Undo that merge from Merge history.";
 
     private async Task<Dictionary<int, DeactivationFacts>> LoadFactsAsync(IReadOnlyList<Honoree> honorees, CancellationToken ct)
     {
@@ -406,7 +483,8 @@ public sealed class InactiveHonoreeAdminService(
             facts.By,
             facts.Reason,
             facts.CanReactivate,
-            facts.BlockReason);
+            facts.BlockReason,
+            honoree.LegacyKey);
 
     private static bool Matches(string query, InactiveHonoreeDto row)
     {
@@ -428,6 +506,37 @@ public sealed class InactiveHonoreeAdminService(
         return FlagPositionLabel.Matches(query, row.FormerFlagGridName);
     }
 
+    private static bool MatchesUnflagged(string query, InactiveHonoreeDto row, int? legacyKey)
+    {
+        if (query.Length == 0)
+        {
+            return true;
+        }
+
+        if (row.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (row.Branch?.Contains(query, StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return true;
+        }
+
+        return RecordIdMatches(query, row.HonoreeId) || RecordIdMatches(query, legacyKey);
+    }
+
+    private static bool RecordIdMatches(string query, int? id)
+    {
+        if (id is not int value)
+        {
+            return false;
+        }
+
+        return int.TryParse(query, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var parsed)
+            && parsed == value;
+    }
+
     private static string? QueueReason(FlagRemovalQueueItem item)
     {
         if (!string.IsNullOrWhiteSpace(item.SourceDetail))
@@ -444,7 +553,7 @@ public sealed class InactiveHonoreeAdminService(
         };
     }
 
-    private static object Snapshot(Honoree honoree) => new
+    private static object Snapshot(Honoree honoree, string note) => new
     {
         honoree = new
         {
@@ -454,7 +563,7 @@ public sealed class InactiveHonoreeAdminService(
             honoree.DeletedDate,
             honoree.DeletedBy
         },
-        approvalQueue = honoree.IsActive ? null : ApprovalQueueNote
+        approvalQueue = honoree.IsActive ? null : note
     };
 
     private static string DisplayPerson(string? value) =>

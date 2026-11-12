@@ -3,3 +3,8 @@ td.reactivationLink {
   word-break: break-word;
   min-width: 14rem;
 }
+
+.reactivationQueue {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

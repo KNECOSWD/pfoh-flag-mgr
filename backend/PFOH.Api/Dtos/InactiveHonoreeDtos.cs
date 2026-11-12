@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace PFOH.Api.Dtos;
 
 public sealed record InactiveHonoreeDto(
@@ -11,7 +13,8 @@ public sealed record InactiveHonoreeDto(
     string DeactivatedBy,
     string Reason,
     bool CanReactivate,
-    string? BlockReason);
+    string? BlockReason,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? LegacyKey = null);
 
 public sealed record InactiveHonoreeListDto(
     IReadOnlyList<InactiveHonoreeDto> Items,

@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.8.0
+
+- On Reactivation, administrators can search inactive records that are not assigned to a flag. Search matches the name, the branch, the honoree id, and a legacy record id when one is stored. The list shows when and why the person was deactivated when that was stored.
+- Selected records can be added to the review queue. Each one is submitted with no flag and then follows the usual approval and assignment. The confirm step names each selected person.
+- Each added record gets one audit row with action Restore, no flag, and the note Added to review queue from Reactivation page. A record that is already active, already in the queue, merged, or assigned to a flag is refused. A second submit does not write a second audit row.
+- This action does not create a reactivation link or send email. Generating, downloading, and revoking reactivation links is unchanged.
+
 ## 5.7.0
 
 - Administrators can look up inactive honorees by flag, name, or branch. The list shows when and why each person was deactivated, or Not recorded when that was not stored.

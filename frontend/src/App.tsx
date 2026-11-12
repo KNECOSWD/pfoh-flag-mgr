@@ -312,7 +312,7 @@ const pageBanners: Record<AppRoute, { title: string; subtitle: string }> = {
   },
   "/admin/reactivation": {
     title: "REACTIVATION LINKS",
-    subtitle: "Generate one-time links for inactive honorees with no flag."
+    subtitle: "Generate one-time links, or add inactive records to the review queue."
   },
   "/admin/inactive": {
     title: "INACTIVE HONOREES",

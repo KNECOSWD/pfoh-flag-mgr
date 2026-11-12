@@ -13,8 +13,53 @@ namespace PFOH.Api.Controllers;
 [EnableRateLimiting("AuthenticatedGet")]
 public class AdminReactivationController(
     ReactivationLinkService links,
+    InactiveHonoreeAdminService inactive,
     IConfiguration configuration) : ControllerBase
 {
+    [HttpGet("inactive")]
+    public async Task<ActionResult<InactiveHonoreeListDto>> Inactive(
+        [FromQuery] string? q,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = InactiveHonoreeAdminService.DefaultPageSize,
+        CancellationToken ct = default)
+    {
+        return Ok(await inactive.ListUnflaggedAsync(q, page, pageSize, ct));
+    }
+
+    [HttpPost("review-queue")]
+    public async Task<ActionResult<InactiveHonoreeReactivateResultDto>> AddToReviewQueue(
+        [FromBody] InactiveHonoreeReactivateBody? body,
+        CancellationToken ct)
+    {
+        var items = body?.Items;
+        if (items is null || items.Count == 0)
+        {
+            return BadRequest(new { message = "Select at least one honoree." });
+        }
+
+        if (items.Count > InactiveHonoreeAdminService.MaxBatch)
+        {
+            return BadRequest(new { message = $"Add up to {InactiveHonoreeAdminService.MaxBatch} honorees at a time." });
+        }
+
+        var result = await inactive.AddToReviewQueueAsync(items, AdminActor.From(User), ct);
+        if (result.Results.Count == 1)
+        {
+            var only = result.Results[0];
+            if (only.Outcome == "not-found")
+            {
+                return NotFound(new { message = only.Message, results = result.Results });
+            }
+
+            if (only.Outcome != "reactivated")
+            {
+                return Conflict(new { message = only.Message, results = result.Results });
+            }
+        }
+
+        return Ok(result);
+    }
+
     [HttpGet("eligible")]
     public async Task<ActionResult<IReadOnlyList<ReactivationEligibleDto>>> Eligible(CancellationToken ct)
     {
