@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Logging;
 using PdfSharpCore.Drawing;
 using PdfSharpCore.Drawing.Layout;
 using PdfSharpCore.Drawing.Layout.enums;
@@ -74,33 +75,102 @@ public class HonoreeCardPdfLayoutTests
         AssertHeaderStaysCentered(runs, bio.X);
     }
 
-    // DECISION NEEDED. With a full header, a 600-character all-caps bio ends below
-    // the 578pt content bottom, so Conflicts served and Awards are omitted.
-    // This locks that current behavior. Flip the assertions to require both
-    // sections if the card is changed to keep them.
     [Fact]
-    public void Full_header_bio_at_the_limit_currently_drops_conflicts_and_awards()
+    public void Full_header_bio_at_the_limit_keeps_conflicts_and_awards_above_the_rotary_mark()
     {
         const string conflicts = "World War II, Korean War";
         const string awards = "Purple Heart, Bronze Star, Distinguished Flying Cross";
         const string honors =
             "SERGEANT JAMES ALLEY RECEIVED THE DISTINGUISHED FLYING CROSS, PURPLE HEART, AND BRONZE STAR. CAPTAIN SALVADOR GUZMAN SERVED WITH THE UNITED STATES ARMY AIR CORPS BESIDE LIEUTENANT MARGARET COLE. ";
-        var runs = RenderFullHeaderHonors(Repeat(honors, HonoreeBioLimits.MaxLength), conflicts, awards);
+        const string porch = "The family kept every letter from the field and read them on the porch. ";
 
-        Assert.Equal(HonoreeBioLimits.MaxLength, 600);
-        Assert.DoesNotContain(runs, run => run.Text.Contains("Conflicts served", StringComparison.Ordinal));
-        Assert.DoesNotContain(runs, run => run.Text.Contains("World War II", StringComparison.Ordinal));
-        Assert.DoesNotContain(runs, run => run.Text.Contains("Awards", StringComparison.Ordinal));
-        Assert.DoesNotContain(runs, run => run.Text.Contains("Purple Heart", StringComparison.Ordinal));
-        Assert.DoesNotContain(runs, run => run.Text.Contains("Distinguished Flying Cross", StringComparison.Ordinal));
+        var allCaps = RenderFullHeaderPdf(Repeat(honors, 600), conflicts, awards);
+        var mixed = RenderFullHeaderPdf(Repeat(porch, 600), conflicts, awards);
+        AssertHonorsFit(allCaps.Runs);
+        AssertHonorsFit(mixed.Runs);
+        Assert.Equal("10.4", BioFontSize(allCaps.Pdf));
+        Assert.Equal("10.4", BioFontSize(mixed.Pdf));
     }
 
-    private static List<TextRun> RenderFullHeaderHonors(string tribute, string conflicts, string awards)
+    private static string BioFontSize(byte[] pdf)
+    {
+        var sizes = FontSizes(pdf);
+        foreach (var candidate in new[] { "12", "12.0", "12.00", "10.4", "10.40", "9.6", "9.60", "8.8", "8.80", "8.2", "8.20" })
+        {
+            if (sizes.Contains(candidate))
+            {
+                return candidate is "12.0" or "12.00" ? "12"
+                    : candidate is "10.40" ? "10.4"
+                    : candidate is "9.60" ? "9.6"
+                    : candidate is "8.80" ? "8.8"
+                    : candidate is "8.20" ? "8.2"
+                    : candidate;
+            }
+        }
+
+        return string.Join(", ", sizes);
+    }
+
+    [Fact]
+    public void A_bio_with_no_conflicts_or_awards_stays_at_12_point()
+    {
+        var pdf = RenderFullHeaderPdf(Repeat(AllCapsProse, 600), "", "");
+        Assert.Contains(FontSizes(pdf.Pdf), size => size is "12" or "12.0" or "12.00");
+        Assert.DoesNotContain(FontSizes(pdf.Pdf), size => size is "10.4" or "10.40" or "9.6" or "8.8" or "8.2" or "8.20");
+        Assert.DoesNotContain(pdf.Runs, run => run.Text.Contains("Conflicts served", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_legacy_bio_that_cannot_fit_keeps_both_sections_and_ends_the_bio_with_an_ellipsis()
+    {
+        const string conflicts = "World War II, Korean War";
+        const string awards = "Purple Heart, Bronze Star, Distinguished Flying Cross";
+        var logs = new List<string>();
+        var pdf = RenderFullHeaderPdf(new string('W', 20) + " " + Repeat(AllCapsProse, 2000), conflicts, awards, new ListLogger(logs));
+        var text = string.Join(" ", pdf.Runs.Select(run => run.Text));
+        Assert.Contains("Conflicts served", text, StringComparison.Ordinal);
+        Assert.Contains("World War II", text, StringComparison.Ordinal);
+        Assert.Contains("Korean War", text, StringComparison.Ordinal);
+        Assert.Contains("Awards", text, StringComparison.Ordinal);
+        Assert.Contains("Purple Heart", text, StringComparison.Ordinal);
+        Assert.Contains("Bronze Star", text, StringComparison.Ordinal);
+        Assert.Contains("Distinguished Flying Cross", text, StringComparison.Ordinal);
+        Assert.Contains("...", text, StringComparison.Ordinal);
+        Assert.Contains(FontSizes(pdf.Pdf), size => size is "8.2" or "8.20");
+        AssertAboveContentBottom(pdf.Runs);
+        Assert.Contains(logs, line => line.Contains("Honoree", StringComparison.Ordinal) && line.Contains('7'));
+    }
+
+    private static void AssertHonorsFit(IReadOnlyList<TextRun> runs)
+    {
+        var text = string.Join(" ", runs.Select(run => run.Text));
+        Assert.Contains("Conflicts served", text, StringComparison.Ordinal);
+        Assert.Contains("World War II", text, StringComparison.Ordinal);
+        Assert.Contains("Korean War", text, StringComparison.Ordinal);
+        Assert.Contains("Awards", text, StringComparison.Ordinal);
+        Assert.Contains("Purple Heart", text, StringComparison.Ordinal);
+        Assert.Contains("Bronze Star", text, StringComparison.Ordinal);
+        Assert.Contains("Distinguished Flying Cross", text, StringComparison.Ordinal);
+        AssertAboveContentBottom(runs);
+        Assert.All(runs.Where(run => run.Text is not "AA-40"), run => Assert.InRange(run.X, BioLeft - 1, BioLeft + 180));
+    }
+
+    private static void AssertAboveContentBottom(IReadOnlyList<TextRun> runs)
+    {
+        const double pageHeight = 656;
+        const double contentBottom = 578;
+        Assert.All(runs, run => Assert.True(run.Y > pageHeight - contentBottom, Dump(runs)));
+    }
+
+    private sealed record RenderedCard(byte[] Pdf, List<TextRun> Runs);
+
+    private static RenderedCard RenderFullHeaderPdf(string tribute, string conflicts, string awards, ILogger? logger = null)
     {
         var pdf = HonoreeReportPdfGenerator.Create(
             new EmptyHost(),
             new Honoree
             {
+                Id = 7,
                 FirstName = "Christopher",
                 MiddleName = "Montgomery",
                 LastName = "Worthington",
@@ -116,8 +186,17 @@ public class HonoreeCardPdfLayoutTests
             },
             searchResult: null,
             photoBytes: null,
-            SyntheticArtwork());
-        return ReadRuns(pdf);
+            SyntheticArtwork(),
+            logger);
+        return new RenderedCard(pdf, ReadRuns(pdf));
+    }
+
+    private sealed class ListLogger(List<string> lines) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            lines.Add(formatter(state, exception));
     }
 
     [Fact]
@@ -133,18 +212,19 @@ public class HonoreeCardPdfLayoutTests
     }
 
     [Fact]
-    public void Long_bio_omits_conflicts_and_awards_instead_of_crowding_the_card()
+    public void Long_bio_keeps_conflicts_and_awards_by_fitting_the_bio()
     {
         var tribute = string.Join(" ", Enumerable.Repeat(
             "The family kept every letter from the field and read them on the porch.",
             40));
         var runs = Render(tribute, conflicts: "Operation Overlord", awards: "Medal of Honor");
+        var text = string.Join(" ", runs.Select(run => run.Text));
 
-        Assert.True(BioRuns(runs, tribute).Count >= 3, Dump(runs));
-        Assert.DoesNotContain(runs, run => run.Text.Contains("Conflicts served", StringComparison.Ordinal));
-        Assert.DoesNotContain(runs, run => run.Text.Contains("Operation Overlord", StringComparison.Ordinal));
-        Assert.DoesNotContain(runs, run => run.Text.Contains("Awards", StringComparison.Ordinal));
-        Assert.DoesNotContain(runs, run => run.Text.Contains("Medal of Honor", StringComparison.Ordinal));
+        Assert.Contains("Conflicts served", text, StringComparison.Ordinal);
+        Assert.Contains("Operation Overlord", text, StringComparison.Ordinal);
+        Assert.Contains("Awards", text, StringComparison.Ordinal);
+        Assert.Contains("Medal of Honor", text, StringComparison.Ordinal);
+        AssertAboveContentBottom(runs);
     }
 
     [Fact]

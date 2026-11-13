@@ -626,6 +626,95 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
     }
 
     [Fact]
+    public async Task Card_preview_uses_a_pending_photo_then_the_live_photo_then_a_silhouette()
+    {
+        await ResetAsync();
+        var now = DateTime.UtcNow;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            db.FlagGrids.Add(new FlagGrid
+            {
+                Id = 26,
+                FlagGridName = "M-26",
+                Notes = string.Empty,
+                CreatedBy = "seed",
+                ModifiedBy = "seed",
+                CreatedDate = now,
+                ModifiedDate = now
+            });
+            db.Honorees.Add(new Honoree
+            {
+                Id = 1527,
+                FlagGridId = 26,
+                FirstName = "Pat",
+                LastName = "Example",
+                Rank = "Sergeant",
+                Description = "A fixture tribute for the follow-up request.",
+                PhotoFileName = "1527.jpeg",
+                Salutation = string.Empty,
+                NameUserEntry = string.Empty,
+                PhoneNumber = string.Empty,
+                EmailAddress = string.Empty,
+                Awards = string.Empty,
+                ConflictsServed = string.Empty,
+                DatesUserEntry = string.Empty,
+                IsActive = true,
+                CreatedBy = "seed",
+                ModifiedBy = "seed",
+                CreatedDate = now,
+                ModifiedDate = now
+            });
+            await db.SaveChangesAsync();
+        }
+
+        factory.Files.Photos["pending/555.jpeg"] = [1, 2, 3, 4];
+        factory.Files.Photos["1527.jpeg"] = [5, 6, 7, 8];
+        var photoKeys = factory.Files.Photos.Keys.OrderBy(name => name).ToArray();
+        await SeedSubmittedAsync(555, 1555, 26, now, "pending/555.jpeg", 1527, owner: "submitter");
+        await SeedSubmittedAsync(556, 1556, 26, now.AddMinutes(1), photo: null, honoreeId: 1527, owner: "submitter");
+        await SeedSubmittedAsync(557, 1557, flagGridId: null, now.AddMinutes(2), photo: null, honoreeId: null, owner: "submitter");
+        var client = factory.CreateClient();
+
+        factory.Files.DownloadedImages.Clear();
+        var pending = await client.SendAsync(Authed(HttpMethod.Get, "/api/admin/review/555/card-preview", "admin-user", "admin@example.com", "Admin", roles: "PFOH.Admin"));
+        Assert.Equal(HttpStatusCode.OK, pending.StatusCode);
+        Assert.Contains("pending/555.jpeg", factory.Files.DownloadedImages);
+
+        factory.Files.DownloadedImages.Clear();
+        var live = await client.SendAsync(Authed(HttpMethod.Get, "/api/admin/review/556/card-preview", "admin-user", "admin@example.com", "Admin", roles: "PFOH.Admin"));
+        Assert.Equal(HttpStatusCode.OK, live.StatusCode);
+        Assert.Contains("1527.jpeg", factory.Files.DownloadedImages);
+        Assert.DoesNotContain(factory.Files.DownloadedImages, name => name != null && name.StartsWith("pending/", StringComparison.Ordinal));
+
+        factory.Files.DownloadedImages.Clear();
+        var neither = await client.SendAsync(Authed(HttpMethod.Get, "/api/admin/review/557/card-preview", "admin-user", "admin@example.com", "Admin", roles: "PFOH.Admin"));
+        Assert.Equal(HttpStatusCode.OK, neither.StatusCode);
+        Assert.DoesNotContain(factory.Files.DownloadedImages, name => name is "1527.jpeg" or "pending/555.jpeg");
+
+        Assert.Empty(factory.Files.Pdfs);
+        Assert.Equal(photoKeys, factory.Files.Photos.Keys.OrderBy(name => name));
+
+        var approved = await client.SendAsync(Authed(
+            HttpMethod.Post,
+            "/api/admin/review/556/approve",
+            "admin-user",
+            "admin@example.com",
+            "Admin",
+            roles: "PFOH.Admin",
+            body: new { requiresCardReprint = false, reviewNotes = "Keep the live photo." }));
+        var approvedBody = await approved.Content.ReadAsStringAsync();
+        Assert.True(approved.StatusCode == HttpStatusCode.OK, approvedBody);
+
+        await using var check = factory.Services.CreateAsyncScope();
+        var saved = check.ServiceProvider.GetRequiredService<PfohDbContext>();
+        var honoree = await saved.Honorees.SingleAsync(row => row.Id == 1527);
+        Assert.Equal("1527.jpeg", honoree.PhotoFileName);
+        Assert.Equal(photoKeys, factory.Files.Photos.Keys.OrderBy(name => name));
+        Assert.Equal(new byte[] { 5, 6, 7, 8 }, factory.Files.Photos["1527.jpeg"]);
+    }
+
+    [Fact]
     public async Task Pending_change_includes_the_rank_diff()
     {
         await ResetAsync();

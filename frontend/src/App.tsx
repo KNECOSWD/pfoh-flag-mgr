@@ -466,9 +466,16 @@ type CardPreviewState = {
   revoke?: boolean;
   message?: string;
   downloadName?: string;
+  photoLabel?: string;
   progress?: PrintBatchProgress;
   failures?: PrintBatchFailure[];
 };
+
+function reviewPhotoLabel(item: { photoFileName?: string | null; honoreeId?: number | null }) {
+  if (isPendingHonoreePhoto(item.photoFileName)) return "New photo";
+  if (item.honoreeId) return "Current photo";
+  return "";
+}
 
 function printCardFailureMessage(error: unknown) {
   if (error instanceof ApiError) {
@@ -2872,12 +2879,13 @@ export default function App() {
   function beginCardPreview(
     title: string,
     heading = honoreeCardHeading,
-    downloadName = honoreeCardDownloadName
+    downloadName = honoreeCardDownloadName,
+    photoLabel = ""
   ) {
     const requestId = ++cardPreviewRequest.current;
     setCardPreview((current) => {
       if (current?.revoke && current.url) URL.revokeObjectURL(current.url);
-      return { heading, title, phase: "loading", downloadName };
+      return { heading, title, phase: "loading", downloadName, photoLabel };
     });
     return requestId;
   }
@@ -2895,7 +2903,15 @@ export default function App() {
       return;
     }
 
-    setCardPreview({ heading, title, phase: "ready", url, revoke, downloadName });
+    setCardPreview((current) => ({
+      heading,
+      title,
+      phase: "ready",
+      url,
+      revoke,
+      downloadName,
+      photoLabel: current?.photoLabel
+    }));
   }
 
   function failCardPreview(requestId: number, title: string, message: string, heading = honoreeCardHeading) {
@@ -2910,12 +2926,12 @@ export default function App() {
   function openCardBlob(
     title: string,
     load: () => Promise<Blob>,
-    options?: { heading?: string; downloadName?: string; errorFallback?: string }
+    options?: { heading?: string; downloadName?: string; errorFallback?: string; photoLabel?: string }
   ) {
     const heading = options?.heading ?? honoreeCardHeading;
     const downloadName = options?.downloadName ?? honoreeCardDownloadName;
     setError("");
-    const requestId = beginCardPreview(title, heading, downloadName);
+    const requestId = beginCardPreview(title, heading, downloadName, options?.photoLabel ?? "");
     void load()
       .then((blob) => finishCardPreview(requestId, title, URL.createObjectURL(blob), true, heading, downloadName))
       .catch((err) => failCardPreview(
@@ -2964,7 +2980,9 @@ export default function App() {
     if (!account) return;
 
     openCardBlob(item.honoreeName, () =>
-      fetchAuthorizedBlob(instance, account, adminCardPreviewUrl(item.changeRequestId)));
+      fetchAuthorizedBlob(instance, account, adminCardPreviewUrl(item.changeRequestId)), {
+      photoLabel: reviewPhotoLabel(item)
+    });
   }
 
   function downloadCardPreview() {
@@ -3353,6 +3371,7 @@ export default function App() {
         <div className="modalCard appConfirmModal cardPreviewModal" onClick={(event) => event.stopPropagation()} aria-busy={cardPreview.phase === "loading"}>
           <h2 id="card-preview-title">{cardPreview.heading}</h2>
           <p className="helperText">{cardPreview.title}</p>
+          {cardPreview.photoLabel ? <p className="reviewPhotoLabel">{cardPreview.photoLabel}</p> : null}
           {cardPreview.phase === "ready" && cardPreview.url ? (
             <iframe
               ref={cardPreviewFrameRef}
@@ -4736,16 +4755,28 @@ export default function App() {
                   {pendingReviews.map((item) => (
                     <article key={item.changeRequestId} className="reviewPendingCard">
                       <header className="reviewPendingCardHeader">
-                        {isPendingHonoreePhoto(item.photoFileName) && account ? (
-                          <AuthorizedThumbnail
-                            instance={instance}
-                            account={account}
-                            url={changeRequestPhotoUrl(item.changeRequestId)}
-                            photoKey={`${item.changeRequestId}:${item.photoFileName}`}
-                            alt={`${item.honoreeName} pending honoree photo`}
-                            className="reviewPendingPhoto"
-                            emptyLabel={null}
-                          />
+                        {reviewPhotoLabel(item) === "New photo" && account ? (
+                          <div className="reviewPhotoBlock">
+                            <AuthorizedThumbnail
+                              instance={instance}
+                              account={account}
+                              url={changeRequestPhotoUrl(item.changeRequestId)}
+                              photoKey={`${item.changeRequestId}:${item.photoFileName}`}
+                              alt={`${item.honoreeName} new photo`}
+                              className="reviewPendingPhoto"
+                              emptyLabel={null}
+                            />
+                            <span className="reviewPhotoLabel">New photo</span>
+                          </div>
+                        ) : reviewPhotoLabel(item) === "Current photo" ? (
+                          <div className="reviewPhotoBlock">
+                            <img
+                              className="reviewPendingPhoto"
+                              src={honoreePhotoUrl(item.honoreeId ?? 0)}
+                              alt={`${item.honoreeName} current photo`}
+                            />
+                            <span className="reviewPhotoLabel">Current photo</span>
+                          </div>
                         ) : null}
                         <div className="reviewPendingIdentity">
                           <div className="reviewPendingNameLine">

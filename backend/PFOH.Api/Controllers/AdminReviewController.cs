@@ -240,6 +240,15 @@ public class AdminReviewController(
         }
 
         var honoree = HonoreeCardPdf.FromChangeRequest(change);
+        var photoFileName = change.PhotoFileName;
+        if (string.IsNullOrWhiteSpace(photoFileName) && change.HonoreeId is int liveHonoreeId)
+        {
+            photoFileName = await db.Honorees
+                .AsNoTracking()
+                .Where(row => row.Id == liveHonoreeId)
+                .Select(row => row.PhotoFileName)
+                .FirstOrDefaultAsync(ct);
+        }
 
         try
         {
@@ -248,9 +257,10 @@ public class AdminReviewController(
                 fileStorage,
                 honoree,
                 null,
-                change.PhotoFileName,
+                string.IsNullOrWhiteSpace(photoFileName) ? null : photoFileName,
                 null,
-                ct);
+                ct,
+                logger);
             return File(pdf, "application/pdf", $"honoree-card-{id}.pdf");
         }
         catch (Exception ex)

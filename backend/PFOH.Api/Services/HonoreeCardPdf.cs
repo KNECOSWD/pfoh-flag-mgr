@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using PFOH.Api.Models;
 
 namespace PFOH.Api.Services;
@@ -35,7 +36,8 @@ public static class HonoreeCardPdf
         HonoreeSearchResult? searchResult,
         string? photoFileName,
         string? fallbackImageUrl,
-        CancellationToken ct)
+        CancellationToken ct,
+        ILogger? logger = null)
     {
         byte[]? photoBytes = null;
         try
@@ -57,6 +59,6 @@ public static class HonoreeCardPdf
             assets = null;
         }
 
-        return HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes, assets);
+        return HonoreeReportPdfGenerator.Create(environment, honoree, searchResult, photoBytes, assets, logger);
     }
 }
