@@ -23,6 +23,8 @@ function reviewItem(partial: Record<string, unknown>) {
     submittedUtc: "2026-03-01T12:00:00Z",
     requiresCardReprint: false,
     photoFileName: null,
+    currentPhotoAvailable: false,
+    currentPhotoUrl: null,
     description: "A fixture tribute for the follow-up request.",
     awards: "",
     conflictsServed: "",
@@ -75,7 +77,24 @@ async function install(page: Page) {
       await route.fulfill({
         json: [
           reviewItem({ changeRequestId: 555, photoFileName: "pending/555.jpeg" }),
-          reviewItem({ changeRequestId: 556, claimId: 2, photoFileName: null })
+          reviewItem({
+            changeRequestId: 556,
+            claimId: 2,
+            photoFileName: null,
+            currentPhotoAvailable: true,
+            currentPhotoUrl: "/api/admin/review/honorees/1527/photo"
+          }),
+          reviewItem({
+            changeRequestId: 557,
+            claimId: 3,
+            flagGridId: 28,
+            flagGridName: "M-28",
+            honoreeId: 1529,
+            honoreeName: "No Photo Example",
+            photoFileName: null,
+            currentPhotoAvailable: false,
+            currentPhotoUrl: null
+          })
         ],
         headers: { "X-Open-Duplicate-Groups": "0" }
       });
@@ -85,7 +104,7 @@ async function install(page: Page) {
       await route.fulfill({ json: { items: [], page: 1, pageSize: 1, total: 0 } });
       return;
     }
-    if (path === "/api/admin/review/555/card-preview" || path === "/api/admin/review/556/card-preview") {
+    if (path === "/api/admin/review/555/card-preview" || path === "/api/admin/review/556/card-preview" || path === "/api/admin/review/557/card-preview") {
       await route.fulfill({ body: "%PDF-1.4 fixture", contentType: "application/pdf" });
       return;
     }
@@ -118,6 +137,10 @@ test("review labels a new photo and a current photo", async ({ page }) => {
     await expect(page.getByText("Current photo")).toBeVisible();
     await expect(page.getByRole("img", { name: "Pat Example new photo" })).toBeVisible();
     await expect(page.getByRole("img", { name: "Pat Example current photo" })).toBeVisible();
+    const neither = page.locator(".reviewPendingCard", { hasText: "No Photo Example" });
+    await expect(neither.getByText("New photo")).toHaveCount(0);
+    await expect(neither.getByText("Current photo")).toHaveCount(0);
+    await expect(neither.locator("img")).toHaveCount(0);
     const list = page.locator(".reviewPendingList");
     await list.screenshot({ path: `../docs/pr-5.8.1/review-photo-labels-${viewport.name}.png` });
   }
@@ -127,4 +150,8 @@ test("review labels a new photo and a current photo", async ({ page }) => {
   await page.getByRole("button", { name: "Close" }).click();
   await page.getByRole("button", { name: "Honoree Card" }).first().click();
   await expect(page.locator(".cardPreviewModal").getByText("New photo")).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Honoree Card" }).nth(2).click();
+  await expect(page.locator(".cardPreviewModal").getByText("New photo")).toHaveCount(0);
+  await expect(page.locator(".cardPreviewModal").getByText("Current photo")).toHaveCount(0);
 });

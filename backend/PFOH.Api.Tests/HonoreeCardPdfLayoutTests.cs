@@ -89,7 +89,45 @@ public class HonoreeCardPdfLayoutTests
         AssertHonorsFit(allCaps.Runs);
         AssertHonorsFit(mixed.Runs);
         Assert.Equal("10.4", BioFontSize(allCaps.Pdf));
-        Assert.Equal("10.4", BioFontSize(mixed.Pdf));
+        Assert.Equal("12", BioFontSize(mixed.Pdf));
+        Assert.Contains(mixed.Runs, run => run.Text.Contains(';', StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Three_conflicts_and_ten_awards_with_a_450_character_bio_stay_at_12_point()
+    {
+        const string conflicts = "World War II, Korean War, Vietnam War";
+        const string awards =
+            "Purple Heart, Bronze Star, Silver Star, Distinguished Flying Cross, Air Medal, Legion of Merit, Soldier's Medal, Army Commendation Medal, Good Conduct Medal, National Defense Service Medal";
+        const string porch = "The family kept every letter from the field and read them on the porch. ";
+        var pdf = RenderFullHeaderPdf(Repeat(porch, 450), conflicts, awards);
+        var text = string.Join(" ", pdf.Runs.Select(run => run.Text));
+        Assert.Contains("Conflicts served", text, StringComparison.Ordinal);
+        Assert.Contains("Vietnam War", text, StringComparison.Ordinal);
+        Assert.Contains("Awards", text, StringComparison.Ordinal);
+        Assert.Contains("National Defense Service Medal", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("...", text, StringComparison.Ordinal);
+        Assert.Equal("12", BioFontSize(pdf.Pdf));
+        AssertAboveContentBottom(pdf.Runs);
+    }
+
+    [Fact]
+    public void A_legacy_1100_character_bio_fits_whole_without_an_ellipsis()
+    {
+        const string conflicts = "World War II, Korean War";
+        const string awards = "Purple Heart, Bronze Star, Distinguished Flying Cross";
+        const string porch = "The family kept every letter from the field and read them on the porch. ";
+        var tribute = Repeat(porch, 1100);
+        var pdf = RenderFullHeaderPdf(tribute, conflicts, awards);
+        var text = string.Join(" ", pdf.Runs.Select(run => run.Text));
+        Assert.Contains("Conflicts served", text, StringComparison.Ordinal);
+        Assert.Contains("World War II", text, StringComparison.Ordinal);
+        Assert.Contains("Awards", text, StringComparison.Ordinal);
+        Assert.Contains("Purple Heart", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("...", text, StringComparison.Ordinal);
+        Assert.Contains(tribute[..24], text, StringComparison.Ordinal);
+        AssertAboveContentBottom(pdf.Runs);
+        Assert.Equal("8.8", BioFontSize(pdf.Pdf));
     }
 
     private static string BioFontSize(byte[] pdf)
@@ -139,6 +177,15 @@ public class HonoreeCardPdfLayoutTests
         Assert.Contains(FontSizes(pdf.Pdf), size => size is "8.2" or "8.20");
         AssertAboveContentBottom(pdf.Runs);
         Assert.Contains(logs, line => line.Contains("Honoree", StringComparison.Ordinal) && line.Contains('7'));
+
+        var source = new string('W', 20) + " " + Repeat(AllCapsProse, 2000);
+        var words = source.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var ellipsisRun = Assert.Single(pdf.Runs, run => run.Text.Contains("...", StringComparison.Ordinal));
+        Assert.EndsWith("...", ellipsisRun.Text, StringComparison.Ordinal);
+        var stem = ellipsisRun.Text[..^3].Trim();
+        var lastWord = stem.Split(' ', StringSplitOptions.RemoveEmptyEntries)[^1];
+        Assert.Contains(lastWord, words);
+        Assert.True(char.IsLetter(ellipsisRun.Text[^4]), ellipsisRun.Text);
     }
 
     private static void AssertHonorsFit(IReadOnlyList<TextRun> runs)

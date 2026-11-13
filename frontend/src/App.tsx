@@ -29,6 +29,8 @@ import {
   honoreePdfUrl,
   honoreePhotoUrl,
   isPendingHonoreePhoto,
+  reviewCurrentPhotoUrl,
+  reviewPhotoLabel,
   displayNameMaxLength,
   displayUsPhone,
   formatUsPhone,
@@ -470,12 +472,6 @@ type CardPreviewState = {
   progress?: PrintBatchProgress;
   failures?: PrintBatchFailure[];
 };
-
-function reviewPhotoLabel(item: { photoFileName?: string | null; honoreeId?: number | null }) {
-  if (isPendingHonoreePhoto(item.photoFileName)) return "New photo";
-  if (item.honoreeId) return "Current photo";
-  return "";
-}
 
 function printCardFailureMessage(error: unknown) {
   if (error instanceof ApiError) {
@@ -3371,7 +3367,7 @@ export default function App() {
         <div className="modalCard appConfirmModal cardPreviewModal" onClick={(event) => event.stopPropagation()} aria-busy={cardPreview.phase === "loading"}>
           <h2 id="card-preview-title">{cardPreview.heading}</h2>
           <p className="helperText">{cardPreview.title}</p>
-          {cardPreview.photoLabel ? <p className="reviewPhotoLabel">{cardPreview.photoLabel}</p> : null}
+          {cardPreview.photoLabel ? <p className="small text-body-secondary">{cardPreview.photoLabel}</p> : null}
           {cardPreview.phase === "ready" && cardPreview.url ? (
             <iframe
               ref={cardPreviewFrameRef}
@@ -4766,16 +4762,20 @@ export default function App() {
                               className="reviewPendingPhoto"
                               emptyLabel={null}
                             />
-                            <span className="reviewPhotoLabel">New photo</span>
+                            <span className="small text-body-secondary">New photo</span>
                           </div>
-                        ) : reviewPhotoLabel(item) === "Current photo" ? (
+                        ) : reviewPhotoLabel(item) === "Current photo" && account && item.currentPhotoUrl ? (
                           <div className="reviewPhotoBlock">
-                            <img
-                              className="reviewPendingPhoto"
-                              src={honoreePhotoUrl(item.honoreeId ?? 0)}
+                            <AuthorizedThumbnail
+                              instance={instance}
+                              account={account}
+                              url={reviewCurrentPhotoUrl(item.currentPhotoUrl)}
+                              photoKey={`${item.changeRequestId}:current:${item.currentPhotoUrl}`}
                               alt={`${item.honoreeName} current photo`}
+                              className="reviewPendingPhoto"
+                              emptyLabel={null}
                             />
-                            <span className="reviewPhotoLabel">Current photo</span>
+                            <span className="small text-body-secondary">Current photo</span>
                           </div>
                         ) : null}
                         <div className="reviewPendingIdentity">

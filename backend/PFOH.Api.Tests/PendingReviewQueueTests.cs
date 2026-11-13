@@ -715,6 +715,121 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
     }
 
     [Fact]
+    public async Task Pending_review_reports_a_live_photo_for_an_inactive_honoree_and_none_when_neither_exists()
+    {
+        await ResetAsync();
+        var now = DateTime.UtcNow;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PfohDbContext>();
+            db.FlagGrids.AddRange(
+                new FlagGrid
+                {
+                    Id = 27,
+                    FlagGridName = "M-27",
+                    Notes = string.Empty,
+                    CreatedBy = "seed",
+                    ModifiedBy = "seed",
+                    CreatedDate = now,
+                    ModifiedDate = now
+                },
+                new FlagGrid
+                {
+                    Id = 28,
+                    FlagGridName = "M-28",
+                    Notes = string.Empty,
+                    CreatedBy = "seed",
+                    ModifiedBy = "seed",
+                    CreatedDate = now,
+                    ModifiedDate = now
+                });
+            db.Honorees.AddRange(
+                new Honoree
+                {
+                    Id = 1528,
+                    FlagGridId = 27,
+                    FirstName = "Pat",
+                    LastName = "Example",
+                    Rank = "Sergeant",
+                    Description = "A fixture tribute.",
+                    PhotoFileName = "inactive-live.jpeg",
+                    Salutation = string.Empty,
+                    NameUserEntry = string.Empty,
+                    PhoneNumber = string.Empty,
+                    EmailAddress = string.Empty,
+                    Awards = string.Empty,
+                    ConflictsServed = string.Empty,
+                    DatesUserEntry = string.Empty,
+                    IsActive = false,
+                    CreatedBy = "seed",
+                    ModifiedBy = "seed",
+                    CreatedDate = now,
+                    ModifiedDate = now
+                },
+                new Honoree
+                {
+                    Id = 1529,
+                    FlagGridId = 28,
+                    FirstName = "No",
+                    LastName = "Photo",
+                    Rank = "Private",
+                    Description = "A fixture tribute with no photo.",
+                    PhotoFileName = string.Empty,
+                    Salutation = string.Empty,
+                    NameUserEntry = string.Empty,
+                    PhoneNumber = string.Empty,
+                    EmailAddress = string.Empty,
+                    Awards = string.Empty,
+                    ConflictsServed = string.Empty,
+                    DatesUserEntry = string.Empty,
+                    IsActive = true,
+                    CreatedBy = "seed",
+                    ModifiedBy = "seed",
+                    CreatedDate = now,
+                    ModifiedDate = now
+                });
+            await db.SaveChangesAsync();
+        }
+
+        factory.Files.Photos["inactive-live.jpeg"] = [9, 9, 9, 9];
+        await SeedSubmittedAsync(558, 1558, 27, now, photo: null, honoreeId: 1528, owner: "submitter");
+        await SeedSubmittedAsync(559, 1559, 28, now.AddMinutes(1), photo: null, honoreeId: 1529, owner: "submitter");
+        var client = factory.CreateClient();
+
+        var pending = await PendingAsync(client);
+        var inactive = Assert.Single(pending, item => item.ChangeRequestId == 558);
+        Assert.True(inactive.CurrentPhotoAvailable);
+        Assert.Equal("/api/admin/review/honorees/1528/photo", inactive.CurrentPhotoUrl);
+        Assert.Null(inactive.PhotoFileName);
+
+        var neither = Assert.Single(pending, item => item.ChangeRequestId == 559);
+        Assert.False(neither.CurrentPhotoAvailable);
+        Assert.Null(neither.CurrentPhotoUrl);
+        Assert.Null(neither.PhotoFileName);
+
+        var live = await client.SendAsync(Authed(
+            HttpMethod.Get,
+            "/api/admin/review/honorees/1528/photo",
+            "admin-user",
+            "admin@example.com",
+            "Admin",
+            roles: "PFOH.Admin"));
+        Assert.Equal(HttpStatusCode.OK, live.StatusCode);
+        Assert.Equal(new byte[] { 9, 9, 9, 9 }, await live.Content.ReadAsByteArrayAsync());
+
+        var publicPhoto = await client.GetAsync("/api/honorees/1528/photo");
+        Assert.Equal(HttpStatusCode.NotFound, publicPhoto.StatusCode);
+
+        var forbidden = await client.SendAsync(Authed(
+            HttpMethod.Get,
+            "/api/admin/review/honorees/1528/photo",
+            "member-user",
+            "member@example.com",
+            "Member"));
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+    }
+
+    [Fact]
     public async Task Pending_change_includes_the_rank_diff()
     {
         await ResetAsync();
@@ -1434,7 +1549,9 @@ public class PendingReviewQueueTests(PfohApiFactory factory) : IClassFixture<Pfo
         string? HonoreeName = null,
         string? RequestStatus = null,
         string? ClaimantName = null,
-        DateTime? SubmittedUtc = null);
+        DateTime? SubmittedUtc = null,
+        bool CurrentPhotoAvailable = false,
+        string? CurrentPhotoUrl = null);
 
     private sealed record FieldChange(string Label, string Previous, string Proposed);
 

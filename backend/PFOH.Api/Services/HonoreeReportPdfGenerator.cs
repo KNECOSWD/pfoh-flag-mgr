@@ -360,39 +360,43 @@ public static class HonoreeReportPdfGenerator
         var conflicts = HonorForms(gfx, honoree.ConflictsServed, labelFont, bodyFont);
         var awards = HonorForms(gfx, honoree.Awards, labelFont, bodyFont);
         var font = Font(size, false);
-        var honorRoom = room - 10 - font.GetHeight();
-        if (honorRoom <= 0)
+        var wrapped = BreakWideWords(gfx, description, font, ContentWidth);
+        var height = MeasureLeftBlock(gfx, wrapped, font, ContentWidth);
+
+        if (!truncate)
+        {
+            var honorBudget = room - 10 - height;
+            if (honorBudget <= 0)
+            {
+                return false;
+            }
+
+            var choice = ChooseFittingHonors(conflicts, awards, honorBudget, 8);
+            if (choice is null)
+            {
+                return false;
+            }
+
+            plan = new BioPlan(wrapped, size, height, choice.Value);
+            return true;
+        }
+
+        var shortest = ShortestHonors(conflicts, awards);
+        if (shortest is null)
         {
             return false;
         }
 
-        var bothRequired = conflicts.Count > 0 && awards.Count > 0;
-        var choice = bothRequired
-            ? ChooseBothHonors(conflicts, awards, honorRoom, 8)
-            : ChooseHonors(conflicts, awards, honorRoom, 8);
-        if (choice is null)
-        {
-            return false;
-        }
-
-        var honorHeight = HonorStackHeight(choice.Value, 8);
-        var bioBudget = room - 10 - honorHeight;
+        var bioBudget = room - 10 - HonorStackHeight(shortest.Value, 8);
         if (bioBudget < font.GetHeight())
         {
             return false;
         }
 
-        var wrapped = BreakWideWords(gfx, description, font, ContentWidth);
-        var height = MeasureLeftBlock(gfx, wrapped, font, ContentWidth);
         if (height <= bioBudget)
         {
-            plan = new BioPlan(wrapped, size, height, choice.Value);
+            plan = new BioPlan(wrapped, size, height, shortest.Value);
             return true;
-        }
-
-        if (!truncate)
-        {
-            return false;
         }
 
         var cut = FitWithEllipsis(gfx, wrapped, font, bioBudget);
@@ -402,8 +406,73 @@ public static class HonoreeReportPdfGenerator
             return false;
         }
 
-        plan = new BioPlan(cut, size, cutHeight, choice.Value);
+        plan = new BioPlan(cut, size, cutHeight, shortest.Value);
         return true;
+    }
+
+    private static HonorChoice? ChooseFittingHonors(
+        IReadOnlyList<HonorBlock> conflicts,
+        IReadOnlyList<HonorBlock> awards,
+        double available,
+        double sectionGap)
+    {
+        if (conflicts.Count > 0 && awards.Count > 0)
+        {
+            return ChooseBothHonors(conflicts, awards, available, sectionGap);
+        }
+
+        return ChooseHonors(conflicts, awards, available, sectionGap);
+    }
+
+    private static HonorChoice? ShortestHonors(
+        IReadOnlyList<HonorBlock> conflicts,
+        IReadOnlyList<HonorBlock> awards)
+    {
+        if (conflicts.Count > 0 && awards.Count > 0)
+        {
+            HonorChoice? best = null;
+            var bestHeight = double.MaxValue;
+            foreach (var conflictsBlock in conflicts)
+            {
+                foreach (var awardsBlock in awards)
+                {
+                    var height = conflictsBlock.Height + 8 + awardsBlock.Height;
+                    if (height < bestHeight)
+                    {
+                        bestHeight = height;
+                        best = new HonorChoice(conflictsBlock, awardsBlock);
+                    }
+                }
+            }
+
+            return best;
+        }
+
+        if (conflicts.Count > 0)
+        {
+            return new HonorChoice(ShortestBlock(conflicts), null);
+        }
+
+        if (awards.Count > 0)
+        {
+            return new HonorChoice(null, ShortestBlock(awards));
+        }
+
+        return null;
+    }
+
+    private static HonorBlock ShortestBlock(IReadOnlyList<HonorBlock> blocks)
+    {
+        var best = blocks[0];
+        for (var index = 1; index < blocks.Count; index++)
+        {
+            if (blocks[index].Height < best.Height)
+            {
+                best = blocks[index];
+            }
+        }
+
+        return best;
     }
 
     private static void DrawBioPlan(XGraphics gfx, double y, BioPlan plan)
