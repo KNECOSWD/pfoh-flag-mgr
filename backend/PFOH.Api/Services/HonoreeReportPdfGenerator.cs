@@ -1,3 +1,4 @@
+using System.Text;
 using PdfSharpCore.Drawing;
 using PdfSharpCore.Drawing.Layout;
 using PdfSharpCore.Drawing.Layout.enums;
@@ -301,6 +302,12 @@ public static class HonoreeReportPdfGenerator
         };
 
         var font = Font(fontSize, false);
+        // The formatter wraps on spaces and does not break a token, so one
+        // unbroken word wider than the box would paint past the card. A space
+        // inserted in that word makes it wrap. A newline would not: the formatter
+        // keeps line-break blocks on the first line and draws them as spaces.
+        // The stored bio is unchanged.
+        description = BreakWideWords(gfx, description, font, ContentWidth);
         var rect = new XRect(ContentLeft, y, ContentWidth, BioBoxHeight);
         var formatter = new XTextFormatter(gfx);
         // The short DrawString overload full-justifies every line and ignores Alignment,
@@ -488,6 +495,78 @@ public static class HonoreeReportPdfGenerator
                 });
             lineY += lineHeight;
         }
+    }
+
+    private static string BreakWideWords(XGraphics gfx, string text, XFont font, double maxWidth)
+    {
+        var builder = new StringBuilder(text.Length);
+        var changed = false;
+        var index = 0;
+        while (index < text.Length)
+        {
+            if (char.IsWhiteSpace(text[index]))
+            {
+                builder.Append(text[index]);
+                index++;
+                continue;
+            }
+
+            var start = index;
+            while (index < text.Length && !char.IsWhiteSpace(text[index]))
+            {
+                index++;
+            }
+
+            var word = text.AsSpan(start, index - start);
+            if (gfx.MeasureString(word.ToString(), font).Width <= maxWidth)
+            {
+                builder.Append(word);
+                continue;
+            }
+
+            changed = true;
+            var offset = 0;
+            while (offset < word.Length)
+            {
+                var count = FittedPrefix(gfx, font, word[offset..], maxWidth);
+                if (offset > 0)
+                {
+                    builder.Append(' ');
+                }
+
+                builder.Append(word.Slice(offset, count));
+                offset += count;
+            }
+        }
+
+        return changed ? builder.ToString() : text;
+    }
+
+    private static int FittedPrefix(XGraphics gfx, XFont font, ReadOnlySpan<char> word, double maxWidth)
+    {
+        if (word.Length <= 1)
+        {
+            return Math.Max(word.Length, 1);
+        }
+
+        var low = 1;
+        var high = word.Length;
+        var fit = 1;
+        while (low <= high)
+        {
+            var mid = (low + high) / 2;
+            if (gfx.MeasureString(word[..mid].ToString(), font).Width <= maxWidth)
+            {
+                fit = mid;
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid - 1;
+            }
+        }
+
+        return fit;
     }
 
     private static double MeasureLeftBlock(XGraphics gfx, string text, XFont font, double width)

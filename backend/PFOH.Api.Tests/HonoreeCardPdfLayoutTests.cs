@@ -189,78 +189,81 @@ public class HonoreeCardPdfLayoutTests
         return ReadRuns(pdf);
     }
 
-    [Fact]
-    public void Bio_of_exactly_the_limit_in_worst_case_wide_characters_fits_the_card()
-    {
-        var tribute = WorstCaseWideBio(HonoreeBioLimits.MaxLength);
-        Assert.Equal(HonoreeBioLimits.MaxLength, tribute.Length);
-        Assert.False(char.IsWhiteSpace(tribute[^1]));
+    private const string AllCapsProse =
+        "THE FAMILY KEPT EVERY LETTER FROM THE FIELD AND READ THEM ON THE PORCH. ";
 
-        var pdf = RenderFullHeaderBytes(tribute);
-        var runs = ReadRuns(pdf);
-        var bio = BioRuns(runs, tribute);
-        Assert.Equal(tribute, string.Join(" ", bio.OrderByDescending(run => run.Y).ThenBy(run => run.X).Select(run => run.Text)));
-        Assert.All(bio, run => Assert.Equal(BioLeft, run.X, 1));
-        Assert.InRange(bio.Select(run => Math.Round(run.Y, 1)).Distinct().Count(), 1, 24);
-
-        using var measure = NewMeasure();
-        var font = new XFont("DejaVu Sans", 12, XFontStyle.Regular);
-        Assert.All(bio, run => Assert.True(measure.Gfx.MeasureString(run.Text, font).Width <= 214.5, run.Text));
-
-        var sizes = FontSizes(pdf);
-        Assert.Contains(sizes, size => size is "12" or "12.0" or "12.00");
-        Assert.DoesNotContain(sizes, size => size is "10.4" or "10.40" or "9.6" or "8.8" or "8.2" or "8.20");
-    }
+    private const string AllCapsHonors =
+        "SERGEANT JAMES ALLEY RECEIVED THE DISTINGUISHED FLYING CROSS, PURPLE HEART, AND BRONZE STAR. CAPTAIN SALVADOR GUZMAN SERVED WITH THE UNITED STATES ARMY AIR CORPS BESIDE LIEUTENANT MARGARET COLE. ";
 
     [Fact]
-    public void One_wide_character_past_the_measured_fit_is_clipped_and_the_limit_is_below_that()
+    public void Bio_of_exactly_the_limit_in_all_caps_prose_fits_without_shrinking()
     {
-        const int measuredFit = 248;
-        Assert.True(HonoreeBioLimits.MaxLength <= measuredFit - 48);
-        Assert.Equal(0, HonoreeBioLimits.MaxLength % 100);
+        Assert.Equal(0, HonoreeBioLimits.MaxLength % 50);
+        Assert.True(HonoreeBioLimits.MaxLength <= 650);
 
-        var fits = WorstCaseWideBio(measuredFit);
-        var overflows = WorstCaseWideBio(measuredFit + 1);
-        using var measure = NewMeasure();
-        var font = new XFont("DejaVu Sans", 12, XFontStyle.Regular);
-        var fitHeight = MeasureHeight(measure.Gfx, fits, font);
-        var overflowHeight = MeasureHeight(measure.Gfx, overflows, font);
-        Assert.True(fitHeight <= 345, fitHeight.ToString(CultureInfo.InvariantCulture));
-        Assert.True(overflowHeight > 345, overflowHeight.ToString(CultureInfo.InvariantCulture));
-
-        var prose = string.Concat(Enumerable.Repeat(
-            "The family kept every letter from the field and read them on the porch. ",
-            20))[..845];
-        Assert.True(MeasureHeight(measure.Gfx, prose, font) <= 345);
-        Assert.True(MeasureHeight(measure.Gfx, prose + "x", font) > 345);
-
-        var overflowRuns = ReadRuns(RenderFullHeaderBytes(overflows));
-        var shown = string.Join(" ", BioRuns(overflowRuns, overflows).OrderByDescending(run => run.Y).ThenBy(run => run.X).Select(run => run.Text));
-        Assert.Equal(overflows, shown);
-        var fitRuns = ReadRuns(RenderFullHeaderBytes(fits));
-        var name = Assert.Single(fitRuns, run => run.Text == Name);
-        var fitBio = BioRuns(fitRuns, fits);
-        var overflowBio = BioRuns(overflowRuns, overflows);
-        var fitSpan = fitBio.Max(run => run.Y) - fitBio.Min(run => run.Y);
-        var overflowSpan = overflowBio.Max(run => run.Y) - overflowBio.Min(run => run.Y);
-        var widestFit = fitBio.Max(run => measure.Gfx.MeasureString(run.Text, font).Width);
-        var widestOverflow = overflowBio.Max(run => measure.Gfx.MeasureString(run.Text, font).Width);
-        const double lineHeight = 13.969;
-        Assert.True(widestFit <= 214.5 && fitSpan + lineHeight <= 345, $"fit width {widestFit} span {fitSpan}");
-        Assert.True(widestOverflow > 214.5 || overflowSpan + lineHeight > 345, $"overflow width {widestOverflow} span {overflowSpan} nameY {name.Y}");
-        Assert.True(name.Y > overflowBio.Max(run => run.Y));
-    }
-
-    private static string WorstCaseWideBio(int length)
-    {
-        var unit = new string('W', 9) + " ";
-        var text = string.Concat(Enumerable.Repeat(unit, (length / unit.Length) + 2))[..length];
-        if (!char.IsWhiteSpace(text[^1]))
+        foreach (var unit in new[] { AllCapsHonors, AllCapsProse })
         {
-            return text;
+            var tribute = AllCapsPrefix(unit, HonoreeBioLimits.MaxLength);
+            Assert.Equal(HonoreeBioLimits.MaxLength, tribute.Length);
+            Assert.False(char.IsWhiteSpace(tribute[0]));
+            Assert.False(char.IsWhiteSpace(tribute[^1]));
+
+            var pdf = RenderFullHeaderBytes(tribute);
+            var runs = ReadRuns(pdf);
+            var bio = BioRuns(runs, tribute);
+            Assert.Equal(tribute, string.Join(" ", bio.OrderByDescending(run => run.Y).ThenBy(run => run.X).Select(run => run.Text)));
+            Assert.All(bio, run => Assert.Equal(BioLeft, run.X, 1));
+            Assert.InRange(bio.Select(run => Math.Round(run.Y, 1)).Distinct().Count(), 1, 24);
+
+            using var measure = NewMeasure();
+            var font = new XFont("DejaVu Sans", 12, XFontStyle.Regular);
+            Assert.All(bio, run => Assert.True(measure.Gfx.MeasureString(run.Text, font).Width <= 214.5, run.Text));
+            Assert.True(MeasureHeight(measure.Gfx, Repeat(unit, HonoreeBioLimits.MaxLength), font) <= 24 * 13.969 + 0.05);
+
+            var sizes = FontSizes(pdf);
+            Assert.Contains(sizes, size => size is "12" or "12.0" or "12.00");
+            Assert.DoesNotContain(sizes, size => size is "10.4" or "10.40" or "9.6" or "8.8" or "8.2" or "8.20");
+        }
+    }
+
+    [Fact]
+    public void All_caps_honors_one_step_past_the_no_shrink_boundary_exceeds_24_lines()
+    {
+        using var measure = NewMeasure();
+        var font = new XFont("DejaVu Sans", 12, XFontStyle.Regular);
+        var atLimit = MeasureHeight(measure.Gfx, Repeat(AllCapsHonors, HonoreeBioLimits.MaxLength), font);
+        var atShrinkBoundary = MeasureHeight(measure.Gfx, Repeat(AllCapsHonors, 650), font);
+        Assert.True(atLimit <= 24 * 13.969 + 0.05, atLimit.ToString(CultureInfo.InvariantCulture));
+        Assert.True(atShrinkBoundary > 24 * 13.969 + 0.05, atShrinkBoundary.ToString(CultureInfo.InvariantCulture));
+    }
+
+    [Fact]
+    public void A_word_wider_than_the_bio_box_is_hard_wrapped_instead_of_painting_past_it()
+    {
+        var tribute = new string('W', 40);
+        var runs = ReadRuns(RenderFullHeaderBytes(tribute));
+        var bio = runs.Where(run => run.Text.Length > 0 && run.Text.All(ch => ch == 'W')).ToList();
+        Assert.Equal(tribute.Length, bio.Sum(run => run.Text.Length));
+        Assert.True(bio.Count > 1, Dump(runs));
+        Assert.All(bio, run => Assert.Equal(BioLeft, run.X, 1));
+        using var measure = NewMeasure();
+        var font = new XFont("DejaVu Sans", 12, XFontStyle.Regular);
+        Assert.All(bio, run => Assert.True(measure.Gfx.MeasureString(run.Text, font).Width <= 214.5, Dump(runs)));
+    }
+
+    private static string Repeat(string unit, int length) =>
+        string.Concat(Enumerable.Repeat(unit, (length / unit.Length) + 2))[..length];
+
+    private static string AllCapsPrefix(string unit, int length)
+    {
+        var text = string.Concat(Enumerable.Repeat(unit, (length / unit.Length) + 3));
+        var slice = text[..length];
+        if (!char.IsWhiteSpace(slice[^1]))
+        {
+            return slice;
         }
 
-        return text.TrimEnd() + new string('W', length - text.TrimEnd().Length);
+        return slice[..^1] + text[length];
     }
 
     private static byte[] RenderFullHeaderBytes(string tribute)

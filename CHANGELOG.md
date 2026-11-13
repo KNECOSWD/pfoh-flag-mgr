@@ -2,8 +2,9 @@
 
 ## 5.8.1
 
-- The honoree bio, the Description field, is limited to 200 characters. That length fits in the printed card bio area at 12 point DejaVu Sans without shrinking or clipping, rounded down from the measured fit of 248 wide characters. The nomination form, a suggested change, and an administrator edit show a live count, "123 / 200 characters", and the server refuses a longer bio with "Bio must be 200 characters or fewer."
-- A bio already stored above 200 characters is not cut. An administrator edit shows the full text, the count in an over-limit state, and "Bio must be shortened to 200 characters before saving." Saving is refused until the bio is shortened. Approving a pending request that already has a longer bio still succeeds and keeps the full text.
+- The honoree bio, the Description field, is limited to 600 characters. That is the largest multiple of 50 that fits all-caps prose, including long words and names, in the printed card bio area at 12 point DejaVu Sans within 24 lines, and it stays under the 650 character size where the card would shrink the type. The nomination form, a suggested change, and an administrator edit show a live count, "123 / 600 characters", and the server refuses a longer bio with "Bio must be 600 characters or fewer."
+- A bio already stored above 600 characters is not cut. An administrator edit shows the full text, the count in an over-limit state, and "Bio must be shortened to 600 characters before saving." Saving is refused until the bio is shortened. Approving a pending request that already has a longer bio still succeeds and keeps the full text.
+- A single word wider than the card bio box is broken onto the next line when the card is drawn. The stored bio is not changed.
 - There is no database change. docs/sql/bio-over-limit-count.sql is a read-only count of honorees and pending requests over the limit.
 
 ## 5.8.0

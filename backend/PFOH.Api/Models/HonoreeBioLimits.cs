@@ -4,15 +4,14 @@ namespace PFOH.Api.Models;
 /// Character cap for an honoree bio (the Description field).
 /// Measured for the printed card in <c>HonoreeReportPdfGenerator</c>:
 /// DejaVu Sans 12pt in a 214 by 345 point box. Twenty-four lines fit
-/// (line height 13.969pt, 335.25pt) and a twenty-fifth line (349.22pt) does not.
-/// Text longer than 650 characters shrinks the font, so this cap stays below that.
-/// Typical prose fits 845 characters at 12pt. Words of nine W's, the widest
-/// Latin letter that still wraps inside the box, fit 248 characters and clip at 249.
-/// 248 is rounded down to 200. There is no database length change.
+/// (line height 13.969pt, 335.25pt). Text longer than 650 characters shrinks.
+/// All-caps prose with long words and names fits 625 characters in 24 lines.
+/// 600 is the largest multiple of 50 at or under both that fit and 650.
+/// There is no database length change.
 /// </summary>
 public static class HonoreeBioLimits
 {
-    public const int MaxLength = 200;
+    public const int MaxLength = 600;
 
-    public const string TooLongMessage = "Bio must be 200 characters or fewer.";
+    public const string TooLongMessage = "Bio must be 600 characters or fewer.";
 }
