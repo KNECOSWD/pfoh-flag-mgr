@@ -75,6 +75,7 @@ import {
   printCenterHeading,
   printSelectionSubtitle
 } from "./cardPreview.js";
+import { HONOREE_BIO_MAX_LENGTH, honoreeBioLimitMessage, honoreeBioShortenMessage } from "./honoreeBio";
 import {
   mergePrintBatch,
   preparePrintBatch,
@@ -482,6 +483,9 @@ function reportableErrorMessage(error: unknown, fallback: string) {
   if (isQuietAuthRejection(error)) return "";
 
   if (error instanceof ApiError) {
+    const serverMessage = error.serverMessage ?? "";
+    const bioLimit = serverMessage.match(/Bio must be \d+ characters or fewer\./);
+    if (bioLimit) return bioLimit[0];
     return error.message;
   }
 
@@ -2287,9 +2291,16 @@ export default function App() {
     });
   }
 
+  function rejectOverlongBio() {
+    if ((form.description ?? "").length <= HONOREE_BIO_MAX_LENGTH) return false;
+    setError(honoreeBioShortenMessage());
+    return true;
+  }
+
   async function submitNomination(event: React.FormEvent) {
     event.preventDefault();
 
+    if (rejectOverlongBio()) return;
     if (!account || submitLockRef.current) return;
 
     submitLockRef.current = true;
@@ -2349,6 +2360,7 @@ export default function App() {
   }
 
   async function saveDraft() {
+    if (rejectOverlongBio()) return;
     if (!account || !selectedClaim) return;
 
     setSaving(true);
@@ -2372,6 +2384,7 @@ export default function App() {
   async function submitClaim(event: React.FormEvent) {
     event.preventDefault();
 
+    if (rejectOverlongBio()) return;
     if (!account || !selectedClaim || submitLockRef.current) return;
 
     const isAdminDirectEdit = selectedClaim.claimStatus === "AdminDirectEdit";
@@ -5526,17 +5539,47 @@ export default function App() {
                   />
                 </label>
 
-                <label className="col-12">
+                <label className="col-12" htmlFor="honoree-bio">
                   <span className="fieldLabelText">
                     Honoree description / tribute <span className="requiredMark" aria-hidden="true">*</span>
                   </span>
                   <textarea
+                    id="honoree-bio"
                     className="form-control"
                     required
                     rows={6}
+                    maxLength={(form.description ?? "").length > HONOREE_BIO_MAX_LENGTH ? undefined : HONOREE_BIO_MAX_LENGTH}
+                    aria-describedby={(form.description ?? "").length > HONOREE_BIO_MAX_LENGTH ? "honoree-bio-count honoree-bio-limit" : "honoree-bio-count"}
+                    aria-invalid={(form.description ?? "").length > HONOREE_BIO_MAX_LENGTH || undefined}
                     value={form.description ?? ""}
-                    onChange={(e) => update("description", e.target.value)}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      const current = form.description ?? "";
+                      if (current.length > HONOREE_BIO_MAX_LENGTH && next.length > current.length) return;
+                      update("description", next);
+                      if (next.length <= HONOREE_BIO_MAX_LENGTH) {
+                        setError((message) => message === honoreeBioShortenMessage() || message === honoreeBioLimitMessage() ? "" : message);
+                      }
+                    }}
+                    onInvalid={(event) => {
+                      if ((form.description ?? "").length > HONOREE_BIO_MAX_LENGTH) {
+                        event.preventDefault();
+                        setError(honoreeBioShortenMessage());
+                      }
+                    }}
                   />
+                  <p
+                    id="honoree-bio-count"
+                    className={(form.description ?? "").length > HONOREE_BIO_MAX_LENGTH ? "bioCount bioCountOver" : "bioCount"}
+                    aria-live="polite"
+                  >
+                    {(form.description ?? "").length} / {HONOREE_BIO_MAX_LENGTH} characters
+                  </p>
+                  {(form.description ?? "").length > HONOREE_BIO_MAX_LENGTH ? (
+                    <p id="honoree-bio-limit" className="bioLimitMessage" role="alert">
+                      {honoreeBioShortenMessage()}
+                    </p>
+                  ) : null}
                 </label>
                 <label className="col-12">
                   Honoree photo

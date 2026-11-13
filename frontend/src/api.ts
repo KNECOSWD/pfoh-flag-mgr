@@ -68,10 +68,10 @@ async function buildApiError(response: Response, method: string, url: string): P
       : "";
 
     serverMessage =
+      validationErrors ||
       parsed.message ||
       parsed.detail ||
       parsed.title ||
-      validationErrors ||
       rawMessage;
 
     detail = [parsed.detail, validationErrors, parsed.currentStatus ? `Current status: ${parsed.currentStatus}` : ""]

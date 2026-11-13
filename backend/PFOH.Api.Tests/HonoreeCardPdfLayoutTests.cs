@@ -4,6 +4,10 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.FileProviders;
+using PdfSharpCore.Drawing;
+using PdfSharpCore.Drawing.Layout;
+using PdfSharpCore.Drawing.Layout.enums;
+using PdfSharpCore.Pdf;
 using PFOH.Api.Models;
 using PFOH.Api.Services;
 using Xunit;
@@ -183,6 +187,154 @@ public class HonoreeCardPdfLayoutTests
             SyntheticArtwork());
         Assert.Equal("%PDF", Encoding.ASCII.GetString(pdf, 0, 4));
         return ReadRuns(pdf);
+    }
+
+    [Fact]
+    public void Bio_of_exactly_the_limit_in_worst_case_wide_characters_fits_the_card()
+    {
+        var tribute = WorstCaseWideBio(HonoreeBioLimits.MaxLength);
+        Assert.Equal(HonoreeBioLimits.MaxLength, tribute.Length);
+        Assert.False(char.IsWhiteSpace(tribute[^1]));
+
+        var pdf = RenderFullHeaderBytes(tribute);
+        var runs = ReadRuns(pdf);
+        var bio = BioRuns(runs, tribute);
+        Assert.Equal(tribute, string.Join(" ", bio.OrderByDescending(run => run.Y).ThenBy(run => run.X).Select(run => run.Text)));
+        Assert.All(bio, run => Assert.Equal(BioLeft, run.X, 1));
+        Assert.InRange(bio.Select(run => Math.Round(run.Y, 1)).Distinct().Count(), 1, 24);
+
+        using var measure = NewMeasure();
+        var font = new XFont("DejaVu Sans", 12, XFontStyle.Regular);
+        Assert.All(bio, run => Assert.True(measure.Gfx.MeasureString(run.Text, font).Width <= 214.5, run.Text));
+
+        var sizes = FontSizes(pdf);
+        Assert.Contains(sizes, size => size is "12" or "12.0" or "12.00");
+        Assert.DoesNotContain(sizes, size => size is "10.4" or "10.40" or "9.6" or "8.8" or "8.2" or "8.20");
+    }
+
+    [Fact]
+    public void One_wide_character_past_the_measured_fit_is_clipped_and_the_limit_is_below_that()
+    {
+        const int measuredFit = 248;
+        Assert.True(HonoreeBioLimits.MaxLength <= measuredFit - 48);
+        Assert.Equal(0, HonoreeBioLimits.MaxLength % 100);
+
+        var fits = WorstCaseWideBio(measuredFit);
+        var overflows = WorstCaseWideBio(measuredFit + 1);
+        using var measure = NewMeasure();
+        var font = new XFont("DejaVu Sans", 12, XFontStyle.Regular);
+        var fitHeight = MeasureHeight(measure.Gfx, fits, font);
+        var overflowHeight = MeasureHeight(measure.Gfx, overflows, font);
+        Assert.True(fitHeight <= 345, fitHeight.ToString(CultureInfo.InvariantCulture));
+        Assert.True(overflowHeight > 345, overflowHeight.ToString(CultureInfo.InvariantCulture));
+
+        var prose = string.Concat(Enumerable.Repeat(
+            "The family kept every letter from the field and read them on the porch. ",
+            20))[..845];
+        Assert.True(MeasureHeight(measure.Gfx, prose, font) <= 345);
+        Assert.True(MeasureHeight(measure.Gfx, prose + "x", font) > 345);
+
+        var overflowRuns = ReadRuns(RenderFullHeaderBytes(overflows));
+        var shown = string.Join(" ", BioRuns(overflowRuns, overflows).OrderByDescending(run => run.Y).ThenBy(run => run.X).Select(run => run.Text));
+        Assert.Equal(overflows, shown);
+        var fitRuns = ReadRuns(RenderFullHeaderBytes(fits));
+        var name = Assert.Single(fitRuns, run => run.Text == Name);
+        var fitBio = BioRuns(fitRuns, fits);
+        var overflowBio = BioRuns(overflowRuns, overflows);
+        var fitSpan = fitBio.Max(run => run.Y) - fitBio.Min(run => run.Y);
+        var overflowSpan = overflowBio.Max(run => run.Y) - overflowBio.Min(run => run.Y);
+        var widestFit = fitBio.Max(run => measure.Gfx.MeasureString(run.Text, font).Width);
+        var widestOverflow = overflowBio.Max(run => measure.Gfx.MeasureString(run.Text, font).Width);
+        const double lineHeight = 13.969;
+        Assert.True(widestFit <= 214.5 && fitSpan + lineHeight <= 345, $"fit width {widestFit} span {fitSpan}");
+        Assert.True(widestOverflow > 214.5 || overflowSpan + lineHeight > 345, $"overflow width {widestOverflow} span {overflowSpan} nameY {name.Y}");
+        Assert.True(name.Y > overflowBio.Max(run => run.Y));
+    }
+
+    private static string WorstCaseWideBio(int length)
+    {
+        var unit = new string('W', 9) + " ";
+        var text = string.Concat(Enumerable.Repeat(unit, (length / unit.Length) + 2))[..length];
+        if (!char.IsWhiteSpace(text[^1]))
+        {
+            return text;
+        }
+
+        return text.TrimEnd() + new string('W', length - text.TrimEnd().Length);
+    }
+
+    private static byte[] RenderFullHeaderBytes(string tribute)
+    {
+        var pdf = HonoreeReportPdfGenerator.Create(
+            new EmptyHost(),
+            new Honoree
+            {
+                FirstName = "Salvador",
+                LastName = "Guzman",
+                Rank = "Sergeant",
+                StartYear = 1942,
+                EndYear = 1945,
+                Description = tribute,
+                ServiceBranch = new ServiceBranch { ServiceBranchName = Branch },
+                FlagGrid = new FlagGrid { FlagGridName = "V-12" }
+            },
+            searchResult: null,
+            photoBytes: null,
+            SyntheticArtwork());
+        return pdf;
+    }
+
+    private sealed class MeasureSession : IDisposable
+    {
+        public MeasureSession(PdfDocument document, XGraphics gfx)
+        {
+            Document = document;
+            Gfx = gfx;
+        }
+
+        public PdfDocument Document { get; }
+        public XGraphics Gfx { get; }
+
+        public void Dispose()
+        {
+            Gfx.Dispose();
+            Document.Dispose();
+        }
+    }
+
+    private static MeasureSession NewMeasure()
+    {
+        var document = new PdfDocument();
+        var page = document.AddPage();
+        page.Width = 294;
+        page.Height = 656;
+        return new MeasureSession(document, XGraphics.FromPdfPage(page));
+    }
+
+    private static double MeasureHeight(XGraphics gfx, string text, XFont font)
+    {
+        var formatter = new XTextFormatter(gfx)
+        {
+            AllowVerticalOverflow = true,
+            Alignment = XParagraphAlignment.Left
+        };
+        return formatter.GetLayout(text, font, XBrushes.Black, new XRect(0, 0, 214, 100000)).Height;
+    }
+
+    private static List<string> FontSizes(byte[] pdf)
+    {
+        var content = PageContent(pdf);
+        return Regex.Matches(content, @"([\d.]+)\s+Tf")
+            .Select(match => match.Groups[1].Value)
+            .ToList();
+    }
+
+    private static string PageContent(byte[] pdf)
+    {
+        var objects = ReadObjects(pdf);
+        var page = objects.Values.Select(Encoding.Latin1.GetString).First(text => text.Contains("/Type /Page\n") || text.Contains("/Type /Page\r"));
+        var contentsId = int.Parse(Regex.Match(page, @"/Contents\s+(\d+)\s+0\s+R").Groups[1].Value, CultureInfo.InvariantCulture);
+        return Encoding.Latin1.GetString(Inflate(objects[contentsId]));
     }
 
     [Fact]

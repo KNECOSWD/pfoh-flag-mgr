@@ -78,7 +78,7 @@ async function install(page: Page, roles: string[] = ["PFOH.Admin"], posts: stri
       return;
     }
     if (path === "/api/version") {
-      await route.fulfill({ json: { version: "5.8.0" } });
+      await route.fulfill({ json: { version: "5.8.1" } });
       return;
     }
     if (path === "/api/telemetry-config") {

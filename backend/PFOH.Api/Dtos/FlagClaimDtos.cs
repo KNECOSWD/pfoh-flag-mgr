@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Http;
+using PFOH.Api.Models;
 
 namespace PFOH.Api.Dtos;
 
@@ -82,7 +83,9 @@ public class SaveHonoreeChangeRequest
 
     public string? ConflictsServed { get; set; }
     public string? Awards { get; set; }
+
     [Required]
+    [MaxLength(HonoreeBioLimits.MaxLength, ErrorMessage = HonoreeBioLimits.TooLongMessage)]
     public string? Description { get; set; }
 
     public bool Kia { get; set; }

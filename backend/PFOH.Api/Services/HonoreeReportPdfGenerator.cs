@@ -289,6 +289,8 @@ public static class HonoreeReportPdfGenerator
             description = "No tribute text has been entered for this honoree yet.";
         }
 
+        // Lengths above 650 shrink so a bio already stored before the cap still prints.
+        // New bios are limited to HonoreeBioLimits.MaxLength, which stays at 12pt.
         var fontSize = description.Length switch
         {
             > 1200 => 8.2,
