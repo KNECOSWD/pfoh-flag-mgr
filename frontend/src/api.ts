@@ -13,6 +13,7 @@ import {
   sharedTokenRequest,
   withNetworkRetry
 } from "./tokenRequest.js";
+import { chooseServerMessage } from "./apiErrorMessage.js";
 
 export class ApiError extends Error {
   status: number;
@@ -67,12 +68,7 @@ async function buildApiError(response: Response, method: string, url: string): P
           .join("; ")
       : "";
 
-    serverMessage =
-      validationErrors ||
-      parsed.message ||
-      parsed.detail ||
-      parsed.title ||
-      rawMessage;
+    serverMessage = chooseServerMessage(parsed, rawMessage);
 
     detail = [parsed.detail, validationErrors, parsed.currentStatus ? `Current status: ${parsed.currentStatus}` : ""]
       .filter(Boolean)

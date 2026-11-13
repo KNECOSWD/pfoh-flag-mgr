@@ -251,7 +251,7 @@ public class Release52Tests : IDisposable
 
         var v1 = await CurrentStampAsync(1, formatVersion: 1);
         var current = await CurrentStampAsync(1);
-        Assert.Equal(2, HonoreePdfStamp.FormatVersion);
+        Assert.Equal(3, HonoreePdfStamp.FormatVersion);
         Assert.NotEqual(v1, current);
         factory.Files.Pdfs[1] = "%PDF-v1"u8.ToArray();
         factory.Files.PdfStamps[1] = v1;
@@ -259,6 +259,32 @@ public class Release52Tests : IDisposable
         var opened = await client.GetAsync("/api/honorees/1/pdf");
         Assert.Equal(HttpStatusCode.OK, opened.StatusCode);
         Assert.NotEqual("%PDF-v1", System.Text.Encoding.UTF8.GetString(await opened.Content.ReadAsByteArrayAsync()));
+        Assert.Equal(1, factory.Renderer.Calls);
+        Assert.Equal(current, factory.Files.PdfStamps[1]);
+
+        var again = await client.GetAsync("/api/honorees/1/pdf");
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
+        Assert.Equal(1, factory.Renderer.Calls);
+    }
+
+    [Fact]
+    public async Task A_v2_card_stamp_is_rebuilt_on_open_and_startup_does_not_render()
+    {
+        await ResetAsync();
+        await SeedOnGridAsync(1, "Alex", "Rivera", 11, "AA-10", gridHonoreeId: 1);
+        var client = factory.CreateClient();
+        Assert.Equal(0, factory.Renderer.Calls);
+
+        var v2 = await CurrentStampAsync(1, formatVersion: 2);
+        var current = await CurrentStampAsync(1);
+        Assert.Equal(3, HonoreePdfStamp.FormatVersion);
+        Assert.NotEqual(v2, current);
+        factory.Files.Pdfs[1] = "%PDF-v2"u8.ToArray();
+        factory.Files.PdfStamps[1] = v2;
+
+        var opened = await client.GetAsync("/api/honorees/1/pdf");
+        Assert.Equal(HttpStatusCode.OK, opened.StatusCode);
+        Assert.NotEqual("%PDF-v2", System.Text.Encoding.UTF8.GetString(await opened.Content.ReadAsByteArrayAsync()));
         Assert.Equal(1, factory.Renderer.Calls);
         Assert.Equal(current, factory.Files.PdfStamps[1]);
 

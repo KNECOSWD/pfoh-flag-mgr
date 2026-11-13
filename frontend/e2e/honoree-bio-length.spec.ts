@@ -233,7 +233,7 @@ test.describe("honoree bio length", () => {
       await bio.type("X");
       await expect(bio).toHaveValue(longBio);
       await expect(page.locator("#honoree-bio-count")).toHaveText(`${longBio.length} / ${limit} characters`);
-      await expect(page.locator("#honoree-bio-count")).toHaveClass(/bioCountOver/);
+      await expect(page.locator("#honoree-bio-count")).toHaveClass(/text-danger/);
       await expect(page.locator("#honoree-bio-limit")).toHaveText(honoreeBioShortenMessage());
       await expect(bio).toHaveAttribute("aria-describedby", /honoree-bio-limit/);
       await shot(page, `admin-over-limit-${viewport.name}`);

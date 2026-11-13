@@ -104,6 +104,10 @@ jobs:
         if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-us-phone.mjs
 
+      - name: Check API error messages
+        if: steps.changes.outputs.code != 'false'
+        run: node --test frontend/scripts/check-api-error-message.mjs
+
       - name: Check administrator tab errors
         if: steps.changes.outputs.code != 'false'
         run: node --test frontend/scripts/check-admin-access.mjs

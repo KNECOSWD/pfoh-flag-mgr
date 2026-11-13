@@ -55,23 +55,6 @@
   color: #3d4d66;
 }
 
-.bioCount {
-  margin: var(--space-3xs) 0 0;
-  color: #526179;
-  font-size: var(--font-caption);
-}
-
-.bioCountOver,
-.bioLimitMessage {
-  color: var(--color-crimson);
-  font-weight: 700;
-}
-
-.bioLimitMessage {
-  margin: var(--space-3xs) 0 0;
-  font-size: var(--font-caption);
-}
-
 .formCard label {
   text-align: left;
   @media (min-width: 761px) {

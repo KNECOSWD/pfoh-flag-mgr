@@ -5570,13 +5570,13 @@ export default function App() {
                   />
                   <p
                     id="honoree-bio-count"
-                    className={(form.description ?? "").length > HONOREE_BIO_MAX_LENGTH ? "bioCount bioCountOver" : "bioCount"}
+                    className={(form.description ?? "").length > HONOREE_BIO_MAX_LENGTH ? "form-text text-danger fw-bold" : "form-text"}
                     aria-live="polite"
                   >
                     {(form.description ?? "").length} / {HONOREE_BIO_MAX_LENGTH} characters
                   </p>
                   {(form.description ?? "").length > HONOREE_BIO_MAX_LENGTH ? (
-                    <p id="honoree-bio-limit" className="bioLimitMessage" role="alert">
+                    <p id="honoree-bio-limit" className="form-text text-danger fw-bold" role="alert">
                       {honoreeBioShortenMessage()}
                     </p>
                   ) : null}

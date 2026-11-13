@@ -1085,5 +1085,50 @@ public static class HonoreeReportPdfGenerator
         return "MilitaryService.png";
     }
 
-    private static string Clean(string? value) => (value ?? string.Empty).Replace("\r", "").Replace("\n", "").Trim();
+    private static string Clean(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        // A newline is a word break. Dropping it with no space glues the words
+        // together. A run of newlines, and the spaces beside that run, become one space.
+        var text = value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var builder = new StringBuilder(text.Length);
+        var pendingSpace = false;
+        var afterBreak = false;
+        foreach (var ch in text)
+        {
+            if (ch == '\n')
+            {
+                afterBreak = true;
+                if (builder.Length > 0 && builder[^1] != ' ')
+                {
+                    pendingSpace = true;
+                }
+
+                continue;
+            }
+
+            if (afterBreak && ch is ' ' or '\t')
+            {
+                continue;
+            }
+
+            if (afterBreak)
+            {
+                afterBreak = false;
+                if (pendingSpace)
+                {
+                    builder.Append(' ');
+                    pendingSpace = false;
+                }
+            }
+
+            builder.Append(ch);
+        }
+
+        return builder.ToString().Trim();
+    }
 }

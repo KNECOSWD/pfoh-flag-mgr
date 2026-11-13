@@ -74,6 +74,64 @@ public class HonoreeCardPdfLayoutTests
         AssertHeaderStaysCentered(runs, bio.X);
     }
 
+    // DECISION NEEDED. With a full header, a 600-character all-caps bio ends below
+    // the 578pt content bottom, so Conflicts served and Awards are omitted.
+    // This locks that current behavior. Flip the assertions to require both
+    // sections if the card is changed to keep them.
+    [Fact]
+    public void Full_header_bio_at_the_limit_currently_drops_conflicts_and_awards()
+    {
+        const string conflicts = "World War II, Korean War";
+        const string awards = "Purple Heart, Bronze Star, Distinguished Flying Cross";
+        const string honors =
+            "SERGEANT JAMES ALLEY RECEIVED THE DISTINGUISHED FLYING CROSS, PURPLE HEART, AND BRONZE STAR. CAPTAIN SALVADOR GUZMAN SERVED WITH THE UNITED STATES ARMY AIR CORPS BESIDE LIEUTENANT MARGARET COLE. ";
+        var runs = RenderFullHeaderHonors(Repeat(honors, HonoreeBioLimits.MaxLength), conflicts, awards);
+
+        Assert.Equal(HonoreeBioLimits.MaxLength, 600);
+        Assert.DoesNotContain(runs, run => run.Text.Contains("Conflicts served", StringComparison.Ordinal));
+        Assert.DoesNotContain(runs, run => run.Text.Contains("World War II", StringComparison.Ordinal));
+        Assert.DoesNotContain(runs, run => run.Text.Contains("Awards", StringComparison.Ordinal));
+        Assert.DoesNotContain(runs, run => run.Text.Contains("Purple Heart", StringComparison.Ordinal));
+        Assert.DoesNotContain(runs, run => run.Text.Contains("Distinguished Flying Cross", StringComparison.Ordinal));
+    }
+
+    private static List<TextRun> RenderFullHeaderHonors(string tribute, string conflicts, string awards)
+    {
+        var pdf = HonoreeReportPdfGenerator.Create(
+            new EmptyHost(),
+            new Honoree
+            {
+                FirstName = "Christopher",
+                MiddleName = "Montgomery",
+                LastName = "Worthington",
+                Nickname = "Kit",
+                Rank = "Lieutenant Colonel",
+                StartYear = 1942,
+                EndYear = 1975,
+                Description = tribute,
+                ConflictsServed = conflicts,
+                Awards = awards,
+                ServiceBranch = new ServiceBranch { ServiceBranchName = "United States Army Air Corps" },
+                FlagGrid = new FlagGrid { FlagGridName = "AA-40" }
+            },
+            searchResult: null,
+            photoBytes: null,
+            SyntheticArtwork());
+        return ReadRuns(pdf);
+    }
+
+    [Fact]
+    public void A_newline_in_the_bio_becomes_a_space_so_the_words_stay_separate()
+    {
+        foreach (var tribute in new[] { "Alpha\nBeta", "Alpha\r\nBeta", "Alpha\n\n\nBeta", "Alpha \n Beta" })
+        {
+            var runs = Render(tribute);
+            var joined = string.Join(" ", runs.OrderByDescending(run => run.Y).Select(run => run.Text));
+            Assert.True(joined.Contains("Alpha Beta", StringComparison.Ordinal), tribute + " => " + Dump(runs));
+            Assert.DoesNotContain("AlphaBeta", joined, StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public void Long_bio_omits_conflicts_and_awards_instead_of_crowding_the_card()
     {

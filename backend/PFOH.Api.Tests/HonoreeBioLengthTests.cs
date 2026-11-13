@@ -120,7 +120,7 @@ public class HonoreeBioLengthTests(PfohApiFactory factory) : IClassFixture<PfohA
             "admin@example.test",
             "Admin",
             roles: "PFOH.Admin",
-            body: Form("Grace", "Hopper", Bio(HonoreeBioLimits.MaxLength + 40), rank: "Admiral")));
+            body: Form("Grace", "Hopper", Bio(601), rank: "Admiral")));
         await AssertBioRejected(rejected);
 
         await using (var scope = factory.Services.CreateAsyncScope())

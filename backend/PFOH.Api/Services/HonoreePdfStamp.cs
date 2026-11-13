@@ -11,9 +11,10 @@ namespace PFOH.Api.Services;
 /// </summary>
 public static class HonoreePdfStamp
 {
-    // 2 prints the rank on its own line under the name. A stored card stamped
-    // with 1 no longer matches, so the next open or print rebuilds that one card.
-    public const int FormatVersion = 2;
+    // 2 prints the rank on its own line under the name. 3 wraps a word that is
+    // wider than the bio box. A stored card stamped with an older version no
+    // longer matches, so the next open or print rebuilds that one card.
+    public const int FormatVersion = 3;
 
     public const string MetadataKey = "pfohstamp";
 
