@@ -29,6 +29,8 @@ import {
   honoreePdfUrl,
   honoreePhotoUrl,
   isPendingHonoreePhoto,
+  reviewCurrentPhotoUrl,
+  reviewPhotoLabel,
   displayNameMaxLength,
   displayUsPhone,
   formatUsPhone,
@@ -75,6 +77,7 @@ import {
   printCenterHeading,
   printSelectionSubtitle
 } from "./cardPreview.js";
+import { HONOREE_BIO_MAX_LENGTH, honoreeBioLimitMessage, honoreeBioShortenMessage } from "./honoreeBio";
 import {
   mergePrintBatch,
   preparePrintBatch,
@@ -465,6 +468,7 @@ type CardPreviewState = {
   revoke?: boolean;
   message?: string;
   downloadName?: string;
+  photoLabel?: string;
   progress?: PrintBatchProgress;
   failures?: PrintBatchFailure[];
 };
@@ -482,6 +486,9 @@ function reportableErrorMessage(error: unknown, fallback: string) {
   if (isQuietAuthRejection(error)) return "";
 
   if (error instanceof ApiError) {
+    const serverMessage = error.serverMessage ?? "";
+    const bioLimit = serverMessage.match(/Bio must be \d+ characters or fewer\./);
+    if (bioLimit) return bioLimit[0];
     return error.message;
   }
 
@@ -2287,9 +2294,16 @@ export default function App() {
     });
   }
 
+  function rejectOverlongBio() {
+    if ((form.description ?? "").length <= HONOREE_BIO_MAX_LENGTH) return false;
+    setError(honoreeBioShortenMessage());
+    return true;
+  }
+
   async function submitNomination(event: React.FormEvent) {
     event.preventDefault();
 
+    if (rejectOverlongBio()) return;
     if (!account || submitLockRef.current) return;
 
     submitLockRef.current = true;
@@ -2349,6 +2363,7 @@ export default function App() {
   }
 
   async function saveDraft() {
+    if (rejectOverlongBio()) return;
     if (!account || !selectedClaim) return;
 
     setSaving(true);
@@ -2372,6 +2387,7 @@ export default function App() {
   async function submitClaim(event: React.FormEvent) {
     event.preventDefault();
 
+    if (rejectOverlongBio()) return;
     if (!account || !selectedClaim || submitLockRef.current) return;
 
     const isAdminDirectEdit = selectedClaim.claimStatus === "AdminDirectEdit";
@@ -2859,12 +2875,13 @@ export default function App() {
   function beginCardPreview(
     title: string,
     heading = honoreeCardHeading,
-    downloadName = honoreeCardDownloadName
+    downloadName = honoreeCardDownloadName,
+    photoLabel = ""
   ) {
     const requestId = ++cardPreviewRequest.current;
     setCardPreview((current) => {
       if (current?.revoke && current.url) URL.revokeObjectURL(current.url);
-      return { heading, title, phase: "loading", downloadName };
+      return { heading, title, phase: "loading", downloadName, photoLabel };
     });
     return requestId;
   }
@@ -2882,7 +2899,15 @@ export default function App() {
       return;
     }
 
-    setCardPreview({ heading, title, phase: "ready", url, revoke, downloadName });
+    setCardPreview((current) => ({
+      heading,
+      title,
+      phase: "ready",
+      url,
+      revoke,
+      downloadName,
+      photoLabel: current?.photoLabel
+    }));
   }
 
   function failCardPreview(requestId: number, title: string, message: string, heading = honoreeCardHeading) {
@@ -2897,12 +2922,12 @@ export default function App() {
   function openCardBlob(
     title: string,
     load: () => Promise<Blob>,
-    options?: { heading?: string; downloadName?: string; errorFallback?: string }
+    options?: { heading?: string; downloadName?: string; errorFallback?: string; photoLabel?: string }
   ) {
     const heading = options?.heading ?? honoreeCardHeading;
     const downloadName = options?.downloadName ?? honoreeCardDownloadName;
     setError("");
-    const requestId = beginCardPreview(title, heading, downloadName);
+    const requestId = beginCardPreview(title, heading, downloadName, options?.photoLabel ?? "");
     void load()
       .then((blob) => finishCardPreview(requestId, title, URL.createObjectURL(blob), true, heading, downloadName))
       .catch((err) => failCardPreview(
@@ -2951,7 +2976,9 @@ export default function App() {
     if (!account) return;
 
     openCardBlob(item.honoreeName, () =>
-      fetchAuthorizedBlob(instance, account, adminCardPreviewUrl(item.changeRequestId)));
+      fetchAuthorizedBlob(instance, account, adminCardPreviewUrl(item.changeRequestId)), {
+      photoLabel: reviewPhotoLabel(item)
+    });
   }
 
   function downloadCardPreview() {
@@ -3340,6 +3367,7 @@ export default function App() {
         <div className="modalCard appConfirmModal cardPreviewModal" onClick={(event) => event.stopPropagation()} aria-busy={cardPreview.phase === "loading"}>
           <h2 id="card-preview-title">{cardPreview.heading}</h2>
           <p className="helperText">{cardPreview.title}</p>
+          {cardPreview.photoLabel ? <p className="small text-body-secondary">{cardPreview.photoLabel}</p> : null}
           {cardPreview.phase === "ready" && cardPreview.url ? (
             <iframe
               ref={cardPreviewFrameRef}
@@ -4723,16 +4751,32 @@ export default function App() {
                   {pendingReviews.map((item) => (
                     <article key={item.changeRequestId} className="reviewPendingCard">
                       <header className="reviewPendingCardHeader">
-                        {isPendingHonoreePhoto(item.photoFileName) && account ? (
-                          <AuthorizedThumbnail
-                            instance={instance}
-                            account={account}
-                            url={changeRequestPhotoUrl(item.changeRequestId)}
-                            photoKey={`${item.changeRequestId}:${item.photoFileName}`}
-                            alt={`${item.honoreeName} pending honoree photo`}
-                            className="reviewPendingPhoto"
-                            emptyLabel={null}
-                          />
+                        {reviewPhotoLabel(item) === "New photo" && account ? (
+                          <div className="reviewPhotoBlock">
+                            <AuthorizedThumbnail
+                              instance={instance}
+                              account={account}
+                              url={changeRequestPhotoUrl(item.changeRequestId)}
+                              photoKey={`${item.changeRequestId}:${item.photoFileName}`}
+                              alt={`${item.honoreeName} new photo`}
+                              className="reviewPendingPhoto"
+                              emptyLabel={null}
+                            />
+                            <span className="small text-body-secondary">New photo</span>
+                          </div>
+                        ) : reviewPhotoLabel(item) === "Current photo" && account && item.currentPhotoUrl ? (
+                          <div className="reviewPhotoBlock">
+                            <AuthorizedThumbnail
+                              instance={instance}
+                              account={account}
+                              url={reviewCurrentPhotoUrl(item.currentPhotoUrl)}
+                              photoKey={`${item.changeRequestId}:current:${item.currentPhotoUrl}`}
+                              alt={`${item.honoreeName} current photo`}
+                              className="reviewPendingPhoto"
+                              emptyLabel={null}
+                            />
+                            <span className="small text-body-secondary">Current photo</span>
+                          </div>
                         ) : null}
                         <div className="reviewPendingIdentity">
                           <div className="reviewPendingNameLine">
@@ -5526,17 +5570,47 @@ export default function App() {
                   />
                 </label>
 
-                <label className="col-12">
+                <label className="col-12" htmlFor="honoree-bio">
                   <span className="fieldLabelText">
                     Honoree description / tribute <span className="requiredMark" aria-hidden="true">*</span>
                   </span>
                   <textarea
+                    id="honoree-bio"
                     className="form-control"
                     required
                     rows={6}
+                    maxLength={(form.description ?? "").length > HONOREE_BIO_MAX_LENGTH ? undefined : HONOREE_BIO_MAX_LENGTH}
+                    aria-describedby={(form.description ?? "").length > HONOREE_BIO_MAX_LENGTH ? "honoree-bio-count honoree-bio-limit" : "honoree-bio-count"}
+                    aria-invalid={(form.description ?? "").length > HONOREE_BIO_MAX_LENGTH || undefined}
                     value={form.description ?? ""}
-                    onChange={(e) => update("description", e.target.value)}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      const current = form.description ?? "";
+                      if (current.length > HONOREE_BIO_MAX_LENGTH && next.length > current.length) return;
+                      update("description", next);
+                      if (next.length <= HONOREE_BIO_MAX_LENGTH) {
+                        setError((message) => message === honoreeBioShortenMessage() || message === honoreeBioLimitMessage() ? "" : message);
+                      }
+                    }}
+                    onInvalid={(event) => {
+                      if ((form.description ?? "").length > HONOREE_BIO_MAX_LENGTH) {
+                        event.preventDefault();
+                        setError(honoreeBioShortenMessage());
+                      }
+                    }}
                   />
+                  <p
+                    id="honoree-bio-count"
+                    className={(form.description ?? "").length > HONOREE_BIO_MAX_LENGTH ? "form-text text-danger fw-bold" : "form-text"}
+                    aria-live="polite"
+                  >
+                    {(form.description ?? "").length} / {HONOREE_BIO_MAX_LENGTH} characters
+                  </p>
+                  {(form.description ?? "").length > HONOREE_BIO_MAX_LENGTH ? (
+                    <p id="honoree-bio-limit" className="form-text text-danger fw-bold" role="alert">
+                      {honoreeBioShortenMessage()}
+                    </p>
+                  ) : null}
                 </label>
                 <label className="col-12">
                   Honoree photo

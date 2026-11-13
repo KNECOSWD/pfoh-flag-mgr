@@ -1,3 +1,5 @@
+using System.Text;
+using Microsoft.Extensions.Logging;
 using PdfSharpCore.Drawing;
 using PdfSharpCore.Drawing.Layout;
 using PdfSharpCore.Drawing.Layout.enums;
@@ -30,7 +32,8 @@ public static class HonoreeReportPdfGenerator
         Honoree honoree,
         HonoreeSearchResult? searchResult,
         byte[]? photoBytes,
-        HonoreeReportAssets? assets = null)
+        HonoreeReportAssets? assets = null,
+        ILogger? logger = null)
     {
         using var document = new PdfDocument();
         document.Info.Title = $"{BuildHonoreeName(honoree)} - Plano Flags of Honor";
@@ -48,7 +51,7 @@ public static class HonoreeReportPdfGenerator
         if (!DrawBackground(gfx, page, environment, assets?.BackgroundImage)) missing.Add("card background DonorCardBlankLrg.png");
         DrawFlagGrid(gfx, honoree);
         DrawLogoPhotoRow(gfx, environment, honoree, searchResult, photoBytes, assets?.ServiceLogoImage, assets?.SilhouetteImage);
-        DrawCenteredHonoreeContent(gfx, honoree, searchResult);
+        DrawCenteredHonoreeContent(gfx, honoree, searchResult, logger);
         if (!DrawRotaryLogo(gfx, environment, assets?.RotaryImage)) missing.Add("Rotary logo Rotary.png");
 
         // The deploy replaces wwwroot with the frontend build, so the on-disk fallback
@@ -246,7 +249,8 @@ public static class HonoreeReportPdfGenerator
     private static void DrawCenteredHonoreeContent(
         XGraphics gfx,
         Honoree honoree,
-        HonoreeSearchResult? searchResult)
+        HonoreeSearchResult? searchResult,
+        ILogger? logger)
     {
         // Matches the legacy QuestPDF card structure, but uses a lighter sans-serif font.
         var y = 178d;
@@ -279,44 +283,333 @@ public static class HonoreeReportPdfGenerator
             y += 10;
         }
 
-        DrawDescription(gfx, Clean(honoree.Description), y, honoree);
+        DrawDescription(gfx, Clean(honoree.Description), y, honoree, logger);
     }
 
-    private static void DrawDescription(XGraphics gfx, string description, double y, Honoree honoree)
+    private static readonly double[] BioFontSizes = [12.0, 10.4, 9.6, 8.8, 8.2];
+
+    private static double LengthBasedFontSize(int length) => length switch
+    {
+        > 1200 => 8.2,
+        > 1000 => 8.8,
+        > 800 => 9.6,
+        > 650 => 10.4,
+        _ => 12.0
+    };
+
+    private static void DrawDescription(XGraphics gfx, string description, double y, Honoree honoree, ILogger? logger)
     {
         if (string.IsNullOrWhiteSpace(description))
         {
             description = "No tribute text has been entered for this honoree yet.";
         }
 
-        var fontSize = description.Length switch
+        var lengthSize = LengthBasedFontSize(description.Length);
+        if (!HasHonorText(honoree.ConflictsServed) && !HasHonorText(honoree.Awards))
         {
-            > 1200 => 8.2,
-            > 1000 => 8.8,
-            > 800 => 9.6,
-            > 650 => 10.4,
-            _ => 12.0
-        };
+            DrawBioBlock(gfx, description, y, lengthSize, BioBoxHeight);
+            return;
+        }
 
-        var font = Font(fontSize, false);
-        var rect = new XRect(ContentLeft, y, ContentWidth, BioBoxHeight);
-        var formatter = new XTextFormatter(gfx);
-        // The short DrawString overload full-justifies every line and ignores Alignment,
-        // which stretches a short bio such as "Our Hero!" across the card.
-        formatter.DrawString(
+        var room = ContentBottom - y;
+        foreach (var size in BioFontSizes)
+        {
+            if (size > lengthSize + 0.001)
+            {
+                continue;
+            }
+
+            if (TryFitBio(gfx, description, honoree, size, room, truncate: false, out var plan))
+            {
+                DrawBioPlan(gfx, y, plan);
+                return;
+            }
+        }
+
+        if (TryFitBio(gfx, description, honoree, 8.2, room, truncate: true, out var cut))
+        {
+            DrawBioPlan(gfx, y, cut);
+            logger?.LogWarning(
+                "Honoree {HonoreeId} bio was cut with an ellipsis on the card so Conflicts served and Awards could fit.",
+                honoree.Id);
+            return;
+        }
+
+        // The honor text itself is taller than the space above the Rotary mark.
+        // A section is shown only when the whole section fits, and conflicts win.
+        DrawBioBlock(gfx, description, y, lengthSize, Math.Max(lengthSize, room));
+        var used = Math.Min(MeasureLeftBlock(gfx, BreakWideWords(gfx, description, Font(lengthSize, false), ContentWidth), Font(lengthSize, false), ContentWidth), Math.Max(lengthSize, room));
+        DrawHonors(gfx, honoree, y + used + 10, lengthSize);
+    }
+
+    private readonly record struct BioPlan(string Text, double FontSize, double Height, HonorChoice Honors);
+
+    private static bool TryFitBio(
+        XGraphics gfx,
+        string description,
+        Honoree honoree,
+        double size,
+        double room,
+        bool truncate,
+        out BioPlan plan)
+    {
+        plan = default;
+        var detail = HonorDetailSize(size);
+        var labelFont = Font(detail, true);
+        var bodyFont = Font(detail, false);
+        var conflicts = HonorForms(gfx, honoree.ConflictsServed, labelFont, bodyFont);
+        var awards = HonorForms(gfx, honoree.Awards, labelFont, bodyFont);
+        var font = Font(size, false);
+        var wrapped = BreakWideWords(gfx, description, font, ContentWidth);
+        var height = MeasureLeftBlock(gfx, wrapped, font, ContentWidth);
+
+        if (!truncate)
+        {
+            var honorBudget = room - 10 - height;
+            if (honorBudget <= 0)
+            {
+                return false;
+            }
+
+            var choice = ChooseFittingHonors(conflicts, awards, honorBudget, 8);
+            if (choice is null)
+            {
+                return false;
+            }
+
+            plan = new BioPlan(wrapped, size, height, choice.Value);
+            return true;
+        }
+
+        var shortest = ShortestHonors(conflicts, awards);
+        if (shortest is null)
+        {
+            return false;
+        }
+
+        var bioBudget = room - 10 - HonorStackHeight(shortest.Value, 8);
+        if (bioBudget < font.GetHeight())
+        {
+            return false;
+        }
+
+        if (height <= bioBudget)
+        {
+            plan = new BioPlan(wrapped, size, height, shortest.Value);
+            return true;
+        }
+
+        var cut = FitWithEllipsis(gfx, wrapped, font, bioBudget);
+        var cutHeight = MeasureLeftBlock(gfx, cut, font, ContentWidth);
+        if (cutHeight > bioBudget)
+        {
+            return false;
+        }
+
+        plan = new BioPlan(cut, size, cutHeight, shortest.Value);
+        return true;
+    }
+
+    private static HonorChoice? ChooseFittingHonors(
+        IReadOnlyList<HonorBlock> conflicts,
+        IReadOnlyList<HonorBlock> awards,
+        double available,
+        double sectionGap)
+    {
+        if (conflicts.Count > 0 && awards.Count > 0)
+        {
+            return ChooseBothHonors(conflicts, awards, available, sectionGap);
+        }
+
+        return ChooseHonors(conflicts, awards, available, sectionGap);
+    }
+
+    private static HonorChoice? ShortestHonors(
+        IReadOnlyList<HonorBlock> conflicts,
+        IReadOnlyList<HonorBlock> awards)
+    {
+        if (conflicts.Count > 0 && awards.Count > 0)
+        {
+            HonorChoice? best = null;
+            var bestHeight = double.MaxValue;
+            foreach (var conflictsBlock in conflicts)
+            {
+                foreach (var awardsBlock in awards)
+                {
+                    var height = conflictsBlock.Height + 8 + awardsBlock.Height;
+                    if (height < bestHeight)
+                    {
+                        bestHeight = height;
+                        best = new HonorChoice(conflictsBlock, awardsBlock);
+                    }
+                }
+            }
+
+            return best;
+        }
+
+        if (conflicts.Count > 0)
+        {
+            return new HonorChoice(ShortestBlock(conflicts), null);
+        }
+
+        if (awards.Count > 0)
+        {
+            return new HonorChoice(null, ShortestBlock(awards));
+        }
+
+        return null;
+    }
+
+    private static HonorBlock ShortestBlock(IReadOnlyList<HonorBlock> blocks)
+    {
+        var best = blocks[0];
+        for (var index = 1; index < blocks.Count; index++)
+        {
+            if (blocks[index].Height < best.Height)
+            {
+                best = blocks[index];
+            }
+        }
+
+        return best;
+    }
+
+    private static void DrawBioPlan(XGraphics gfx, double y, BioPlan plan)
+    {
+        DrawBioText(gfx, plan.Text, y, plan.FontSize, plan.Height);
+        DrawChosenHonors(gfx, plan.Honors, y + plan.Height + 10, plan.FontSize);
+    }
+
+    private static void DrawBioBlock(XGraphics gfx, string description, double y, double size, double maxHeight)
+    {
+        var font = Font(size, false);
+        var wrapped = BreakWideWords(gfx, description, font, ContentWidth);
+        var height = Math.Min(MeasureLeftBlock(gfx, wrapped, font, ContentWidth), maxHeight);
+        DrawBioText(gfx, wrapped, y, size, Math.Max(height, font.GetHeight()));
+    }
+
+    private static void DrawBioText(XGraphics gfx, string description, double y, double size, double height)
+    {
+        var font = Font(size, false);
+        new XTextFormatter(gfx).DrawString(
             description,
             font,
             XBrushes.Black,
-            rect,
+            new XRect(ContentLeft, y, ContentWidth, height),
             new TextFormatAlignment
             {
                 Horizontal = XParagraphAlignment.Left,
                 Vertical = XVerticalAlignment.Top
             });
-
-        var bioHeight = Math.Min(MeasureLeftBlock(gfx, description, font, ContentWidth), BioBoxHeight);
-        DrawHonors(gfx, honoree, y + bioHeight + 10, fontSize);
     }
+
+    private static string FitWithEllipsis(XGraphics gfx, string text, XFont font, double maxHeight)
+    {
+        const string ellipsis = "...";
+        if (MeasureLeftBlock(gfx, text, font, ContentWidth) <= maxHeight)
+        {
+            return text;
+        }
+
+        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var best = ellipsis;
+        var low = 0;
+        var high = words.Length;
+        while (low <= high)
+        {
+            var mid = (low + high) / 2;
+            var candidate = mid == 0
+                ? ellipsis
+                : string.Join(' ', words.Take(mid)) + ellipsis;
+            if (MeasureLeftBlock(gfx, candidate, font, ContentWidth) <= maxHeight)
+            {
+                best = candidate;
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid - 1;
+            }
+        }
+
+        return best;
+    }
+
+    private static double HonorStackHeight(HonorChoice choice, double sectionGap)
+    {
+        var height = 0d;
+        var sections = 0;
+        if (choice.Conflicts is HonorBlock conflicts)
+        {
+            height += conflicts.Height;
+            sections++;
+        }
+
+        if (choice.Awards is HonorBlock awards)
+        {
+            height += awards.Height;
+            sections++;
+        }
+
+        if (sections == 2)
+        {
+            height += sectionGap;
+        }
+
+        return height;
+    }
+
+    private static HonorChoice? ChooseBothHonors(
+        IReadOnlyList<HonorBlock> conflicts,
+        IReadOnlyList<HonorBlock> awards,
+        double available,
+        double sectionGap)
+    {
+        foreach (var conflictsBlock in conflicts)
+        {
+            foreach (var awardsBlock in awards)
+            {
+                if (conflictsBlock.Height + sectionGap + awardsBlock.Height <= available)
+                {
+                    return new HonorChoice(conflictsBlock, awardsBlock);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static void DrawChosenHonors(XGraphics gfx, HonorChoice choice, double top, double bioSize)
+    {
+        var detailSize = HonorDetailSize(bioSize);
+        var bodyFont = Font(detailSize, false);
+        var labelFont = Font(detailSize, true);
+        var y = top;
+        if (choice.Conflicts is HonorBlock conflictsBlock)
+        {
+            DrawHonorSection(gfx, "Conflicts served", conflictsBlock.Text, y, labelFont, bodyFont);
+            y += conflictsBlock.Height + 8;
+        }
+
+        if (choice.Awards is HonorBlock awardsBlock)
+        {
+            DrawHonorSection(gfx, "Awards", awardsBlock.Text, y, labelFont, bodyFont);
+        }
+    }
+
+    private static double HonorDetailSize(double bioSize)
+    {
+        var detailSize = Math.Min(9, bioSize - 1.5);
+        if (detailSize >= bioSize)
+        {
+            detailSize = bioSize - 0.5;
+        }
+
+        return detailSize;
+    }
+
+    private static bool HasHonorText(string? value) => SplitHonorItems(value).Count > 0;
 
     private const double ContentLeft = 40;
     private const double ContentWidth = 214;
@@ -486,6 +779,78 @@ public static class HonoreeReportPdfGenerator
                 });
             lineY += lineHeight;
         }
+    }
+
+    private static string BreakWideWords(XGraphics gfx, string text, XFont font, double maxWidth)
+    {
+        var builder = new StringBuilder(text.Length);
+        var changed = false;
+        var index = 0;
+        while (index < text.Length)
+        {
+            if (char.IsWhiteSpace(text[index]))
+            {
+                builder.Append(text[index]);
+                index++;
+                continue;
+            }
+
+            var start = index;
+            while (index < text.Length && !char.IsWhiteSpace(text[index]))
+            {
+                index++;
+            }
+
+            var word = text.AsSpan(start, index - start);
+            if (gfx.MeasureString(word.ToString(), font).Width <= maxWidth)
+            {
+                builder.Append(word);
+                continue;
+            }
+
+            changed = true;
+            var offset = 0;
+            while (offset < word.Length)
+            {
+                var count = FittedPrefix(gfx, font, word[offset..], maxWidth);
+                if (offset > 0)
+                {
+                    builder.Append(' ');
+                }
+
+                builder.Append(word.Slice(offset, count));
+                offset += count;
+            }
+        }
+
+        return changed ? builder.ToString() : text;
+    }
+
+    private static int FittedPrefix(XGraphics gfx, XFont font, ReadOnlySpan<char> word, double maxWidth)
+    {
+        if (word.Length <= 1)
+        {
+            return Math.Max(word.Length, 1);
+        }
+
+        var low = 1;
+        var high = word.Length;
+        var fit = 1;
+        while (low <= high)
+        {
+            var mid = (low + high) / 2;
+            if (gfx.MeasureString(word[..mid].ToString(), font).Width <= maxWidth)
+            {
+                fit = mid;
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid - 1;
+            }
+        }
+
+        return fit;
     }
 
     private static double MeasureLeftBlock(XGraphics gfx, string text, XFont font, double width)
@@ -1004,5 +1369,50 @@ public static class HonoreeReportPdfGenerator
         return "MilitaryService.png";
     }
 
-    private static string Clean(string? value) => (value ?? string.Empty).Replace("\r", "").Replace("\n", "").Trim();
+    private static string Clean(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return string.Empty;
+        }
+
+        // A newline is a word break. Dropping it with no space glues the words
+        // together. A run of newlines, and the spaces beside that run, become one space.
+        var text = value.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var builder = new StringBuilder(text.Length);
+        var pendingSpace = false;
+        var afterBreak = false;
+        foreach (var ch in text)
+        {
+            if (ch == '\n')
+            {
+                afterBreak = true;
+                if (builder.Length > 0 && builder[^1] != ' ')
+                {
+                    pendingSpace = true;
+                }
+
+                continue;
+            }
+
+            if (afterBreak && ch is ' ' or '\t')
+            {
+                continue;
+            }
+
+            if (afterBreak)
+            {
+                afterBreak = false;
+                if (pendingSpace)
+                {
+                    builder.Append(' ');
+                    pendingSpace = false;
+                }
+            }
+
+            builder.Append(ch);
+        }
+
+        return builder.ToString().Trim();
+    }
 }

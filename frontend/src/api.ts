@@ -13,6 +13,7 @@ import {
   sharedTokenRequest,
   withNetworkRetry
 } from "./tokenRequest.js";
+import { chooseServerMessage } from "./apiErrorMessage.js";
 
 export class ApiError extends Error {
   status: number;
@@ -67,12 +68,7 @@ async function buildApiError(response: Response, method: string, url: string): P
           .join("; ")
       : "";
 
-    serverMessage =
-      parsed.message ||
-      parsed.detail ||
-      parsed.title ||
-      validationErrors ||
-      rawMessage;
+    serverMessage = chooseServerMessage(parsed, rawMessage);
 
     detail = [parsed.detail, validationErrors, parsed.currentStatus ? `Current status: ${parsed.currentStatus}` : ""]
       .filter(Boolean)
@@ -394,6 +390,8 @@ export type AdminReviewItem = {
   flagSpotNotice?: string | null;
   requesterNote?: string | null;
   linkUsedUtc?: string | null;
+  currentPhotoAvailable?: boolean | null;
+  currentPhotoUrl?: string | null;
 };
 
 export type ReactivationSummary = {
@@ -629,6 +627,23 @@ function requestTimeoutSignal(existing?: AbortSignal | null) {
 
 export function isPendingHonoreePhoto(photoFileName?: string | null) {
   return !!photoFileName && photoFileName.trim().toLowerCase().startsWith("pending/") && !photoFileName.includes("..");
+}
+
+export type ReviewPhotoLabel = "" | "New photo" | "Current photo";
+
+export function reviewPhotoLabel(item: {
+  photoFileName?: string | null;
+  currentPhotoAvailable?: boolean | null;
+}): ReviewPhotoLabel {
+  if (isPendingHonoreePhoto(item.photoFileName)) return "New photo";
+  if (item.currentPhotoAvailable) return "Current photo";
+  return "";
+}
+
+export function reviewCurrentPhotoUrl(url?: string | null) {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${apiBase}${url.startsWith("/") ? url : `/${url}`}`;
 }
 
 export async function fetchAuthorizedBlob(

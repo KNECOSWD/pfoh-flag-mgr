@@ -1,5 +1,13 @@
 # Changelog
 
+## 5.8.1
+
+- The honoree bio, the Description field, is limited to 600 characters. That is the largest multiple of 50 that fits all-caps prose, including long words and names, in the printed card bio area at 12 point DejaVu Sans within 24 lines, and it stays under the 650 character size where the card would shrink the type. The nomination form, a suggested change, and an administrator edit show a live count, "123 / 600 characters", and the server refuses a longer bio with "Bio must be 600 characters or fewer."
+- A bio already stored above 600 characters is not cut. An administrator edit shows the full text, the count in an over-limit state, and "Bio must be shortened to 600 characters before saving." Saving is refused until the bio is shortened. Approving a pending request that already has a longer bio still succeeds and keeps the full text.
+- A single word wider than the card bio box is broken onto the next line when the card is drawn. The bio keeps the largest size that still leaves room for Conflicts served and Awards above the Rotary mark, using the one-per-line honor list when it fits and the semicolon list otherwise. A stored card from the previous layout is rebuilt the next time it is opened or printed. A line break in the bio is kept as a space, so the words on either side stay separate. The stored bio is not changed.
+- A review says New photo when the request includes one. It says Current photo only when the honoree already has a live photo, including an inactive honoree. With neither photo, the card uses the branch silhouette and the list shows no photo and no label. Approving a follow-up with no photo leaves the live photo where it is.
+- There is no database change. docs/sql/bio-over-limit-count.sql is a read-only count of honorees and pending requests over the limit.
+
 ## 5.8.0
 
 - On Reactivation, administrators can search inactive records that are not assigned to a flag. Search matches the name, the branch, the honoree id, and a legacy record id when one is stored. The list shows when and why the person was deactivated when that was stored.

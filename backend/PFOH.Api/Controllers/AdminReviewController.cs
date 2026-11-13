@@ -169,8 +169,10 @@ public class AdminReviewController(
             {
                 var dto = ToReviewDto(request);
                 ReviewSnapshot? current = null;
+                Honoree? liveHonoree = null;
                 if (request.HonoreeId is int honoreeId && honoreeById.TryGetValue(honoreeId, out var honoree))
                 {
+                    liveHonoree = honoree;
                     current = ReviewSubmissionDiff.FromHonoree(honoree);
                 }
 
@@ -181,7 +183,9 @@ public class AdminReviewController(
                         ? Array.Empty<ReviewFieldChangeDto>()
                         : ReviewSubmissionDiff.Compare(PendingSnapshot(request), current)
                 };
-                submitted.Add(await WithPhotoProbeAsync(dto, ct));
+                dto = await WithPhotoProbeAsync(dto, ct);
+                dto = await WithLivePhotoAsync(dto, liveHonoree, ct);
+                submitted.Add(dto);
             }
             catch (Exception ex)
             {
@@ -220,6 +224,51 @@ public class AdminReviewController(
         }
     }
 
+    [HttpGet("honorees/{honoreeId:int}/photo")]
+    public async Task<IActionResult> CurrentHonoreePhoto(int honoreeId, CancellationToken ct)
+    {
+        var honoree = await db.Honorees
+            .AsNoTracking()
+            .FirstOrDefaultAsync(row => row.Id == honoreeId && row.DeletedDate == null, ct);
+        if (honoree is null || !IsStoredLivePhoto(honoree.PhotoFileName))
+        {
+            return NotFound("Honoree photo was not found.");
+        }
+
+        var probe = await fileStorage.ProbeHonoreeImageAsync(honoree.PhotoFileName, ct);
+        if (probe is HonoreeImageProbeResult.Missing or HonoreeImageProbeResult.NoPhoto)
+        {
+            return NotFound("Honoree photo was not found.");
+        }
+
+        byte[]? bytes = null;
+        try
+        {
+            bytes = await fileStorage.DownloadImageAsync(honoree.PhotoFileName, null, ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Live honoree photo {PhotoFileName} for honoree {HonoreeId} could not be read.", honoree.PhotoFileName, honoreeId);
+        }
+
+        if (bytes is null || bytes.Length == 0)
+        {
+            return NotFound("Honoree photo was not found.");
+        }
+
+        var contentType = Path.GetExtension(honoree.PhotoFileName).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            _ => "image/jpeg"
+        };
+        var display = DisplayImage.ForHonoreePhoto(bytes, contentType);
+        Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+        return File(display.Bytes, display.ContentType);
+    }
+
     [HttpGet("{id:int}/card-preview")]
     public async Task<IActionResult> CardPreview(int id, CancellationToken ct)
     {
@@ -240,6 +289,15 @@ public class AdminReviewController(
         }
 
         var honoree = HonoreeCardPdf.FromChangeRequest(change);
+        var photoFileName = change.PhotoFileName;
+        if (string.IsNullOrWhiteSpace(photoFileName) && change.HonoreeId is int liveHonoreeId)
+        {
+            photoFileName = await db.Honorees
+                .AsNoTracking()
+                .Where(row => row.Id == liveHonoreeId)
+                .Select(row => row.PhotoFileName)
+                .FirstOrDefaultAsync(ct);
+        }
 
         try
         {
@@ -248,9 +306,10 @@ public class AdminReviewController(
                 fileStorage,
                 honoree,
                 null,
-                change.PhotoFileName,
+                string.IsNullOrWhiteSpace(photoFileName) ? null : photoFileName,
                 null,
-                ct);
+                ct,
+                logger);
             return File(pdf, "application/pdf", $"honoree-card-{id}.pdf");
         }
         catch (Exception ex)
@@ -1828,6 +1887,36 @@ public class AdminReviewController(
                 ClaimantOrganization = contact.Organization
             };
         }).ToList();
+    }
+
+    private async Task<AdminReviewItemDto> WithLivePhotoAsync(
+        AdminReviewItemDto dto,
+        Honoree? honoree,
+        CancellationToken ct)
+    {
+        if (honoree is null || !IsStoredLivePhoto(honoree.PhotoFileName))
+        {
+            return dto with { CurrentPhotoAvailable = false, CurrentPhotoUrl = null };
+        }
+
+        var probe = await fileStorage.ProbeHonoreeImageAsync(honoree.PhotoFileName, ct);
+        if (probe is HonoreeImageProbeResult.Missing or HonoreeImageProbeResult.NoPhoto)
+        {
+            return dto with { CurrentPhotoAvailable = false, CurrentPhotoUrl = null };
+        }
+
+        return dto with
+        {
+            CurrentPhotoAvailable = true,
+            CurrentPhotoUrl = $"/api/admin/review/honorees/{honoree.Id}/photo"
+        };
+    }
+
+    private static bool IsStoredLivePhoto(string? photoFileName)
+    {
+        var name = photoFileName?.Trim();
+        return !string.IsNullOrWhiteSpace(name)
+            && !string.Equals(name, "silhouette.jpeg", StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task<AdminReviewItemDto> WithPhotoProbeAsync(AdminReviewItemDto dto, CancellationToken ct)

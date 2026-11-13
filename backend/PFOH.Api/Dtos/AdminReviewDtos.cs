@@ -31,7 +31,9 @@ public record AdminReviewItemDto(
     bool? FlagSpotAssigned = null,
     string? FlagSpotNotice = null,
     string? RequesterNote = null,
-    DateTime? LinkUsedUtc = null);
+    DateTime? LinkUsedUtc = null,
+    bool CurrentPhotoAvailable = false,
+    string? CurrentPhotoUrl = null);
 
 public record ReviewFieldChangeDto(string Label, string Previous, string Proposed);
 
